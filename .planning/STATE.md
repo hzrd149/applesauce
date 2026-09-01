@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 21
 current_phase_name: Group Error Surface — request
 status: planning
-stopped_at: Completed 20-04-PLAN.md; Phase 20 complete without transition
-last_updated: "2026-08-31T16:55:11.273Z"
+stopped_at: Phase 21 context gathered
+last_updated: "2026-09-01T15:04:09.429Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 20 complete, transitioned to Phase 21
 progress:
@@ -469,9 +469,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-08-31T16:31:28.194Z
-Stopped at: Completed 20-04-PLAN.md; Phase 20 complete without transition
-Resume file: None
+Last session: 2026-09-01T15:04:09.403Z
+Stopped at: Phase 21 context gathered
+Resume file: .planning/phases/21-group-error-surface-request-subscription/21-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
