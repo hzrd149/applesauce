@@ -253,7 +253,16 @@ Plans:
   2. `RelayGroup.count()` emits a partial record as each relay answers, rather than withholding every count until the slowest relay replies.
   3. A failed relay's entry in the count record uses the same per-source-outcome shape Phase 21 defined for the group aggregate error, not a second, independently invented shape.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+
+- [ ] 23-01-PLAN.md — Static progressive outcome accumulator and scalar forwarding
+- [ ] 23-02-PLAN.md — Dynamic cohort replacement, retraction, replay, and cancellation
+- [ ] 23-03-PLAN.md — Pool parity and real-wire scalar policy preservation
+- [ ] 23-04-PLAN.md — Exact public types and combineLatest RED→GREEN proof
+- [ ] 23-05-PLAN.md — Progressive/HLL docs and Phase 19/21 provenance amendments
+- [ ] 23-06-PLAN.md — Major changeset, full gates, and Nyquist reconciliation
 
 ### Phase 24: Negentropy & Sync Re-layer
 
