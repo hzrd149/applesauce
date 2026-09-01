@@ -393,9 +393,9 @@ export class RelayGroup {
 
   /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
-    // Cohort settlement owns default completion. A caller-supplied operator remains an
-    // additional early-completion policy, after same-message all-failed precedence.
-    const complete = opts?.complete;
+    // Cohort settlement owns all-terminal completion. Preserve the legacy five-second
+    // fallback after the first EOSE; a caller-supplied operator replaces that early policy.
+    const complete = opts?.complete ?? RelayGroup.completeAfterFirstRelay(5_000);
 
     // D-15/WR-02: one AuthPhaseGate per call, shared by every relay in the fan-out — the group's clock
     // is a single budget over the whole fan-out, so any relay's in-flight auth phase must suspend it.
