@@ -17,7 +17,7 @@ created: 2026-09-01
 | Focused | `pnpm --filter applesauce-relay exec vitest run src/__tests__/group-count.test.ts` |
 | Integration | `pnpm --filter applesauce-relay exec vitest run src/__tests__/group.test.ts src/__tests__/pool.test.ts` |
 | Types | `pnpm --filter applesauce-relay exec tsc -p tsconfig.type-tests.json --noEmit` |
-| Full gate | Plan 23-06 Task 2 |
+| Full gate | Plan 23-07 Task 2 |
 
 ## Per-Task Verification Map
 
@@ -32,9 +32,10 @@ created: 2026-09-01
 | 23-04-01 | 4 | COUNT-04/05 | Narrowing/scalar/Group/Pool types | explicit type project | pending |
 | 23-04-02 | 4 | COUNT-04/05 | combineLatest progression/isolation RED→GREEN | exact summary evidence + focused suite | pending |
 | 23-05-01 | 5 | COUNT-04/05 | Progressive/HLL/reduced-coverage docs | docs build/search | pending |
-| 23-05-02 | 5 | COUNT-04/05 | Phase 19/21/canonical amendments | provenance search | pending |
-| 23-06-01 | 6 | COUNT-04/05 | Exact major changeset | Node parser | pending |
-| 23-06-02 | 6 | COUNT-04/05 | Complete runtime/type/docs/workspace gate | full command | pending |
+| 23-06-01 | 6 | COUNT-04/05 | All Phase 19 aggregation artifacts explicitly amended with scalar/HLL/topology positives | per-file and positive searches | pending |
+| 23-06-02 | 6 | COUNT-04/05 | Phase 21/canonical amendments and nine-artifact negative stale-claim audit | executable provenance audit | pending |
+| 23-07-01 | 7 | COUNT-04/05 | Exact major changeset | Node parser | pending |
+| 23-07-02 | 7 | COUNT-04/05 | Complete runtime/type/docs/provenance/workspace gate | full command | pending |
 
 ## Wave 0 and Non-Vacuity
 
@@ -58,7 +59,7 @@ created: 2026-09-01
 | CONTEXT | D-14..D-17 | forwarding/policy/cancellation | 01-03 | COVERED |
 | CONTEXT | D-18..D-19 | HLL interpretation/no total | 05 | COVERED |
 | CONTEXT | D-20..D-22 | public types/error boundary | 01-04 | COVERED |
-| CONTEXT | D-23..D-25 | docs/provenance/release | 05-06 | COVERED |
+| CONTEXT | D-23..D-25 | docs/provenance/release | 05-07 | COVERED |
 | CONTEXT | D-26 | combineLatest RED→GREEN | 04 | COVERED |
 | CONTEXT | D-27 | exhaustive runtime matrix | 01-04, 06 | COVERED |
 
@@ -73,6 +74,6 @@ Any withheld first settlement, escaping per-relay error, stale replacement signa
 - [x] Every task has automated verification.
 - [x] COUNT-04/05 and D-01..D-27 map to evidence.
 - [x] No install or human checkpoint is required.
-- [ ] Set complete only after Plan 23-06 reconciles actual results.
+- [ ] Set complete only after Plan 23-07 reconciles actual results.
 
 **Approval:** pending
