@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 22
 current_phase_name: REQ Family Re-layer
 status: planning
-stopped_at: Phase 21 complete — no transition requested
-last_updated: "2026-09-01T15:55:45.219Z"
+stopped_at: Phase 22 context gathered
+last_updated: "2026-09-01T21:45:52.649Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 21 complete, transitioned to Phase 22
 progress:
@@ -473,9 +473,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-01T15:43:12.956Z
-Stopped at: Phase 21 complete — no transition requested
-Resume file: None
+Last session: 2026-09-01T21:45:52.626Z
+Stopped at: Phase 22 context gathered
+Resume file: .planning/phases/22-req-family-re-layer/22-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
