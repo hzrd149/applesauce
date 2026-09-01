@@ -57,7 +57,6 @@ import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./nip45.js";
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
-  AUTH_PHASE_GATE,
   authRequiredSignal,
   AuthPhaseGate,
   authRetry,
@@ -65,7 +64,6 @@ import {
   suspendableTimeout,
   type AuthRequiredSignal,
   type ProgressPredicate,
-  type WithAuthPhaseGate,
 } from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
 import {
@@ -987,7 +985,7 @@ export class Relay {
    * `resubscribe` only repeats after the relay sends a clean CLOSED message for this REQ.
    * `reconnect` only retries connection errors and does not retry relay CLOSED errors.
    */
-  req(filters: FilterInput, opts?: RelayReqOptions & WithAuthPhaseGate): Observable<RelayReqMessage> {
+  req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
 
     // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
@@ -1010,14 +1008,6 @@ export class Relay {
     // once the attempt chain constructed inside the defer below has fully completed — by which point no
     // attempt-scoped local survives. Each attempt writes its own outcome into this call-scoped holder, so
     // the condition callback always observes the most recently completed attempt's result.
-    const resubscribeHolder = { value: false };
-
-    // D-04: use the gate an outer operation (e.g. request()) threaded in via the module-private
-    // symbol key, or make a fresh one for this call. RAUTH-02: no pre-block here — the REQ is sent
-    // immediately regardless of any other REQ's auth state; auth-required is handled entirely by
-    // the shared operator below.
-    const gate = opts?.[AUTH_PHASE_GATE] ?? new AuthPhaseGate();
-
     // A thunk (not a value) since this REQ's filters can change over the life of the subscription —
     // the wire request handed to onAuthRequired must describe the filters as they stood when the relay
     // refused them. Filters are already tracked at the send site (this.reqs$), so no new bookkeeping.
@@ -1040,7 +1030,7 @@ export class Relay {
       // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
       // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
       // completed for the previous attempt.
-      const messages: Observable<RelayReqMessage | AuthRequiredSignal> = this.socket.pipe(
+      const messages: Observable<RelayReqMessage> = this.socket.pipe(
         filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
         // Map NIP-01 messages to RelayReqMessage
         map<any, RelayReqMessage>((m) => {
@@ -1054,7 +1044,7 @@ export class Relay {
         // D-01/D-02/D-03: auth-required crosses a multi-hop operator chain, so signal it as a value
         // that the shared auth operator consumes; every other prefixed CLOSED still throws its typed error
         // unchanged. Mark relay-closed before takeWhile sees either outcome.
-        map<RelayReqMessage, RelayReqMessage | AuthRequiredSignal>((m) => {
+        map<RelayReqMessage, RelayReqMessage>((m) => {
           if (m.type === "CLOSED") {
             relayClosedSub = true;
 
@@ -1066,17 +1056,16 @@ export class Relay {
                 `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(m.reason)}`,
               );
               this.receivedAuthRequiredFor("REQ");
-              return authRequiredSignal(m.reason);
+              throw new AuthRequiredError(m.reason);
             }
 
             const error = parseClosedError(m.reason);
             if (error) throw error;
-            resubscribeHolder.value = true;
           }
           return m;
         }),
         // Complete the stream on unprefixed CLOSED or an auth-required signal, emitting it last (inclusive)
-        takeWhile((m) => !isAuthRequiredSignal(m) && m.type !== "CLOSED", true),
+        takeWhile((m) => m.type !== "CLOSED", true),
         // Singleton within this attempt only (prevents the switchMap below and the takeUntil notifier
         // from registering two separate socket filters for the same attempt)
         share(),
@@ -1090,7 +1079,6 @@ export class Relay {
         map((filters) => {
           // Reset closed flag on each new REQ (resubscribe cycles within this attempt)
           relayClosedSub = false;
-          resubscribeHolder.value = false;
           this.socket.next(["REQ", id, ...filters]);
           // Add to tracking when REQ is sent
           this.reqs$.next({ ...this.reqs$.value, [id]: filters });
@@ -1124,22 +1112,35 @@ export class Relay {
         takeUntil(filtersComplete),
         // mark events as from relays
         tap((message) => {
-          if (!isAuthRequiredSignal(message) && message.type === "EVENT") addSeenRelay(message.event, this.url);
+          if (message.type === "EVENT") addSeenRelay(message.event, this.url);
         }),
       );
 
       return this.waitForReady(observable);
-    }).pipe(
-      // D-04/D-09: the shared auth-retry operator drives the whole read auth phase, innermost in the pipe.
-      // CR-01: isReqProgress excludes the synthetic OPEN bookkeeping message from resetting the retry budget.
-      this.authRetryOperator(describeRequest, opts, gate, isReqProgress),
-      // Retry connection errors independently from relay CLOSED errors
+    }).pipe(share());
+  }
+
+  /** Compose fresh raw REQ attempts while retaining lifecycle messages for high-level consumers. */
+  reqLifecycle(filters: FilterInput, opts?: RelaySubscriptionOptions, gate = new AuthPhaseGate()): Observable<RelayReqMessage> {
+    const id = opts?.id ?? nanoid();
+    const repeatAfterClosed = { value: false };
+    const authCounter = { consecutive: 0 };
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.value[id] ?? [] });
+    const attempt = defer(() => {
+      repeatAfterClosed.value = false;
+      return this.req(filters, { id }).pipe(
+        tap((message) => {
+          repeatAfterClosed.value = message.type === "CLOSED";
+        }),
+        catchError((error) =>
+          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
+        ),
+      );
+    });
+    return attempt.pipe(
+      this.authRetryOperator(describeRequest, opts, gate, isReqProgress, authCounter),
       this.customConnectionRetryOperator(opts?.reconnect),
-      // Resubscribe only after the relay cleanly CLOSED this REQ — reads the most recently completed
-      // attempt's outcome via the call-scoped holder (CR-02: no attempt-scoped local survives to this point)
-      this.customRepeatOperator(opts?.resubscribe, () => resubscribeHolder.value),
-      // Only create one upstream subscription
-      share(),
+      this.customRepeatOperator(opts?.resubscribe, () => repeatAfterClosed.value),
     );
   }
 
@@ -1665,7 +1666,7 @@ export class Relay {
 
   /** Creates a persistent REQ that retries connection errors (default 3 retries) */
   subscription(filters: FilterInput, opts?: RelaySubscriptionOptions): Observable<RelaySubscriptionResponse> {
-    return this.req(filters, {
+    return this.reqLifecycle(filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.subscriptionReconnect,
     }).pipe(
@@ -1684,11 +1685,10 @@ export class Relay {
     // symbol key so this method's own operation clock (below) can suspend across req()'s auth phase
     const gate = new AuthPhaseGate();
 
-    const req = this.req(filters, {
+    const req = this.reqLifecycle(filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.requestReconnect,
-      [AUTH_PHASE_GATE]: gate,
-    });
+    }, gate);
 
     return req.pipe(
       // Add completion condition
@@ -1802,7 +1802,7 @@ export class Relay {
             await lastValueFrom(
               // RAUTH-08/Phase 15: forward the caller's auth options here too — same rationale as the
               // SEND-direction event() call above.
-              this.req({ ids: need }, authOptions).pipe(
+              this.reqLifecycle({ ids: need }, { ...authOptions, reconnect: this.requestReconnect }).pipe(
                 // Complete when EOSE is received
                 takeWhile((message) => message.type !== "EOSE"),
                 // Filter only for event messages

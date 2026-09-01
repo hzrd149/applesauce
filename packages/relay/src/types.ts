@@ -143,17 +143,7 @@ export type PublishResponse = {
 export type RelayReqOptions = {
   /** Custom REQ id for the subscription */
   id?: string;
-  /**
-   * Whether to resubscribe after a clean CLOSED message from the relay. default is false
-   * @see https://rxjs.dev/api/index/function/repeat
-   */
-  resubscribe?: boolean | number | Parameters<typeof repeat>[0];
-  /**
-   * Whether to retry connection errors. default is true (3 retries with linear backoff)
-   * @see https://rxjs.dev/api/index/function/retry
-   */
-  reconnect?: boolean | number | Parameters<typeof retry>[0];
-} & RelayAuthOptions;
+};
 
 /** Options for the count method on the pool and relay */
 export type RelayCountOptions = RelayAuthOptions & {
@@ -178,7 +168,13 @@ export type RelayReqClosedMessage = { type: "CLOSED"; from: string; id: string; 
 export type RelayReqMessage = RelayReqOpenMessage | RelayReqEventMessage | RelayReqEoseMessage | RelayReqClosedMessage;
 
 /** Options for the request method on the pool and relay */
-export type RelayRequestOptions = RelayReqOptions & {
+export type RelayRequestOptions = RelayAuthOptions & {
+  /** Custom logical REQ id reused by every attempt. */
+  id?: string;
+  /** Retry positively identified connection failures. */
+  reconnect?: boolean | number | Parameters<typeof retry>[0];
+  /** Repeat after an ordinary relay CLOSED. */
+  resubscribe?: boolean | number | Parameters<typeof repeat>[0];
   /**
    * Whole returned-Observable lifetime before request emits TimeoutError (default 30 seconds).
    * Activity does not disarm or reset it; active authentication pauses the remaining budget. */
@@ -194,7 +190,14 @@ export type RelayRequestResponse = NostrEvent;
 export type RelayRequestCompleteOperator = OperatorFunction<RelayReqMessage, any>;
 
 /** Options for the subscription method on the pool and relay */
-export type RelaySubscriptionOptions = RelayReqOptions;
+export type RelaySubscriptionOptions = RelayAuthOptions & {
+  /** Custom logical REQ id reused by every attempt. */
+  id?: string;
+  /** Retry positively identified connection failures. */
+  reconnect?: boolean | number | Parameters<typeof retry>[0];
+  /** Repeat after an ordinary relay CLOSED. */
+  resubscribe?: boolean | number | Parameters<typeof repeat>[0];
+};
 
 /** The response type when subscribing to a relay */
 export type RelaySubscriptionResponse = NostrEvent | "EOSE";
@@ -256,8 +259,6 @@ export type GroupNegentropySyncOptions = NegentropySyncOptions & {
 
 /** Options for a subscription on a group of relays */
 export type GroupSubscriptionOptions = RelaySubscriptionOptions & {
-  /** Optional whole-subscription lifetime in milliseconds. false or omission keeps the subscription indefinite. */
-  timeout?: number | false;
   /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
   eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
 };
