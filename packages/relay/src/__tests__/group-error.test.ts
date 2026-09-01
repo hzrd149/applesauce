@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { normalizeURL } from "applesauce-core/helpers/url";
-import { BehaviorSubject, Observable, of, throwError } from "rxjs";
+import { BehaviorSubject, Observable, Subject, filter, of, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
@@ -55,5 +55,57 @@ describe("RelayGroupError", () => {
     expect(spy.receivedComplete()).toBe(false);
     expect(spy.receivedError()).toBe(false);
     spy.unsubscribe();
+  });
+
+  it("completes a mixed EOSE/error request, including zero-event success", () => {
+    const failed = failingRelay("wss://failed.test", new Error("failed"));
+    const successful = {
+      url: "wss://successful.test",
+      requestReconnect: false,
+      req: vi.fn(() => of({ type: "EOSE", from: "wss://successful.test", id: "x" })),
+    } as unknown as Relay;
+    const spy = subscribeSpyTo(new RelayGroup([failed, successful]).request({ kinds: [1] }));
+    expect(spy.receivedComplete()).toBe(true);
+    expect(spy.receivedError()).toBe(false);
+    expect(spy.getValues()).toEqual([]);
+  });
+
+  it("replaces membership before settling and drops removed relay outcomes", () => {
+    const pending = new Subject<any>();
+    const removed = {
+      url: "wss://removed.test",
+      requestReconnect: false,
+      req: vi.fn(() => pending),
+    } as unknown as Relay;
+    const cause = new Error("retained failed");
+    const retained = failingRelay("wss://retained.test", cause);
+    const relays = new BehaviorSubject([retained, removed]);
+    const spy = subscribeSpyTo(new RelayGroup(relays).request({ kinds: [1] }), { expectErrors: true });
+    expect(spy.receivedError()).toBe(false);
+
+    relays.next([retained]);
+    const error = spy.getError() as RelayGroupError;
+    expect(error).toBeInstanceOf(RelayGroupError);
+    expect(Object.keys(error.outcomes)).toEqual([normalizeURL(retained.url)]);
+  });
+
+  it("gives all-failed precedence over custom completion on the final error", () => {
+    const streams = [new Subject<any>(), new Subject<any>()];
+    const relays = streams.map((stream, index) => ({
+      url: `wss://precedence-${index}.test`,
+      requestReconnect: false,
+      req: vi.fn(() => stream),
+    })) as unknown as Relay[];
+    const spy = subscribeSpyTo(
+      new RelayGroup(relays).request(
+        { kinds: [1] },
+        { complete: (source) => source.pipe(filter((message) => message.type === "ERROR")) },
+      ),
+      { expectErrors: true },
+    );
+    streams[0].error(new Error("first"));
+    streams[1].error(new Error("final"));
+    expect(spy.getError()).toBeInstanceOf(RelayGroupError);
+    expect(spy.receivedComplete()).toBe(false);
   });
 });
