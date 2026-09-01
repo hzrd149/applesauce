@@ -1350,6 +1350,21 @@ describe("request", () => {
     expect(spy.getError()).toBeInstanceOf(Error);
     expect(spy.receivedComplete()).toBe(false);
   });
+
+  it("keeps the request lifetime active after an early event", async () => {
+    const spy = subscribeSpyTo(
+      relay.request({ kinds: [1] }, { id: "sub1", timeout: 40 }),
+      { expectErrors: true },
+    );
+
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    server.send(["EVENT", "sub1", mockEvent]);
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(Error);
+    expect(spy.receivedComplete()).toBe(false);
+  });
 });
 
 describe("subscription", () => {

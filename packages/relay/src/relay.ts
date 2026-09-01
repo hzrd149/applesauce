@@ -59,6 +59,7 @@ import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy
 import {
   authRequiredSignal,
   AuthPhaseGate,
+  authSuspendableLifetime,
   authRetry,
   isAuthRequiredSignal,
   suspendableTimeout,
@@ -1693,11 +1694,9 @@ export class Relay {
     return req.pipe(
       // Add completion condition
       opts?.complete ? completeWhen(opts?.complete) : identity,
-      // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
-      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. WR-01:
-      // isReqProgress excludes req()'s synthetic OPEN so it can no longer cancel this clock before the
-      // relay has said anything.
-      suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: isReqProgress }),
+      // The request owns one whole-operation budget. Activity never resets or disarms it, while auth
+      // phases suspend it so authTimeout remains the sole clock for authentication work.
+      authSuspendableLifetime(opts?.timeout ?? 30_000, gate),
       // Complete when EOSE is received
       takeWhile((message) => message.type !== "EOSE"),
       // Filter only for event messages
