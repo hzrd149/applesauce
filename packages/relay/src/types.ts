@@ -180,8 +180,8 @@ export type RelayReqMessage = RelayReqOpenMessage | RelayReqEventMessage | Relay
 /** Options for the request method on the pool and relay */
 export type RelayRequestOptions = RelayReqOptions & {
   /**
-   * Total timeout for the request before request emits a TimeoutError in milliseconds (default 30 seconds)
-   * Passed to rjxs timeout() operator */
+   * Whole returned-Observable lifetime before request emits TimeoutError (default 30 seconds).
+   * Activity does not disarm or reset it; active authentication pauses the remaining budget. */
   timeout?: number;
   /** An operator that determines when the request should complete. */
   complete?: RelayRequestCompleteOperator;
