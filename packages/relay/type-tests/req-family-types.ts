@@ -17,6 +17,9 @@ group.subscription({}, { eventStore: null });
 relay.req({}, { waitForAuth: true });
 // @ts-expect-error raw REQ owns no reconnect policy
 relay.req({}, { reconnect: true });
+
+// @ts-expect-error the lifecycle compositor is package-internal, not a supported Relay method
+relay.reqLifecycle({});
 // @ts-expect-error raw REQ owns no repeat policy
 group.req({}, { resubscribe: true });
 // @ts-expect-error subscriptions have no built-in timeout

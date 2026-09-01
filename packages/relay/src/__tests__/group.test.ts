@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
+import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
 import {
   AuthRequiredError,
@@ -218,7 +219,7 @@ describe("auth options pass-through (13-07)", () => {
     [
       "request",
       (opts) => {
-        const spy = vi.spyOn(relay1, "reqLifecycle");
+        const spy = vi.spyOn(relay1, RELAY_REQ_LIFECYCLE);
         group.request([{ kinds: [1] }], opts).subscribe({ error: () => {} });
         expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
@@ -226,7 +227,7 @@ describe("auth options pass-through (13-07)", () => {
     [
       "subscription",
       (opts) => {
-        const spy = vi.spyOn(relay1, "reqLifecycle");
+        const spy = vi.spyOn(relay1, RELAY_REQ_LIFECYCLE);
         group.subscription([{ kinds: [1] }], opts).subscribe();
         expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
       },
@@ -473,8 +474,8 @@ describe("count", () => {
 // explicit instruction, since only something that actually emits can catch a behavioural gap.
 describe("request() operation clock gap closure (13-11, WR-02)", () => {
   it("threads one shared AuthPhaseGate instance into every relay's req() call", async () => {
-    const spy1 = vi.spyOn(relay1, "reqLifecycle");
-    const spy2 = vi.spyOn(relay2, "reqLifecycle");
+    const spy1 = vi.spyOn(relay1, RELAY_REQ_LIFECYCLE);
+    const spy2 = vi.spyOn(relay2, RELAY_REQ_LIFECYCLE);
 
     group.request([{ kinds: [1] }], { id: "greq1" }).subscribe({ error: () => {} });
 

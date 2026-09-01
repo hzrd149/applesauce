@@ -33,6 +33,7 @@ import {
   toArray,
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
+import { RELAY_REQ_LIFECYCLE } from "./internal.js";
 import { AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { isReqProgress, Relay, SyncDirection } from "./relay.js";
@@ -410,8 +411,8 @@ export class RelayGroup {
       "request",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        typeof relay.reqLifecycle === "function"
-          ? relay.reqLifecycle(filters, { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect }, gate)
+        typeof relay[RELAY_REQ_LIFECYCLE] === "function"
+          ? relay[RELAY_REQ_LIFECYCLE](filters, { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect }, gate)
           : relay.req(filters, opts as GroupReqOptions),
       complete,
     ).pipe(
@@ -439,8 +440,8 @@ export class RelayGroup {
       "subscription",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        typeof relay.reqLifecycle === "function"
-          ? relay.reqLifecycle(filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect })
+        typeof relay[RELAY_REQ_LIFECYCLE] === "function"
+          ? relay[RELAY_REQ_LIFECYCLE](filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect })
           : relay.req(filters, opts as GroupReqOptions),
     ).pipe(
       // Filter only for event messages

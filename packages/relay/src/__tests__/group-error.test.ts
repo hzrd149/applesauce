@@ -4,6 +4,7 @@ import { BehaviorSubject, Observable, Subject, filter, map, of, scan, throwError
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
+import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import { AuthPhaseGate } from "../operators/auth-retry.js";
 import { Relay } from "../relay.js";
 
@@ -254,7 +255,7 @@ describe("whole-operation timeout", () => {
     const relay = {
       url: "wss://subscription-timeout.test",
       subscriptionReconnect: false,
-      reqLifecycle: vi.fn(() => stream),
+      [RELAY_REQ_LIFECYCLE]: vi.fn(() => stream),
     } as unknown as Relay;
     const indefinite = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }));
     vi.advanceTimersByTime(60_000);
@@ -270,7 +271,7 @@ describe("whole-operation timeout", () => {
     const relays = streams.map((stream, index) => ({
       url: `wss://auth-${index}.test`,
       requestReconnect: false,
-      reqLifecycle: vi.fn((_filters, _opts, gate) => {
+      [RELAY_REQ_LIFECYCLE]: vi.fn((_filters, _opts, gate) => {
         gates.push(gate);
         return stream;
       }),

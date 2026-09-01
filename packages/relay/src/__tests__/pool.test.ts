@@ -6,6 +6,7 @@ import { WS } from "vitest-websocket-mock";
 
 import { RelayPool } from "../pool.js";
 import { RelayGroupError } from "../group.js";
+import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import { Relay } from "../relay";
 
 let pool: RelayPool;
@@ -188,7 +189,7 @@ describe("group failure forwarding", () => {
 
   function fail(url: string) {
     const relay = pool.relay(url);
-    vi.spyOn(relay, "reqLifecycle").mockReturnValue(throwError(() => cause));
+    vi.spyOn(relay, RELAY_REQ_LIFECYCLE).mockReturnValue(throwError(() => cause));
   }
 
   it.each([
@@ -220,7 +221,7 @@ describe("group failure forwarding", () => {
     fail("wss://relay1.example.com/");
     const maps = new BehaviorSubject({ "wss://relay2.example.com/": { kinds: [1] } });
     const pending = pool.relay("wss://relay2.example.com/");
-    vi.spyOn(pending, "reqLifecycle").mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
+    vi.spyOn(pending, RELAY_REQ_LIFECYCLE).mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
     const spy = subscribeSpyTo(pool.subscriptionMap(maps), { expectErrors: true });
     maps.next({ "wss://relay1.example.com/": { kinds: [1] } });
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);
@@ -257,7 +258,7 @@ describe("waitForAuth pass-through", () => {
 
   it("should pass waitForAuth pubkeys to relay.req for subscription", () => {
     const relay = pool.relay(urls[0]);
-    const req = vi.spyOn(relay, "reqLifecycle");
+    const req = vi.spyOn(relay, RELAY_REQ_LIFECYCLE);
 
     subscribeSpyTo(pool.subscription(urls, { kinds: [1059] }, { waitForAuth: pubkeys }));
 
@@ -266,7 +267,7 @@ describe("waitForAuth pass-through", () => {
 
   it("should pass waitForAuth pubkeys to relay.req for request", () => {
     const relay = pool.relay(urls[0]);
-    const req = vi.spyOn(relay, "reqLifecycle");
+    const req = vi.spyOn(relay, RELAY_REQ_LIFECYCLE);
 
     subscribeSpyTo(pool.request(urls, { kinds: [1059] }, { waitForAuth: pubkeys }), { expectErrors: true });
 
@@ -328,7 +329,7 @@ describe("auth options pass-through (13-07)", () => {
       "request",
       (opts) => {
         const relay = pool.relay(urls[0]);
-        const spy = vi.spyOn(relay, "reqLifecycle");
+        const spy = vi.spyOn(relay, RELAY_REQ_LIFECYCLE);
         pool.request(urls, { kinds: [1] }, opts).subscribe({ error: () => {} });
         expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
@@ -337,7 +338,7 @@ describe("auth options pass-through (13-07)", () => {
       "subscription",
       (opts) => {
         const relay = pool.relay(urls[0]);
-        const spy = vi.spyOn(relay, "reqLifecycle");
+        const spy = vi.spyOn(relay, RELAY_REQ_LIFECYCLE);
         pool.subscription(urls, { kinds: [1] }, opts).subscribe();
         expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
       },
@@ -396,7 +397,7 @@ describe("RAUTH-08 pool boundary threading (13-07)", () => {
 
     vi.spyOn(relay, "getSupported").mockResolvedValue([77]);
     const syncSpy = vi.spyOn(relay, "sync").mockReturnValue(of());
-    const reqSpy = vi.spyOn(relay, "reqLifecycle");
+    const reqSpy = vi.spyOn(relay, RELAY_REQ_LIFECYCLE);
 
     const onAuthRequired = vi.fn();
     const authOptions = { onAuthRequired, authTimeout: 5_000, authRetries: 2 };

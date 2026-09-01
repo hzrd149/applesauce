@@ -54,6 +54,7 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
+import { RELAY_REQ_LIFECYCLE } from "./internal.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./nip45.js";
 import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
@@ -1114,7 +1115,7 @@ export class Relay {
   }
 
   /** Compose fresh raw REQ attempts while retaining lifecycle messages for high-level consumers. */
-  reqLifecycle(filters: FilterInput, opts?: RelaySubscriptionOptions, gate = new AuthPhaseGate()): Observable<RelayReqMessage> {
+  [RELAY_REQ_LIFECYCLE](filters: FilterInput, opts?: RelaySubscriptionOptions, gate = new AuthPhaseGate()): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
     const repeatAfterClosed = { value: false };
     const authCounter = { consecutive: 0 };
@@ -1659,7 +1660,7 @@ export class Relay {
 
   /** Creates a persistent REQ that retries connection errors (default 3 retries) */
   subscription(filters: FilterInput, opts?: RelaySubscriptionOptions): Observable<RelaySubscriptionResponse> {
-    return this.reqLifecycle(filters, {
+    return this[RELAY_REQ_LIFECYCLE](filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.subscriptionReconnect,
     }).pipe(
@@ -1678,7 +1679,7 @@ export class Relay {
     // symbol key so this method's own operation clock (below) can suspend across req()'s auth phase
     const gate = new AuthPhaseGate();
 
-    const req = this.reqLifecycle(filters, {
+    const req = this[RELAY_REQ_LIFECYCLE](filters, {
       ...opts,
       reconnect: opts?.reconnect ?? this.requestReconnect,
     }, gate);
@@ -1793,7 +1794,7 @@ export class Relay {
             await lastValueFrom(
               // RAUTH-08/Phase 15: forward the caller's auth options here too — same rationale as the
               // SEND-direction event() call above.
-              this.reqLifecycle({ ids: need }, { ...authOptions, reconnect: this.requestReconnect }).pipe(
+              this[RELAY_REQ_LIFECYCLE]({ ids: need }, { ...authOptions, reconnect: this.requestReconnect }).pipe(
                 // Complete when EOSE is received
                 takeWhile((message) => message.type !== "EOSE"),
                 // Filter only for event messages
