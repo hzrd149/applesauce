@@ -35,4 +35,27 @@ describe("progressive group count", () => {
     result.subscribe({ next: (v) => values.push(v), complete: () => complete++ });
     expect(values).toEqual([]); expect(complete).toBe(2);
   });
+
+  it("retracts the last settled outcome while another relay remains pending", () => {
+    const settled = new Subject<any>();
+    const pending = new Subject<any>();
+    const settledRelay = fake("wss://settled.test", settled);
+    const pendingRelay = fake("wss://pending.test", pending);
+    const members = new BehaviorSubject<Relay[]>([settledRelay, pendingRelay]);
+    const result = new RelayGroup(members).count({});
+    const early: any[] = [];
+    const late: any[] = [];
+    result.subscribe((value) => early.push(value));
+
+    settled.next({ count: 1 });
+    settled.complete();
+    members.next([pendingRelay]);
+    result.subscribe((value) => late.push(value));
+
+    expect(late).toEqual([]);
+    pending.next({ count: 2 });
+    pending.complete();
+    expect(early.at(-1)).toEqual({ "wss://pending.test/": { ok: true, value: { count: 2 } } });
+    expect(late).toEqual([{ "wss://pending.test/": { ok: true, value: { count: 2 } } }]);
+  });
 });

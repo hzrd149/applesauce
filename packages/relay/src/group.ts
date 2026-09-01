@@ -452,8 +452,8 @@ export class RelayGroup {
     id = nanoid(),
     opts?: Parameters<Relay["count"]>[2],
   ): Observable<RelayCountOutcomes> {
-    const EMPTY_TERMINAL = Symbol("EMPTY_TERMINAL");
-    type InternalValue = RelayCountOutcomes | typeof EMPTY_TERMINAL;
+    const EMPTY_RETRACTION = Symbol("EMPTY_RETRACTION");
+    type InternalValue = RelayCountOutcomes | typeof EMPTY_RETRACTION;
 
     const operation = new Observable<InternalValue>((subscriber) => {
       const active = new Map<string, { relay: Relay; token: symbol; sub: Subscription }>();
@@ -465,7 +465,7 @@ export class RelayGroup {
         Object.fromEntries(order.filter((url) => outcomes.has(url)).map((url) => [url, outcomes.get(url)!]));
       const finishIfSettled = () => {
         if (order.every((url) => outcomes.has(url))) {
-          if (order.length === 0) subscriber.next(EMPTY_TERMINAL);
+          if (order.length === 0) subscriber.next(EMPTY_RETRACTION);
           subscriber.complete();
         }
       };
@@ -490,7 +490,7 @@ export class RelayGroup {
           }
           const changed = order.some((url) => !nextOrder.includes(url)) || order.length !== nextOrder.length;
           order = nextOrder;
-          if (changed && emitted && outcomes.size > 0) subscriber.next(snapshot());
+          if (changed && emitted) subscriber.next(outcomes.size > 0 ? snapshot() : EMPTY_RETRACTION);
           if (order.length === 0) return finishIfSettled();
 
           for (const [url, relay] of latest) {
@@ -523,7 +523,7 @@ export class RelayGroup {
       share({ connector: () => new ReplaySubject<InternalValue>(1), resetOnComplete: false, resetOnError: false, resetOnRefCountZero: true }),
     );
 
-    return operation.pipe(filter((value): value is RelayCountOutcomes => value !== EMPTY_TERMINAL));
+    return operation.pipe(filter((value): value is RelayCountOutcomes => value !== EMPTY_RETRACTION));
   }
 
   /** Negentropy sync events with the relays and an event store */
