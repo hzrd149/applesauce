@@ -1611,7 +1611,7 @@ export class Relay {
     return retry({
       ...config,
       delay: (error, count) => {
-        if (error instanceof RelayClosedError) return throwError(() => error);
+        if (!isReconnectableTransportError(error)) return throwError(() => error);
 
         if (typeof config.delay === "number") return timer(config.delay);
         if (typeof config.delay === "function") return config.delay(error, count);

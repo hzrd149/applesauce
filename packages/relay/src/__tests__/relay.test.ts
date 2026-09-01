@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
-import { firstValueFrom, mergeMap, of, Subject, throwError, timer } from "rxjs";
+import { defer, firstValueFrom, mergeMap, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat, retry, take } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
@@ -1250,6 +1250,39 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
 });
 
 describe("request", () => {
+  it("does not reconnect arbitrary errors", () => {
+    const cause = new Error("programming error");
+    let attempts = 0;
+    const source = defer(() => {
+      attempts += 1;
+      return throwError(() => cause);
+    });
+    const spy = subscribeSpyTo(
+      source.pipe((relay as any).customConnectionRetryOperator({ count: 2, delay: 0 })),
+      { expectErrors: true },
+    );
+
+    expect(spy.getError()).toBe(cause);
+    expect(attempts).toBe(1);
+  });
+
+  it("reconnects unclean transport close errors", async () => {
+    const close = { wasClean: false, code: 1006 };
+    let attempts = 0;
+    const source = defer(() => {
+      attempts += 1;
+      return attempts === 1 ? throwError(() => close) : of("connected");
+    });
+    const spy = subscribeSpyTo(
+      source.pipe((relay as any).customConnectionRetryOperator({ count: 1, delay: 0 })),
+      { expectErrors: true },
+    );
+
+    await spy.onComplete();
+    expect(spy.getValues()).toEqual(["connected"]);
+    expect(attempts).toBe(2);
+  });
+
   it("should retry when auth-required is received and authentication is completed", async () => {
     // First attempt to request
     const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { id: "sub1" }));
