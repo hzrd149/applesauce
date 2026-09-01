@@ -1,4 +1,4 @@
-import { BehaviorSubject, Observable, Subject } from "rxjs";
+import { BehaviorSubject, EMPTY, Observable, Subject } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { RelayGroup } from "../group.js";
 import type { Relay } from "../relay.js";
@@ -82,5 +82,37 @@ describe("progressive group count", () => {
     replacementSource.complete();
     expect(early.at(-1)).toEqual({ "wss://replacement.test/": { ok: true, value: { count: 2 } } });
     expect(late).toEqual([{ "wss://replacement.test/": { ok: true, value: { count: 2 } } }]);
+  });
+
+  it("completes when membership completes without emitting", () => {
+    const result = new RelayGroup(EMPTY).count({});
+    const values: any[] = [];
+    let completed = 0;
+
+    result.subscribe({ next: (value) => values.push(value), complete: () => completed++ });
+    result.subscribe({ next: (value) => values.push(value), complete: () => completed++ });
+
+    expect(values).toEqual([]);
+    expect(completed).toBe(2);
+  });
+
+  it("keeps pending counts alive after membership completes", () => {
+    const count = new Subject<any>();
+    const members = new Subject<Relay[]>();
+    const values: any[] = [];
+    let completed = false;
+    new RelayGroup(members).count({}).subscribe({
+      next: (value) => values.push(value),
+      complete: () => (completed = true),
+    });
+
+    members.next([fake("wss://pending-complete.test", count)]);
+    members.complete();
+    expect(completed).toBe(false);
+
+    count.next({ count: 3 });
+    count.complete();
+    expect(values).toEqual([{ "wss://pending-complete.test/": { ok: true, value: { count: 3 } } }]);
+    expect(completed).toBe(true);
   });
 });

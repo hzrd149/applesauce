@@ -515,6 +515,7 @@ export class RelayGroup {
           finishIfSettled();
         },
         error: (error) => subscriber.error(error),
+        complete: () => finishIfSettled(),
       });
 
       return () => {
