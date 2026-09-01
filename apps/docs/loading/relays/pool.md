@@ -4,7 +4,7 @@ description: RelayPool class for managing multiple relay connections with subscr
 
 # Relay Pool
 
-The `RelayPool` class in `applesauce-relay` provides a powerful way to manage multiple relay connections, allowing you to interact with multiple relays as if they were a single entity.
+The `RelayPool` class in `applesauce-relay` manages multiple relay connections as one event source. Its high-level request and subscription methods emit deduplicated events and report total active-cohort failure as `RelayGroupError`.
 
 ## Features
 
@@ -98,25 +98,19 @@ for (const response of responses) {
 The `request` method allows you to make one-off requests with automatic retries for connection errors:
 
 ```typescript
-// Request with automatic retries
-pool
-  .request(
-    relays,
-    {
-      kinds: [1],
-      authors: ["pubkey1", "pubkey2"],
-      limit: 50,
-    },
-    {
-      reconnect: 2,
-      timeout: 5000, // 5 seconds
-    },
-  )
-  .subscribe({
-    next: (event) => console.log("Received event:", event.id),
-    complete: () => console.log("Request complete"),
-  });
+pool.request(relays, { kinds: [1], limit: 50 }, { timeout: 5000 }).subscribe({
+  next: (event) => console.log(event.id),
+  error(error) {
+    if (error instanceof RelayGroupError) {
+      for (const [url, outcome] of Object.entries(error.outcomes))
+        console.error(url, outcome.error);
+    }
+  },
+  complete: () => console.log("Request complete"),
+});
 ```
+
+`request()` has one 30-second whole-Observable timeout by default. Events, EOSE, retries, and reconnections do not reset it. A request with no active relays completes empty; one EOSE plus any failures is also a successful request.
 
 ### Subscription Method
 
@@ -135,16 +129,11 @@ const subscription = pool
       id: "custom-sub-id", // optional custom subscription ID
       reconnect: Infinity, // retry connection errors forever
       resubscribe: true, // resubscribe after clean relay CLOSED messages
+      timeout: false, // indefinite by default; use a number for a total lifetime
     },
   )
   .subscribe({
-    next: (response) => {
-      if (response === "EOSE") {
-        console.log("End of stored events");
-      } else {
-        console.log("Subscription update:", response);
-      }
-    },
+    next: (event) => console.log("Subscription update:", event),
   });
 
 // Later, you can unsubscribe
@@ -167,13 +156,7 @@ const filterMap = {
 };
 
 pool.subscriptionMap(filterMap).subscribe({
-  next: (response) => {
-    if (response === "EOSE") {
-      console.log("End of stored events");
-    } else {
-      console.log("Event:", response);
-    }
-  },
+  next: (event) => console.log("Event:", event),
 });
 ```
 
@@ -193,13 +176,7 @@ pool
     { kinds: [1], since: unixNow() - 3600 }, // Filter without authors (added automatically)
   )
   .subscribe({
-    next: (response) => {
-      if (response === "EOSE") {
-        console.log("End of stored events");
-      } else {
-        console.log("Event from outbox:", response);
-      }
-    },
+    next: (event) => console.log("Event from outbox:", event),
   });
 ```
 
@@ -278,7 +255,20 @@ group.request({ kinds: [1] }).subscribe((event) => console.log(event));
 group.subscription({ kinds: [1] }).subscribe((response) => console.log(response));
 ```
 
-The RelayGroup intelligently merges responses from multiple relays, emitting EOSE only when all relays have sent their EOSE signals.
+High-level Group and Pool methods preserve the same `RelayGroupError` instance. Outcome keys are normalized relay URLs and causes retain identity; raw `req()` keeps exposing lifecycle messages instead of this aggregate error contract.
+
+## Integration
+
+Dynamic `subscriptionMap()` and `outboxSubscription()` replace the active relay cohort as their maps change. An empty dynamic subscription stays open for future relays, while an empty finite request completes immediately.
+
+Every enabled whole-operation timeout shares the call's authentication gate. Its remaining budget pauses while any relay authenticates and resumes only after overlapping auth phases all finish.
+
+## Best Practices
+
+- Handle `RelayGroupError` at the returned Observable's `error` callback.
+- Use `outcomes` for normalized URL lookup and native `errors` for aggregate tooling.
+- Leave subscription timeout omitted or `false` for intentionally long-lived streams.
+- Use a numeric subscription timeout only when the whole subscription needs a fixed lifetime.
 
 ## Observable Properties
 

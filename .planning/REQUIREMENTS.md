@@ -64,8 +64,8 @@ findings changed the plan and are marked **[research]** below.
 - [ ] **GROUP-01**: `RelayGroup.request()` and `subscription()` error when every relay has failed — **on by default** — so total failure is no longer reported as an empty completion or an indefinite silent hang
 - [ ] **GROUP-02**: The raised aggregate carries every relay's own cause, keyed by relay URL, rather than collapsing them into one bare message
 - [ ] **GROUP-03**: **[research]** The aggregate error's per-relay causes and the progressive count record's failed-relay entries use **one** representation of "per-source outcome keyed by relay URL", not two independently-designed shapes for the same idea
-- [ ] **GROUP-04**: Time-to-first-progress and idle-since-last-emission are distinct, explicitly named, separately configurable conditions — closing the case where one event at t=1s permanently disarms the clock, without silently redefining what an existing caller's `timeout` meant
-- [ ] **GROUP-05**: Every time-based condition stays suspendable across auth phases — a 60s condition must not keep counting through a 30s auth wait, which would reintroduce the clock race Phase 13 was built to remove
+- [ ] **GROUP-04**: One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and activity, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment, 2026-09-01)
+- [ ] **GROUP-05**: Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases all finish (Phase 21 D-10 amendment, 2026-09-01)
 
 ### Correctness Fixes
 
