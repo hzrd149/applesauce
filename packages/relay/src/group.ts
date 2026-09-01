@@ -258,7 +258,10 @@ export class RelayGroup {
       };
 
       const completionSubscription = complete
-        ? messages.pipe(complete, filter(Boolean), take(1)).subscribe(() => finish("complete"))
+        ? messages.pipe(complete, filter(Boolean), take(1)).subscribe({
+            next: () => finish("complete"),
+            error: (error) => finish("error", error),
+          })
         : Subscription.EMPTY;
 
       const membershipSubscription = this.relays$.subscribe({

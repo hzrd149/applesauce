@@ -196,6 +196,35 @@ describe("RelayGroupError", () => {
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);
     expect(spy.receivedComplete()).toBe(false);
   });
+
+  it("forwards custom completion operator errors", () => {
+    const stream = new Subject<any>();
+    const relay = {
+      url: "wss://completion-error.test",
+      requestReconnect: false,
+      req: vi.fn(() => stream),
+    } as unknown as Relay;
+    const cause = new Error("completion failed");
+    const spy = subscribeSpyTo(
+      new RelayGroup([relay]).request(
+        { kinds: [1] },
+        {
+          eventStore: null,
+          complete: (source) =>
+            source.pipe(
+              map(() => {
+                throw cause;
+              }),
+            ),
+        },
+      ),
+      { expectErrors: true },
+    );
+
+    stream.next({ type: "EVENT", from: relay.url, id: "x", event: { id: "x" } });
+    expect(spy.getError()).toBe(cause);
+    expect(spy.receivedComplete()).toBe(false);
+  });
 });
 
 describe("whole-operation timeout", () => {
