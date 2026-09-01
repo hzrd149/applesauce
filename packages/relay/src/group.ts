@@ -285,7 +285,7 @@ export class RelayGroup {
           // synchronous failure must be evaluated against every newly-active URL.
           for (const [url, relay] of normalized) {
             if (relaySubscriptions.has(url)) continue;
-            const relaySubscription = project(relay).subscribe({
+            const relaySubscription = defer(() => project(relay)).subscribe({
               next: (message) => {
                 if (settled || !states.has(url)) return;
                 if (message.type === "EVENT") states.set(url, { status: "live" });

@@ -145,6 +145,31 @@ describe("RelayGroupError", () => {
     expect(Object.keys(error.outcomes)).toEqual([normalizeURL(second.url)]);
   });
 
+  it("treats synchronous filter-factory throws as per-relay failures", () => {
+    const causes = [new Error("first factory"), new Error("second factory")];
+    const relays = causes.map((cause, index) => {
+      const relay = {
+        url: `wss://factory-${index}.test`,
+        requestReconnect: false,
+      } as unknown as Relay;
+      relay.req = vi.fn((filters: any) => {
+        if (typeof filters === "function") filters(relay);
+        return new Subject<any>();
+      }) as Relay["req"];
+      return relay;
+    });
+    const filterFactory = (relay: Relay) => {
+      throw causes[relay === relays[0] ? 0 : 1];
+    };
+    const spy = subscribeSpyTo(new RelayGroup(relays).request(filterFactory), { expectErrors: true });
+
+    expect(relays[0].req).toHaveBeenCalled();
+    expect(relays[1].req).toHaveBeenCalled();
+    const error = spy.getError() as RelayGroupError;
+    expect(error).toBeInstanceOf(RelayGroupError);
+    expect(error.errors).toEqual(causes);
+  });
+
   it("gives all-failed precedence over custom completion on the final error", () => {
     const streams = [new Subject<any>(), new Subject<any>()];
     const relays = streams.map((stream, index) => ({
