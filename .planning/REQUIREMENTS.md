@@ -64,8 +64,8 @@ findings changed the plan and are marked **[research]** below.
 - [x] **GROUP-01**: `RelayGroup.request()` and `subscription()` error when every relay has failed — **on by default** — so total failure is no longer reported as an empty completion or an indefinite silent hang
 - [x] **GROUP-02**: The raised aggregate carries every relay's own cause, keyed by relay URL, rather than collapsing them into one bare message
 - [x] **GROUP-03**: **[research]** The aggregate error's per-relay causes and the progressive count record's failed-relay entries use **one** representation of "per-source outcome keyed by relay URL", not two independently-designed shapes for the same idea
-- [x] **GROUP-04**: One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and activity, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment, 2026-09-01)
-- [x] **GROUP-05**: Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases all finish (Phase 21 D-10 amendment, 2026-09-01)
+- [x] **GROUP-04**: One public `timeout` bounds finite request — 30 seconds by default — and activity, retries, and reconnections never disarm or reset it; persistent subscriptions have no built-in duration or inactivity clock (Phase 22 D-23/D-24 amendment)
+- [x] **GROUP-05**: The request whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases finish; subscription lifetimes are caller-composed (Phase 22 D-23/D-24 amendment)
 
 ### Correctness Fixes
 

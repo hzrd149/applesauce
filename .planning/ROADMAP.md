@@ -202,10 +202,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. `RelayGroup.request()` against every-relay-failed raises an error by default instead of completing with zero events.
-  2. `RelayGroup.subscription()` against every-relay-failed raises an error instead of hanging forever; its whole-returned-Observable lifetime clock is opt-in (`timeout: number`), while omitted or `false` remains indefinite.
+  2. `RelayGroup.subscription()` against every-relay-failed raises an error immediately instead of hanging forever; subscriptions have no built-in duration or inactivity clock (Phase 22 D-23/D-24 amendment).
   3. The raised aggregate exposes each relay's own failure cause keyed by URL, and that per-source-outcome shape is the one shape Phase 23's progressive count record reuses rather than inventing its own.
-  4. One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and events, EOSE, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment to GROUP-04).
-  5. Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, including overlapping relay auth phases (Phase 21 D-10 amendment to GROUP-05).
+  4. One public `timeout` bounds finite request — 30 seconds by default — while subscriptions are consumer-owned lifetimes with no built-in clock (Phase 22 D-23/D-24 amendment to GROUP-04).
+  5. The request clock pauses with its remaining budget across overlapping relay auth phases; subscription duration limits are caller-composed RxJS policy (Phase 22 D-23/D-24 amendment to GROUP-05).
 
 **Plans**: 4/4 plans executed
 

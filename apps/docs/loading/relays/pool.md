@@ -129,7 +129,6 @@ const subscription = pool
       id: "custom-sub-id", // optional custom subscription ID
       reconnect: Infinity, // retry connection errors forever
       resubscribe: true, // resubscribe after clean relay CLOSED messages
-      timeout: false, // indefinite by default; use a number for a total lifetime
     },
   )
   .subscribe({
@@ -138,6 +137,14 @@ const subscription = pool
 
 // Later, you can unsubscribe
 subscription.unsubscribe();
+```
+
+Subscriptions have no built-in duration or inactivity timeout. Compose the lifetime at the call site when needed:
+
+```ts
+import { takeUntil, timer } from "rxjs";
+
+pool.subscription(relays, filters).pipe(takeUntil(timer(30_000)));
 ```
 
 All of these methods accept the same parameters as their counterparts in the `Relay` class, making it easy to transition between working with individual relays and relay pools.
@@ -267,8 +274,8 @@ Every enabled whole-operation timeout shares the call's authentication gate. Its
 
 - Handle `RelayGroupError` at the returned Observable's `error` callback.
 - Use `outcomes` for normalized URL lookup and native `errors` for aggregate tooling.
-- Leave subscription timeout omitted or `false` for intentionally long-lived streams.
-- Use a numeric subscription timeout only when the whole subscription needs a fixed lifetime.
+- Let subscriptions run until the consumer unsubscribes.
+- Compose `timeout` or `takeUntil(timer(...))` when a caller needs its own bound.
 
 ## Observable Properties
 
