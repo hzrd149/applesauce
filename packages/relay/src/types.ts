@@ -202,6 +202,9 @@ export type RelaySubscriptionResponse = NostrEvent | "EOSE";
 /** The response type when counting events on a relay */
 export type RelayCountResponse = Record<string, unknown> & { count: number; approximate?: boolean; hll?: string };
 
+/** The settled value or failure reported by one normalized relay source. */
+export type RelayOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
 /** A minimal signer interface for authenticating with a relay */
 export type AuthSigner = {
   signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;
@@ -253,6 +256,8 @@ export type GroupNegentropySyncOptions = NegentropySyncOptions & {
 
 /** Options for a subscription on a group of relays */
 export type GroupSubscriptionOptions = RelaySubscriptionOptions & {
+  /** Optional whole-subscription lifetime in milliseconds. false or omission keeps the subscription indefinite. */
+  timeout?: number | false;
   /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
   eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
 };

@@ -1,6 +1,7 @@
 import { logger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import type { Filter, NostrEvent } from "applesauce-core/helpers";
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { filterDuplicateEvents } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import {
@@ -24,6 +25,8 @@ import {
   share,
   shareReplay,
   startWith,
+  Subject,
+  Subscription,
   switchMap,
   take,
   timer,
@@ -31,7 +34,6 @@ import {
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate, suspendableTimeout } from "./operators/auth-retry.js";
-import { completeWhen } from "./operators/complete-when.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { isReqProgress, Relay, SyncDirection } from "./relay.js";
 import {
@@ -50,8 +52,25 @@ import {
   PublishResponse,
   RelayCountResponse,
   RelayReqMessage,
+  RelayOutcome,
   RelayStatus,
 } from "./types.js";
+
+/** Aggregate failure raised by high-level group requests and subscriptions. */
+export class RelayGroupError extends AggregateError {
+  readonly outcomes: Readonly<Record<string, RelayOutcome<never>>>;
+
+  constructor(entries: ReadonlyArray<readonly [string, unknown]>) {
+    super(
+      entries.map(([, error]) => error),
+      "All relays failed",
+    );
+    this.name = "RelayGroupError";
+    this.outcomes = Object.fromEntries(entries.map(([url, error]) => [url, { ok: false, error }]));
+  }
+}
+
+type CohortState = { status: "pending" | "live" | "eose" | "failed"; error?: unknown };
 
 /**
  * The group-level progress predicate (CR-02). `GroupReqErrorMessage` is a value the group manufactures
@@ -196,6 +215,109 @@ export class RelayGroup {
     return messages;
   }
 
+  /** High-level request/subscription fan-out with one latest-cohort settlement decision. */
+  private settledSubscription(
+    mode: "request" | "subscription",
+    project: (relay: Relay) => Observable<RelayReqMessage>,
+    complete?: GroupRequestCompleteOperator,
+  ): Observable<GroupReqMessage> {
+    return new Observable((subscriber) => {
+      const messages = new Subject<GroupReqMessage>();
+      const relaySubscriptions = new Map<string, Subscription>();
+      const states = new Map<string, CohortState>();
+      const order: string[] = [];
+      let settled = false;
+
+      const finish = (kind: "complete" | "error", error?: unknown) => {
+        if (settled) return;
+        settled = true;
+        kind === "error" ? subscriber.error(error) : subscriber.complete();
+      };
+
+      const decide = () => {
+        if (states.size === 0) {
+          if (mode === "request") finish("complete");
+          return;
+        }
+        const current = order.filter((url) => states.has(url));
+        if (current.every((url) => states.get(url)?.status === "failed")) {
+          finish(
+            "error",
+            new RelayGroupError(current.map((url) => [url, states.get(url)?.error] as const)),
+          );
+          return;
+        }
+        if (
+          mode === "request" &&
+          current.every((url) => {
+            const status = states.get(url)?.status;
+            return status === "eose" || status === "failed";
+          })
+        )
+          finish("complete");
+      };
+
+      const completionSubscription = complete
+        ? messages.pipe(complete, filter(Boolean), take(1)).subscribe(() => finish("complete"))
+        : Subscription.EMPTY;
+
+      const membershipSubscription = this.relays$.subscribe({
+        next: (relays) => {
+          if (settled) return;
+          const normalized = new Map<string, Relay>();
+          for (const relay of relays) normalized.set(normalizeURL(relay.url), relay);
+
+          for (const url of [...states.keys()]) {
+            if (!normalized.has(url)) {
+              states.delete(url);
+              relaySubscriptions.get(url)?.unsubscribe();
+              relaySubscriptions.delete(url);
+            }
+          }
+          for (const url of normalized.keys()) {
+            if (states.has(url)) continue;
+            states.set(url, { status: "pending" });
+            order.push(url);
+          }
+          // Install the complete replacement cohort before subscribing any new inner: a
+          // synchronous failure must be evaluated against every newly-active URL.
+          for (const [url, relay] of normalized) {
+            if (relaySubscriptions.has(url)) continue;
+            const relaySubscription = project(relay).subscribe({
+              next: (message) => {
+                if (settled || !states.has(url)) return;
+                if (message.type === "EVENT") states.set(url, { status: "live" });
+                else if (message.type === "EOSE")
+                  states.set(url, { status: mode === "request" ? "eose" : "live" });
+                subscriber.next(message);
+                decide();
+                if (!settled) messages.next(message);
+              },
+              error: (error) => {
+                if (settled || !states.has(url)) return;
+                const message = { type: "ERROR", from: relay.url, error } satisfies GroupReqErrorMessage;
+                states.set(url, { status: "failed", error });
+                decide();
+                if (!settled) messages.next(message);
+              },
+            });
+            relaySubscriptions.set(url, relaySubscription);
+          }
+          decide();
+        },
+        error: (error) => finish("error", error),
+      });
+
+      return () => {
+        settled = true;
+        membershipSubscription.unsubscribe();
+        completionSubscription.unsubscribe();
+        messages.complete();
+        for (const subscription of relaySubscriptions.values()) subscription.unsubscribe();
+      };
+    });
+  }
+
   /** Internal logic for handling publishes to multiple relays */
   protected internalPublish(project: (relay: Relay) => Observable<PublishResponse>): Observable<PublishResponse> {
     // Keep a cache of upstream observables for each relay
@@ -271,16 +393,16 @@ export class RelayGroup {
 
   /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
-    const complete =
-      opts?.complete ??
-      // Default complete condition is to wait for the first relay to send an EOSE message and then timeout or all relays to EOSE
-      RelayGroup.completeOnAny(RelayGroup.completeAfterFirstRelay(5_000), RelayGroup.completeOnAllEose());
+    // Cohort settlement owns default completion. A caller-supplied operator remains an
+    // additional early-completion policy, after same-message all-failed precedence.
+    const complete = opts?.complete;
 
     // D-15/WR-02: one AuthPhaseGate per call, shared by every relay in the fan-out — the group's clock
     // is a single budget over the whole fan-out, so any relay's in-flight auth phase must suspend it.
     const gate = new AuthPhaseGate();
 
-    return this.internalSubscription(
+    return this.settledSubscription(
+      "request",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
         relay.req(
@@ -289,9 +411,8 @@ export class RelayGroup {
           // suspends this call's own operation clock below.
           { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect, [AUTH_PHASE_GATE]: gate },
         ),
+      complete,
     ).pipe(
-      // Add the completion condition if provided
-      complete ? completeWhen(complete) : identity,
       // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
       // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. isGroupReqProgress
       // (CR-02) is total over GroupReqMessage with no cast: it excludes req()'s synthetic OPEN (WR-01's
@@ -312,7 +433,8 @@ export class RelayGroup {
 
   /** Open a subscription to all relays with retries ( default 3 retries ) */
   subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<NostrEvent> {
-    return this.internalSubscription(
+    return this.settledSubscription(
+      "subscription",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) => relay.req(filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect }),
     ).pipe(
