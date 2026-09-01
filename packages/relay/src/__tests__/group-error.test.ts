@@ -1,9 +1,10 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { normalizeURL } from "applesauce-core/helpers/url";
 import { BehaviorSubject, Observable, Subject, filter, map, of, scan, throwError } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
+import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
 import { Relay } from "../relay.js";
 
 function failingRelay(url: string, error: unknown): Relay {
@@ -114,5 +115,74 @@ describe("RelayGroupError", () => {
     streams[1].error(new Error("final"));
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);
     expect(spy.receivedComplete()).toBe(false);
+  });
+});
+
+describe("whole-operation timeout", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("does not reset the request lifetime after activity", () => {
+    vi.useFakeTimers();
+    const stream = new Subject<any>();
+    const relay = {
+      url: "wss://timeout.test",
+      requestReconnect: false,
+      req: vi.fn(() => stream),
+    } as unknown as Relay;
+    const spy = subscribeSpyTo(new RelayGroup([relay]).request({ kinds: [1] }, { timeout: 50, eventStore: null }), {
+      expectErrors: true,
+    });
+    vi.advanceTimersByTime(40);
+    stream.next({ type: "EVENT", from: relay.url, id: "x", event: { id: "x" } });
+    vi.advanceTimersByTime(10);
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()).not.toBeInstanceOf(RelayGroupError);
+  });
+
+  it("keeps subscription indefinite by default and bounds an explicit lifetime", () => {
+    vi.useFakeTimers();
+    const stream = new Subject<any>();
+    const relay = {
+      url: "wss://subscription-timeout.test",
+      subscriptionReconnect: false,
+      req: vi.fn(() => stream),
+    } as unknown as Relay;
+    const indefinite = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }, { timeout: false }));
+    vi.advanceTimersByTime(60_000);
+    expect(indefinite.receivedError()).toBe(false);
+    indefinite.unsubscribe();
+
+    const bounded = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }, { timeout: 50 }), {
+      expectErrors: true,
+    });
+    vi.advanceTimersByTime(50);
+    expect(bounded.receivedError()).toBe(true);
+  });
+
+  it("uses one gate for all relays and pauses until overlapping auth phases end", () => {
+    vi.useFakeTimers();
+    const streams = [new Subject<any>(), new Subject<any>()];
+    const gates: AuthPhaseGate[] = [];
+    const relays = streams.map((stream, index) => ({
+      url: `wss://auth-${index}.test`,
+      requestReconnect: false,
+      req: vi.fn((_filters, opts) => {
+        gates.push(opts[AUTH_PHASE_GATE]);
+        return stream;
+      }),
+    })) as unknown as Relay[];
+    const spy = subscribeSpyTo(new RelayGroup(relays).request({ kinds: [1] }, { timeout: 50 }), {
+      expectErrors: true,
+    });
+    expect(gates[0]).toBe(gates[1]);
+    gates[0].begin();
+    gates[1].begin();
+    vi.advanceTimersByTime(100);
+    gates[0].end();
+    vi.advanceTimersByTime(100);
+    expect(spy.receivedError()).toBe(false);
+    gates[1].end();
+    vi.advanceTimersByTime(50);
+    expect(spy.receivedError()).toBe(true);
   });
 });

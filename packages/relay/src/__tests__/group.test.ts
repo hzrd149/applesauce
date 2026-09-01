@@ -4,7 +4,7 @@ import { lastValueFrom, of, throwError, toArray } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
-import { RelayGroup } from "../group.js";
+import { RelayGroup, RelayGroupError } from "../group.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
 import {
   AuthRequiredError,
@@ -577,11 +577,7 @@ describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must
     expect(spy.receivedComplete()).toBe(false);
   });
 
-  it("control: a real EVENT from the surviving relay still cancels the clock and is delivered", async () => {
-    // Asserts the clock specifically (survives past its own 100ms budget with no TimeoutError), not the
-    // whole observable's completion — request()'s default complete condition also depends on relay1's
-    // post-error OPEN/retry lifecycle (out of this test's scope), so waiting on it would entangle an
-    // unrelated concern with the CR-02 property under test.
+  it("a real EVENT is delivered but does not cancel the whole-operation clock", async () => {
     const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "greq7", timeout: 100, reconnect: false }), {
       expectErrors: true,
     });
@@ -591,14 +587,14 @@ describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must
 
     // relay1's socket errors: group bookkeeping ERROR, not progress
     mockRelay1.error();
-    // relay2 delivers a genuine EVENT before the 100ms deadline: real relay progress, cancels the clock
+    // relay2 delivers a genuine EVENT before the deadline; whole-lifetime timing does not reset on activity.
     mockRelay2.send(["EVENT", "greq7", mockEvent]);
 
-    // Wait past the 100ms clock budget on a real timer; if the clock were not cancelled by relay2's EVENT
-    // it would have fired a TimeoutError well within this window.
+    // Wait past the budget and retain proof that the earlier event was delivered before the timeout.
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
-    expect(spy.receivedError()).toBe(false);
+    expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()).not.toBeInstanceOf(RelayGroupError);
   });
 });
