@@ -4,17 +4,17 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 21
 current_phase_name: Group Error Surface — request
-status: planning
-stopped_at: Phase 21 context gathered
-last_updated: "2026-09-01T15:04:09.429Z"
-last_activity: 2026-08-31
-last_activity_desc: Phase 20 complete, transitioned to Phase 21
+status: complete
+stopped_at: Phase 21 complete — no transition requested
+last_updated: "2026-09-01T15:43:12.978Z"
+last_activity: 2026-09-01
+last_activity_desc: Phase 21 implementation and verification complete
 progress:
   total_phases: 11
-  completed_phases: 5
-  total_plans: 25
-  completed_plans: 25
-  percent: 45
+  completed_phases: 6
+  total_plans: 29
+  completed_plans: 29
+  percent: 55
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 20 — AUTH Family Re-layer (complete; no transition requested)
+**Current focus:** Phase 21 — Group Error Surface complete; awaiting explicit transition
 
 ## Current Position
 
 Phase: 21 — Group Error Surface — request()/subscription()
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-31 — Phase 20 complete, transitioned to Phase 21
+Plan: 4 of 4 complete
+Status: Complete — no transition requested
+Last activity: 2026-09-01 — Phase 21 implementation and verification complete
 
 Progress: [██████████] 100%
 
@@ -148,6 +148,10 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 20 P02 | 10min | 2 tasks | 5 files |
 | Phase 20 P03 | 6min | 2 tasks | 7 files |
 | Phase 20 P04 | 8min | 2 tasks | 5 files |
+| Phase 21 P01 | 8min | 2 tasks | 3 files |
+| Phase 21 P02 | 4min | 2 tasks | 4 files |
+| Phase 21 P03 | 3min | 2 tasks | 4 files |
+| Phase 21 P04 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -469,9 +473,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-01T15:04:09.403Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-group-error-surface-request-subscription/21-CONTEXT.md
+Last session: 2026-09-01T15:43:12.956Z
+Stopped at: Phase 21 complete — no transition requested
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

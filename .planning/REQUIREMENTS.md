@@ -61,11 +61,11 @@ findings changed the plan and are marked **[research]** below.
 
 ### Group Error Surface
 
-- [ ] **GROUP-01**: `RelayGroup.request()` and `subscription()` error when every relay has failed — **on by default** — so total failure is no longer reported as an empty completion or an indefinite silent hang
-- [ ] **GROUP-02**: The raised aggregate carries every relay's own cause, keyed by relay URL, rather than collapsing them into one bare message
-- [ ] **GROUP-03**: **[research]** The aggregate error's per-relay causes and the progressive count record's failed-relay entries use **one** representation of "per-source outcome keyed by relay URL", not two independently-designed shapes for the same idea
-- [ ] **GROUP-04**: One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and activity, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment, 2026-09-01)
-- [ ] **GROUP-05**: Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases all finish (Phase 21 D-10 amendment, 2026-09-01)
+- [x] **GROUP-01**: `RelayGroup.request()` and `subscription()` error when every relay has failed — **on by default** — so total failure is no longer reported as an empty completion or an indefinite silent hang
+- [x] **GROUP-02**: The raised aggregate carries every relay's own cause, keyed by relay URL, rather than collapsing them into one bare message
+- [x] **GROUP-03**: **[research]** The aggregate error's per-relay causes and the progressive count record's failed-relay entries use **one** representation of "per-source outcome keyed by relay URL", not two independently-designed shapes for the same idea
+- [x] **GROUP-04**: One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and activity, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment, 2026-09-01)
+- [x] **GROUP-05**: Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases all finish (Phase 21 D-10 amendment, 2026-09-01)
 
 ### Correctness Fixes
 
@@ -161,11 +161,11 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | SYNC-02 | Phase 24 | Pending |
 | SYNC-03 | Phase 24 | Pending |
 | SYNC-04 | Phase 24 | Pending |
-| GROUP-01 | Phase 21 | Pending |
-| GROUP-02 | Phase 21 | Pending |
-| GROUP-03 | Phase 21 | Pending |
-| GROUP-04 | Phase 21 | Pending |
-| GROUP-05 | Phase 21 | Pending |
+| GROUP-01 | Phase 21 | Complete |
+| GROUP-02 | Phase 21 | Complete |
+| GROUP-03 | Phase 21 | Complete |
+| GROUP-04 | Phase 21 | Complete |
+| GROUP-05 | Phase 21 | Complete |
 | FIX-01 | Phase 17 | Gaps Found |
 | FIX-02 | Phase 17 | Gaps Found |
 | FIX-03 | Phase 17 | Gaps Found |

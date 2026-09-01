@@ -207,13 +207,14 @@ Plans:
   4. One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and events, EOSE, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment to GROUP-04).
   5. Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, including overlapping relay auth phases (Phase 21 D-10 amendment to GROUP-05).
 
-**Plans**: 4 plans
+**Plans**: 4/4 plans executed
 
 Plans:
-- [ ] 21-01-PLAN.md — Typed aggregate and unified latest-cohort settlement
-- [ ] 21-02-PLAN.md — Auth-suspendable whole-returned-Observable lifetime
-- [ ] 21-03-PLAN.md — Pool propagation and public export/type proofs
-- [ ] 21-04-PLAN.md — Documentation, provenance, major changeset, and final gates
+
+- [x] 21-01-PLAN.md — Typed aggregate and unified latest-cohort settlement
+- [x] 21-02-PLAN.md — Auth-suspendable whole-returned-Observable lifetime
+- [x] 21-03-PLAN.md — Pool propagation and public export/type proofs
+- [x] 21-04-PLAN.md — Documentation, provenance, major changeset, and final gates
 
 ### Phase 22: REQ Family Re-layer
 
