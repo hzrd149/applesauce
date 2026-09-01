@@ -1,5 +1,7 @@
 # Phase 19: COUNT Becomes the High-Level Member - Pattern Map
 
+> **Phase 23 D-24 amendment:** Historical Group `combineLatest` patterns are superseded by progressive per-relay `RelayOutcome` accumulation; scalar Relay COUNT and HLL utilities remain unchanged.
+
 **Mapped:** 2026-08-21
 **Files analyzed:** 14 implementation, test, documentation, and provenance targets
 **Analogs found:** 14 / 14 (the HLL algorithm has role-level, not exact, local analogs)

@@ -189,34 +189,36 @@ pool
 
 ### Count Method
 
-The `count` method sends a COUNT request to multiple relays and returns counts from each:
+The `count` method emits progressive cumulative `RelayOutcome` records as each relay settles:
 
 ```typescript
 pool.count(relays, { kinds: [1], authors: ["pubkey"] }).subscribe({
-  next: (counts) => {
-    // counts is a Record<string, CountResponse>
-    Object.entries(counts).forEach(([relay, response]) => {
-      console.log(`${relay}: ${response.count} events`);
-    });
+  next: (outcomes) => {
+    for (const [relay, outcome] of Object.entries(outcomes))
+      console.log(relay, outcome.ok ? outcome.value.count : outcome.error);
   },
 });
 ```
 
-Pool and Group forward the caller ID and the same auth, `reconnect`, `retries`, and whole-request `timeout` options as `Relay.count()`. They return an Observable record keyed by relay URL.
+Snapshots are progressive and cumulative; missing entries are still pending. Pool and Group preserve scalar `Relay.count()` policy and isolate each failure by normalized relay URL.
 
 #### Integration
 
 ```typescript
 import { estimateHllCardinality, mergeHllRegisters } from "applesauce-relay";
 
-pool.count(relays, filter, "union").subscribe((responses) => {
-  const sketches = Object.values(responses).flatMap((r) => (r.hll ? [r.hll] : []));
+pool.count(relays, filter, "union").subscribe((outcomes) => {
+  const sketches = Object.values(outcomes).flatMap((o) =>
+    o.ok && o.value.hll ? [o.value.hll] : [],
+  );
   if (sketches.length) {
     const merged = mergeHllRegisters(sketches);
     console.log(estimateHllCardinality(merged));
   }
 });
 ```
+
+Failures and successful responses without HLL reduce coverage. Never sum overlapping relay counts or treat a missing sketch as zero.
 
 #### Best Practices
 

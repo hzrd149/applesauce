@@ -1,5 +1,7 @@
 # Phase 19: COUNT Becomes the High-Level Member - Context
 
+> **Phase 23 D-24 amendment:** Historical `combineLatest`, bare response-record, and all-or-nothing Group/Pool claims are superseded. `Relay.count()` remains scalar with HLL/auth/retry/timeout behavior unchanged; the Observable-of-record topology remains while entries are now progressive `RelayOutcome` values.
+
 **Gathered:** 2026-08-21
 **Status:** Ready for planning
 

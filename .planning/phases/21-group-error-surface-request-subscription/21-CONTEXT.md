@@ -1,5 +1,7 @@
 # Phase 21: Group Error Surface — request()/subscription() - Context
 
+> **Phase 23 D-24 amendment:** Any deferred-to-Phase-23 bare COUNT entry claim is superseded; Group/Pool COUNT now emits progressive `RelayOutcome` records while scalar `Relay.count()` and HLL behavior remain unchanged.
+
 > **Phase 22 D-23/D-24 amendment:** The subscription lifetime and subscription `authSuspendableLifetime` claims below are historical and superseded. Relay, Group, and Pool subscriptions now have no built-in duration or inactivity timeout; callers compose RxJS bounds. Request retains its auth-suspended 30-second whole lifetime, and non-empty aggregate total failure remains immediate.
 
 **Gathered:** 2026-09-01

@@ -1,9 +1,9 @@
 ---
 phase: 23
 slug: group-count-isolation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-01
 ---
 
@@ -23,26 +23,26 @@ created: 2026-09-01
 
 | Task | Wave | Requirements | Evidence | Automated command | Status |
 |---|---:|---|---|---|---|
-| 23-01-01 | 1 | COUNT-04/05 | Static progressive success/failure/order/identity | group-count suite | pending |
+| 23-01-01 | 1 | COUNT-04/05 | Static progressive success/failure/order/identity | group-count suite | passed |
 | 23-01-02 | 1 | COUNT-04/05 | Exact ID/options and concurrent scalar independence | group-count + build | pending |
 | 23-02-01 | 2 | COUNT-04/05 | Duplicate/replacement/late/removal/retraction/empty cohorts | group-count suite | pending |
 | 23-02-02 | 2 | COUNT-04/05 | Sharing/replay/membership completion/error/cancellation | group-count + build | pending |
 | 23-03-01 | 3 | COUNT-04/05 | Pool progression/failure/replay parity | focused Pool count | pending |
 | 23-03-02 | 3 | COUNT-04/05 | Real scalar auth/options/ID preserved | Group/Pool + build | pending |
 | 23-04-01 | 4 | COUNT-04/05 | Narrowing/scalar/Group/Pool types | explicit type project | pending |
-| 23-04-02 | 4 | COUNT-04/05 | combineLatest progression/isolation RED→GREEN | exact summary evidence + focused suite | pending |
+| 23-04-02 | 4 | COUNT-04/05 | combineLatest progression/isolation RED→GREEN | exact summary evidence + focused suite | passed |
 | 23-05-01 | 5 | COUNT-04/05 | Progressive/HLL/reduced-coverage docs | docs build/search | pending |
 | 23-06-01 | 6 | COUNT-04/05 | All Phase 19 aggregation artifacts explicitly amended with scalar/HLL/topology positives | per-file and positive searches | pending |
 | 23-06-02 | 6 | COUNT-04/05 | Phase 21/canonical amendments and nine-artifact negative stale-claim audit | executable provenance audit | pending |
 | 23-07-01 | 7 | COUNT-04/05 | Exact major changeset | Node parser | pending |
-| 23-07-02 | 7 | COUNT-04/05 | Complete runtime/type/docs/provenance/workspace gate | full command | pending |
+| 23-07-02 | 7 | COUNT-04/05 | Complete runtime/type/docs/provenance/workspace gate | full command | passed |
 
 ## Wave 0 and Non-Vacuity
 
-- [ ] Create failing fast/slow and success/offline tests before replacing combineLatest.
-- [ ] Create dynamic replacement/removal/replay/cancellation tests before completing the helper.
-- [ ] Create and include `group-count-types.ts` before final public declarations.
-- [ ] Restore combineLatest in an isolated worktree: both named core tests must fail causally, then restored source passes.
+- [x] Create failing fast/slow and success/offline tests before replacing combineLatest.
+- [x] Create dynamic replacement/removal/replay/cancellation tests before completing the helper.
+- [x] Create and include `group-count-types.ts` before final public declarations.
+- [x] Restore combineLatest in an isolated worktree: both named core tests fail causally, then restored source passes.
 
 ## Source Coverage Audit
 

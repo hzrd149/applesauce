@@ -9,6 +9,8 @@ overrides_applied: 0
 
 # Phase 21: Group Error Surface — request()/subscription() Verification Report
 
+> **Phase 23 D-24 amendment:** Historical COUNT deferral is resolved by progressive `RelayOutcome` entries without changing scalar Relay COUNT, HLL utilities, or the Observable record topology.
+
 > **Phase 22 D-23/D-24 amendment:** Subscription lifetime and subscription `authSuspendableLifetime` verification is historical and superseded; request timeout and immediate total failure remain current.
 
 **Phase Goal:** A `RelayGroup.request()` or `subscription()` that loses every relay reports that as a real error, and the aggregate's per-relay causes settle the one representation reused by later count-isolation work.

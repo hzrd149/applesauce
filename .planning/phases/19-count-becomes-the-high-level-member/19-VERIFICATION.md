@@ -17,6 +17,8 @@ re_verification:
 
 # Phase 19: COUNT Becomes the High-Level Member Verification Report
 
+> **Phase 23 D-24 amendment:** Group/Pool aggregation claims are historical and superseded by progressive `RelayOutcome` records. `Relay.count()` remains scalar, HLL utilities remain available, and the outer Observable-of-record topology is preserved.
+
 **Phase Goal:** `count()` gains the same configurable policy every other high-level method has, and its response models what NIP-45 actually defines instead of one field reached by an unchecked cast.
 **Verified:** 2026-08-21T10:22:11Z
 **Status:** passed

@@ -18,6 +18,8 @@ status: complete
 ---
 # Phase 19 Plan 03: Public COUNT Contract Summary
 
+> **Phase 23 D-24 amendment:** The Observable record topology remains, but bare response entries and all-or-nothing `combineLatest` settlement are superseded by progressive `RelayOutcome` entries. Scalar `Relay.count()` and `mergeHllRegisters` remain unchanged.
+
 **Root-exported COUNT errors and HLL utilities with accurate Observable, timeout, and cross-relay guidance**
 
 ## Accomplishments

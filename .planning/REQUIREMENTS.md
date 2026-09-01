@@ -49,8 +49,8 @@ findings changed the plan and are marked **[research]** below.
 - [x] **COUNT-01**: `count()` is the high-level member of its family — `RelayCountOptions` gains `reconnect`, `retries`, and a configurable `timeout` (today the only operation clock in the package a caller cannot change), and failure surfaces as an error
 - [x] **COUNT-02**: `RelayCountResponse` is `{count, approximate?, hll?}`, validated rather than reached by an unchecked `m[2] as RelayCountResponse`, so a malformed payload is an error rather than a typed lie
 - [x] **COUNT-03**: A register-wise max merge over NIP-45's 256-register `hll` payload ships, so a correct cross-relay total is constructible at all
-- [ ] **COUNT-04**: One failing or offline relay costs the caller that relay's number, not every relay's — `RelayGroup.count()` isolates per relay instead of propagating the first error through `combineLatest`
-- [ ] **COUNT-05**: `RelayGroup.count()` emits progressively as each relay answers, rather than withholding every count until the slowest relay returns
+- [x] **COUNT-04**: One failing or offline relay becomes that URL's `RelayOutcome` failure while other scalar COUNT operations continue (Phase 23 D-24 supersedes historical `combineLatest` all-or-nothing behavior)
+- [x] **COUNT-05**: `RelayGroup.count()` emits fresh cumulative `RelayOutcome` records progressively as each relay answers
 
 ### Negentropy and Sync
 
@@ -155,8 +155,8 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | COUNT-01 | Phase 19 | Complete |
 | COUNT-02 | Phase 19 | Complete |
 | COUNT-03 | Phase 19 | Complete |
-| COUNT-04 | Phase 23 | Pending |
-| COUNT-05 | Phase 23 | Pending |
+| COUNT-04 | Phase 23 | Complete |
+| COUNT-05 | Phase 23 | Complete |
 | SYNC-01 | Phase 24 | Pending |
 | SYNC-02 | Phase 24 | Pending |
 | SYNC-03 | Phase 24 | Pending |
