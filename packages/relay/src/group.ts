@@ -223,7 +223,7 @@ export class RelayGroup {
   ): Observable<GroupReqMessage> {
     return new Observable((subscriber) => {
       const messages = new Subject<GroupReqMessage>();
-      const relaySubscriptions = new Map<string, Subscription>();
+      const relaySubscriptions = new Map<string, { relay: Relay; subscription: Subscription }>();
       const states = new Map<string, CohortState>();
       const order: string[] = [];
       let settled = false;
@@ -268,9 +268,11 @@ export class RelayGroup {
           for (const relay of relays) normalized.set(normalizeURL(relay.url), relay);
 
           for (const url of [...states.keys()]) {
-            if (!normalized.has(url)) {
+            const activeRelay = normalized.get(url);
+            const existing = relaySubscriptions.get(url);
+            if (!activeRelay || (existing && existing.relay !== activeRelay)) {
               states.delete(url);
-              relaySubscriptions.get(url)?.unsubscribe();
+              existing?.subscription.unsubscribe();
               relaySubscriptions.delete(url);
             }
           }
@@ -301,7 +303,7 @@ export class RelayGroup {
                 if (!settled) messages.next(message);
               },
             });
-            relaySubscriptions.set(url, relaySubscription);
+            relaySubscriptions.set(url, { relay, subscription: relaySubscription });
           }
           decide();
         },
@@ -313,7 +315,7 @@ export class RelayGroup {
         membershipSubscription.unsubscribe();
         completionSubscription.unsubscribe();
         messages.complete();
-        for (const subscription of relaySubscriptions.values()) subscription.unsubscribe();
+        for (const { subscription } of relaySubscriptions.values()) subscription.unsubscribe();
       };
     });
   }

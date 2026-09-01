@@ -90,6 +90,35 @@ describe("RelayGroupError", () => {
     expect(Object.keys(error.outcomes)).toEqual([normalizeURL(retained.url)]);
   });
 
+  it("replaces a relay instance at the same normalized URL", () => {
+    const removedStream = new Subject<any>();
+    const replacementStream = new Subject<any>();
+    const removed = {
+      url: "wss://same-url.test/",
+      requestReconnect: false,
+      req: vi.fn(() => removedStream),
+    } as unknown as Relay;
+    const replacement = {
+      url: "wss://same-url.test",
+      requestReconnect: false,
+      req: vi.fn(() => replacementStream),
+    } as unknown as Relay;
+    const relays = new BehaviorSubject([removed]);
+    const spy = subscribeSpyTo(new RelayGroup(relays).request({ kinds: [1] }), { expectErrors: true });
+
+    relays.next([replacement]);
+    expect(replacement.req).toHaveBeenCalledOnce();
+    removedStream.error(new Error("removed"));
+    expect(spy.receivedError()).toBe(false);
+
+    const cause = new Error("replacement");
+    replacementStream.error(cause);
+    expect((spy.getError() as RelayGroupError).outcomes[normalizeURL(replacement.url)]).toEqual({
+      ok: false,
+      error: cause,
+    });
+  });
+
   it("gives all-failed precedence over custom completion on the final error", () => {
     const streams = [new Subject<any>(), new Subject<any>()];
     const relays = streams.map((stream, index) => ({
