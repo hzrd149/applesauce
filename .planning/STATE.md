@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 23
 current_phase_name: Group count
 status: planning
-stopped_at: Completed 22-09-PLAN.md
-last_updated: "2026-09-01T22:41:10.903Z"
+stopped_at: Phase 23 context gathered
+last_updated: "2026-09-01T23:31:47.456Z"
 last_activity: 2026-09-01
 last_activity_desc: Phase 22 complete, transitioned to Phase 23
 progress:
@@ -475,9 +475,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-01T22:39:46.227Z
-Stopped at: Completed 22-09-PLAN.md
-Resume file: None
+Last session: 2026-09-01T23:31:47.431Z
+Stopped at: Phase 23 context gathered
+Resume file: .planning/phases/23-group-count-isolation/23-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
