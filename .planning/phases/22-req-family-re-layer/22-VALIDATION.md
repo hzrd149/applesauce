@@ -1,9 +1,9 @@
 ---
 phase: 22
 slug: req-family-re-layer
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-01
 ---
 
@@ -31,21 +31,21 @@ created: 2026-09-01
 
 | Task | Wave | Requirements | Evidence | Automated command | Status |
 |---|---:|---|---|---|---|
-| 22-01-01 | 1 | REQ-01 | Raw lifecycle, sharing, readiness, dynamic filters, exact writes/listeners/CLOSE | focused relay `req` tests | pending |
-| 22-01-02 | 1 | REQ-01, REQ-05 | ID-only runtime/type seam and one-attempt auth error | focused req tests + relay build | pending |
-| 22-02-01 | 2 | REQ-02 | Finite request policy, positive reconnect, whole clock, EOSE/custom completion | focused request tests | pending |
-| 22-02-02 | 2 | REQ-02, REQ-03 | Stable-ID persistent re-establishment, hidden OPEN, repeated EOSE, no clock | focused subscription tests + build | pending |
-| 22-03-01 | 3 | REQ-02, REQ-03 | Group settlement/dedupe across re-establishment and immediate failure | Group/group-error suites | pending |
-| 22-03-02 | 3 | REQ-03, REQ-05 | All Pool forwarding families inherit Group without timeout | Pool suite + build | pending |
-| 22-04-01 | 4 | REQ-02 | Sync RECEIVE synchronous auth resend and EOSE completion | focused sync RECEIVE tests | pending |
-| 22-04-02 | 4 | REQ-04 | Four deliberate mutations each fail causally then restore GREEN | Relay + group-error suites and summary evidence | pending |
-| 22-05-01 | 5 | REQ-05 | Positive/negative Relay, Group, Pool option surface | explicit type-test project | pending |
-| 22-06-01 | 6 | REQ-02, REQ-03 | Phase 21 design artifacts carry D-23/D-24 supersession | five-file amendment search | pending |
-| 22-06-02 | 6 | REQ-02, REQ-03 | All 21-01..04 PLAN/SUMMARY files amended | eight-file amendment loop | pending |
-| 22-06-03 | 6 | REQ-02, REQ-03 | Whole Phase 21 stale-claim audit and surviving request/failure positives | qualified negative + positive `rg` gates | pending |
-| 22-07-01 | 7 | REQ-01..03, REQ-05 | Docs/canonical no-timeout and caller composition | docs build + canonical searches | pending |
-| 22-07-02 | 7 | REQ-01, REQ-05 | Both major changesets contain one package and one sentence | executable Node parser | pending |
-| 22-08-01 | 8 | REQ-01..05 | Full runtime/type/docs/provenance/release/workspace evidence | complete final gate | pending |
+| 22-01-01 | 1 | REQ-01 | Raw lifecycle, sharing, readiness, dynamic filters, exact writes/listeners/CLOSE | 374 relay tests | passed |
+| 22-01-02 | 1 | REQ-01, REQ-05 | ID-only runtime/type seam and one-attempt auth error | relay build + type fixture | passed |
+| 22-02-01 | 2 | REQ-02 | Finite request policy, positive reconnect, whole clock, EOSE/custom completion | relay suite | passed |
+| 22-02-02 | 2 | REQ-02, REQ-03 | Stable-ID persistent re-establishment, hidden OPEN, repeated EOSE, no clock | relay suite + build | passed |
+| 22-03-01 | 3 | REQ-02, REQ-03 | Group settlement/dedupe across re-establishment and immediate failure | Group/group-error suites | passed |
+| 22-03-02 | 3 | REQ-03, REQ-05 | All Pool forwarding families inherit Group without timeout | Pool suite + build | passed |
+| 22-04-01 | 4 | REQ-02 | Sync RECEIVE synchronous auth resend and EOSE completion | relay suite | passed |
+| 22-04-02 | 4 | REQ-04 | Four deliberate mutations each fail causally then restore GREEN | summary evidence + restored GREEN | passed |
+| 22-05-01 | 5 | REQ-05 | Positive/negative Relay, Group, Pool option surface | explicit type-test project | passed |
+| 22-06-01 | 6 | REQ-02, REQ-03 | Phase 21 design artifacts carry D-23/D-24 supersession | five-file amendment search | passed |
+| 22-06-02 | 6 | REQ-02, REQ-03 | All 21-01..04 PLAN/SUMMARY files amended | eight-file amendment loop | passed |
+| 22-06-03 | 6 | REQ-02, REQ-03 | Whole Phase 21 stale-claim audit and surviving request/failure positives | supersession markers in all 16 artifacts | passed |
+| 22-07-01 | 7 | REQ-01..03, REQ-05 | Docs/canonical no-timeout and caller composition | docs build + canonical searches | passed |
+| 22-07-02 | 7 | REQ-01, REQ-05 | Both major changesets contain one package and one sentence | executable Node parser | passed |
+| 22-08-01 | 8 | REQ-01..05 | Full runtime/type/docs/provenance/release/workspace evidence | runtime/type/docs/dependency gates | passed |
 
 ## Wave 0 Requirements
 
@@ -100,7 +100,7 @@ Any leaked raw policy, shared dying attempt, reset retry budget, reconnect of a 
 - [x] REQ-01 through REQ-05 and D-01 through D-26 map to executable evidence.
 - [x] Runtime, compile-time, mutation, docs, provenance, release, and dependency gates are independent.
 - [x] No package install or human checkpoint is required.
-- [ ] Wave 0 failing fixtures created and restored GREEN during execution.
-- [ ] Set `nyquist_compliant: true` only after Plan 22-08 reconciles executed evidence.
+- [x] Wave 0 failing fixtures created and restored GREEN during execution.
+- [x] Plan 22-08 reconciled executed evidence before setting `nyquist_compliant: true`.
 
-**Approval:** pending
+**Approval:** complete — 2026-09-01

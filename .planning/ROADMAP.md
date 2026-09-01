@@ -228,18 +228,18 @@ Plans:
   3. `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry; `req()` owns none of the three.
   4. The reentrancy/retry-counting regression tests closed by plans 13-08..13-14 (the per-attempt `defer` factory, `resubscribeHolder`, `isReqProgress`'s synthetic-`OPEN` exclusion) fail RED against a deliberate revert and pass GREEN against the re-layered code.
 
-**Plans**: 8 plans
+**Plans**: 8/8 plans executed
 
 Plans:
 
-- [ ] 22-01-PLAN.md — Raw readiness-aware single REQ interaction and exact teardown
-- [ ] 22-02-PLAN.md — Private lifecycle compositor and Relay request/subscription policy
-- [ ] 22-03-PLAN.md — Group/Pool re-establishment, dedupe, settlement, and no-timeout runtime
-- [ ] 22-04-PLAN.md — Sync RECEIVE preservation and four mutation proofs
-- [ ] 22-05-PLAN.md — Exact positive Relay/Group/Pool option type proofs
-- [ ] 22-06-PLAN.md — Complete Phase 21 artifact supersession and stale-claim audit
-- [ ] 22-07-PLAN.md — Canonical docs and exact two-changeset validation
-- [ ] 22-08-PLAN.md — Full phase gate and Nyquist evidence reconciliation
+- [x] 22-01-PLAN.md — Raw readiness-aware single REQ interaction and exact teardown
+- [x] 22-02-PLAN.md — Private lifecycle compositor and Relay request/subscription policy
+- [x] 22-03-PLAN.md — Group/Pool re-establishment, dedupe, settlement, and no-timeout runtime
+- [x] 22-04-PLAN.md — Sync RECEIVE preservation and four mutation proofs
+- [x] 22-05-PLAN.md — Exact positive Relay/Group/Pool option type proofs
+- [x] 22-06-PLAN.md — Complete Phase 21 artifact supersession and stale-claim audit
+- [x] 22-07-PLAN.md — Canonical docs and exact two-changeset validation
+- [x] 22-08-PLAN.md — Full phase gate and Nyquist evidence reconciliation
 
 ### Phase 23: Group count() Isolation
 
