@@ -1,10 +1,11 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
-import { lastValueFrom, of } from "rxjs";
+import { BehaviorSubject, lastValueFrom, of, throwError } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { RelayPool } from "../pool.js";
+import { RelayGroupError } from "../group.js";
 import { Relay } from "../relay";
 
 let pool: RelayPool;
@@ -179,6 +180,50 @@ describe("req", () => {
     expect(spy.getValues()).toContainEqual(
       expect.objectContaining({ type: "EVENT", event: expect.objectContaining(mockEvent) }),
     );
+  });
+});
+
+describe("group failure forwarding", () => {
+  const cause = new Error("relay failed");
+
+  function fail(url: string) {
+    const relay = pool.relay(url);
+    vi.spyOn(relay, "req").mockReturnValue(throwError(() => cause));
+  }
+
+  it.each([
+    ["request", () => pool.request(["wss://relay1.example.com/"], { kinds: [1] }, { reconnect: false })],
+    ["subscription", () => pool.subscription(["wss://relay1.example.com/"], { kinds: [1] }, { reconnect: false })],
+    [
+      "subscriptionMap",
+      () => pool.subscriptionMap({ "wss://relay1.example.com/": { kinds: [1] } }, { reconnect: false }),
+    ],
+    [
+      "outboxSubscription",
+      () =>
+        pool.outboxSubscription(
+          { "wss://relay1.example.com/": [{ pubkey: "pubkey" }] },
+          { kinds: [1] },
+          { reconnect: false },
+        ),
+    ],
+  ] as const)("forwards RelayGroupError through %s", (_name, run) => {
+    fail("wss://relay1.example.com/");
+    const spy = subscribeSpyTo(run(), { expectErrors: true });
+    const error = spy.getError() as RelayGroupError;
+    expect(error).toBeInstanceOf(RelayGroupError);
+    expect(error.errors[0]).toBe(cause);
+    expect(error.outcomes["wss://relay1.example.com/"]).toEqual({ ok: false, error: cause });
+  });
+
+  it("subscriptionMap replaces its active cohort before aggregate settlement", () => {
+    fail("wss://relay1.example.com/");
+    const maps = new BehaviorSubject({ "wss://relay2.example.com/": { kinds: [1] } });
+    const pending = pool.relay("wss://relay2.example.com/");
+    vi.spyOn(pending, "req").mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
+    const spy = subscribeSpyTo(pool.subscriptionMap(maps), { expectErrors: true });
+    maps.next({ "wss://relay1.example.com/": { kinds: [1] } });
+    expect(spy.getError()).toBeInstanceOf(RelayGroupError);
   });
 });
 
