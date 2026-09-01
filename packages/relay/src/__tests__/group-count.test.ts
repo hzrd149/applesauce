@@ -58,4 +58,29 @@ describe("progressive group count", () => {
     expect(early.at(-1)).toEqual({ "wss://pending.test/": { ok: true, value: { count: 2 } } });
     expect(late).toEqual([{ "wss://pending.test/": { ok: true, value: { count: 2 } } }]);
   });
+
+  it("retracts a settled outcome when the same normalized URL changes instance", () => {
+    const oldSource = new Subject<any>();
+    const replacementSource = new Subject<any>();
+    const anchorSource = new Subject<any>();
+    const oldRelay = fake("wss://replacement.test/", oldSource);
+    const replacement = fake("wss://replacement.test", replacementSource);
+    const anchor = fake("wss://anchor.test", anchorSource);
+    const members = new BehaviorSubject<Relay[]>([oldRelay, anchor]);
+    const result = new RelayGroup(members).count({});
+    const early: any[] = [];
+    const late: any[] = [];
+    result.subscribe((value) => early.push(value));
+
+    oldSource.next({ count: 1 });
+    oldSource.complete();
+    members.next([replacement, anchor]);
+    result.subscribe((value) => late.push(value));
+
+    expect(late).toEqual([]);
+    replacementSource.next({ count: 2 });
+    replacementSource.complete();
+    expect(early.at(-1)).toEqual({ "wss://replacement.test/": { ok: true, value: { count: 2 } } });
+    expect(late).toEqual([{ "wss://replacement.test/": { ok: true, value: { count: 2 } } }]);
+  });
 });

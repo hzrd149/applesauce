@@ -479,6 +479,9 @@ export class RelayGroup {
             latest.set(url, relay);
           }
           const nextOrder = [...latest.keys()];
+          const changed =
+            order.length !== nextOrder.length ||
+            nextOrder.some((url, index) => order[index] !== url || active.get(url)?.relay !== latest.get(url));
 
           for (const [url, entry] of active) {
             const relay = latest.get(url);
@@ -488,7 +491,6 @@ export class RelayGroup {
               outcomes.delete(url);
             }
           }
-          const changed = order.some((url) => !nextOrder.includes(url)) || order.length !== nextOrder.length;
           order = nextOrder;
           if (changed && emitted) subscriber.next(outcomes.size > 0 ? snapshot() : EMPTY_RETRACTION);
           if (order.length === 0) return finishIfSettled();
