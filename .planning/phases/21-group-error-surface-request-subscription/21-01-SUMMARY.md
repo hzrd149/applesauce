@@ -29,6 +29,8 @@ status: complete
 
 # Phase 21 Plan 01: Group Aggregate Settlement Summary
 
+> **Phase 22 D-23/D-24 amendment:** Subscription clock claims are superseded; immediate non-empty aggregate failure remains current.
+
 **Typed aggregate relay failure with normalized per-source outcomes and deterministic latest-cohort settlement**
 
 ## Accomplishments

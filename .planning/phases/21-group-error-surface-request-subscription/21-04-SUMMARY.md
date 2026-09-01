@@ -28,6 +28,8 @@ status: complete
 
 # Phase 21 Plan 04: Documentation and Release Summary
 
+> **Phase 22 D-23/D-24 amendment:** Subscription timeout documentation and changeset claims are superseded; caller-composed RxJS bounds are current.
+
 **Concise Group/Pool error and timeout guidance with corrected provenance and one major relay changeset**
 
 ## Accomplishments

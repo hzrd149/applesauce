@@ -25,6 +25,8 @@ status: issues_found
 
 # Phase 21: Code Review Report
 
+> **Phase 22 D-23/D-24 amendment:** Subscription timeout support described here is historical and superseded by the clock-free persistent contract.
+
 **Reviewed:** 2026-09-01T15:45:15Z
 **Depth:** deep
 **Files Reviewed:** 11

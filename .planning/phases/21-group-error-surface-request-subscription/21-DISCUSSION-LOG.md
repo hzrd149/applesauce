@@ -1,5 +1,7 @@
 # Phase 21: Group Error Surface — request()/subscription() - Discussion Log
 
+> **Phase 22 D-23/D-24 amendment:** Any subscription timeout or subscription `authSuspendableLifetime` decision recorded here is historical and superseded. Subscriptions have no built-in clock; request timing and immediate aggregate total-failure behavior remain current.
+
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 

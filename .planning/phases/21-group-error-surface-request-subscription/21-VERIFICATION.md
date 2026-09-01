@@ -9,6 +9,8 @@ overrides_applied: 0
 
 # Phase 21: Group Error Surface — request()/subscription() Verification Report
 
+> **Phase 22 D-23/D-24 amendment:** Subscription lifetime and subscription `authSuspendableLifetime` verification is historical and superseded; request timeout and immediate total failure remain current.
+
 **Phase Goal:** A `RelayGroup.request()` or `subscription()` that loses every relay reports that as a real error, and the aggregate's per-relay causes settle the one representation reused by later count-isolation work.
 **Verified:** 2026-09-01T15:55:00Z
 **Status:** passed

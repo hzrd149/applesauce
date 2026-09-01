@@ -28,6 +28,8 @@ status: complete
 
 # Phase 21 Plan 02: Whole-Operation Timeout Summary
 
+> **Phase 22 D-23/D-24 amendment:** The subscription timeout/auth-suspension result is superseded. Only request retains the auth-suspended whole-operation timeout.
+
 **One activity-neutral lifetime budget with shared overlapping-auth suspension for Group request and subscription**
 
 ## Accomplishments

@@ -1,5 +1,7 @@
 # Phase 21: Group Error Surface — request()/subscription() - Pattern Map
 
+> **Phase 22 D-23/D-24 amendment:** Subscription lifetime-wrapper patterns below are historical and superseded. Relay, Group, and Pool subscriptions are clock-free; request retains its whole-operation timeout and total group failure remains immediate.
+
 **Mapped:** 2026-09-01
 **Files analyzed:** 13 new/modified files
 **Analogs found:** 13 / 13

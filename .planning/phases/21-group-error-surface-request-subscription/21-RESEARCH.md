@@ -1,5 +1,7 @@
 # Phase 21: Group Error Surface — request()/subscription() - Research
 
+> **Phase 22 D-23/D-24 amendment:** Subscription timeout research below is historical and superseded. Persistent subscriptions expose no duration/inactivity option; callers compose RxJS bounds. Request timeout and immediate aggregate failure remain supported.
+
 **Researched:** 2026-09-01
 **Domain:** RxJS multi-source terminal-state arbitration and lifetime policy
 **Confidence:** HIGH

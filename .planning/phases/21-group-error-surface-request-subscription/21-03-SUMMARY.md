@@ -28,6 +28,8 @@ status: complete
 
 # Phase 21 Plan 03: Pool and Public Contract Summary
 
+> **Phase 22 D-23/D-24 amendment:** Pool subscription timeout forwarding is superseded; all persistent subscription families are clock-free.
+
 **Transparent Pool forwarding backed by runtime export snapshots and compile-time outcome/timeout contracts**
 
 ## Accomplishments

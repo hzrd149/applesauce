@@ -11,6 +11,8 @@ status: all_fixed
 
 # Phase 21: Code Review Fix Report
 
+> **Phase 22 D-23/D-24 amendment:** Subscription lifetime/auth-suspension findings are historical and superseded; request timeout and immediate aggregate failure survive.
+
 **Fixed at:** 2026-09-01T15:51:40Z
 **Source review:** `.planning/phases/21-group-error-surface-request-subscription/21-REVIEW.md`
 **Iteration:** 1

@@ -9,6 +9,8 @@ created: 2026-09-01
 
 # Phase 21 — Validation Strategy
 
+> **Phase 22 D-23/D-24 amendment:** Subscription timeout validation rows are historical and superseded. Persistent subscriptions have no built-in duration/inactivity clock.
+
 ## Test Infrastructure
 
 | Property | Value |
