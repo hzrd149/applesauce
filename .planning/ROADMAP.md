@@ -73,7 +73,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 18: EVENT Family Re-layer** - `event()` sends once and throws; `publish()` becomes sole owner of the auth retry loop (completed 2026-08-20)
 - [x] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper (completed 2026-08-21)
 - [x] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer (completed 2026-08-31)
-- [ ] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever
+- [x] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever (completed 2026-09-01)
 - [ ] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop
 - [ ] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively
 - [ ] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions

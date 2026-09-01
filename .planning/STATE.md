@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 21
-current_phase_name: Group Error Surface — request
-status: complete
+current_phase: 22
+current_phase_name: REQ Family Re-layer
+status: planning
 stopped_at: Phase 21 complete — no transition requested
-last_updated: "2026-09-01T15:43:12.978Z"
+last_updated: "2026-09-01T15:55:45.219Z"
 last_activity: 2026-09-01
-last_activity_desc: Phase 21 implementation and verification complete
+last_activity_desc: Phase 21 complete, transitioned to Phase 22
 progress:
   total_phases: 11
   completed_phases: 6
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 ## Current Position
 
-Phase: 21 — Group Error Surface — request()/subscription()
-Plan: 4 of 4 complete
-Status: Complete — no transition requested
-Last activity: 2026-09-01 — Phase 21 implementation and verification complete
+Phase: 22 — REQ Family Re-layer
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-01 — Phase 21 complete, transitioned to Phase 22
 
 Progress: [██████████] 100%
 
