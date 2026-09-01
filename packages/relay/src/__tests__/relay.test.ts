@@ -85,6 +85,40 @@ describe("constructor", () => {
 });
 
 describe("req", () => {
+  it("evaluates function filters per cold interaction", async () => {
+    const factory = vi.fn(() => ({ kinds: [1] }));
+    const request = relay.req(factory, { id: "sub1" });
+
+    expect(factory).not.toHaveBeenCalled();
+    const first = request.subscribe();
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    first.unsubscribe();
+    await expect(server).toReceiveMessage(["CLOSE", "sub1"]);
+
+    const second = request.subscribe();
+    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+    expect(factory).toHaveBeenCalledTimes(2);
+    second.unsubscribe();
+  });
+
+  it("surfaces synchronous filter-factory failures through the Observable", () => {
+    const cause = new Error("filter factory failed");
+    const request = relay.req(() => {
+      throw cause;
+    });
+
+    const spy = subscribeSpyTo(request, { expectErrors: true });
+    expect(spy.getError()).toBe(cause);
+  });
+
+  it("surfaces Observable filter failures without sending a REQ", async () => {
+    const cause = new Error("filter stream failed");
+    const spy = subscribeSpyTo(relay.req(() => throwError(() => cause), { id: "sub1" }), { expectErrors: true });
+
+    expect(spy.getError()).toBe(cause);
+    expect(server.messages.filter((message: any) => message[0] === "REQ")).toHaveLength(0);
+  });
+
   it("should trigger connection to relay", async () => {
     subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }));
 

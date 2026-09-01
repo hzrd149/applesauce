@@ -989,22 +989,6 @@ export class Relay {
   req(filters: FilterInput, opts?: RelayReqOptions): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
 
-    // Convert filters input into an observable, if its a normal value merge it with NEVER so it never completes
-    let input: Observable<Filter[]>;
-
-    // Create input from filters input
-    if (typeof filters === "function") {
-      const result = filters(this);
-      input = (isObservable(result) ? result : merge(of(result), NEVER)).pipe(map((f) => (Array.isArray(f) ? f : [f])));
-    } else {
-      input = (isObservable(filters) ? filters : merge(of(filters), NEVER)).pipe(
-        map((f) => (Array.isArray(f) ? f : [f])),
-      );
-    }
-
-    // Create an observable that completes when the upstream observable completes
-    const filtersComplete = input.pipe(ignoreElements(), endWith(true));
-
     // CR-02: customRepeatOperator's condition callback (below) is read AFTER the auth retry boundary,
     // once the attempt chain constructed inside the defer below has fully completed — by which point no
     // attempt-scoped local survives. Each attempt writes its own outcome into this call-scoped holder, so
@@ -1015,6 +999,14 @@ export class Relay {
     const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.value[id] ?? [] });
 
     return defer(() => {
+      // Resolve function inputs per cold interaction. Factory side effects and failures therefore occur
+      // on subscription, and share() resets construct fresh filter state instead of reusing stale input.
+      const resolved = typeof filters === "function" ? filters(this) : filters;
+      const input = (isObservable(resolved) ? resolved : merge(of(resolved), NEVER)).pipe(
+        map((value) => (Array.isArray(value) ? value : [value])),
+      );
+      const filtersComplete = input.pipe(ignoreElements(), endWith(true));
+
       // CR-02: one auth attempt owns one send and one terminating listen chain, both constructed fresh
       // on every subscription to this defer — including the internal resubscription the shared auth
       // operator drives from inside its own CLOSED dispatch when a synchronous onAuthRequired handler
