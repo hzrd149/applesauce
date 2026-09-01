@@ -208,6 +208,9 @@ export type RelayCountResponse = Record<string, unknown> & { count: number; appr
 /** The settled value or failure reported by one normalized relay source. */
 export type RelayOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
+/** Progressive per-relay outcomes returned by Group and Pool COUNT. */
+export type RelayCountOutcomes = Record<string, RelayOutcome<RelayCountResponse>>;
+
 /** A minimal signer interface for authenticating with a relay */
 export type AuthSigner = {
   signEvent: (event: EventTemplate) => NostrEvent | Promise<NostrEvent>;

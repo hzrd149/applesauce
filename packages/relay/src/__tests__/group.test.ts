@@ -460,7 +460,13 @@ describe("count", () => {
     // arrives instead of waiting for a completion that structurally never happens.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(spy.getValues()).toEqual([{ "wss://relay1.test": { count: 3 }, "wss://relay2.test": { count: 5 } }]);
+    expect(spy.getValues()).toEqual([
+      { "wss://relay1.test/": { ok: true, value: { count: 3 } } },
+      {
+        "wss://relay1.test/": { ok: true, value: { count: 3 } },
+        "wss://relay2.test/": { ok: true, value: { count: 5 } },
+      },
+    ]);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
 
     spy.unsubscribe();

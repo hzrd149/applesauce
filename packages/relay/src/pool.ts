@@ -30,7 +30,6 @@ import type {
   NegentropySyncStore,
   PoolRelayInput,
   PublishResponse,
-  RelayCountResponse,
   RelayStatus,
 } from "./types.js";
 
@@ -239,7 +238,7 @@ export class RelayPool {
     filters: Filter | Filter[],
     id?: string,
     opts?: Parameters<RelayGroup["count"]>[2],
-  ): Observable<Record<string, RelayCountResponse>> {
+  ): ReturnType<RelayGroup["count"]> {
     // Never filter out offline relays in manual methods
     return this.group(relays, false).count(filters, id, opts);
   }

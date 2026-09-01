@@ -21,6 +21,7 @@ import {
   MonoTypeOperatorFunction,
   Observable,
   of,
+  ReplaySubject,
   scan,
   share,
   shareReplay,
@@ -52,6 +53,7 @@ import {
   PublishOptions,
   PublishResponse,
   RelayCountResponse,
+  RelayCountOutcomes,
   RelayReqMessage,
   RelayOutcome,
   RelayStatus,
@@ -449,14 +451,79 @@ export class RelayGroup {
     filters: Filter | Filter[],
     id = nanoid(),
     opts?: Parameters<Relay["count"]>[2],
-  ): Observable<Record<string, RelayCountResponse>> {
-    return this.relays$.pipe(
-      switchMap((relays) =>
-        combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(filters, id, opts)]))),
-      ),
-      // Ensure a single upstream
-      share(),
+  ): Observable<RelayCountOutcomes> {
+    const EMPTY_TERMINAL = Symbol("EMPTY_TERMINAL");
+    type InternalValue = RelayCountOutcomes | typeof EMPTY_TERMINAL;
+
+    const operation = new Observable<InternalValue>((subscriber) => {
+      const active = new Map<string, { relay: Relay; token: symbol; sub: Subscription }>();
+      const outcomes = new Map<string, RelayOutcome<RelayCountResponse>>();
+      let order: string[] = [];
+      let emitted = false;
+
+      const snapshot = (): RelayCountOutcomes =>
+        Object.fromEntries(order.filter((url) => outcomes.has(url)).map((url) => [url, outcomes.get(url)!]));
+      const finishIfSettled = () => {
+        if (order.every((url) => outcomes.has(url))) {
+          if (order.length === 0) subscriber.next(EMPTY_TERMINAL);
+          subscriber.complete();
+        }
+      };
+
+      const membership = this.relays$.subscribe({
+        next: (relays) => {
+          const latest = new Map<string, Relay>();
+          for (const relay of relays) {
+            const url = normalizeURL(relay.url);
+            latest.delete(url);
+            latest.set(url, relay);
+          }
+          const nextOrder = [...latest.keys()];
+
+          for (const [url, entry] of active) {
+            const relay = latest.get(url);
+            if (!relay || relay !== entry.relay) {
+              entry.sub.unsubscribe();
+              active.delete(url);
+              outcomes.delete(url);
+            }
+          }
+          const changed = order.some((url) => !nextOrder.includes(url)) || order.length !== nextOrder.length;
+          order = nextOrder;
+          if (changed && emitted && outcomes.size > 0) subscriber.next(snapshot());
+          if (order.length === 0) return finishIfSettled();
+
+          for (const [url, relay] of latest) {
+            if (active.has(url) || outcomes.has(url)) continue;
+            const token = Symbol(url);
+            const entry = { relay, token, sub: Subscription.EMPTY };
+            active.set(url, entry);
+            const settle = (outcome: RelayOutcome<RelayCountResponse>) => {
+              if (active.get(url)?.token !== token) return;
+              outcomes.set(url, outcome);
+              emitted = true;
+              subscriber.next(snapshot());
+              finishIfSettled();
+            };
+            entry.sub = defer(() => relay.count(filters, id, opts)).subscribe({
+              next: (value) => settle({ ok: true, value }),
+              error: (error) => settle({ ok: false, error }),
+            });
+          }
+          finishIfSettled();
+        },
+        error: (error) => subscriber.error(error),
+      });
+
+      return () => {
+        membership.unsubscribe();
+        for (const entry of active.values()) entry.sub.unsubscribe();
+      };
+    }).pipe(
+      share({ connector: () => new ReplaySubject<InternalValue>(1), resetOnComplete: false, resetOnError: false, resetOnRefCountZero: true }),
     );
+
+    return operation.pipe(filter((value): value is RelayCountOutcomes => value !== EMPTY_TERMINAL));
   }
 
   /** Negentropy sync events with the relays and an event store */
