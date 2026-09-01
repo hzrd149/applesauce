@@ -21,6 +21,7 @@ import {
   tap,
   throwError,
   timeout,
+  TimeoutError,
 } from "rxjs";
 
 import { describeAuthRequirement, describeWireRequest, truncateForLog } from "../helpers/auth-log.js";
@@ -180,6 +181,70 @@ export function suspendableTimeout<T>(
           settled = true;
           clearTimer();
           subscriber.error(err);
+        },
+        complete: () => {
+          if (settled) return;
+          settled = true;
+          clearTimer();
+          subscriber.complete();
+        },
+      });
+
+      return () => {
+        settled = true;
+        clearTimer();
+        gateSub.unsubscribe();
+        sourceSub.unsubscribe();
+      };
+    });
+}
+
+/**
+ * Bounds the complete source lifetime while pausing elapsed-time accounting during
+ * call-scoped authentication. Unlike {@link suspendableTimeout}, next values never
+ * disarm or reset this clock.
+ */
+export function authSuspendableLifetime<T>(budgetMs: number, gate: AuthPhaseGate): MonoTypeOperatorFunction<T> {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0) return identity;
+
+  return (source) =>
+    new Observable<T>((subscriber) => {
+      let remaining = budgetMs;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let armedAt: number | null = null;
+      let settled = false;
+
+      const clearTimer = () => {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+      };
+      const disarm = () => {
+        if (armedAt !== null) remaining = Math.max(0, remaining - (Date.now() - armedAt));
+        armedAt = null;
+        clearTimer();
+      };
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        clearTimer();
+        gateSub.unsubscribe();
+        sourceSub.unsubscribe();
+        subscriber.error(new TimeoutError());
+      };
+      const arm = () => {
+        if (settled || timer !== null) return;
+        armedAt = Date.now();
+        timer = setTimeout(fail, remaining);
+      };
+
+      const gateSub = gate.active$.subscribe((active) => (active ? disarm() : arm()));
+      const sourceSub = source.subscribe({
+        next: (value) => subscriber.next(value),
+        error: (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimer();
+          subscriber.error(error);
         },
         complete: () => {
           if (settled) return;

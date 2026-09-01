@@ -33,7 +33,7 @@ import {
   toArray,
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
-import { AUTH_PHASE_GATE, AuthPhaseGate, suspendableTimeout } from "./operators/auth-retry.js";
+import { AUTH_PHASE_GATE, AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { isReqProgress, Relay, SyncDirection } from "./relay.js";
 import {
@@ -419,7 +419,7 @@ export class RelayGroup {
       // group analog) *and* the group's own manufactured ERROR bookkeeping value, so neither can
       // prematurely cancel this clock before some relay has actually made progress. A future arm added to
       // GroupReqMessage is a compile error here, not a silent default to "this counts as progress".
-      suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWhen: isGroupReqProgress }),
+      authSuspendableLifetime(opts?.timeout ?? 30_000, gate),
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages
@@ -433,11 +433,18 @@ export class RelayGroup {
 
   /** Open a subscription to all relays with retries ( default 3 retries ) */
   subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<NostrEvent> {
+    const gate = new AuthPhaseGate();
     return this.settledSubscription(
       "subscription",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
-      (relay) => relay.req(filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect }),
+      (relay) =>
+        relay.req(filters, {
+          ...opts,
+          reconnect: opts?.reconnect ?? relay.subscriptionReconnect,
+          [AUTH_PHASE_GATE]: gate,
+        }),
     ).pipe(
+      typeof opts?.timeout === "number" ? authSuspendableLifetime(opts.timeout, gate) : identity,
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages
