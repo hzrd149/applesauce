@@ -93,7 +93,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
   2. Every one of the 14 shipped-source citations of D-01 (`relay.ts` ×10, `operators/auth-retry.ts` ×3, `__tests__/relay.test.ts` ×1) reads consistently with the amended rule.
   3. `pnpm run build` and the full test suite pass with `typescript@^7` as the workspace compiler, with no package needing a TS7-specific code change.
 
-**Plans**: 7/7 plans executed
+**Plans**: 7/8 plans executed
 
 Plans:
 
@@ -264,6 +264,7 @@ Plans:
 - [x] 23-05-PLAN.md — Progressive/HLL outcome documentation
 - [x] 23-06-PLAN.md — Exhaustive Phase 19/21/canonical provenance amendments and stale-claim audit
 - [x] 23-07-PLAN.md — Major changeset, full gates, provenance audit, and Nyquist reconciliation
+- [ ] 23-08-PLAN.md — Gap closure: consistent COUNT docs and reconciled validation evidence
 
 ### Phase 24: Negentropy & Sync Re-layer
 
