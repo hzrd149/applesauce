@@ -202,12 +202,18 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. `RelayGroup.request()` against every-relay-failed raises an error by default instead of completing with zero events.
-  2. `RelayGroup.subscription()` against every-relay-failed raises an error instead of hanging forever — it has an operation clock for the first time.
+  2. `RelayGroup.subscription()` against every-relay-failed raises an error instead of hanging forever; its whole-returned-Observable lifetime clock is opt-in (`timeout: number`), while omitted or `false` remains indefinite.
   3. The raised aggregate exposes each relay's own failure cause keyed by URL, and that per-source-outcome shape is the one shape Phase 23's progressive count record reuses rather than inventing its own.
-  4. Time-to-first-progress and idle-since-last-emission are separately configurable — one early event no longer permanently disarms the group's clock.
-  5. A 60s group condition suspends across a 30s auth wait instead of racing it.
+  4. One public `timeout` bounds the whole returned Observable — 30 seconds by default for request and opt-in for subscription — and events, EOSE, retries, and reconnections never disarm or reset it (Phase 21 D-10 amendment to GROUP-04).
+  5. Every enabled whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, including overlapping relay auth phases (Phase 21 D-10 amendment to GROUP-05).
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 21-01-PLAN.md — Typed aggregate and unified latest-cohort settlement
+- [ ] 21-02-PLAN.md — Auth-suspendable whole-returned-Observable lifetime
+- [ ] 21-03-PLAN.md — Pool propagation and public export/type proofs
+- [ ] 21-04-PLAN.md — Documentation, provenance, major changeset, and final gates
 
 ### Phase 22: REQ Family Re-layer
 
