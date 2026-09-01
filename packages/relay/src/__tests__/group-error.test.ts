@@ -119,6 +119,32 @@ describe("RelayGroupError", () => {
     });
   });
 
+  it("does not duplicate causes after removing and re-adding a URL", () => {
+    const firstStream = new Subject<any>();
+    const secondStream = new Subject<any>();
+    const first = {
+      url: "wss://readded.test/",
+      requestReconnect: false,
+      req: vi.fn(() => firstStream),
+    } as unknown as Relay;
+    const second = {
+      url: "wss://readded.test",
+      requestReconnect: false,
+      req: vi.fn(() => secondStream),
+    } as unknown as Relay;
+    const relays = new BehaviorSubject([first]);
+    const spy = subscribeSpyTo(new RelayGroup(relays).subscription({ kinds: [1] }), { expectErrors: true });
+
+    relays.next([]);
+    relays.next([second]);
+    const cause = new Error("re-added");
+    secondStream.error(cause);
+
+    const error = spy.getError() as RelayGroupError;
+    expect(error.errors).toEqual([cause]);
+    expect(Object.keys(error.outcomes)).toEqual([normalizeURL(second.url)]);
+  });
+
   it("gives all-failed precedence over custom completion on the final error", () => {
     const streams = [new Subject<any>(), new Subject<any>()];
     const relays = streams.map((stream, index) => ({

@@ -225,7 +225,7 @@ export class RelayGroup {
       const messages = new Subject<GroupReqMessage>();
       const relaySubscriptions = new Map<string, { relay: Relay; subscription: Subscription }>();
       const states = new Map<string, CohortState>();
-      const order: string[] = [];
+      let order: string[] = [];
       let settled = false;
 
       const finish = (kind: "complete" | "error", error?: unknown) => {
@@ -266,6 +266,7 @@ export class RelayGroup {
           if (settled) return;
           const normalized = new Map<string, Relay>();
           for (const relay of relays) normalized.set(normalizeURL(relay.url), relay);
+          order = [...normalized.keys()];
 
           for (const url of [...states.keys()]) {
             const activeRelay = normalized.get(url);
@@ -279,7 +280,6 @@ export class RelayGroup {
           for (const url of normalized.keys()) {
             if (states.has(url)) continue;
             states.set(url, { status: "pending" });
-            order.push(url);
           }
           // Install the complete replacement cohort before subscribing any new inner: a
           // synchronous failure must be evaluated against every newly-active URL.
