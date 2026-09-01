@@ -113,7 +113,7 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([reqFilter], { id: reqId, onAuthRequired, authTimeout: 500 }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([reqFilter], { id: reqId, onAuthRequired, authTimeout: 500 }), {
         expectErrors: true,
       });
 
@@ -201,7 +201,7 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
         expectErrors: true,
       });
 
@@ -240,7 +240,7 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
         expectErrors: true,
       });
 
@@ -285,7 +285,7 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 100 }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 100 }), {
         expectErrors: true,
       });
 
@@ -330,7 +330,7 @@ describe("auth lifecycle logging (14-06)", () => {
     const hostileChallenge = "chal-%o-%O-100%-%s";
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
         expectErrors: true,
       });
 
@@ -358,7 +358,7 @@ describe("auth lifecycle logging (14-06)", () => {
     const hostileReason = `auth-required: denied\n  t:auth Relay accepted AUTH for ${forgedPubkey}: ok`;
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, authTimeout: false }), {
         expectErrors: true,
       });
 
@@ -404,7 +404,7 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired, authRetries }), {
+      const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, onAuthRequired, authRetries }), {
         expectErrors: true,
       });
 
@@ -449,7 +449,7 @@ describe("auth lifecycle logging (14-06)", () => {
       await relay.authenticate(user);
     });
 
-    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: reqId, onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.reqLifecycle([{ kinds: [1] }], { id: reqId, onAuthRequired }), { expectErrors: true });
 
     await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
     server.send(["AUTH", "challenge-reconnect-authenticated"]);
@@ -506,7 +506,7 @@ describe("auth lifecycle logging (14-06)", () => {
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
       const reqSpy = subscribeSpyTo(
-        relay.req([{ kinds: [1] }], { id: reqId, waitForAuth: userA.pubkey, authTimeout: false }),
+        relay.reqLifecycle([{ kinds: [1] }], { id: reqId, waitForAuth: userA.pubkey, authTimeout: false }),
         { expectErrors: true },
       );
       const eventPromise = relay

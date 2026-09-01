@@ -418,7 +418,7 @@ describe("RAUTH-09: group status$ surfaces informational auth-required flags (13
   it("authRequiredForRead flips true on the affected relay's entry in group.status$", async () => {
     const spy = subscribeSpyTo(group.status$);
 
-    group.req([{ kinds: [1] }], { id: "sub1", onAuthRequired: vi.fn() }).subscribe({ error: () => {} });
+    group.req([{ kinds: [1] }], { id: "sub1" }).subscribe({ error: () => {} });
 
     await expect(mockRelay1).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     mockRelay1.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
