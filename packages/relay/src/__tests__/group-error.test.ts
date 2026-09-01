@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { normalizeURL } from "applesauce-core/helpers/url";
-import { BehaviorSubject, Observable, Subject, filter, of, throwError } from "rxjs";
+import { BehaviorSubject, Observable, Subject, filter, map, of, scan, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
@@ -99,7 +99,14 @@ describe("RelayGroupError", () => {
     const spy = subscribeSpyTo(
       new RelayGroup(relays).request(
         { kinds: [1] },
-        { complete: (source) => source.pipe(filter((message) => message.type === "ERROR")) },
+        {
+          complete: (source) =>
+            source.pipe(
+              filter((message) => message.type === "ERROR"),
+              scan((count) => count + 1, 0),
+              map((count) => count === 2),
+            ),
+        },
       ),
       { expectErrors: true },
     );
