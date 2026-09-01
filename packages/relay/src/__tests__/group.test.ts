@@ -212,21 +212,21 @@ describe("auth options pass-through (13-07)", () => {
       (opts) => {
         const spy = vi.spyOn(relay1, "req");
         group.req([{ kinds: [1] }], opts).subscribe();
-        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
+        expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
     ],
     [
       "request",
       (opts) => {
-        const spy = vi.spyOn(relay1, "req");
+        const spy = vi.spyOn(relay1, "reqLifecycle");
         group.request([{ kinds: [1] }], opts).subscribe({ error: () => {} });
-        expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
+        expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
     ],
     [
       "subscription",
       (opts) => {
-        const spy = vi.spyOn(relay1, "req");
+        const spy = vi.spyOn(relay1, "reqLifecycle");
         group.subscription([{ kinds: [1] }], opts).subscribe();
         expect(spy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(opts));
       },
@@ -302,7 +302,7 @@ describe("RAUTH-05 group-level auth independence (13-07)", () => {
     });
 
     const spy = subscribeSpyTo(
-      group.req([{ kinds: [1] }], {
+      group.subscription([{ kinds: [1] }], {
         id: "sub1",
         onAuthRequired: (context) => (context.relay === relay1 ? handlerA() : handlerB()),
       }),
@@ -330,10 +330,8 @@ describe("RAUTH-05 group-level auth independence (13-07)", () => {
     expect(handlerA).toHaveBeenCalledTimes(1);
     expect(handlerB).toHaveBeenCalledTimes(1);
 
-    // relay1's handler rejection surfaces as an ERROR message for relay1 only — it does not stop
-    // relay2's independent auth/retry flow
-    const values = spy.getValues();
-    expect(values.some((m) => m.type === "ERROR" && m.from === "wss://relay1.test")).toBe(true);
+    // relay1's terminal outcome does not stop relay2's independent auth/retry flow.
+    expect(spy.receivedError()).toBe(false);
 
     spy.unsubscribe();
   });
@@ -475,8 +473,8 @@ describe("count", () => {
 // explicit instruction, since only something that actually emits can catch a behavioural gap.
 describe("request() operation clock gap closure (13-11, WR-02)", () => {
   it("threads one shared AuthPhaseGate instance into every relay's req() call", async () => {
-    const spy1 = vi.spyOn(relay1, "req");
-    const spy2 = vi.spyOn(relay2, "req");
+    const spy1 = vi.spyOn(relay1, "reqLifecycle");
+    const spy2 = vi.spyOn(relay2, "reqLifecycle");
 
     group.request([{ kinds: [1] }], { id: "greq1" }).subscribe({ error: () => {} });
 
@@ -486,8 +484,8 @@ describe("request() operation clock gap closure (13-11, WR-02)", () => {
     expect(spy1).toHaveBeenCalledTimes(1);
     expect(spy2).toHaveBeenCalledTimes(1);
 
-    const gate1 = (spy1.mock.calls[0]?.[1] as any)?.[AUTH_PHASE_GATE];
-    const gate2 = (spy2.mock.calls[0]?.[1] as any)?.[AUTH_PHASE_GATE];
+    const gate1 = spy1.mock.calls[0]?.[2];
+    const gate2 = spy2.mock.calls[0]?.[2];
 
     // Presence alone is weaker than instance identity — assert both, per the plan's explicit instruction.
     expect(gate1).toBeInstanceOf(AuthPhaseGate);

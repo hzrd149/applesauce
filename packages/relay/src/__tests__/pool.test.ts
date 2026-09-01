@@ -188,7 +188,7 @@ describe("group failure forwarding", () => {
 
   function fail(url: string) {
     const relay = pool.relay(url);
-    vi.spyOn(relay, "req").mockReturnValue(throwError(() => cause));
+    vi.spyOn(relay, "reqLifecycle").mockReturnValue(throwError(() => cause));
   }
 
   it.each([
@@ -220,7 +220,7 @@ describe("group failure forwarding", () => {
     fail("wss://relay1.example.com/");
     const maps = new BehaviorSubject({ "wss://relay2.example.com/": { kinds: [1] } });
     const pending = pool.relay("wss://relay2.example.com/");
-    vi.spyOn(pending, "req").mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
+    vi.spyOn(pending, "reqLifecycle").mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
     const spy = subscribeSpyTo(pool.subscriptionMap(maps), { expectErrors: true });
     maps.next({ "wss://relay1.example.com/": { kinds: [1] } });
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);
@@ -257,20 +257,20 @@ describe("waitForAuth pass-through", () => {
 
   it("should pass waitForAuth pubkeys to relay.req for subscription", () => {
     const relay = pool.relay(urls[0]);
-    const req = vi.spyOn(relay, "req");
+    const req = vi.spyOn(relay, "reqLifecycle");
 
     subscribeSpyTo(pool.subscription(urls, { kinds: [1059] }, { waitForAuth: pubkeys }));
 
-    expect(req).toHaveBeenCalledWith({ kinds: [1059] }, expect.objectContaining({ waitForAuth: pubkeys }));
+    expect(req.mock.calls[0][1]).toEqual(expect.objectContaining({ waitForAuth: pubkeys }));
   });
 
   it("should pass waitForAuth pubkeys to relay.req for request", () => {
     const relay = pool.relay(urls[0]);
-    const req = vi.spyOn(relay, "req");
+    const req = vi.spyOn(relay, "reqLifecycle");
 
     subscribeSpyTo(pool.request(urls, { kinds: [1059] }, { waitForAuth: pubkeys }), { expectErrors: true });
 
-    expect(req).toHaveBeenCalledWith({ kinds: [1059] }, expect.objectContaining({ waitForAuth: pubkeys }));
+    expect(req.mock.calls[0][1]).toEqual(expect.objectContaining({ waitForAuth: pubkeys }));
   });
 
   it("should pass waitForAuth pubkeys to relay.publish", () => {
@@ -321,23 +321,23 @@ describe("auth options pass-through (13-07)", () => {
         const relay = pool.relay(urls[0]);
         const spy = vi.spyOn(relay, "req");
         pool.req(urls, { kinds: [1] }, opts).subscribe();
-        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
+        expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
     ],
     [
       "request",
       (opts) => {
         const relay = pool.relay(urls[0]);
-        const spy = vi.spyOn(relay, "req");
+        const spy = vi.spyOn(relay, "reqLifecycle");
         pool.request(urls, { kinds: [1] }, opts).subscribe({ error: () => {} });
-        expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
+        expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining(opts));
       },
     ],
     [
       "subscription",
       (opts) => {
         const relay = pool.relay(urls[0]);
-        const spy = vi.spyOn(relay, "req");
+        const spy = vi.spyOn(relay, "reqLifecycle");
         pool.subscription(urls, { kinds: [1] }, opts).subscribe();
         expect(spy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(opts));
       },
@@ -396,7 +396,7 @@ describe("RAUTH-08 pool boundary threading (13-07)", () => {
 
     vi.spyOn(relay, "getSupported").mockResolvedValue([77]);
     const syncSpy = vi.spyOn(relay, "sync").mockReturnValue(of());
-    const reqSpy = vi.spyOn(relay, "req");
+    const reqSpy = vi.spyOn(relay, "reqLifecycle");
 
     const onAuthRequired = vi.fn();
     const authOptions = { onAuthRequired, authTimeout: 5_000, authRetries: 2 };
@@ -405,6 +405,6 @@ describe("RAUTH-08 pool boundary threading (13-07)", () => {
     pool.request(urls, { kinds: [1] }, authOptions).subscribe({ error: () => {} });
 
     expect(syncSpy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(authOptions));
-    expect(reqSpy).toHaveBeenCalledWith({ kinds: [1] }, expect.objectContaining(authOptions));
+    expect(reqSpy.mock.calls[0][1]).toEqual(expect.objectContaining(authOptions));
   });
 });

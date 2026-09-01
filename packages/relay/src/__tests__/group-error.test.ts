@@ -4,7 +4,7 @@ import { BehaviorSubject, Observable, Subject, filter, map, of, scan, throwError
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RelayGroup, RelayGroupError } from "../group.js";
-import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
+import { AuthPhaseGate } from "../operators/auth-retry.js";
 import { Relay } from "../relay.js";
 
 function failingRelay(url: string, error: unknown): Relay {
@@ -248,24 +248,19 @@ describe("whole-operation timeout", () => {
     expect(spy.getError()).not.toBeInstanceOf(RelayGroupError);
   });
 
-  it("keeps subscription indefinite by default and bounds an explicit lifetime", () => {
+  it("keeps subscription indefinite because duration bounds are caller-owned", () => {
     vi.useFakeTimers();
     const stream = new Subject<any>();
     const relay = {
       url: "wss://subscription-timeout.test",
       subscriptionReconnect: false,
-      req: vi.fn(() => stream),
+      reqLifecycle: vi.fn(() => stream),
     } as unknown as Relay;
-    const indefinite = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }, { timeout: false }));
+    const indefinite = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }));
     vi.advanceTimersByTime(60_000);
     expect(indefinite.receivedError()).toBe(false);
     indefinite.unsubscribe();
 
-    const bounded = subscribeSpyTo(new RelayGroup([relay]).subscription({ kinds: [1] }, { timeout: 50 }), {
-      expectErrors: true,
-    });
-    vi.advanceTimersByTime(50);
-    expect(bounded.receivedError()).toBe(true);
   });
 
   it("uses one gate for all relays and pauses until overlapping auth phases end", () => {
@@ -275,8 +270,8 @@ describe("whole-operation timeout", () => {
     const relays = streams.map((stream, index) => ({
       url: `wss://auth-${index}.test`,
       requestReconnect: false,
-      req: vi.fn((_filters, opts) => {
-        gates.push(opts[AUTH_PHASE_GATE]);
+      reqLifecycle: vi.fn((_filters, _opts, gate) => {
+        gates.push(gate);
         return stream;
       }),
     })) as unknown as Relay[];
