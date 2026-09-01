@@ -228,7 +228,7 @@ Plans:
   3. `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry; `req()` owns none of the three.
   4. The reentrancy/retry-counting regression tests closed by plans 13-08..13-14 (the per-attempt `defer` factory, `resubscribeHolder`, `isReqProgress`'s synthetic-`OPEN` exclusion) fail RED against a deliberate revert and pass GREEN against the re-layered code.
 
-**Plans**: 8/8 plans executed
+**Plans**: 8/9 plans executed
 
 Plans:
 
@@ -240,6 +240,7 @@ Plans:
 - [x] 22-06-PLAN.md — Complete Phase 21 artifact supersession and stale-claim audit
 - [x] 22-07-PLAN.md — Canonical docs and exact two-changeset validation
 - [x] 22-08-PLAN.md — Full phase gate and Nyquist evidence reconciliation
+- [ ] 22-09-PLAN.md — Gap closure: reproducible RED→GREEN evidence for three REQ-04 mutations
 
 ### Phase 23: Group count() Isolation
 
