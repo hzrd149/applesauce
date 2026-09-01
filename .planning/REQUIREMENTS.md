@@ -33,7 +33,7 @@ findings changed the plan and are marked **[research]** below.
 - [x] **REQ-01**: `req()` is a single REQ interaction — `reconnect`, `resubscribe`, and the auth retry no longer live there
 - [x] **REQ-02**: `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry, joining the per-method policy defaults they already supply
 - [x] **REQ-03**: `subscription()` owns the re-establish loop, and a re-established subscription's observable behavior is specified: whether the REQ id is reused or minted fresh, whether the consumer sees a second `OPEN`, and whether duplicate filtering holds across the boundary
-- [x] **REQ-04**: The defects plans 13-08..13-14 closed (the per-attempt `defer` factory, the call-scoped `resubscribeHolder`, `isReqProgress`'s exclusion of the synthetic `OPEN`) are re-verified RED→GREEN against the re-layered code, not assumed to have survived a green suite
+- [x] **REQ-04**: The applicable Phase 13 invariants (fresh per-attempt `defer`, call-scoped clean-CLOSED repeat state, and synthetic `OPEN` exclusion) are re-verified RED→GREEN; the former manufactured-Group-ERROR progress oracle is superseded/non-applicable because the accepted `authSuspendableLifetime` whole-operation clock consumes no values (Phase 22 gap closure, 2026-09-01)
 - [x] **REQ-05**: `RelayReqOptions` sheds `reconnect`/`resubscribe`/the auth options while `RelayRequestOptions` and `RelaySubscriptionOptions` declare them, so passing `reconnect` to `req()` is a type error
 
 ### AUTH Family

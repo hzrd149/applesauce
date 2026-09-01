@@ -73,14 +73,7 @@ export class RelayGroupError extends AggregateError {
 
 type CohortState = { status: "pending" | "live" | "eose" | "failed"; error?: unknown };
 
-/**
- * The group-level progress predicate (CR-02). `GroupReqErrorMessage` is a value the group manufactures
- * for itself in `internalSubscription`'s `catchError` when a relay's stream fails — it means that relay
- * produced *nothing*, so it is bookkeeping rather than progress, exactly as `req()`'s synthetic `OPEN`
- * is at the relay layer (WR-01). Narrowing instead of casting keeps the compiler responsible for this
- * question: a new arm added to `GroupReqMessage` fails to typecheck here rather than silently counting
- * as progress.
- */
+/** Legacy exported progress classifier retained for compatibility (Phase 13 residual 999.18 WR-07). */
 export function isGroupReqProgress(message: GroupReqMessage): boolean {
   if (message.type === "ERROR") return false;
   return isReqProgress(message);
@@ -416,12 +409,8 @@ export class RelayGroup {
           : relay.req(filters, opts as GroupReqOptions),
       complete,
     ).pipe(
-      // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
-      // clock — do NOT "simplify" this back to a bare rxjs timeout(), which cannot pause. isGroupReqProgress
-      // (CR-02) is total over GroupReqMessage with no cast: it excludes req()'s synthetic OPEN (WR-01's
-      // group analog) *and* the group's own manufactured ERROR bookkeeping value, so neither can
-      // prematurely cancel this clock before some relay has actually made progress. A future arm added to
-      // GroupReqMessage is a compile error here, not a silent default to "this counts as progress".
+      // Suspend the whole-operation clock across auth. This lifetime consumes no values, so neither
+      // synthetic OPEN nor manufactured ERROR can disarm or reset it.
       authSuspendableLifetime(opts?.timeout ?? 30_000, gate),
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),

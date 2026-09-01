@@ -554,11 +554,12 @@ describe("request() operation clock gap closure (13-11, WR-02)", () => {
 // cancelled the operation clock. These sit beside the 13-11 tests above and follow the same construction
 // (real Relay instances against vitest-websocket-mock).
 describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must not satisfy the clock", () => {
-  it("CR-02: errors on the declared timeout instead of hanging when one relay errors and the other falls silent", async () => {
+  it("CR-02: manufactured ERROR leaves the whole-operation timeout armed while another relay is silent", async () => {
     // reconnect: false so relay1's connection error surfaces to the group's own ERROR bookkeeping
     // immediately, rather than first working through relay.req()'s own (unrelated) connection-retry
     // backoff — isolates the CR-02 property (does ERROR satisfy the clock's firstWhen gate) from
     // relay-level reconnect timing, which is not this test's concern.
+    const startedAt = Date.now();
     const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "greq6", timeout: 100, reconnect: false }), {
       expectErrors: true,
     });
@@ -573,6 +574,8 @@ describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must
     await spy.onError();
 
     expect(spy.getError()).toBeInstanceOf(Error);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(90);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
     expect(spy.receivedComplete()).toBe(false);
   });
 

@@ -38,7 +38,7 @@ created: 2026-09-01
 | 22-03-01 | 3 | REQ-02, REQ-03 | Group settlement/dedupe across re-establishment and immediate failure | Group/group-error suites | passed |
 | 22-03-02 | 3 | REQ-03, REQ-05 | All Pool forwarding families inherit Group without timeout | Pool suite + build | passed |
 | 22-04-01 | 4 | REQ-02 | Sync RECEIVE synchronous auth resend and EOSE completion | relay suite | passed |
-| 22-04-02 | 4 | REQ-04 | Four deliberate mutations each fail causally then restore GREEN | summary evidence + restored GREEN | passed |
+| 22-04-02 | 4 | REQ-04 | Applicable D-19/D-20 and OPEN mutations fail causally; superseded Group ERROR oracle has behavioral/static replacement | exact summary evidence + restored GREEN | passed |
 | 22-05-01 | 5 | REQ-05 | Positive/negative Relay, Group, Pool option surface | explicit type-test project | passed |
 | 22-06-01 | 6 | REQ-02, REQ-03 | Phase 21 design artifacts carry D-23/D-24 supersession | five-file amendment search | passed |
 | 22-06-02 | 6 | REQ-02, REQ-03 | All 21-01..04 PLAN/SUMMARY files amended | eight-file amendment loop | passed |
@@ -62,7 +62,7 @@ Each owning task writes failing evidence first; no task relies on manual-only ve
 - Hoist fresh attempt construction outside `defer`: synchronous auth resend must lose reply/listener observation.
 - Move the clean-CLOSED repeat holder into attempt scope: the next enabled repeat must not write.
 - Count synthetic OPEN as progress: the exact auth retry bound must fail.
-- Count manufactured Group ERROR as progress: timeout/settlement evidence must fail.
+- Manufactured Group ERROR progress oracle: superseded/non-applicable because whole-lifetime timing ignores values; use behavioral deadline and static no-consumer proof.
 - Restore a subscription timeout field/operator: compiler-negative or static/runtime no-clock evidence must fail.
 - Reintroduce an unqualified Phase 21 subscription-timeout claim: the directory-wide provenance audit must fail.
 - Malform either changeset package count, bump, paragraph count, list, fence, or sentence count: the Node parser must fail.
@@ -75,7 +75,7 @@ Each owning task writes failing evidence first; no task relies on manual-only ve
 | REQ | REQ-01 | Raw req owns no auth/reconnect/repeat | 01, 07 | COVERED | Wire, type, docs/release |
 | REQ | REQ-02 | High-level methods own policy | 02-04, 06-08 | COVERED | Relay, Group, sync, provenance |
 | REQ | REQ-03 | Stable observable re-establishment contract | 02, 03, 06-08 | COVERED | ID/OPEN/EOSE/dedupe |
-| REQ | REQ-04 | Four RED→GREEN regression proofs | 04, 08 | COVERED | Mutation evidence reconciled |
+| REQ | REQ-04 | Three applicable RED→GREEN proofs plus superseded Group ERROR behavioral/static proof | 04, 08, 09 | COVERED | Exact evidence reconciled |
 | REQ | REQ-05 | Positive option types | 01-03, 05, 07 | COVERED | Compiler and release contract |
 | RESEARCH | — | Fresh attempts and call-scoped state | 01, 02, 04 | COVERED | Includes mutation oracle |
 | RESEARCH | — | Lifecycle-before-mapping and positive terminal classification | 01-03 | COVERED | Relay and Group paths |
@@ -85,7 +85,7 @@ Each owning task writes failing evidence first; no task relies on manual-only ve
 | CONTEXT | D-10..D-13 | Persistent subscription | 02, 03 | COVERED | Re-establish/dedupe/no timeout |
 | CONTEXT | D-14..D-16 | Positive option surfaces | 01-03, 05 | COVERED | Exact compiler surface |
 | CONTEXT | D-17..D-18 | Private compositor and sync | 02-04 | COVERED | Metadata and auth preserved |
-| CONTEXT | D-19..D-22 | Four mutations and exact proofs | 04, 08 | COVERED | Recorded RED/GREEN |
+| CONTEXT | D-19..D-22 | Applicable mutations and amended whole-lifetime proof | 04, 08, 09 | COVERED | Group ERROR mutation superseded/non-applicable |
 | CONTEXT | D-23..D-26 | Full reversal/docs/changesets | 03, 05-08 | COVERED | Every Phase 21 artifact included |
 
 Excluded by locked deferral: Phase 24 sync-policy consolidation and direct Relay subscription deduplication.

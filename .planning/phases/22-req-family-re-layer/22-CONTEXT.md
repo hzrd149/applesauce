@@ -44,8 +44,8 @@ Make `req()` a readiness-aware raw REQ interaction with no auth/reconnect/repeat
 ### Regression and Mutation Proof
 - **D-19:** Re-prove the Phase 13 per-attempt defer invariant by deliberate revert: removing fresh attempt construction must make a synchronous auth handler lose the resent REQ/listener, then pass GREEN restored.
 - **D-20:** Re-prove call-scoped clean-CLOSED repeat state: moving the resubscribe holder into attempt scope must prevent the next enabled repeat, then pass GREEN restored.
-- **D-21:** Re-prove progress classification: counting synthetic OPEN as progress must break exact auth retry bounds; counting manufactured Group ERROR as progress must break request settlement/timeout evidence. Do not trust a merely green relocated suite.
-- **D-22:** Add exact wire/listener/CLOSE counts, positive reconnect allowlist, terminal single-attempt proof, independent concurrent gates/counters, stable ID, hidden OPEN, repeated EOSE, and Group/Pool dedupe across re-establishment.
+- **D-21:** Re-prove synthetic OPEN progress classification against exact auth retry bounds. **Gap-closure amendment (2026-09-01):** the manufactured Group ERROR mutation is superseded/non-applicable after adoption of `authSuspendableLifetime`, whose whole-operation clock consumes no values; replace that obsolete oracle with behavioral ERROR-plus-silence deadline evidence and a static no-consumer proof.
+- **D-22:** Add exact wire/listener/CLOSE counts, positive reconnect allowlist, terminal single-attempt proof, independent concurrent gates/counters, stable ID, hidden OPEN, repeated EOSE, and Group/Pool dedupe across re-establishment. The legacy exported `isGroupReqProgress` remains only for compatibility pending Phase 13 residual backlog 999.18 WR-07 and is not timing-critical.
 
 ### Phase 21 Reversal, Documentation, and Release
 - **D-23:** Explicitly amend Phase 21 provenance, requirements, Roadmap, docs, tests, and release metadata: remove the newly added Group/Pool subscription timeout and `authSuspendableLifetime` wrapper while preserving request whole-timeout/auth suspension and immediate Group/Pool total-failure settlement.
