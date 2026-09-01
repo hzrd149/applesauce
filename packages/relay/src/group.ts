@@ -33,7 +33,7 @@ import {
   toArray,
 } from "rxjs";
 import { type ReconcileFunction } from "./negentropy.js";
-import { AUTH_PHASE_GATE, AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
+import { AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { isReqProgress, Relay, SyncDirection } from "./relay.js";
 import {
@@ -410,12 +410,9 @@ export class RelayGroup {
       "request",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        relay.req(
-          filters,
-          // Manually default to relays reconnect config; thread the shared gate so req()'s auth phase
-          // suspends this call's own operation clock below.
-          { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect, [AUTH_PHASE_GATE]: gate },
-        ),
+        typeof relay.reqLifecycle === "function"
+          ? relay.reqLifecycle(filters, { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect }, gate)
+          : relay.req(filters, opts as GroupReqOptions),
       complete,
     ).pipe(
       // D-15: suspend the operation clock across the auth phase so it does not race authTimeout's own
@@ -438,18 +435,14 @@ export class RelayGroup {
 
   /** Open a subscription to all relays with retries ( default 3 retries ) */
   subscription(filters: FilterInput, opts?: GroupSubscriptionOptions): Observable<NostrEvent> {
-    const gate = new AuthPhaseGate();
     return this.settledSubscription(
       "subscription",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        relay.req(filters, {
-          ...opts,
-          reconnect: opts?.reconnect ?? relay.subscriptionReconnect,
-          [AUTH_PHASE_GATE]: gate,
-        }),
+        typeof relay.reqLifecycle === "function"
+          ? relay.reqLifecycle(filters, { ...opts, reconnect: opts?.reconnect ?? relay.subscriptionReconnect })
+          : relay.req(filters, opts as GroupReqOptions),
     ).pipe(
-      typeof opts?.timeout === "number" ? authSuspendableLifetime(opts.timeout, gate) : identity,
       // Filter only for event messages
       filter((message) => message.type === "EVENT"),
       // Extract event messages
