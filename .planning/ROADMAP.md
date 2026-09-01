@@ -74,7 +74,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper (completed 2026-08-21)
 - [x] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer (completed 2026-08-31)
 - [x] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever (completed 2026-09-01)
-- [ ] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop
+- [x] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop (completed 2026-09-01)
 - [ ] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively
 - [ ] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions
 - [ ] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work
@@ -228,7 +228,7 @@ Plans:
   3. `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry; `req()` owns none of the three.
   4. The reentrancy/retry-counting regression tests closed by plans 13-08..13-14 (the per-attempt `defer` factory, `resubscribeHolder`, `isReqProgress`'s synthetic-`OPEN` exclusion) fail RED against a deliberate revert and pass GREEN against the re-layered code.
 
-**Plans**: 8/9 plans executed
+**Plans**: 9/9 plans complete
 
 Plans:
 
@@ -240,7 +240,7 @@ Plans:
 - [x] 22-06-PLAN.md — Complete Phase 21 artifact supersession and stale-claim audit
 - [x] 22-07-PLAN.md — Canonical docs and exact two-changeset validation
 - [x] 22-08-PLAN.md — Full phase gate and Nyquist evidence reconciliation
-- [ ] 22-09-PLAN.md — Gap closure: reproducible RED→GREEN evidence for three REQ-04 mutations
+- [x] 22-09-PLAN.md — Gap closure: reproducible RED→GREEN evidence for three REQ-04 mutations
 
 ### Phase 23: Group count() Isolation
 
