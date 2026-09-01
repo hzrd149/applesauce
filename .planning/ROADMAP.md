@@ -228,7 +228,15 @@ Plans:
   3. `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry; `req()` owns none of the three.
   4. The reentrancy/retry-counting regression tests closed by plans 13-08..13-14 (the per-attempt `defer` factory, `resubscribeHolder`, `isReqProgress`'s synthetic-`OPEN` exclusion) fail RED against a deliberate revert and pass GREEN against the re-layered code.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+
+- [ ] 22-01-PLAN.md — Raw readiness-aware single REQ interaction and exact teardown
+- [ ] 22-02-PLAN.md — Private lifecycle compositor and Relay request/subscription policy
+- [ ] 22-03-PLAN.md — Group/Pool re-establishment, dedupe, settlement, and no-timeout runtime
+- [ ] 22-04-PLAN.md — Sync RECEIVE preservation and four mutation proofs
+- [ ] 22-05-PLAN.md — Exact public types, Phase 21 reversal, docs, changesets, and full gates
 
 ### Phase 23: Group count() Isolation
 
