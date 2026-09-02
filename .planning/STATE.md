@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 24
-current_phase_name: Negentropy & Sync Re-layer
-status: complete
-stopped_at: Phase 24 verified complete; ready for Phase 25 transition
-last_updated: "2026-09-02T18:15:00.000Z"
+current_phase: 25
+current_phase_name: Ecosystem Riders — React 19 & @snort/worker-relay v2
+status: discussing
+stopped_at: Phase 25 discussion started (Area 1 of 4)
+last_updated: "2026-09-02T19:05:08.843Z"
 last_activity: 2026-09-02
-last_activity_desc: Phase 24 verified complete after metadata reconciliation
+last_activity_desc: Phase 24 complete, transitioned to Phase 25
 progress:
   total_phases: 11
   completed_phases: 9
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 24 — Negentropy & Sync Re-layer verified complete; ready to transition to Phase 25
+**Current focus:** Phase 25 — Ecosystem Riders — React 19 & @snort/worker-relay v2
 
 ## Current Position
 
-Phase: 24 — Negentropy & Sync Re-layer
-Plan: 11 of 11 complete
-Status: Verified complete
-Last activity: 2026-09-02 — Phase 24 verified complete after metadata reconciliation
+Phase: 25 — Ecosystem Riders — React 19 & @snort/worker-relay v2
+Plan: Not started
+Status: discussing
+Last activity: 2026-09-02 — Phase 24 complete, transitioned to Phase 25
 
 Progress: [██████████] 100%
 
@@ -477,8 +477,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-02T17:32:41.271Z
-Stopped at: Completed 24-11-PLAN.md; no Phase 25 transition
+Last session: 2026-09-02T19:05:00.369Z
+Stopped at: Phase 25 discussion started (Area 1 of 4)
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
