@@ -820,6 +820,33 @@ function throwError(error: Error = new Error("sync failed")): Observable<never> 
 describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetime (WR-03/WR-04)", () => {
   const filter: Filter = { kinds: [1], authors: [user.pubkey] };
 
+  it("re-arms fallback timeout after a non-auth failure with an open auth phase", async () => {
+    vi.useFakeTimers();
+    try {
+      const eventStore = new EventStore();
+      const request = vi.fn().mockReturnValue(NEVER);
+      const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) =>
+        new Observable((observer) => {
+          void opts.onAuthRequired?.(authContext());
+          observer.error(new Error("transport failed"));
+        }),
+      );
+      const loader = createSyncLoader({ eventStore, request, getSupported: vi.fn().mockResolvedValue([77]), sync });
+      const statuses: SyncLoaderStatus[] = [];
+      const { status$, events$ } = loader({ relays: ["wss://relay/"], filter, timeout: 20, authTimeout: false });
+      status$.subscribe((status) => statuses.push(status));
+      events$.subscribe();
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(request).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(statuses.at(-1)?.relays["wss://relay/"].state).toBe("error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("suspends the stall guard for a handler-less caller when the relay requires auth (WR-03)", async () => {
     const eventStore = new EventStore();
     const a = user.note("a");
