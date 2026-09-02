@@ -4,11 +4,11 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 24
 current_phase_name: Negentropy & Sync Re-layer
-status: planning
-stopped_at: Completed 24-11-PLAN.md; no Phase 25 transition
-last_updated: "2026-09-02T17:32:41.297Z"
+status: complete
+stopped_at: Phase 24 verified complete; ready for Phase 25 transition
+last_updated: "2026-09-02T18:15:00.000Z"
 last_activity: 2026-09-02
-last_activity_desc: Phase 23 complete, transitioned to Phase 24
+last_activity_desc: Phase 24 verified complete after metadata reconciliation
 progress:
   total_phases: 11
   completed_phases: 9
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 21 — Group Error Surface complete; awaiting explicit transition
+**Current focus:** Phase 24 — Negentropy & Sync Re-layer verified complete; ready to transition to Phase 25
 
 ## Current Position
 
 Phase: 24 — Negentropy & Sync Re-layer
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-02 — Phase 23 complete, transitioned to Phase 24
+Plan: 11 of 11 complete
+Status: Verified complete
+Last activity: 2026-09-02 — Phase 24 verified complete after metadata reconciliation
 
 Progress: [██████████] 100%
 

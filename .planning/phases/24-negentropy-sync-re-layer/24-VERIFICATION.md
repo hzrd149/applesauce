@@ -1,10 +1,17 @@
 ---
 phase: 24-negentropy-sync-re-layer
-verified: 2026-09-02T18:00:00Z
+verified: 2026-09-02T18:15:00Z
 status: passed
-score: 17/17 must-haves verified
+score: 18/18 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
+re_verification:
+  previous_status: gaps_found
+  previous_score: 17/18
+  gaps_closed:
+    - "STATE.md consistently records the current Phase 24 completion position."
+  gaps_remaining: []
+  regressions: []
 resolved_gaps:
   - truth: "Canonical requirements provenance records SYNC-01 through SYNC-04 and RESID-03 as completed."
     status: resolved
@@ -22,9 +29,9 @@ resolved_gaps:
 # Phase 24: Negentropy & Sync Re-layer Verification Report
 
 **Phase Goal:** Multi-round negentropy reaches the wire at protocol speed while `sync()` owns coherent auth, reconnect, bounded transfers, cancellation, and honest bidirectional outcomes without a built-in timeout.
-**Verified:** 2026-09-02T18:00:00Z
+**Verified:** 2026-09-02T18:15:00Z
 **Status:** passed
-**Re-verification:** Yes — Plan 24-11 reconciled canonical completion from existing verified evidence
+**Re-verification:** Yes — canonical requirements and exceptional metadata-only STATE closure verified
 
 ## Goal Achievement
 
@@ -49,8 +56,9 @@ resolved_gaps:
 | 15 | Public types, exports, docs, examples, changesets, and Phase 13 supersession match the new contract. | ✓ VERIFIED | Type/export tests, docs build, live inventory, release notes, and historical RESID-03 amendments all pass inspection/gates. |
 | 16 | All seven deliberate mutations have exact causal RED and restored GREEN evidence. | ✓ VERIFIED | `24-06-SUMMARY.md` and `24-07-SUMMARY.md` record exact diffs, named commands, exit 1 symptoms, identical exit 0 reruns, residue gates, and removed detached worktrees; all named oracles pass in the independent full run. |
 | 17 | Canonical requirement completion state matches verified implementation. | ✓ VERIFIED | All five Phase 24 IDs are checked and their traceability rows are Complete in `REQUIREMENTS.md`. |
+| 18 | Project state consistently records the current Phase 24 completion position. | ✓ VERIFIED | `STATE.md` frontmatter and body consistently record Phase 24, 11/11 complete, verified complete, and ready for—but not transitioned to—Phase 25. |
 
-**Score:** 17/17 truths verified (0 present, behavior-unverified)
+**Score:** 18/18 truths verified (0 present, behavior-unverified)
 
 ### Required Artifacts
 
@@ -65,6 +73,7 @@ resolved_gaps:
 | Docs/examples | Current Observable/result/lifetime guidance | ✓ VERIFIED | No completion-means-upload-success guidance; send failures and caller-owned lifetime are explicit. |
 | Phase 24 changesets | Separate exact release records | ✓ VERIFIED | Relay negentropy major, relay sync major, loader fallback patch are one-sentence notes. |
 | `.planning/REQUIREMENTS.md` | Canonical completion/provenance | ✓ VERIFIED | Contract text is unchanged and all five Phase 24 completion markers agree with verified evidence. |
+| `.planning/STATE.md` | Consistent current position | ✓ VERIFIED | Frontmatter and body agree on Phase 24 verified completion and no Phase 25 transition. |
 
 ### Key Link Verification
 
@@ -105,7 +114,7 @@ No requirement is orphaned; canonical statuses now match verified implementation
 
 ### Anti-Patterns Found
 
-No unreferenced TBD/FIXME/XXX markers, timeout option leak, callback-era public surface, silent SEND swallow, production stub, or contradictory canonical completion metadata remains.
+No unreferenced TBD/FIXME/XXX markers, timeout option leak, callback-era public surface, silent SEND swallow, production stub, or contradictory workflow metadata remains.
 
 ### Human Verification Required
 
@@ -113,9 +122,9 @@ None. Runtime behavior and remaining provenance correction are deterministic.
 
 ### Gaps Summary
 
-The Phase 24 runtime goal is achieved, all seven mutation oracles are non-vacuous, all three review defects are fixed, every executable gate passes, and canonical requirement completion now agrees at 17/17.
+The Phase 24 runtime goal is achieved, all seven mutation oracles are non-vacuous, all three review defects are fixed, every executable gate passes, canonical requirements are complete, and STATE consistently records Phase 24 verified completion without transitioning to Phase 25.
 
 ---
 
-_Re-verified: 2026-09-02T18:00:00Z_
+_Re-verified: 2026-09-02T18:15:00Z_
 _Verifier: the agent (gsd-verifier)_
