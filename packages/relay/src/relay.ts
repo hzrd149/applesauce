@@ -56,7 +56,6 @@ import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSoc
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./nip45.js";
-import { type NegentropySyncOptions, type ReconcileFunction } from "./negentropy.js";
 import {
   authRequiredSignal,
   AuthPhaseGate,
@@ -73,6 +72,8 @@ import {
   AuthSigner,
   FilterInput,
   NegentropyReadStore,
+  NegentropyOptions,
+  NegentropyRound,
   NegentropySyncStore,
   PublishOptions,
   RelayAuthContext,
@@ -1389,90 +1390,31 @@ export class Relay {
   }
 
   /** Negentropy sync event ids with the relay and an event store */
-  async negentropy(
+  negentropy(
     store: NegentropyReadStore,
     filter: Filter,
-    reconcile: ReconcileFunction,
-    opts?: NegentropySyncOptions,
-  ): Promise<boolean> {
-    // Check relay supports NIP-77 sync
-    if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
-
-    // Import negentropy functions dynamically
-    const { buildStorageVector, buildStorageFromFilter, negentropySync, NegentropyError } =
-      await import("./negentropy.js");
-
-    // Build the storage vector fresh for each negotiation attempt (so an auth retry re-negotiates cleanly)
-    const buildStorage = async () =>
-      Array.isArray(store) ? buildStorageVector(store) : await buildStorageFromFilter(store, filter);
-
-    // D-05: minted once per negentropy() call, before the runSync defer factory, so the NEG-OPEN id stays
-    // stable across every auth retry of this call — the shared auth operator resubscribes runSync on every
-    // retry, and an id minted inside the factory would identify an attempt rather than the operation.
-    const negOpenId = nanoid();
-
-    // A thunk describing the wire request this negotiation opened, for the shared operator's
-    // onAuthRequired context. Declared after negOpenId so the id is stable across auth retries (D-05).
-    const describeRequest = (): RelayAuthWireRequest => ({ verb: "NEG-OPEN", id: negOpenId, filter });
-
-    // Run a single negentropy negotiation. D-02: a NegentropyError from negentropySync is still translated
-    // at this edge — its reason is parsed by parseClosedError, because translating a lower layer's error at
-    // the boundary is not throw-as-signal. What changes is the result: when the parse yields
-    // AuthRequiredError, the translation produces an auth-required signal value instead of re-throwing
-    // (D-01), keeping expected state value-shaped across this multi-hop chain and flipping the informational
-    // flag at the same point so authRequiredForRead$ keeps updating
-    // (RAUTH-09). Every other parsed prefix still re-throws its typed error, and an unparseable reason
-    // still re-throws the original.
-    const runSync: Observable<boolean | AuthRequiredSignal> = defer(() =>
-      from(buildStorage().then((storage) => negentropySync(storage, this.socket, filter, reconcile, opts, negOpenId))),
-    ).pipe(
-      catchError((err) => {
-        if (err instanceof NegentropyError) {
-          const parsed = parseClosedError(err.reason);
-          if (parsed instanceof AuthRequiredError) {
-            this.authLog(
-              `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(parsed.reason)}`,
-            );
-            this.receivedAuthRequiredFor("NEG-OPEN");
-            return of(authRequiredSignal(parsed.reason));
-          }
+    opts?: NegentropyOptions,
+  ): Observable<NegentropyRound> {
+    const id = opts?.id ?? nanoid();
+    const interaction = defer(async () => {
+      if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
+      const { buildStorageVector, buildStorageFromFilter } = await import("./negentropy.js");
+      return Array.isArray(store) ? buildStorageVector(store) : buildStorageFromFilter(store, filter);
+    }).pipe(
+      switchMap((storage) =>
+        defer(() => import("./negentropy.js")).pipe(
+          switchMap(({ negentropySync }) => negentropySync(storage, this.socket, filter, { ...opts, id })),
+        ),
+      ),
+      catchError((error) => {
+        if (error instanceof Error && error.name === "NegentropyError") {
+          const parsed = parseClosedError(error.message);
           if (parsed) return throwError(() => parsed);
         }
-        return throwError(() => err);
+        return throwError(() => error);
       }),
     );
-
-    // D-04: negentropy() has no operation-level clock of its own (that's sync()'s to manage), so nothing
-    // needs threading via AUTH_PHASE_GATE here — construct a fresh gate locally.
-    const gate = new AuthPhaseGate();
-
-    // D-04/D-09: the shared auth-retry operator drives the whole auth flow, delegating handler invocation,
-    // the per-phase timeout, retry counting/reset and error mapping. RAUTH-02: no pre-block — the
-    // negotiation starts immediately regardless of any other operation's auth state. The boolean
-    // negotiation result carries no bookkeeping value of its own, so every value is real progress.
-    const observable: Observable<boolean> = runSync.pipe(
-      this.authRetryOperator(describeRequest, opts, gate, () => true),
-    );
-
-    // Resolve to false if aborted while waiting for auth (before negentropySync starts handling the signal itself)
-    const signal = opts?.signal;
-    if (!signal) return firstValueFrom(observable);
-
-    const abort$ = new Observable<boolean>((observer) => {
-      if (signal.aborted) {
-        observer.next(false);
-        observer.complete();
-        return;
-      }
-      const onAbort = () => {
-        observer.next(false);
-        observer.complete();
-      };
-      signal.addEventListener("abort", onAbort);
-      return () => signal.removeEventListener("abort", onAbort);
-    });
-
-    return firstValueFrom(merge(observable, abort$).pipe(take(1)));
+    return this.waitForReady(interaction).pipe(share());
   }
 
   /** Authenticate with bounded challenge acquisition, signing, freshness checks, and one raw AUTH verdict. */
@@ -1765,10 +1707,8 @@ export class Relay {
         }
       };
 
-      this.negentropy(
-        store,
-        filters,
-        async (have, need) => {
+      this.negentropy(store, filters, { signal: controller.signal })
+        .pipe(mergeMap(async ({ have, need }) => {
           // NOTE: it may be more efficient to sync all the events later in a single batch
 
           // Send missing events to the relay
@@ -1810,17 +1750,15 @@ export class Relay {
               ),
             );
           }
-        },
-        { signal: controller.signal, ...authOptions },
-      )
-        // Complete the observable when the sync is complete
-        .then(() => {
+        }))
+        .subscribe({
+        complete: () => {
           if (!cleanupCalled) observer.complete();
-        })
-        // Error the observable when the sync fails
-        .catch((err) => {
+        },
+        error: (err) => {
           if (!cleanupCalled) observer.error(err);
-        });
+        },
+      });
 
       // Cancel the sync when the observable is unsubscribed
       return cleanup;

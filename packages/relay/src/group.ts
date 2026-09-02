@@ -18,6 +18,7 @@ import {
   lastValueFrom,
   map,
   merge,
+  mergeMap,
   MonoTypeOperatorFunction,
   Observable,
   of,
@@ -380,7 +381,9 @@ export class RelayGroup {
     if (!opts?.parallel) throw new Error("Negentropy sync must be parallel (for now)");
 
     // Sync all the relays in parallel
-    await Promise.allSettled(relays.map((relay) => relay.negentropy(store, filter, reconcile, opts)));
+    await Promise.allSettled(
+      relays.map((relay) => lastValueFrom(relay.negentropy(store, filter, opts).pipe(mergeMap(({ have, need }) => reconcile(have, need))))),
+    );
 
     return true;
   }

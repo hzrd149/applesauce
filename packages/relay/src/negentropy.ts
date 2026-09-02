@@ -1,10 +1,10 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
 import { type Filter } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { firstValueFrom, map, Observable, race, share } from "rxjs";
+import { concatMap, defer, EMPTY, finalize, from, map, Observable, share, switchMap, takeUntil, takeWhile } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
-import { MultiplexWebSocket, RelayAuthOptions } from "./types.js";
+import { MultiplexWebSocket, NegentropyOptions, NegentropyRound } from "./types.js";
 
 /**
  * A function that reconciles the storage vectors with a remote relay
@@ -12,16 +12,12 @@ import { MultiplexWebSocket, RelayAuthOptions } from "./types.js";
  * @param need - The ids that the remote relay has
  * @returns A promise that resolves when the reconciliation is complete
  */
-export type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
+export type { NegentropyOptions, NegentropyRound } from "./types.js";
 
-/**
- * Options for the negentropy sync. `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` are
- * handled by the relay layer, not `negentropySync` itself.
- */
-export type NegentropySyncOptions = {
-  frameSizeLimit?: number;
-  signal?: AbortSignal;
-} & RelayAuthOptions;
+/** @deprecated Multi-relay callers are migrated in the coordinated group/pool plan. */
+export type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
+/** @deprecated Use NegentropyOptions for raw Relay.negentropy calls. */
+export type NegentropySyncOptions = NegentropyOptions;
 
 const log = logger.extend("negentropy");
 
@@ -61,106 +57,61 @@ export function buildStorageVector(items: { id: string; created_at: number }[]):
  * @throws {Error} if the sync fails
  * @returns true if the sync was successful, false if the sync was aborted
  */
-export async function negentropySync(
+export function negentropySync(
   storage: NegentropyStorageVector,
   socket: MultiplexWebSocket & { next: (msg: any) => void },
   filter: Filter,
-  reconcile: ReconcileFunction,
-  opts?: NegentropySyncOptions,
-  id: string = nanoid(),
-): Promise<boolean> {
-  let ne = new Negentropy(storage, opts?.frameSizeLimit);
-
-  let initialMessage = await ne.initiate<string>();
-  let msg: string | null = initialMessage;
-
-  const incoming = socket
-    .multiplex(
-      // Start by sending the NEG-OPEN with initial message
-      () => {
-        log("Sending initial message", id, filter, initialMessage);
-        return ["NEG-OPEN", id, filter, initialMessage];
-      },
-      // Close with NEG-CLOSE
-      () => {
-        log("Closing sync", id);
-        return ["NEG-CLOSE", id];
-      },
-      // Look for NEG-MSG and NEG-ERR messages that match the id
-      (m) => {
-        return (m[0] === "NEG-MSG" || m[0] === "NEG-ERR") && m[1] === id;
-      },
-    )
-    .pipe(
-      // If error, throw
-      map((msg) => {
-        if (msg[0] === "NEG-ERR") throw new NegentropyError(msg[2]);
-        return msg[2] as string;
-      }),
-      share(),
-    );
-
-  // Check if already aborted before starting sync
-  if (opts?.signal?.aborted) return false;
-
-  // Create an observable that emits when abort signal is triggered
-  const abortSignal$ = new Observable<"abort">((observer) => {
-    if (opts?.signal?.aborted) {
-      observer.next("abort");
-      observer.complete();
+  opts?: NegentropyOptions,
+): Observable<NegentropyRound> {
+  const id = opts?.id ?? nanoid();
+  const abort$ = new Observable<void>((subscriber) => {
+    if (!opts?.signal) return;
+    if (opts.signal.aborted) {
+      subscriber.next();
+      subscriber.complete();
       return;
     }
-
-    const onAbort = () => {
-      observer.next("abort");
-      observer.complete();
+    const abort = () => {
+      subscriber.next();
+      subscriber.complete();
     };
-    opts?.signal?.addEventListener("abort", onAbort);
-    return () => opts?.signal?.removeEventListener("abort", onAbort);
+    opts.signal.addEventListener("abort", abort);
+    return () => opts.signal?.removeEventListener("abort", abort);
   });
 
-  // keep an additional subscription open while waiting for async operations
-  const sub = incoming.subscribe({
-    next: (m) => log(m),
-    error: () => {}, // Ignore errors here, they'll be caught by firstValueFrom
-  });
-
-  try {
-    while (msg && opts?.signal?.aborted !== true) {
-      // Race between incoming message and abort signal
-      try {
-        const received = await firstValueFrom(
-          race(
-            incoming.pipe(map((m) => ({ type: "message" as const, data: m }))),
-            abortSignal$.pipe(map(() => ({ type: "abort" as const }))),
+  return defer(() => {
+    if (opts?.signal?.aborted) return EMPTY;
+    const state = new Negentropy(storage, opts?.frameSizeLimit);
+    return from(state.initiate<string>()).pipe(
+      switchMap((initial) =>
+        socket
+          .multiplex(
+            () => {
+              log("Sending initial message", id, filter, initial);
+              return ["NEG-OPEN", id, filter, initial];
+            },
+            () => {
+              log("Closing sync", id);
+              return ["NEG-CLOSE", id];
+            },
+            (message) => (message[0] === "NEG-MSG" || message[0] === "NEG-ERR") && message[1] === id,
+          )
+          .pipe(
+            map((message) => {
+              if (message[0] === "NEG-ERR") throw new NegentropyError(message[2]);
+              return message[2] as string;
+            }),
+            concatMap(async (message) => {
+              const [followUp, have, need] = await state.reconcile<string>(message);
+              if (followUp !== null) socket.next(["NEG-MSG", id, followUp]);
+              return { followUp, round: { have, need } };
+            }),
+            takeWhile(({ followUp }) => followUp !== null, true),
+            map(({ round }) => round),
+            takeUntil(abort$),
           ),
-        );
-
-        if (received.type === "abort" || opts?.signal?.aborted) {
-          sub.unsubscribe();
-          return false;
-        }
-
-        const [newMsg, have, need] = await ne.reconcile<string>(received.data);
-
-        await reconcile(have, need);
-
-        msg = newMsg;
-      } catch (err) {
-        // Check if aborted during reconcile or message processing
-        if (opts?.signal?.aborted) {
-          sub.unsubscribe();
-          return false;
-        }
-        throw err;
-      }
-    }
-  } catch (err) {
-    sub.unsubscribe();
-    throw err;
-  } finally {
-    sub.unsubscribe();
-  }
-
-  return true;
+      ),
+      finalize(() => log("Finished sync", id)),
+    );
+  }).pipe(share());
 }

@@ -9,8 +9,16 @@ import type { Filter } from "applesauce-core/helpers/filter";
 import type { RelayInformation as CoreRelayInformation } from "nostr-tools/nip11";
 import type { Observable, OperatorFunction, repeat, retry } from "rxjs";
 import type { WebSocketSubject } from "rxjs/webSocket";
-import type { NegentropySyncOptions } from "./negentropy.js";
 import type { Relay } from "./relay.js";
+
+export type NegentropyRound = { have: string[]; need: string[] };
+
+/** Raw NIP-77 negotiation options. Authentication, reconnect, and transfer policy belong to sync(). */
+export type NegentropyOptions = {
+  id?: string;
+  frameSizeLimit?: number;
+  signal?: AbortSignal;
+};
 
 /** The authentication state of a single pubkey on a relay connection */
 export type RelayAuthState = {
@@ -96,7 +104,7 @@ export type RelayAuthHandler = (context: RelayAuthContext) => void | Promise<voi
 
 /**
  * D-05 mixin: the shared set of auth-related options intersected into every operation's option type
- * (`RelayReqOptions`, `PublishOptions`, `NegentropySyncOptions`, `RelayCountOptions`,
+ * (`RelayReqOptions`, `PublishOptions`, `RelayCountOptions`,
  * `RelaySyncOptions`) so `waitForAuth` and its siblings are declared exactly once.
  */
 export type RelayAuthOptions = {
@@ -255,7 +263,7 @@ export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;
 export type GroupRelayInput = Relay[] | Observable<Relay[]>;
 
 /** Options for negentropy sync on a group of relays */
-export type GroupNegentropySyncOptions = NegentropySyncOptions & {
+export type GroupNegentropySyncOptions = NegentropyOptions & RelayAuthOptions & {
   /** Whether to sync in parallel (default true) */
   parallel?: boolean;
 };
