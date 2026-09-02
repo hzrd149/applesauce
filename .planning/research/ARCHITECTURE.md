@@ -70,7 +70,7 @@ RelayPool (pool.ts, 264 lines) — pure delegation to .group(relays).<method>().
 ### The layering rule (999.23, amending D-01)
 
 > **Low-level methods (`event()`, `req()`, `negentropy()`, `auth()`) are one interaction with the relay.** Send one frame, wait for its reply, throw on failure.
-> **High-level methods (`publish()`, `request()`, `subscription()`, `sync()`, `authenticate()`) own the configurable policy**: retries, reconnects, auth retries, resubscribes, the operation clock, and (for `sync()`) transfer concurrency.
+> **High-level methods own configurable policy.** Phase 24 specifically gives `sync()` auth, reconnect, and transfer concurrency while duration remains caller-owned with no built-in timeout.
 > **`count()` is the exception**: per 999.23's resolution, the family has only a high-level member — there is no separate low-level COUNT method, because the raw form has exactly one consumer in the repo (`RelayGroup.count()`) and no other caller needs single-attempt access.
 
 This is a **relocation-of-ownership** refactor, not a rewrite of the underlying RxJS machinery. The shared operators (`authRetry`, `suspendableTimeout`, `AuthPhaseGate`) stay in `operators/auth-retry.ts`; what moves is which method's `.pipe(...)` invokes them.
@@ -88,7 +88,7 @@ This is a **relocation-of-ownership** refactor, not a rewrite of the underlying 
 | `Relay.auth()` | `relay.ts:1302-1340` | Already correctly low: signs nothing itself, calls `event(event, "AUTH")` (`:1319`), records `authentications$` bookkeeping | Stays as-is; 999.26 explicitly protects this — `auth()` must keep calling `event()`, never `publish()`, or it recurses into 999.24's auth loop |
 | `Relay.authenticate()` | `relay.ts:1429-1441` | High-level name but owns **no policy at all**: reads `this.challenge` synchronously (`:1430`), signs, calls `auth()`. No retry, no reconnect option, no options parameter of any kind exists on this method signature today | Becomes owner of challenge-acquisition-as-a-wait, freshness verification, and a bounded resign policy |
 | `Relay.negentropy()` | `relay.ts:1343-1426` | Low-level name, owns the auth retry loop (`:1404`) — correct under the layering rule since `sync()` doesn't exist as negentropy's high-level owner in practice yet | Stays low; keeps owning the wire negotiation, but emits per-round instead of blocking |
-| `Relay.sync()` | `relay.ts:1626-1723` | High-level name, but its SEND path calls `event()` **directly** (`:1677`) and its RECEIVE path calls `req()` **directly** (`:1689`) — both bypass their own high-level siblings entirely, and the `await reconcile()` inside `negentropySync` (`negentropy.ts:144-148`) serializes what NIP-77 explicitly permits in parallel | Owns auth (moved from `negentropy()`), an operation clock (none exists today), reconnect/`waitForReady`, and explicit bounded transfer concurrency |
+| `Relay.sync()` | `relay.ts` | Phase 24 coordinator over raw EVENT/REQ and Observable negentropy rounds | Owns one auth budget, fresh reconnect, fair bounded transfer concurrency, and discriminated outcomes; duration is caller-owned with no built-in timeout |
 | `RelayGroup.request()`/`.subscription()` | `group.ts:266-322` | No error condition at all; `request()` "completes empty" on total failure, `subscription()` hangs forever with no clock | Gains a caller-supplied error condition (999.20), defaulting to "every relay failed" raising an aggregate error |
 | `RelayGroup.count()` | `group.ts:324-337` | `combineLatest()` — one relay's failure ends every relay's count; no progressive record | Per-relay isolation + progressive accumulation (999.21), depends on 999.27 |
 | `RelayPool` | `pool.ts` (all 264 lines) | Zero local option types; every method's options type is `Parameters<RelayGroup["x"]>[n]` | No changes needed anywhere in this milestone — verified structurally, not asserted |
@@ -192,7 +192,7 @@ Verified by exhaustive grep: **zero** call sites of `.authenticate(` anywhere in
 ### Pattern 1: The `AUTH_PHASE_GATE` threading symbol
 
 **What:** A module-private `Symbol` (`operators/auth-retry.ts:100`) that lets a high-level method construct one `AuthPhaseGate` and hand it *down* into the low-level method it drives internally, via a structural mixin type (`WithAuthPhaseGate`, `:103`) intersected into the low-level method's options — never appearing in any public option type.
-**When to use:** Any time a high-level method's own operation clock (`suspendableTimeout`) needs to suspend across an auth phase that a low-level method it calls will itself trigger. Example: `request()` builds a `gate` (`relay.ts:1560`), threads it into `req()` via `[AUTH_PHASE_GATE]: gate` (`:1565`), then uses the same `gate` for its own `suspendableTimeout` (`:1575`).
+**When to use:** Any time a high-level method's own lifetime clock (`suspendableTimeout`) needs to suspend across an auth phase that a low-level method it calls will itself trigger. Example: `request()` builds a `gate`, threads it into `req()`, then uses the same gate for its timeout.
 **Trade-off:** Keeps the gate out of the public API surface (good — it's an implementation detail), but means every new high/low pairing that wants this suspension must repeat the same three-line pattern (build gate → thread down → consume in own clock). This is exactly the shape 999.24's EVENT re-layer and 999.28's negentropy re-layer both need to replicate.
 
 **Example (verified, `relay.ts:1558-1566`):**
@@ -310,9 +310,9 @@ Both implementations were read in full for this research; the divergence the roa
 **Why it's wrong:** It means one high-level method's internal plumbing silently loses the policy guarantees another high-level method exists to provide — a caller who trusts "high-level methods own retries" is wrong specifically about `sync()`'s SEND/RECEIVE legs today.
 **Do this instead:** Once 999.24/999.25 land, `sync()` should call `publish()`/`request()`-or-`subscription()` for its two legs, or explicitly document (and test) why it cannot and must own an equivalent policy itself — the roadmap's 999.28 entry already leans toward the latter (`sync()` owning its own bounded transfer concurrency), which is a legitimate exception but should be a stated design decision, not an accident of what `event()`/`req()` happened to be convenient to call.
 
-### Anti-Pattern 2: An unconfigurable hardcoded operation clock
+### Anti-Pattern 2: An unconfigurable hardcoded lifetime clock
 
-**What happens:** `count()`'s 10s timeout (`relay.ts:1177`) has no options-object escape hatch at all — every other operation clock in the package (`eventTimeout`, `publishTimeout`, `request()`'s `opts?.timeout ?? 30_000`) is either a constructor option or a per-call option; `count()`'s is neither.
+**What happens:** `count()`'s historical 10s timeout had no options-object escape hatch; configurable lifetime belongs to methods that expose it, while sync intentionally leaves lifetime caller-owned.
 **Why it's wrong:** A caller with a slow relay or a deliberately long `authTimeout` cannot avoid `count()` racing its own auth wait against an immovable 10s ceiling.
 **Do this instead:** 999.27 already fixes this by folding the constant into `opts.timeout` — flagged here only to confirm the roadmap's characterization is accurate and to note it is the *only* such unconfigurable clock found in the file during this research (every other timeout site was checked and does expose an option).
 
@@ -343,6 +343,10 @@ All findings verified by direct reading of, and `grep`/`wc` cross-checks against
 - `.planning/PROJECT.md` (Current Milestone section, Key Decisions, Context)
 - `.planning/ROADMAP.md` (Backlog entries 999.13, 999.14, 999.16, 999.18, 999.19, 999.20, 999.21, 999.22, 999.23, 999.24, 999.25, 999.26, 999.27, 999.28 — every file:line citation in these entries that this research could check against source was checked; the one discrepancy found is documented above)
 - `.planning/codebase/ARCHITECTURE.md`, `.planning/codebase/STRUCTURE.md` (baseline system map, dated 2026-07-09, predates this milestone's scoping)
+
+## Phase 24 Contract Amendment (2026-09-02)
+
+Negentropy now emits raw `Observable<NegentropyRound>` values and sends each follow-up before emitting its round. `Relay.sync()` shares one auth budget, reconnects with fresh negotiation state, schedules both transfer lanes fairly under one bound, and emits `SyncMessage`. Group and Pool add explicit `relay-failed` values. Sync duration is caller-owned with no built-in timeout.
 
 ---
 *Architecture research for: applesauce v7.0.0 relay-method-layering milestone*

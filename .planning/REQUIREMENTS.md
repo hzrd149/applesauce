@@ -33,7 +33,7 @@ findings changed the plan and are marked **[research]** below.
 - [x] **REQ-01**: `req()` is a single REQ interaction — `reconnect`, `resubscribe`, and the auth retry no longer live there
 - [x] **REQ-02**: `request()` and `subscription()` each own reconnect, resubscribe, and the auth retry, joining the per-method policy defaults they already supply
 - [x] **REQ-03**: `subscription()` owns the re-establish loop, and a re-established subscription's observable behavior is specified: whether the REQ id is reused or minted fresh, whether the consumer sees a second `OPEN`, and whether duplicate filtering holds across the boundary
-- [x] **REQ-04**: The applicable Phase 13 invariants (fresh per-attempt `defer`, call-scoped clean-CLOSED repeat state, and synthetic `OPEN` exclusion) are re-verified RED→GREEN; the former manufactured-Group-ERROR progress oracle is superseded/non-applicable because the accepted `authSuspendableLifetime` whole-operation clock consumes no values (Phase 22 gap closure, 2026-09-01)
+- [x] **REQ-04**: The applicable Phase 13 invariants (fresh per-attempt `defer`, call-scoped clean-CLOSED repeat state, and synthetic `OPEN` exclusion) are re-verified RED→GREEN; the former manufactured-Group-ERROR progress oracle is superseded/non-applicable because the accepted `authSuspendableLifetime` whole-lifetime clock consumes no values (Phase 22 gap closure, 2026-09-01)
 - [x] **REQ-05**: `RelayReqOptions` sheds `reconnect`/`resubscribe`/the auth options while `RelayRequestOptions` and `RelaySubscriptionOptions` declare them, so passing `reconnect` to `req()` is a type error
 
 ### AUTH Family
@@ -46,7 +46,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### COUNT Family
 
-- [x] **COUNT-01**: `count()` is the high-level member of its family — `RelayCountOptions` gains `reconnect`, `retries`, and a configurable `timeout` (today the only operation clock in the package a caller cannot change), and failure surfaces as an error
+- [x] **COUNT-01**: `count()` is the high-level member of its family — `RelayCountOptions` gains `reconnect`, `retries`, and a configurable `timeout` (formerly the only lifetime clock in the package a caller could not change), and failure surfaces as an error
 - [x] **COUNT-02**: `RelayCountResponse` is `{count, approximate?, hll?}`, validated rather than reached by an unchecked `m[2] as RelayCountResponse`, so a malformed payload is an error rather than a typed lie
 - [x] **COUNT-03**: A register-wise max merge over NIP-45's 256-register `hll` payload ships, so a correct cross-relay total is constructible at all
 - [x] **COUNT-04**: One failing or offline relay becomes that URL's `RelayOutcome` failure while other scalar COUNT operations continue (Phase 23 D-24 supersedes historical `combineLatest` all-or-nothing behavior)
@@ -56,7 +56,7 @@ findings changed the plan and are marked **[research]** below.
 
 - [ ] **SYNC-01**: Multi-round reconciliation reaches the wire — `negentropySync` sends its computed follow-up message — proven by a test whose data deliberately exceeds the frame-size threshold to force a second round
 - [ ] **SYNC-02**: `negentropy()` emits what it learns per round without blocking on the caller's transfers, so negotiation runs at protocol speed as NIP-77 describes
-- [ ] **SYNC-03**: `sync()` owns the policy: one auth budget for the operation rather than three independent ones, an operation clock where none exists today, reconnect handling, and explicit bounded transfer concurrency
+- [ ] **SYNC-03**: `sync()` owns one global auth budget, fresh reconnect attempts, and explicit bounded transfer concurrency; duration is caller-owned through cancellation or composed RxJS operators, with no built-in timeout
 - [ ] **SYNC-04**: `sync()` reports both directions — a SEND's outcome is observable rather than silently swallowed, so "Upload complete" cannot print when every upload was rejected
 
 ### Group Error Surface
@@ -65,7 +65,7 @@ findings changed the plan and are marked **[research]** below.
 - [x] **GROUP-02**: The raised aggregate carries every relay's own cause, keyed by relay URL, rather than collapsing them into one bare message
 - [x] **GROUP-03**: **[research]** The aggregate error's per-relay causes and the progressive count record's failed-relay entries use **one** representation of "per-source outcome keyed by relay URL", not two independently-designed shapes for the same idea
 - [x] **GROUP-04**: One public `timeout` bounds finite request — 30 seconds by default — and activity, retries, and reconnections never disarm or reset it; persistent subscriptions have no built-in duration or inactivity clock (Phase 22 D-23/D-24 amendment)
-- [x] **GROUP-05**: The request whole-operation clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases finish; subscription lifetimes are caller-composed (Phase 22 D-23/D-24 amendment)
+- [x] **GROUP-05**: The request whole-lifetime clock pauses with its remaining budget while the call-scoped shared auth gate is active, resuming only after overlapping auth phases finish; subscription lifetimes are caller-composed (Phase 22 D-23/D-24 amendment)
 
 ### Correctness Fixes
 
@@ -107,7 +107,7 @@ Tracked, not in this roadmap.
 
 ### Group
 
-- **GROUP-F1**: `RelayGroup.sync()` and `RelayGroup.negentropy()` group-level reporting — both drop per-relay failure today (to `EMPTY` and a literal `true` respectively); 999.28 leaves the shape explicitly open, and no surveyed implementation offers a convention to borrow
+- **GROUP-F1**: Superseded by Phase 24 — `RelayGroup.sync()` emits explicit `relay-failed` values alongside `SyncMessage`, and raw Group/Pool negentropy methods were removed in favor of `pool.relay(url).negentropy(...)`.
 
 ### Concord
 

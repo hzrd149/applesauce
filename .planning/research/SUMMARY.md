@@ -166,6 +166,10 @@ Phases with standard patterns (skip research-phase):
 - JS-nostr-specific HyperLogLog/NIP-45 prior art — none found; general-purpose HLL library API shape (`js-hll`, `hyperloglog`) used as the nearest available analog, explicitly flagged as not NIP-45-shaped
 - React 19 Strict Mode double-invoke / `useSyncExternalStore` interaction with this repo's specific hook timing logic — background context only, unresolved until real rendering tests exist
 
+## Phase 24 Contract Amendment (2026-09-02)
+
+Negentropy now emits Observable rounds and high-level sync emits discriminated transfer outcomes. Group and Pool preserve sibling progress with explicit `relay-failed` values. Sync owns one global auth budget, fresh reconnect attempts, and fair bounded work; cancellation and duration are caller-owned with no built-in timeout.
+
 ---
 *Research completed: 2026-08-19*
 *Ready for roadmap: yes*

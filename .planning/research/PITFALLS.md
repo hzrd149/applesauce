@@ -112,7 +112,7 @@ upper bound against an always-refusing relay, not just "eventually gives up."
 
 ### Pitfall 3: `suspendableTimeout` regresses to a bare `rxjs timeout()` somewhere in the re-layered call chain
 
-**What goes wrong:** Every high-level method in this milestone gains or keeps an operation clock, and
+**What goes wrong:** A high-level method with a built-in lifetime clock can regress to bare RxJS timeout, and
 the one implementation this codebase trusts (`suspendableTimeout` driven by an `AuthPhaseGate`) is
 non-trivial: it has to track `remaining`/`armedAt`, disarm on gate-active, and re-arm on gate-inactive
 by hand, rather than delegating to rxjs's own `timeout()`. A re-layering plan that treats the clock as
@@ -120,9 +120,8 @@ by hand, rather than delegating to rxjs's own `timeout()`. A re-layering plan th
 diff — silently reintroduces a clock that keeps counting through a 30s auth wait, which is precisely
 the closed defect class the call site's own comment warns against. This is a live risk specifically
 because 999.20's extension proposes new *conditions* (`errorAfterSilence`, idle timers) that must also
-be gate-aware, and 999.27/999.28 both introduce **new** operation clocks (`count()`'s configurable
-timeout, `sync()`'s clock that "does not exist on this path at all") that have no existing suspendable
-implementation to copy from — they have to be built correctly the first time, not migrated correctly.
+be gate-aware. Phase 24 instead keeps sync duration caller-owned; `count()` retains its configurable
+timeout and sync exposes cancellation/composition rather than another internal clock.
 
 **Why it happens:** `suspendableTimeout` and rxjs's `timeout()` have nearly identical call-site shapes
 (`operator(ms, opts)`), so a refactor performed by pattern-matching on "what does a timeout look like
@@ -144,7 +143,7 @@ scoped to this milestone should be treated as a finding until proven not to cros
 **Phase to address:** 999.25 (subscription's re-establish loop needs its own clock across reconnects
 *and* auth phases), 999.27 (`count()`'s newly-configurable timeout), 999.28 (`sync()`'s clock, which
 has no precedent to inherit from at all — this is the highest-risk instance since 999.13's own closing
-note already flagged "no operation clock on that path").
+note already flagged the absent lifetime policy on that path).
 
 ---
 
@@ -472,6 +471,10 @@ in this milestone given the pattern's repeated recurrence in this codebase's his
   mutation-testing tool configured today, so the recommendation above is framed as the manual
   RED→GREEN / mechanism-revert practice this codebase already uses (per Phase 15's mutation-by-hand
   finding), not as a tooling adoption.
+
+## Phase 24 Contract Amendment (2026-09-02)
+
+Do not reintroduce transfer backpressure, independent auth budgets, stale reconnect state, unbounded scheduling, or completion-as-success reporting. Sync duration is caller-owned through AbortSignal or composed RxJS operators, with no built-in timeout.
 
 ---
 *Pitfalls research for: applesauce v7.0.0 relay-method-layering*

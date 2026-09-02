@@ -533,6 +533,13 @@ logger instead of extending internally.
 
 ---
 
+## Phase 24 Supersession Index (2026-09-02)
+
+Phase 13 plans 13-01 through 13-14 remain immutable historical records; their negentropy/sync contract claims are collectively superseded by Phase 24's Observable rounds, discriminated results, global auth budget, fresh reconnect, and caller-owned lifetime.
+
+- **RESID-03(A), closed:** the loader closes an open auth phase before constructing and subscribing to the non-auth fallback, so the fallback stall clock re-arms. Evidence: `sync-loader.test.ts` “re-arms fallback timeout”.
+- **RESID-03(B), closed:** a zero-event RECEIVE EOSE completes without `EmptyError`. Evidence: `sync.test.ts` “treats zero-event EOSE as a successful empty RECEIVE”.
+
 _Reviewed: 2026-08-06T22:56:57Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_

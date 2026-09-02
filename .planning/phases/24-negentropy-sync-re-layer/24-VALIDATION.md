@@ -36,8 +36,8 @@ created: 2026-09-02
 | 24-07-02 | SYNC-03 | mutations 6/7 RED→GREEN | pending |
 | 24-08-01 | SYNC-01..04 | public type/export negatives | pending |
 | 24-08-02 | SYNC-01..04 | docs migration | pending |
-| 24-09-01 | SYNC-01..04/RESID-03 | exact affected/unaffected set equals live rg discovery; named tests and agent-skill overview disposition | pending |
-| 24-09-02 | SYNC-01..04/RESID-03 | no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | pending |
+| 24-09-01 | SYNC-01..04/RESID-03 | exact affected/unaffected set equals live rg discovery; named tests and agent-skill overview disposition | passed |
+| 24-09-02 | SYNC-01..04/RESID-03 | no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | passed |
 | 24-10-01 | all | ten-note dispositions; Intl sentence count and exact package/bump/subject across twelve remaining notes; retained equality and removed absence | pending |
 | 24-10-02 | all | runtime/type/export/docs/provenance/dependency/seven-mutation full gates | pending |
 
@@ -85,6 +85,13 @@ The fixed inventory below equals the live `rg -l` discovery set; live-minus-clas
 - `packages/loaders/src/loaders/{address-loader,event-loader,reactions-loader,social-graph,tag-value-loader,timeline-loader,user-lists-loader,zaps-loader}.ts` use generic Observable/cache synchronization and do not expose the negentropy contract.
 
 Any future live discovery must receive an explicit affected or unaffected disposition before this gate passes.
+
+## D-27 Provenance Amendment
+
+- Current Roadmap, Requirements, and research describe raw Observable rounds, discriminated transfer outcomes, explicit Group failures, and caller-owned sync lifetime with no built-in timeout.
+- Phase 13 plans and summaries remain immutable history; `13-REVIEW.md` and `13-VERIFICATION.md` index plans 13-01 through 13-14 as collectively superseded for sync behavior.
+- **RESID-03(A):** loader open auth phase closes before fallback construction/subscription so its clock re-arms.
+- **RESID-03(B):** zero-event RECEIVE EOSE completes without `EmptyError`.
 
 ## Sign-Off
 - [x] Every task has automated verification.

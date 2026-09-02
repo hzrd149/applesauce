@@ -268,14 +268,14 @@ Plans:
 
 ### Phase 24: Negentropy & Sync Re-layer
 
-**Goal**: Multi-round negentropy reconciliation actually reaches the wire and runs at protocol speed, and `sync()` owns one coherent policy — auth, clock, reconnect, transfer concurrency — across both directions instead of three independent auth budgets and no clock.
+**Goal**: Multi-round negentropy reconciliation reaches the wire at protocol speed, while `sync()` owns coherent auth, reconnect, and bounded-transfer policy with caller-owned cancellation and no built-in timeout.
 **Depends on**: Phase 18 (EVENT), Phase 22 (REQ) — `Relay.sync()` calls `event()`/`req()` directly today and must be rewired onto their re-layered high-level siblings
 **Requirements**: SYNC-01, SYNC-02, SYNC-03, SYNC-04, RESID-03
 **Success Criteria** (what must be TRUE):
 
   1. A sync between two stores whose difference exceeds one negentropy frame completes correctly — proven by a fixture that deliberately exceeds the ~32-item frame-size threshold to force a second round.
   2. `negentropy()` emits what it learns per round without waiting on the caller's transfers to finish first.
-  3. `sync()` runs one auth budget, one operation clock, and bounded transfer concurrency for the whole operation.
+  3. `sync()` runs one auth budget and bounded transfer concurrency; lifetime is caller-owned through cancellation or composed RxJS operators, with no built-in timeout.
   4. A SEND direction where every upload was rejected does not print "Upload complete" — the caller can observe send failures as values, not just received events.
   5. The non-auth negentropy fallback force-closes any open auth phase, and a zero-event EOSE on `sync()`'s RECEIVE branch no longer rejects the whole sync with an `EmptyError`.
 
@@ -476,13 +476,13 @@ Plans:
 
 ### Phase 999.13: negentropy multi-round reconciliation never sends its follow-up message (BACKLOG)
 
-**Goal:** [Captured for future planning] `negentropySync` (`packages/relay/src/negentropy.ts:144-148`) computes the next client message and drops it: `const [newMsg, have, need] = await ne.reconcile(...)` is followed by `msg = newMsg` and nothing else. The `socket` parameter is typed `MultiplexWebSocket & { next: (msg: any) => void }` precisely so the loop can write follow-ups, and **`socket.next` is never called anywhere in the file** — the only `.next(` call sites are the abort observer. Only the initial NEG-OPEN ever reaches the wire. Two sufficiently diverged sets need more than one round trip, so the loop then blocks forever awaiting a NEG-MSG the client never asked for, and there is **no operation clock on that path** — `relay.sync()` / `pool.sync()` hang indefinitely rather than timing out.
+**Goal:** [Historical discovery, superseded by Phase 24] `negentropySync` dropped its computed follow-up message, so sufficiently diverged sets stalled after NEG-OPEN. Phase 24 replaced that loop with Observable rounds and caller-owned cancellation.
 
 **Why the suite misses it:** `relay.test.ts:2748` deliberately keeps both sides under 32 items so the reconciliation completes in a single round trip — its own comment says so. Any regression test must exceed the frame-size threshold to force a second round.
 
 **Provenance — this is NOT a Phase 13 regression.** `git log -L 144,148` traces the loop to `f649d6dd` ("Fix abort signal being ignored in `negentropySync`"), dated **2025-10-27**, ten months before Phase 13 opened. Phase 13 touched this file for auth threading only. Surfaced by the Phase 13 code review (`phases/13-operation-scoped-nip-42-auth-hooks/13-REVIEW.md`, finding CR-01) and deferred by explicit user decision on 2026-08-06 as out of that phase's scope.
 
-**Worth checking at promotion:** whether the negentropy path should also carry an operation clock (every other operation in the phase got `suspendableTimeout`; this one has none, which is why the symptom is a hang rather than a timeout).
+**Phase 24 disposition:** sync intentionally has no built-in timeout; callers own duration through cancellation or composed RxJS operators.
 
 **ABSORBED BY 999.28 (2026-08-19).** That phase restructures this exact loop from a blocking callback into a non-blocking per-round emission, so fixing the dropped follow-up here first would mean writing the multi-round regression test twice against two different shapes. Plan them as one. This entry stays for its provenance and its "must exceed the frame-size threshold" testing note, which 999.28 depends on.
 **Requirements:** TBD
@@ -646,7 +646,7 @@ Plans:
 
 **The error object is part of the design, not an afterthought.** `errorOnAllRelaysFailed()` should raise an aggregate carrying every relay's cause — e.g. a `GroupAllRelaysFailedError` with `errors: Record<string, unknown>` keyed by relay url — so the consumer gets the per-relay reasons the ERROR messages were carrying all along. Raising a bare `Error("All relays failed")` would trade one information loss for another.
 
-**Extension — a timeout is an error condition.** Once the group has a mechanism that decides *when and how* a stream errors, the operation clock stops needing to be a separate bolted-on operator and becomes just another condition. `errorOnAny(errorOnAllRelaysFailed(), errorAfterSilence(60_000))` reads as one policy: give up early when every relay has failed, or at 60 s if nothing is arriving. Three things fall out of that:
+**Extension — a timeout is an error condition.** Once the group has a mechanism that decides *when and how* a stream errors, the lifetime clock stops needing to be a separate bolted-on operator and becomes just another condition. `errorOnAny(errorOnAllRelaysFailed(), errorAfterSilence(60_000))` reads as one policy: give up early when every relay has failed, or at 60 s if nothing is arriving. Three things fall out of that:
 
 - **`subscription()` gets a clock at all.** It has none today, which is the direct cause of its silent-hang trap — conditions give it one without inventing a second mechanism.
 - **The error becomes specific.** The current group clock raises a bare `Error("Timeout has occurred")` from `suspendableTimeout`. As a condition it can raise a typed timeout carrying which relays were still outstanding, matching what `errorOnAllRelaysFailed()` does for the failure case.
@@ -709,7 +709,7 @@ combineLatest(Object.fromEntries(relays.map((relay) => [relay.url, relay.count(f
 
 **Inherits 999.20's timeout-as-condition extension.** `count()` is the sharpest case for it: `Relay.count()`'s hardcoded 10 s fuse is currently the *only* thing bounding a group count, and it bounds each relay separately rather than the operation. A group-level idle or overall condition would give the caller one budget over the whole fan-out instead of N uncoordinated ones — and, combined with the progressive-record change above, lets a slow relay be dropped from the result rather than deciding it.
 
-**Worth folding in at promotion.** `Relay.count()`'s 10s timeout is hardcoded with no option to change it (`relay.ts:1175`) — the only operation clock in the package that a caller cannot configure. It is the fuse that makes this defect fire, so exposing it belongs in the same conversation.
+**Worth folding in at promotion.** `Relay.count()`'s 10s timeout is hardcoded with no option to change it (`relay.ts:1175`) — the only lifetime clock in the package that a caller cannot configure. It is the fuse that makes this defect fire, so exposing it belongs in the same conversation.
 
 **Sequencing.** Depends on 999.20 for the `errorWhen` operator, the `errorOnAllRelaysFailed` builder, and the aggregate error type — reuse that vocabulary rather than inventing a parallel one. The two could reasonably be promoted as a single phase; keep them separate only if 999.20's shape needs to settle first. `RelayGroup.sync()` and `RelayGroup.negentropy()` have the same disease (per-relay failure dropped to `EMPTY`; a hardcoded `return true`) and are still untracked.
 
@@ -798,7 +798,7 @@ Costs 1–3 do not arise when there is one hop and the consumer is the intended 
 
 > **Low-level methods (`event()`, `req()`) are a single interaction with the relay.** They send one frame, wait for its reply, and report the outcome — throwing on failure.
 >
-> **High-level methods (`publish()`, `request()`, `subscription()`) are many interactions.** They own the configurable policy: retries, reconnects, auth retries, resubscribes, and the operation clock.
+> **High-level methods (`publish()`, `request()`, `subscription()`) are many interactions.** They own the configurable policy: retries, reconnects, auth retries, resubscribes, and the lifetime clock.
 
 **Where the rule needs a decision rather than an application.** Four method families exist and only two of them pair cleanly:
 
@@ -872,7 +872,7 @@ this.customConnectionRetryOperator(opts?.reconnect)  // reconnect retries
 this.customRepeatOperator(opts?.resubscribe, ...)    // resubscribe after a clean CLOSED
 ```
 
-`request()` and `subscription()` own **none** of them. They are pure shaping wrappers — completion condition, operation clock, `filter`/`map` — that forward `reconnect` downward.
+`request()` and `subscription()` own **none** of them. They are pure shaping wrappers — completion condition, lifetime clock, `filter`/`map` — that forward `reconnect` downward.
 
 **The policy choice already lives at the right layer; only the mechanism does not.** `request()` and `subscription()` each supply their own default before delegating (`reconnect: opts?.reconnect ?? this.requestReconnect` / `?? this.subscriptionReconnect`), and `RelayGroup` mirrors that at `group.ts:284` and `:311`. Per-method reconnect *defaults* are already a wrapper concern. This phase moves the machinery to join them.
 
@@ -944,7 +944,7 @@ Plans:
 
 **Why count is the odd family.** For every other pair the wire verb and the intent are different words (EVENT/`publish`, REQ/`request`, negentropy/`sync`), so both members get a natural name. COUNT's wire verb *is* its intent. Rather than manufacture a second name for a method nobody needs, `count()` simply becomes the high-level member. The raw form has exactly one consumer in the repo — `RelayGroup.count()` — and the group can wrap the high-level method per relay the way `group.publish()` wraps `relay.publish()` today.
 
-**Where count sits now.** It is a low-level method with policy accidentally attached, the same shape `event()` is in (999.24): named for the wire verb, takes an explicit wire `id`, returns the wire reply type, `take(1)` on one frame and one reply — but carrying an auth retry loop that resends COUNT, a **hardcoded 10 s clock with no option to change it** (`relay.ts:1175`, the only operation clock in the package a caller cannot configure), and `waitForReady`. `RelayCountOptions = RelayAuthOptions`, so it has none of the policy vocabulary despite owning the policy.
+**Where count sits now.** It is a low-level method with policy accidentally attached, the same shape `event()` is in (999.24): named for the wire verb, takes an explicit wire `id`, returns the wire reply type, `take(1)` on one frame and one reply — but carrying an auth retry loop that resends COUNT, a **hardcoded 10 s clock with no option to change it** (`relay.ts:1175`, the only lifetime clock in the package a caller cannot configure), and `waitForReady`. `RelayCountOptions = RelayAuthOptions`, so it has none of the policy vocabulary despite owning the policy.
 
 **Work:**
 
@@ -978,7 +978,7 @@ Plans:
 
 ### Phase 999.28: Re-layer the negentropy family — `negentropy()` negotiates, `sync()` owns policy (BACKLOG)
 
-**Goal:** [Captured for future planning] Apply 999.23's layering rule to `Relay.negentropy()` / `Relay.sync()`: `negentropy()` runs one NEG-OPEN..NEG-CLOSE negotiation and emits what it learns per round **without blocking on the caller**, while `sync()` owns auth, the operation clock, reconnect, direction, and transfer concurrency. **Absorbs 999.13**, whose dropped-follow-up bug lives in the same loop this phase restructures.
+**Goal:** [Promoted to Phase 24] Apply 999.23's layering rule to `Relay.negentropy()` / `Relay.sync()`: `negentropy()` runs one NEG-OPEN..NEG-CLOSE negotiation and emits what it learns per round **without blocking on the caller**, while `sync()` owns auth, reconnect, direction, and transfer concurrency with caller-owned lifetime. **Absorbs 999.13**, whose dropped-follow-up bug lives in the same loop this phase restructures.
 
 **The protocol question was investigated before the design, not assumed.** Two things were checked:
 
@@ -1023,7 +1023,7 @@ This is the same mechanism as three other open items, which is the argument for 
 **What moves up to `sync()`:**
 
 1. **The auth retry.** `negentropy()` owns it today (`relay.ts:1419`). Note what that currently costs: one `sync()` threads `authOptions` into **three** sites — the negotiation, each `event()`, and the `req()` — so a single sync can burn three independent auth budgets. One operation should have one budget.
-2. **An operation clock**, which does not exist on this path at all (999.13's closing note). It belongs on `sync()`, and should be the suspendable, idle-resetting kind from 999.20 rather than a bare `timeout()`.
+2. **Caller-owned lifetime**, through AbortSignal or composed RxJS operators; Phase 24 intentionally exposes no built-in sync timeout.
 3. **`waitForReady` / reconnect handling**, as in the other families.
 4. **Transfer concurrency**, per above.
 

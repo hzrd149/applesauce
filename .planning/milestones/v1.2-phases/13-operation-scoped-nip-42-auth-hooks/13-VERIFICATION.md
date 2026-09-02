@@ -204,5 +204,12 @@ three of them; this round closes them for real).
 
 ---
 
+## Phase 24 Supersession Verification (2026-09-02)
+
+Phase 13 plans 13-01 through 13-14 are historical and collectively superseded for negentropy/sync behavior by Phase 24.
+
+- **RESID-03(A) VERIFIED:** the loader closes its open auth phase before fallback construction/subscription, allowing the fallback clock to re-arm; the named fallback timeout test passes.
+- **RESID-03(B) VERIFIED:** zero-event RECEIVE EOSE completes without `EmptyError`; the named empty RECEIVE test passes.
+
 _Verified: 2026-08-07T09:20:00Z_
 _Verifier: Claude (gsd-verifier)_
