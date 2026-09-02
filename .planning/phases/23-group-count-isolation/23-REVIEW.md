@@ -1,6 +1,6 @@
 ---
 phase: 23-group-count-isolation
-reviewed: 2026-09-01T23:51:07Z
+reviewed: 2026-09-02T00:02:15Z
 depth: deep
 files_reviewed: 8
 files_reviewed_list:
@@ -13,48 +13,40 @@ files_reviewed_list:
   - packages/relay/src/types.ts
   - packages/relay/type-tests/group-count-types.ts
 findings:
-  critical: 3
+  critical: 0
   warning: 0
   info: 0
-  total: 3
-status: issues_found
+  total: 0
+status: clean
 ---
 
 # Phase 23: Code Review Report
 
-**Reviewed:** 2026-09-01T23:51:07Z
+**Reviewed:** 2026-09-02T00:02:15Z
 **Depth:** deep
 **Files Reviewed:** 8
-**Status:** issues_found
+**Status:** clean
 
 ## Summary
 
-The progressive Group COUNT accumulator, synchronous settlement paths, normalized dynamic membership, replay/reset/cancellation behavior, Pool/type forwarding, docs, provenance, and mutation evidence were reviewed. All 383 relay tests pass, but three dynamic/replay terminal defects remain untested.
+The Phase 23 implementation, all three prior review fixes, and the Plan 23-08 documentation/validation gap closure were re-reviewed across progressive settlement, synchronous cohorts, empty replay retractions, normalized replacement/removal, membership completion/error, cancellation/reset behavior, outcome identity/order, Pool/types, documentation, provenance, and mutation evidence.
+
+All prior findings remain closed:
+
+- Removing the last settled outcome now writes a private empty-retraction sentinel, preventing stale replay without exposing `{}`.
+- Same-normalized-URL instance replacement participates in cohort-change detection and immediately retracts the replaced outcome.
+- Membership completion delegates to common settlement, completing an un-emitted empty cohort while preserving pending counts until they settle.
+
+The corrected Pool COUNT guidance consistently describes progressive provisional snapshots, isolated failures, safe HLL coverage, and the intentional absence of automatic aggregation. Validation and verification statuses now match the executed evidence without introducing contradictory claims.
+
+The relay suite passed 387 tests; the relay build and explicit type-test project also passed.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
-
-### CR-01: Removing the last settled outcome replays a stale removed relay
-
-**File:** `packages/relay/src/group.ts:480-493,520-523`
-**Issue:** When membership removes the only settled relay while another active relay is still pending, `outcomes.size` becomes zero and no internal value is sent to the `ReplaySubject`. Its buffer therefore remains the previous snapshot containing the removed URL. A subscriber joining the still-active operation immediately receives that stale outcome, violating latest-cohort membership and replay semantics. The terminal-only sentinel does not cover this active, temporarily outcome-empty state.
-**Fix:** Emit an internal non-public empty/retraction sentinel whenever the latest replayable snapshot becomes empty, not only on terminal empty completion, and filter it from the public stream. Add a pending-retained/remove-last-settled/late-subscriber test.
-
-### CR-02: Same-URL replacement does not immediately retract the replaced outcome
-
-**File:** `packages/relay/src/group.ts:480-506`
-**Issue:** Replacing a relay instance with another instance at the same normalized URL deletes the old outcome, but `changed` compares only URL-set membership and length. It remains false for same-URL replacement, so subscribers and the replay buffer continue exposing the old instance's settled result until the replacement settles. This contradicts the requirement that replacement immediately discards the old COUNT/result and makes partial snapshots provisional against the latest instance.
-**Fix:** Treat relay-instance replacement as a cohort change, update/clear replay immediately, and start the replacement only after the replacement cohort state is installed. Cover replacement after an already-emitted success with a pending replacement and late subscriber.
-
-### CR-03: A membership source that completes without emitting leaves count open forever
-
-**File:** `packages/relay/src/group.ts:510-513`
-**Issue:** The membership subscription handles `next` and `error` but not `complete`. For `new RelayGroup(EMPTY).count(...)`, no cohort is ever installed and `finishIfSettled()` is never invoked, so the finite operation neither emits nor completes. D-09 requires membership completion to let the current cohort settle; when the current cohort is empty, it must complete immediately and replay completion without `{}`.
-**Fix:** Add a membership `complete` handler that records source completion and calls the common settlement decision. Preserve pending active counts when non-empty, but complete immediately for the empty current cohort. Add `EMPTY` and completed-after-pending membership tests.
+All reviewed files meet the phase's correctness, security, and maintainability requirements. No issues found.
 
 ---
 
-_Reviewed: 2026-09-01T23:51:07Z_
+_Reviewed: 2026-09-02T00:02:15Z_
 _Reviewer: the agent (gsd-code-reviewer)_
 _Depth: deep_
