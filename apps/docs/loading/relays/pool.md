@@ -224,7 +224,7 @@ Failures and successful responses without HLL reduce coverage. Never sum overlap
 
 - Never sum counts from overlapping relays.
 - Relays without compatible HLL sketches cannot contribute to the HLL union.
-- Group and Pool remain all-or-nothing in this phase: one relay error fails the record, and partial records or automatic aggregation are deferred to Phase 23.
+- Treat progressive snapshots as provisional until completion; each relay failure stays isolated, and automatic aggregation remains intentionally absent.
 
 ### Sync Method
 

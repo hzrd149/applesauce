@@ -24,17 +24,17 @@ created: 2026-09-01
 | Task | Wave | Requirements | Evidence | Automated command | Status |
 |---|---:|---|---|---|---|
 | 23-01-01 | 1 | COUNT-04/05 | Static progressive success/failure/order/identity | group-count suite | passed |
-| 23-01-02 | 1 | COUNT-04/05 | Exact ID/options and concurrent scalar independence | group-count + build | pending |
-| 23-02-01 | 2 | COUNT-04/05 | Duplicate/replacement/late/removal/retraction/empty cohorts | group-count suite | pending |
-| 23-02-02 | 2 | COUNT-04/05 | Sharing/replay/membership completion/error/cancellation | group-count + build | pending |
-| 23-03-01 | 3 | COUNT-04/05 | Pool progression/failure/replay parity | focused Pool count | pending |
-| 23-03-02 | 3 | COUNT-04/05 | Real scalar auth/options/ID preserved | Group/Pool + build | pending |
-| 23-04-01 | 4 | COUNT-04/05 | Narrowing/scalar/Group/Pool types | explicit type project | pending |
+| 23-01-02 | 1 | COUNT-04/05 | Exact ID/options and concurrent scalar independence | group-count + build | passed |
+| 23-02-01 | 2 | COUNT-04/05 | Duplicate/replacement/late/removal/retraction/empty cohorts | group-count suite | passed |
+| 23-02-02 | 2 | COUNT-04/05 | Sharing/replay/membership completion/error/cancellation | group-count + build | passed |
+| 23-03-01 | 3 | COUNT-04/05 | Pool progression/failure/replay parity | focused Pool count | passed |
+| 23-03-02 | 3 | COUNT-04/05 | Real scalar auth/options/ID preserved | Group/Pool + build | passed |
+| 23-04-01 | 4 | COUNT-04/05 | Narrowing/scalar/Group/Pool types | explicit type project | passed |
 | 23-04-02 | 4 | COUNT-04/05 | combineLatest progression/isolation RED→GREEN | exact summary evidence + focused suite | passed |
-| 23-05-01 | 5 | COUNT-04/05 | Progressive/HLL/reduced-coverage docs | docs build/search | pending |
-| 23-06-01 | 6 | COUNT-04/05 | All Phase 19 aggregation artifacts explicitly amended with scalar/HLL/topology positives | per-file and positive searches | pending |
-| 23-06-02 | 6 | COUNT-04/05 | Phase 21/canonical amendments and nine-artifact negative stale-claim audit | executable provenance audit | pending |
-| 23-07-01 | 7 | COUNT-04/05 | Exact major changeset | Node parser | pending |
+| 23-05-01 | 5 | COUNT-04/05 | Progressive/HLL/reduced-coverage docs | docs build/search | passed |
+| 23-06-01 | 6 | COUNT-04/05 | All Phase 19 aggregation artifacts explicitly amended with scalar/HLL/topology positives | per-file and positive searches | passed |
+| 23-06-02 | 6 | COUNT-04/05 | Phase 21/canonical amendments and nine-artifact negative stale-claim audit | executable provenance audit | passed |
+| 23-07-01 | 7 | COUNT-04/05 | Exact major changeset | Node parser | passed |
 | 23-07-02 | 7 | COUNT-04/05 | Complete runtime/type/docs/provenance/workspace gate | full command | passed |
 
 ## Wave 0 and Non-Vacuity
@@ -74,6 +74,6 @@ Any withheld first settlement, escaping per-relay error, stale replacement signa
 - [x] Every task has automated verification.
 - [x] COUNT-04/05 and D-01..D-27 map to evidence.
 - [x] No install or human checkpoint is required.
-- [ ] Set complete only after Plan 23-07 reconciles actual results.
+- [x] Set complete only after Plan 23-08 reconciled actual results and re-ran exact gates.
 
-**Approval:** pending
+**Approval:** complete — re-verified 2026-09-02

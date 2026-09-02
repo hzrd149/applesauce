@@ -1,13 +1,13 @@
 ---
 phase: 23-group-count-isolation
-verified: 2026-09-01T23:57:00Z
-status: gaps_found
-score: 10/12 must-haves verified
+verified: 2026-09-02T00:00:00Z
+status: passed
+score: 12/12 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
+resolved_gaps:
   - truth: "Published COUNT guidance consistently describes progressive per-relay outcomes and safe HLL aggregation."
-    status: failed
+    status: resolved
     reason: "The primary Count documentation contradicts the implemented Phase 23 contract by claiming Group/Pool remain all-or-nothing and partial records are deferred to Phase 23."
     artifacts:
       - path: "apps/docs/loading/relays/pool.md"
@@ -16,7 +16,7 @@ gaps:
       - "Remove the stale all-or-nothing bullet or replace it with current progressive/isolation guidance."
       - "Add a docs content gate that rejects this stale phrase, then rebuild docs."
   - truth: "23-VALIDATION.md truthfully reconciles every task and final sign-off."
-    status: failed
+    status: resolved
     reason: "Frontmatter says complete/nyquist compliant, but 10 task rows remain pending, the sign-off instruction is unchecked, and Approval still says pending."
     artifacts:
       - path: ".planning/phases/23-group-count-isolation/23-VALIDATION.md"
@@ -29,9 +29,9 @@ gaps:
 # Phase 23: Group count() Isolation Verification Report
 
 **Phase Goal:** One failing/offline relay costs only its own count, and cumulative results arrive as each relay settles.
-**Verified:** 2026-09-01T23:57:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification after review fixes
+**Verified:** 2026-09-02T00:00:00Z
+**Status:** passed
+**Re-verification:** Yes — Plan 23-08 closed both deterministic documentation/evidence gaps
 
 ## Goal Achievement
 
@@ -49,10 +49,10 @@ gaps:
 | 8 | Scalar Relay COUNT policy, exact filters/ID/options, concurrency, and independent per-relay policy are unchanged. | ✓ VERIFIED | Group forwards exact arguments at `group.ts:510`; Group/Pool integration and auth policy tests pass. |
 | 9 | Pool and public types preserve the Group progressive contract without translation. | ✓ VERIFIED | `pool.ts:236-243` returns `ReturnType<RelayGroup["count"]>`; type fixture narrows shared `RelayOutcome`; Pool tests pass. |
 | 10 | HLL guidance explains reduced coverage and forbids naive summation/zero substitution. | ✓ VERIFIED | `pool.md:205-226` shows compatible-sketch union and explicit coverage caveats. |
-| 11 | Published docs consistently describe current progressive isolation. | ✗ FAILED | `pool.md:227` says Group/Pool remain all-or-nothing and partial records are deferred, directly contradicting lines 192-203 and production behavior. |
-| 12 | Final Nyquist validation is internally reconciled. | ✗ FAILED | `23-VALIDATION.md` claims complete while most task rows and final approval remain pending. |
+| 11 | Published docs consistently describe current progressive isolation. | ✓ VERIFIED | Count-section stale-phrase gate rejects the former all-or-nothing/deferred claim; progressive/cumulative `RelayOutcome` guidance and docs build pass. |
+| 12 | Final Nyquist validation is internally reconciled. | ✓ VERIFIED | Every task row and checkbox is passed/checked, frontmatter is complete/Nyquist true, and Approval is complete after exact gates. |
 
-**Score:** 10/12 truths verified (0 present, behavior-unverified)
+**Score:** 12/12 truths verified (0 present, behavior-unverified)
 
 ### Required Artifacts
 
@@ -63,9 +63,9 @@ gaps:
 | `packages/relay/src/pool.ts` | Derived facade | ✓ VERIFIED | Direct delegation; no mapping/catch/combine layer. |
 | `packages/relay/src/__tests__/group-count.test.ts` | Edge/review-fix behavior | ✓ VERIFIED | Includes progression, isolation, empty replay, active retraction, same-URL replacement, and membership-completion cases. |
 | `packages/relay/type-tests/group-count-types.ts` | Narrowing and Pool parity | ✓ VERIFIED | Included in explicit type project and passes. |
-| `apps/docs/loading/relays/pool.md` | Current COUNT/HLL guidance | ✗ CONTRADICTORY | Correct progressive section followed by stale all-or-nothing bullet. |
+| `apps/docs/loading/relays/pool.md` | Current COUNT/HLL guidance | ✓ VERIFIED | Progressive outcome, provisional snapshot, isolated failure, and reduced-coverage HLL guidance is internally consistent. |
 | `.changeset/relay-group-count-progressive.md` | Exact major release record | ✓ VERIFIED | One package, major, one sentence. |
-| `23-VALIDATION.md` | Reconciled evidence | ✗ INCONSISTENT | Complete frontmatter conflicts with pending rows and approval. |
+| `23-VALIDATION.md` | Reconciled evidence | ✓ VERIFIED | All rows and sign-off fields match rerun evidence. |
 
 ### Key Link Verification
 
@@ -74,7 +74,7 @@ gaps:
 | Group accumulator | scalar `Relay.count()` | deferred exact filters/id/options | ✓ WIRED | Independent calls start and settle separately. |
 | Group outcomes | shared types | `RelayCountOutcomes` / `RelayOutcome` | ✓ WIRED | One Phase 21 representation is reused. |
 | Pool | Group | `ReturnType` + direct delegation | ✓ WIRED | No translation or behavior fork. |
-| Docs | implementation | progressive/HLL guidance | ✗ PARTIAL | Main explanation matches; stale best-practice bullet reverses it. |
+| Docs | implementation | progressive/HLL guidance | ✓ WIRED | Count-section negative and positive content gates plus VitePress build pass. |
 
 ### Behavioral Spot-Checks
 
@@ -102,12 +102,7 @@ No Phase 23 requirement is orphaned. The blocking gaps are release/documentation
 
 ### Anti-Patterns Found
 
-| File | Line | Pattern | Severity | Impact |
-|---|---|---|---|---|
-| `apps/docs/loading/relays/pool.md` | 227 | Stale deferred/all-or-nothing claim | 🛑 Blocker | Publishes the opposite of the shipping API contract. |
-| `23-VALIDATION.md` | frontmatter/rows/sign-off | Premature completion state | 🛑 Blocker | Makes phase evidence non-auditable. |
-
-No TBD/FIXME/XXX markers or production stubs were found.
+The two original documentation/evidence anti-patterns are resolved. No TBD/FIXME/XXX markers or production stubs were found.
 
 ### Human Verification Required
 
@@ -115,9 +110,9 @@ None. Both gaps are deterministic documentation/evidence defects.
 
 ### Gaps Summary
 
-The runtime goal is achieved and all executable code gates pass, including the three review-fix edge cases. Phase 23 cannot pass yet because its primary documentation still publishes the old all-or-nothing behavior and its validation record claims completion while retaining pending evidence and approval.
+The runtime goal and publication/evidence contract are achieved. Exact focused runtime, type, stale-phrase, and documentation-build gates pass, and validation is internally reconciled at 12/12.
 
 ---
 
-_Verified: 2026-09-01T23:57:00Z_
+_Re-verified: 2026-09-02T00:00:00Z_
 _Verifier: the agent (gsd-verifier)_
