@@ -15,7 +15,7 @@ created: 2026-09-02
 | Sync | relay sync/Group/Pool focused Vitest |
 | Loader | sync-loader focused/full Vitest |
 | Types/docs | explicit tsc project + VitePress |
-| Full | Plan 24-09 Task 2 |
+| Full | Plan 24-10 Task 2 |
 
 ## Per-Task Map
 | Task | Requirements | Evidence | Status |
@@ -36,8 +36,10 @@ created: 2026-09-02
 | 24-07-02 | SYNC-03 | mutations 6/7 RED→GREEN | pending |
 | 24-08-01 | SYNC-01..04 | public type/export negatives | pending |
 | 24-08-02 | SYNC-01..04 | docs migration | pending |
-| 24-09-01 | SYNC-01..04/RESID-03 | fixed + live stale-contract inventory; no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | pending |
-| 24-09-02 | all | explicit ten-note retain/revise/remove audit; exact package/bump + one-change/single-sentence parser across three new and nine retained/revised notes; removed-note absence and retained digests; full gates | pending |
+| 24-09-01 | SYNC-01..04/RESID-03 | exact affected/unaffected set equals live rg discovery; named tests and agent-skill overview disposition | pending |
+| 24-09-02 | SYNC-01..04/RESID-03 | no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | pending |
+| 24-10-01 | all | ten-note dispositions; Intl sentence count and exact package/bump/subject across twelve remaining notes; retained equality and removed absence | pending |
+| 24-10-02 | all | runtime/type/export/docs/provenance/dependency/seven-mutation full gates | pending |
 
 ## Wave 0 / Non-vacuity
 - [ ] Create real >32 and synchronous subscriber ordering tests before protocol rewrite.
@@ -48,19 +50,19 @@ created: 2026-09-02
 ## Coverage Audit
 | SOURCE | ID | Plan | Status |
 |---|---|---|---|
-| GOAL | — | 01-09 | COVERED |
-| REQ | SYNC-01 | 01,06,08,09 | COVERED |
-| REQ | SYNC-02 | 01,03,06,09 | COVERED |
-| REQ | SYNC-03 | 02,03,07,09 | COVERED |
-| REQ | SYNC-04 | 03-05,08,09 | COVERED |
-| REQ | RESID-03 | 03,05,09 | COVERED |
+| GOAL | — | 01-10 | COVERED |
+| REQ | SYNC-01 | 01,06,08-10 | COVERED |
+| REQ | SYNC-02 | 01,03,06,09,10 | COVERED |
+| REQ | SYNC-03 | 02,03,07,09,10 | COVERED |
+| REQ | SYNC-04 | 03-05,08-10 | COVERED |
+| REQ | RESID-03 | 03,05,09,10 | COVERED |
 | CONTEXT | D-01..D-07 | 01,04,08 | COVERED |
 | CONTEXT | D-08..D-14 | 02,03,07 | COVERED |
 | CONTEXT | D-15..D-19 | 03,04,08 | COVERED |
 | CONTEXT | D-20..D-23 | 05,08 | COVERED |
 | CONTEXT | D-24 | 06,07 | COVERED |
-| CONTEXT | D-25..D-27 | 08,09 | COVERED |
-| RESEARCH | protocol/scheduler/error/type/docs constraints | 01-09 | COVERED |
+| CONTEXT | D-25..D-27 | 08-10 | COVERED |
+| RESEARCH | protocol/scheduler/error/type/docs constraints | 01-10 | COVERED |
 
 ## Failure Policy
 Missing follow-up, emit-before-write, blocked negotiation, active>4, starvation, multiplied auth budget, stale reconnect state, duplicate close/execution, timeout option, silent send failure, EmptyError, unattributed Group failure, stale docs/types/provenance, or mutation residue is stop-and-investigate.
