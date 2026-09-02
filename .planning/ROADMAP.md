@@ -75,7 +75,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer (completed 2026-08-31)
 - [x] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever (completed 2026-09-01)
 - [x] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop (completed 2026-09-01)
-- [ ] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively
+- [x] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively (completed 2026-09-02)
 - [ ] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions
 - [ ] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
@@ -253,7 +253,7 @@ Plans:
   2. `RelayGroup.count()` emits a partial record as each relay answers, rather than withholding every count until the slowest relay replies.
   3. A failed relay's entry in the count record uses the same per-source-outcome shape Phase 21 defined for the group aggregate error, not a second, independently invented shape.
 
-**Plans**: 7/7 plans executed
+**Plans**: 8/8 plans complete
 
 Plans:
 
@@ -264,7 +264,7 @@ Plans:
 - [x] 23-05-PLAN.md — Progressive/HLL outcome documentation
 - [x] 23-06-PLAN.md — Exhaustive Phase 19/21/canonical provenance amendments and stale-claim audit
 - [x] 23-07-PLAN.md — Major changeset, full gates, provenance audit, and Nyquist reconciliation
-- [ ] 23-08-PLAN.md — Gap closure: consistent COUNT docs and reconciled validation evidence
+- [x] 23-08-PLAN.md — Gap closure: consistent COUNT docs and reconciled validation evidence
 
 ### Phase 24: Negentropy & Sync Re-layer
 
