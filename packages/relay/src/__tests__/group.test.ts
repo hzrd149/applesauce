@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { lastValueFrom, of, throwError, toArray } from "rxjs";
+import { BehaviorSubject, lastValueFrom, of, Subject, throwError, toArray } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -345,6 +345,56 @@ describe("D-19: RelayGroup.sync per-relay isolation (13-07)", () => {
 
     const empty = await lastValueFrom(new RelayGroup([]).sync([], {}).pipe(toArray()));
     expect(empty).toEqual([]);
+  });
+
+  it("cancels a removed active relay and ignores its late signals", async () => {
+    const stream = new Subject<any>();
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay1, "sync").mockReturnValue(stream);
+    const members = new BehaviorSubject<Relay[]>([relay1]);
+    const spy = subscribeSpyTo(new RelayGroup(members).sync([], {}));
+    await vi.waitFor(() => expect(relay1.sync).toHaveBeenCalledOnce());
+
+    members.next([]);
+    stream.next({ type: "received", from: relay1.url, event: mockEvent });
+
+    expect(spy.getValues()).toEqual([]);
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("replaces a relay instance at the same normalized URL", async () => {
+    const oldStream = new Subject<any>();
+    const replacementStream = new Subject<any>();
+    const replacement = new Relay("wss://relay1.test/");
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay1, "sync").mockReturnValue(oldStream);
+    vi.spyOn(replacement, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(replacement, "sync").mockReturnValue(replacementStream);
+    const members = new BehaviorSubject<Relay[]>([relay1]);
+    const spy = subscribeSpyTo(new RelayGroup(members).sync([], {}));
+    await vi.waitFor(() => expect(relay1.sync).toHaveBeenCalledOnce());
+
+    members.next([replacement]);
+    await vi.waitFor(() => expect(replacement.sync).toHaveBeenCalledOnce());
+    oldStream.next({ type: "received", from: relay1.url, event: mockEvent });
+    const current = { type: "received" as const, from: replacement.url, event: mockEvent };
+    replacementStream.next(current);
+    replacementStream.complete();
+
+    expect(spy.getValues()).toEqual([current]);
+  });
+
+  it("supports observable-controlled membership without using the relays getter", async () => {
+    const stream = new Subject<any>();
+    vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay1, "sync").mockReturnValue(stream);
+    const members = new Subject<Relay[]>();
+    const spy = subscribeSpyTo(new RelayGroup(members).sync([], {}));
+
+    members.next([relay1]);
+    await vi.waitFor(() => expect(relay1.sync).toHaveBeenCalledOnce());
+    stream.complete();
+    expect(spy.receivedComplete()).toBe(true);
   });
 });
 

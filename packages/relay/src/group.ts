@@ -17,7 +17,6 @@ import {
   lastValueFrom,
   map,
   merge,
-  mergeMap,
   MonoTypeOperatorFunction,
   Observable,
   of,
@@ -516,25 +515,73 @@ export class RelayGroup {
     // added to Relay.sync propagates here automatically.
     opts?: Parameters<Relay["sync"]>[3],
   ): Observable<GroupSyncMessage> {
-    return from(this.relays).pipe(
-      mergeMap((relay) =>
-        defer(() => from(relay.getSupported())).pipe(
-          switchMap((supported) => {
-            if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77");
-            return relay.sync(store, filter, direction, opts);
-          }),
-          catchError((error) => {
-            const reason = RELAY_AUTH_ERROR_NAMES.has(error?.name)
-              ? `an auth failure (${error.name})`
-              : error?.message || "an unknown error";
-            this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, error);
-            return of({ type: "relay-failed", from: normalizeURL(relay.url), error } satisfies GroupSyncMessage);
-          }),
-        ),
-      ),
-      // Only create one upstream subscription
-      share(),
-    );
+    return new Observable<GroupSyncMessage>((subscriber) => {
+      const active = new Map<string, { relay: Relay; token: symbol; subscription: Subscription }>();
+      let processingMembership = false;
+
+      const finishIfIdle = () => {
+        if (!processingMembership && active.size === 0) subscriber.complete();
+      };
+      const membership = this.relays$.subscribe({
+        next: (relays) => {
+          if (subscriber.closed) return;
+          processingMembership = true;
+          const latest = new Map<string, Relay>();
+          for (const relay of relays) latest.set(normalizeURL(relay.url), relay);
+
+          for (const [url, entry] of active) {
+            if (latest.get(url) !== entry.relay) {
+              entry.subscription.unsubscribe();
+              active.delete(url);
+            }
+          }
+
+          const additions: Array<[string, Relay, symbol]> = [];
+          for (const [url, relay] of latest) {
+            if (active.has(url)) continue;
+            const token = Symbol(url);
+            active.set(url, { relay, token, subscription: Subscription.EMPTY });
+            additions.push([url, relay, token]);
+          }
+
+          for (const [url, relay, token] of additions) {
+            const subscription = defer(() => from(relay.getSupported())).pipe(
+              switchMap((supported) => {
+                if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77");
+                return relay.sync(store, filter, direction, opts);
+              }),
+              catchError((error) => {
+                const reason = RELAY_AUTH_ERROR_NAMES.has(error?.name)
+                  ? `an auth failure (${error.name})`
+                  : error?.message || "an unknown error";
+                this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, error);
+                return of({ type: "relay-failed", from: url, error } satisfies GroupSyncMessage);
+              }),
+            ).subscribe({
+              next: (message) => {
+                if (active.get(url)?.token === token) subscriber.next(message);
+              },
+              complete: () => {
+                if (active.get(url)?.token !== token) return;
+                active.delete(url);
+                finishIfIdle();
+              },
+            });
+            if (active.get(url)?.token === token) active.get(url)!.subscription = subscription;
+            else subscription.unsubscribe();
+          }
+          processingMembership = false;
+          finishIfIdle();
+        },
+        error: (error) => subscriber.error(error),
+        complete: finishIfIdle,
+      });
+
+      return () => {
+        membership.unsubscribe();
+        for (const entry of active.values()) entry.subscription.unsubscribe();
+      };
+    }).pipe(share());
   }
 
   /**
