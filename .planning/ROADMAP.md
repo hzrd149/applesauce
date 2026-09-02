@@ -279,7 +279,7 @@ Plans:
   4. A SEND direction where every upload was rejected does not print "Upload complete" — the caller can observe send failures as values, not just received events.
   5. The non-auth negentropy fallback force-closes any open auth phase, and a zero-event EOSE on `sync()`'s RECEIVE branch no longer rejects the whole sync with an `EmptyError`.
 
-**Plans**: 10/10 plans executed
+**Plans**: 10/11 plans executed
 
 Plans:
 
@@ -293,6 +293,7 @@ Plans:
 - [x] 24-08-PLAN.md — Public types/exports and documentation migration
 - [x] 24-09-PLAN.md — Stale-contract inventory and canonical/historical provenance
 - [x] 24-10-PLAN.md — Changeset reconciliation, exact parsers, and full gates
+- [ ] 24-11-PLAN.md — Canonical requirement-status and verification reconciliation
 
 ### Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2
 
