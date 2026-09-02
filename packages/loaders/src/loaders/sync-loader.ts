@@ -10,12 +10,14 @@ import {
   concat,
   defer,
   EMPTY,
+  filter as rxFilter,
   finalize,
   from,
   identity,
   isObservable,
   merge,
   mergeMap,
+  map,
   Observable,
   of,
   ReplaySubject,
@@ -150,15 +152,22 @@ export type SyncRequestMethod = (relay: string, filters: Filter[], opts?: SyncMe
 /** A method that returns the list of NIPs a single relay supports (used to detect NIP-77) */
 export type SyncSupportedMethod = (relay: string) => Promise<number[] | null> | Observable<number[] | null>;
 
+/** Dependency-free structural mirror of relay sync outcomes. */
+export type SyncResult =
+  | { type: "received"; from: string; event: NostrEvent }
+  | { type: "sent"; from: string; event: NostrEvent; response: unknown }
+  | { type: "send-failed"; from: string; event: NostrEvent; error: unknown; response?: unknown }
+  | { type: "relay-failed"; from: string; error: unknown };
+
 /** A method that runs a NIP-77 negentropy sync against a single relay, receiving missing events, and completes
  * when the sync is done */
-export type SyncSyncMethod = (relay: string, filter: Filter, opts?: SyncMethodOptions) => Observable<NostrEvent>;
+export type SyncSyncMethod = (relay: string, filter: Filter, opts?: SyncMethodOptions) => Observable<SyncResult>;
 
 /** The minimal relay interface the sync loader needs (structurally satisfied by applesauce-relay's `Relay`) */
 export interface SyncLoaderRelay {
   request(filters: Filter | Filter[], opts?: SyncMethodOptions): Observable<NostrEvent>;
   getSupported(): Promise<number[] | null>;
-  sync(store: unknown, filter: Filter, direction?: unknown, opts?: SyncMethodOptions): Observable<NostrEvent>;
+  sync(store: unknown, filter: Filter, direction?: unknown, opts?: SyncMethodOptions): Observable<SyncResult>;
 }
 
 /** The minimal pool interface the sync loader needs (structurally satisfied by applesauce-relay's `RelayPool`) */
@@ -633,7 +642,12 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             // Part 2: negentropy sync, falling back to a paginated request if it fails or times out
             return concat(
               status(),
-              toMessages(withTimeout(sync(url, filter, relayMethodOptions))).pipe(
+              toMessages(
+                withTimeout(sync(url, filter, relayMethodOptions)).pipe(
+                  rxFilter((message) => message.type === "received" || !("type" in message)),
+                  map((message) => message.type === "received" ? message.event : message as unknown as NostrEvent),
+                ),
+              ).pipe(
                 catchError((error) => {
                   // D-16: an auth-required failure on the negentropy path must NOT trigger the paginated
                   // fallback — that would burn the request path against the same auth wall the negentropy
