@@ -228,21 +228,21 @@ Failures and successful responses without HLL reduce coverage. Never sum overlap
 
 ### Sync Method
 
-The `sync` method performs bidirectional Negentropy synchronization (NIP-77) with relays:
+The `sync` method performs Negentropy synchronization with multiple relays and emits `GroupSyncMessage` values:
 
 ```typescript
-pool
-  .sync(
-    relays,
-    eventStore, // or array of events
-    { kinds: [1], authors: ["pubkey"] },
-    "down", // optional: "up", "down", or "both" (default)
-  )
-  .subscribe({
-    next: (event) => console.log("Synced event:", event),
-    complete: () => console.log("Sync complete"),
-  });
+pool.sync(relays, eventStore, filter).subscribe({
+  next: (message) => {
+    if (message.type === "received") consume(message.event);
+    if (message.type === "sent") uploaded += 1;
+    if (message.type === "send-failed") failures.push(message);
+    if (message.type === "relay-failed") unavailable.push(message.from);
+  },
+  complete: () => console.log("Transfers drained", { uploaded, failures }),
+});
 ```
+
+Completion means all scheduled work drained; inspect `send-failed` and `relay-failed` results before reporting success. For raw rounds, use `pool.relay(url).negentropy(...)` per relay.
 
 ## Relay Groups
 

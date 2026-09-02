@@ -347,30 +347,17 @@ console.log(`Total events: ${response.count}`);
 
 ## Negentropy Synchronization
 
-The relay supports efficient event synchronization using Negentropy (NIP-77). There are two methods available:
+The relay supports low-level inventory reconciliation and high-level event transfer using Negentropy (NIP-77).
 
 ### negentropy() Method
 
-The `negentropy` method performs low-level Negentropy sync with a custom reconcile function:
+The `negentropy` method emits each `NegentropyRound`. It discovers differences but does not transfer events:
 
 ```typescript
-import { EventStore } from "applesauce-core";
-
-const eventStore = new EventStore();
-
-await relay.negentropy(
-  eventStore, // or array of events
-  { kinds: [1], authors: [pubkey] },
-  async (have, need) => {
-    // 'have' = event IDs we have that relay needs
-    // 'need' = event IDs relay has that we need
-    console.log(`We have ${have.length} events relay needs`);
-    console.log(`Relay has ${need.length} events we need`);
-
-    // Implement custom logic to send/receive events
-  },
-  { signal: abortController.signal },
-);
+relay.negentropy(eventStore, { kinds: [1] }).subscribe({
+  next: ({ have, need }) => console.log({ have, need }),
+  error: (error) => console.error("Negotiation failed", error),
+});
 ```
 
 ### sync() Method
@@ -378,24 +365,17 @@ await relay.negentropy(
 The `sync` method is a higher-level wrapper that automatically handles sending and receiving events:
 
 ```typescript
-import { SyncDirection } from "applesauce-relay";
-
-// Bidirectional sync (default)
-relay.sync(eventStore, { kinds: [1], authors: [pubkey] }).subscribe({
-  next: (event) => console.log("Received event:", event),
-  complete: () => console.log("Sync complete"),
-});
-
-// Only receive events from relay (download)
-relay.sync(eventStore, { kinds: [1] }, SyncDirection.RECEIVE).subscribe({
-  next: (event) => console.log("Downloaded event:", event),
-});
-
-// Only send events to relay (upload)
-relay.sync(eventStore, { kinds: [1] }, SyncDirection.SEND).subscribe({
-  complete: () => console.log("Upload complete"),
+relay.sync(eventStore, { kinds: [1] }).subscribe({
+  next: (message) => {
+    if (message.type === "received") consume(message.event);
+    if (message.type === "sent") uploaded += 1;
+    if (message.type === "send-failed") failures.push(message);
+  },
+  complete: () => console.log("Transfers drained", { uploaded, failures }),
 });
 ```
+
+Use `SyncDirection.RECEIVE` or `SyncDirection.SEND` to restrict transfer direction. Sync has no built-in timeout; pass an `AbortSignal` or compose `takeUntil(timer(...))`.
 
 ## Relay Information
 
