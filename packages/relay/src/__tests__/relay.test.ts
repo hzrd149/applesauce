@@ -3346,7 +3346,7 @@ describe("sync", () => {
       relay.sync([mockEvent], {}, SyncDirection.SEND, { authRetries: 1, onAuthRequired, authTimeout: false }),
       { expectErrors: true },
     );
-    await spy.onComplete();
+    await spy.onError();
 
     expect(negotiationSubscriptions).toBe(2);
     expect(eventSubscriptions).toBe(1);
@@ -3621,10 +3621,10 @@ describe("legacy raw negentropy auth (13-06)", () => {
 
     // This must fail RED against a sync() whose internal event() call passes no options — the caller's
     // handler would then be invoked only for the negentropy negotiation, never for the SEND-direction
-    // EVENT. sync()'s SEND branch awaits Promise.allSettled over the internal event() call, which
-    // itself waits out the short authTimeout above before settling, so waiting for sync() to complete
+    // EVENT. The shared sync coordinator treats terminal auth exhaustion as an operation error, so
+    // waiting for sync() to error
     // is sufficient synchronization (no arbitrary sleep needed).
-    await spy.onComplete();
+    await spy.onError();
 
     expect(onAuthRequired).toHaveBeenCalledWith(
       expect.objectContaining({ request: { verb: "EVENT", event: mockEvent } }),

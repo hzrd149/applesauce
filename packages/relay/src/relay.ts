@@ -2,7 +2,7 @@ import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-
 import { addSeenRelay } from "applesauce-core/helpers";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
-import { ensureHttpURL } from "applesauce-core/helpers/url";
+import { ensureHttpURL, normalizeURL } from "applesauce-core/helpers/url";
 import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { makeAuthEvent } from "nostr-tools/nip42";
@@ -1684,6 +1684,7 @@ export class Relay {
     const concurrency = opts?.concurrency ?? 4;
     if (!Number.isFinite(concurrency) || !Number.isInteger(concurrency) || concurrency <= 0)
       return throwError(() => new RangeError("concurrency must be a finite positive integer"));
+    const fromRelay = normalizeURL(this.url);
 
     const getEvents = async (ids: string[]) => {
       if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
@@ -1823,12 +1824,12 @@ export class Relay {
                   );
                   if (response.ok) {
                     addSeenRelay(event, this.url);
-                    return [{ type: "sent", from: this.url, event, response }];
+                    return [{ type: "sent", from: fromRelay, event, response }];
                   }
-                  return [{ type: "send-failed", from: this.url, event, error: response.error ?? new RelayEventVerdictError(response.message ?? "Relay rejected event"), response }];
+                  return [{ type: "send-failed", from: fromRelay, event, error: response.error ?? new RelayEventVerdictError(response.message ?? "Relay rejected event"), response }];
                 } catch (error) {
                   if (error instanceof AuthRequiredError || error instanceof AuthHandlerError || error instanceof AuthTimeoutError) throw error;
-                  return [{ type: "send-failed", from: this.url, event, error }];
+                  return [{ type: "send-failed", from: fromRelay, event, error }];
                 }
               },
             });
@@ -1853,7 +1854,7 @@ export class Relay {
                     takeUntil(cancelled$),
                   ),
                 );
-                return events.map((event) => ({ type: "received", from: this.url, event }));
+                return events.map((event) => ({ type: "received", from: fromRelay, event }));
               },
             });
           }
