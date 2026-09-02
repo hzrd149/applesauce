@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 25
 current_phase_name: Ecosystem Riders — React 19 & @snort/worker-relay v2
 status: discussing
-stopped_at: Phase 25 context gathered
-last_updated: "2026-09-02T20:16:39.787Z"
+stopped_at: Phase 25 UI-SPEC approved
+last_updated: "2026-09-02T21:27:03.946Z"
 last_activity: 2026-09-02
 last_activity_desc: Phase 24 complete, transitioned to Phase 25
 progress:
@@ -477,9 +477,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-02T20:16:39.760Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-CONTEXT.md
+Last session: 2026-09-02T21:27:03.916Z
+Stopped at: Phase 25 UI-SPEC approved
+Resume file: .planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-UI-SPEC.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

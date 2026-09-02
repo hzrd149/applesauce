@@ -309,11 +309,15 @@ Plans:
 **UI hint**: yes
 
 Plans:
+**Wave 1**
 
 - [ ] 25-01-PLAN.md — React 19 rendering-test tracer and approved test infrastructure
+- [ ] 25-04-PLAN.md — Three folded Phase 05.1 regressions and changesets
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 25-02-PLAN.md — Complete hook/provider lifecycle suite and React 18/19 CI matrix
 - [ ] 25-03-PLAN.md — Worker-relay v2 migration with UI/runtime contract preservation
-- [ ] 25-04-PLAN.md — Three folded Phase 05.1 regressions and changesets
 
 ### Phase 26: Release Coordination — v7.0.0
 
