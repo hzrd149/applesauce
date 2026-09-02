@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Observable, Subject } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
-import { buildStorageVector, negentropySync } from "../negentropy.js";
+import { buildStorageVector, NegentropyError, negentropySync } from "../negentropy.js";
 
 const item = (n: number) => ({ id: n.toString(16).padStart(64, "0"), created_at: n });
 
@@ -13,6 +13,10 @@ class NegentropySocket extends Subject<any[]> {
   override next(message: any[]) {
     this.sent.push(message);
     void this.respond(message);
+  }
+
+  receive(message: any[]) {
+    super.next(message);
   }
 
   multiplex(open: () => any[], close: () => any[], matches: (message: any[]) => boolean) {
@@ -82,5 +86,37 @@ describe("negentropySync", () => {
     expect(socket.sent.filter((message) => message[0] === "NEG-CLOSE")).toHaveLength(1);
     expect(first).toHaveBeenCalledWith({ have: [], need: [] });
     expect(second).toHaveBeenCalledWith({ have: [], need: [] });
+  });
+
+  it("surfaces unknown NEG-ERR frames and closes exactly once", async () => {
+    const socket = new NegentropySocket();
+    const interaction = negentropySync(buildStorageVector([]), socket, {}, { id: "failure" });
+    const error = new Promise<unknown>((resolve) => interaction.subscribe({ error: resolve }));
+    await vi.waitFor(() => expect(socket.sent.some((message) => message[0] === "NEG-OPEN")).toBe(true));
+
+    socket.receive(["NEG-ERR", "failure", "mystery: refused"]);
+
+    await expect(error).resolves.toBeInstanceOf(NegentropyError);
+    expect(socket.sent.filter((message) => message[0] === "NEG-CLOSE")).toEqual([["NEG-CLOSE", "failure"]]);
+  });
+
+  it("aborts without fabricating a round and removes the interaction", async () => {
+    const socket = new NegentropySocket();
+    const controller = new AbortController();
+    const next = vi.fn();
+    const completed = new Promise<void>((resolve, reject) =>
+      negentropySync(buildStorageVector([]), socket, {}, { id: "abort", signal: controller.signal }).subscribe({
+        next,
+        error: reject,
+        complete: resolve,
+      }),
+    );
+    await vi.waitFor(() => expect(socket.sent.some((message) => message[0] === "NEG-OPEN")).toBe(true));
+
+    controller.abort();
+    await completed;
+
+    expect(next).not.toHaveBeenCalled();
+    expect(socket.sent.filter((message) => message[0] === "NEG-CLOSE")).toEqual([["NEG-CLOSE", "abort"]]);
   });
 });
