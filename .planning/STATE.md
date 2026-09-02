@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 23
-current_phase_name: Group count
+current_phase: 24
+current_phase_name: Negentropy & Sync Re-layer
 status: planning
 stopped_at: Completed 23-08-PLAN.md
-last_updated: "2026-09-02T00:01:23.789Z"
-last_activity: 2026-09-01
-last_activity_desc: Phase 22 complete, transitioned to Phase 23
+last_updated: "2026-09-02T00:02:34.893Z"
+last_activity: 2026-09-02
+last_activity_desc: Phase 23 complete, transitioned to Phase 24
 progress:
   total_phases: 11
   completed_phases: 8
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 ## Current Position
 
-Phase: 23 — Group count() Isolation
+Phase: 24 — Negentropy & Sync Re-layer
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-01 — Phase 22 complete, transitioned to Phase 23
+Last activity: 2026-09-02 — Phase 23 complete, transitioned to Phase 24
 
 Progress: [██████████] 100%
 
