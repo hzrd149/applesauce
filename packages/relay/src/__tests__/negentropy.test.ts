@@ -49,7 +49,7 @@ function server(items: ReturnType<typeof item>[]) {
 }
 
 describe("negentropySync", () => {
-  it("drives a genuine multi-round negotiation and writes each follow-up before emitting", async () => {
+  it("drives a genuine multi-round negotiation with synchronous send-before-emit ordering", async () => {
     const local = Array.from({ length: 96 }, (_, n) => item(n));
     const remote = Array.from({ length: 96 }, (_, n) => item(n + 48));
     const socket = new NegentropySocket();

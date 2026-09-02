@@ -89,6 +89,29 @@ describe("sync scheduler", () => {
     expect(spy.getValues()).toHaveLength(events.length);
   });
 
+  it("keeps protocol speed through round two while a first-round transfer is blocked", async () => {
+    const first = event(101);
+    const second = event(102);
+    const rounds = new Subject<{ have: string[]; need: string[] }>();
+    const blocked = new Subject<any>();
+    const secondResult = new Subject<any>();
+    const send = vi.spyOn(relay, "event").mockImplementation((value) => value.id === first.id ? blocked : secondResult);
+    vi.spyOn(relay, "negentropy").mockReturnValue(rounds);
+
+    const spy = subscribeSpyTo(relay.sync([first, second], {}, SyncDirection.SEND, { concurrency: 2 }));
+    rounds.next({ have: [first.id], need: [] });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(first));
+    rounds.next({ have: [second.id], need: [] });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith(second));
+
+    blocked.next({ ok: true, from: relay.url });
+    blocked.complete();
+    secondResult.next({ ok: true, from: relay.url });
+    secondResult.complete();
+    rounds.complete();
+    await spy.onComplete();
+  });
+
   it("rejects invalid concurrency before starting protocol work", async () => {
     const negotiate = vi.spyOn(relay, "negentropy");
     const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.BOTH, { concurrency: 0 }), { expectErrors: true });
