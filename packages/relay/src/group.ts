@@ -39,7 +39,6 @@ import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
 import { isReqProgress, Relay, SyncDirection } from "./relay.js";
 import {
   FilterInput,
-  GroupNegentropySyncOptions,
   GroupRelayInput,
   GroupReqErrorMessage,
   GroupReqMessage,
@@ -48,7 +47,6 @@ import {
   GroupRequestOptions,
   GroupSubscriptionOptions,
   GroupSyncMessage,
-  NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
   PublishResponse,
@@ -59,7 +57,6 @@ import {
   RelayStatus,
 } from "./types.js";
 
-type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
 
 /** Aggregate failure raised by high-level group requests and subscriptions. */
 export class RelayGroupError extends AggregateError {
@@ -364,29 +361,6 @@ export class RelayGroup {
   /** Send an event to all relays */
   event(event: NostrEvent): Observable<PublishResponse> {
     return this.internalPublish((relay) => relay.event(event));
-  }
-
-  /** Negentropy sync events with the relays and an event store */
-  async negentropy(
-    store: NegentropyReadStore,
-    filter: Filter,
-    reconcile: ReconcileFunction,
-    opts?: GroupNegentropySyncOptions,
-  ): Promise<boolean> {
-    // Filter out relays that do not support NIP-77 negentropy sync
-    const supported = await Promise.all(this.relays.map(async (relay) => [relay, await relay.getSupported()] as const));
-    const relays = supported.filter(([_, supported]) => supported?.includes(77)).map(([relay]) => relay);
-    if (relays.length === 0) throw new Error("No relays support NIP-77 negentropy sync");
-
-    // Non parallel sync is not supported yet
-    if (!opts?.parallel) throw new Error("Negentropy sync must be parallel (for now)");
-
-    // Sync all the relays in parallel
-    await Promise.allSettled(
-      relays.map((relay) => lastValueFrom(relay.negentropy(store, filter, opts).pipe(mergeMap(({ have, need }) => reconcile(have, need))))),
-    );
-
-    return true;
   }
 
   /** Publish an event to all relays with retries ( default 3 retries ) */

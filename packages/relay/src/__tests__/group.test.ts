@@ -253,25 +253,6 @@ describe("auth options pass-through (13-07)", () => {
         expect(spy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(opts));
       },
     ],
-    [
-      "negentropy",
-      async (opts) => {
-        vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
-        vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
-        const spy = vi.spyOn(relay1, "negentropy").mockResolvedValue(true);
-        vi.spyOn(relay2, "negentropy").mockResolvedValue(true);
-
-        const negentropyOpts = { ...opts, parallel: true as const };
-        await group.negentropy({} as any, { kinds: [1] }, async () => {}, negentropyOpts);
-
-        expect(spy).toHaveBeenCalledWith(
-          expect.anything(),
-          { kinds: [1] },
-          expect.anything(),
-          expect.objectContaining(opts),
-        );
-      },
-    ],
   ];
 
   it.each(cases)(

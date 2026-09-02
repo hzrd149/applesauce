@@ -154,17 +154,6 @@ export class RelayPool {
     return this.group(relays).event(event);
   }
 
-  /** Negentropy sync event ids with the relays and an event store */
-  negentropy(
-    relays: PoolRelayInput,
-    store: Parameters<RelayGroup["negentropy"]>[0],
-    filter: Parameters<RelayGroup["negentropy"]>[1],
-    reconcile: Parameters<RelayGroup["negentropy"]>[2],
-    opts?: Parameters<RelayGroup["negentropy"]>[3],
-  ): Promise<boolean> {
-    return this.group(relays).negentropy(store, filter, reconcile, opts);
-  }
-
   /** Publish an event to multiple relays */
   publish(
     relays: PoolRelayInput,

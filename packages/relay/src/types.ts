@@ -273,12 +273,6 @@ export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;
 /** The input arguments for a relay group */
 export type GroupRelayInput = Relay[] | Observable<Relay[]>;
 
-/** Options for negentropy sync on a group of relays */
-export type GroupNegentropySyncOptions = NegentropyOptions & RelayAuthOptions & {
-  /** Whether to sync in parallel (default true) */
-  parallel?: boolean;
-};
-
 /** Options for a subscription on a group of relays */
 export type GroupSubscriptionOptions = RelaySubscriptionOptions & {
   /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
