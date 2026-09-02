@@ -160,8 +160,12 @@ export type RelayCountOptions = RelayAuthOptions & {
   timeout?: boolean | number;
 };
 
-/** Options for the sync method on the pool and relay */
-export type RelaySyncOptions = RelayAuthOptions;
+/** High-level sync policy. Lifetime remains caller-owned through cancellation or composed RxJS operators. */
+export type RelaySyncOptions = RelayAuthOptions & {
+  reconnect?: boolean | number | Parameters<typeof retry>[0];
+  concurrency?: number;
+  signal?: AbortSignal;
+};
 
 /** Internal type emitted when REQ is sent to the relay */
 export type RelayReqOpenMessage = { type: "OPEN"; from: string; id: string; filters: Filter[] };

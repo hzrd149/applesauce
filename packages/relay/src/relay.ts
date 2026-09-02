@@ -1707,8 +1707,10 @@ export class Relay {
         }
       };
 
-      this.negentropy(store, filters, { signal: controller.signal })
-        .pipe(mergeMap(async ({ have, need }) => {
+      defer(() => this.negentropy(store, filters, { id: nanoid(), signal: controller.signal }))
+        .pipe(
+          this.customConnectionRetryOperator(opts?.reconnect),
+          mergeMap(async ({ have, need }) => {
           // NOTE: it may be more efficient to sync all the events later in a single batch
 
           // Send missing events to the relay
@@ -1750,7 +1752,8 @@ export class Relay {
               ),
             );
           }
-        }))
+          }),
+        )
         .subscribe({
         complete: () => {
           if (!cleanupCalled) observer.complete();
