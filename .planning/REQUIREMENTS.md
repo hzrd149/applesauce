@@ -54,10 +54,10 @@ findings changed the plan and are marked **[research]** below.
 
 ### Negentropy and Sync
 
-- [ ] **SYNC-01**: Multi-round reconciliation reaches the wire — `negentropySync` sends its computed follow-up message — proven by a test whose data deliberately exceeds the frame-size threshold to force a second round
-- [ ] **SYNC-02**: `negentropy()` emits what it learns per round without blocking on the caller's transfers, so negotiation runs at protocol speed as NIP-77 describes
-- [ ] **SYNC-03**: `sync()` owns one global auth budget, fresh reconnect attempts, and explicit bounded transfer concurrency; duration is caller-owned through cancellation or composed RxJS operators, with no built-in timeout
-- [ ] **SYNC-04**: `sync()` reports both directions — a SEND's outcome is observable rather than silently swallowed, so "Upload complete" cannot print when every upload was rejected
+- [x] **SYNC-01**: Multi-round reconciliation reaches the wire — `negentropySync` sends its computed follow-up message — proven by a test whose data deliberately exceeds the frame-size threshold to force a second round
+- [x] **SYNC-02**: `negentropy()` emits what it learns per round without blocking on the caller's transfers, so negotiation runs at protocol speed as NIP-77 describes
+- [x] **SYNC-03**: `sync()` owns one global auth budget, fresh reconnect attempts, and explicit bounded transfer concurrency; duration is caller-owned through cancellation or composed RxJS operators, with no built-in timeout
+- [x] **SYNC-04**: `sync()` reports both directions — a SEND's outcome is observable rather than silently swallowed, so "Upload complete" cannot print when every upload was rejected
 
 ### Group Error Surface
 
@@ -77,7 +77,7 @@ findings changed the plan and are marked **[research]** below.
 
 - [x] **RESID-01**: A single relay's AUTH rejection no longer latches a permanent `error$` on an otherwise-working community — there is a clear-on-recovery path, not merely a reset of `started`
 - [x] **RESID-02**: `revoke()`/`revokeBundle()` report a publish failure rather than absorbing it and returning `revoked: true`, so the UI cannot call a link dead while it still resolves
-- [ ] **RESID-03**: The two Phase 13 residuals with reachable behavioral consequence are closed — the negentropy non-auth fallback force-closes open auth phases, and `Relay.sync()`'s RECEIVE branch does not reject with `EmptyError` on a zero-event EOSE
+- [x] **RESID-03**: The two Phase 13 residuals with reachable behavioral consequence are closed — the negentropy non-auth fallback force-closes open auth phases, and `Relay.sync()`'s RECEIVE branch does not reject with `EmptyError` on a zero-event EOSE
 - [x] **RESID-04**: No comment, doc, or changeset in the shipped packages asserts behavior the code does not have — covering WR-06's publish `error` discriminator, WR-03's false progress-predicate comment, and WR-09's stale `timeout` doc
 
 ### Release
@@ -157,10 +157,10 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | COUNT-03 | Phase 19 | Complete |
 | COUNT-04 | Phase 23 | Complete |
 | COUNT-05 | Phase 23 | Complete |
-| SYNC-01 | Phase 24 | Pending |
-| SYNC-02 | Phase 24 | Pending |
-| SYNC-03 | Phase 24 | Pending |
-| SYNC-04 | Phase 24 | Pending |
+| SYNC-01 | Phase 24 | Complete |
+| SYNC-02 | Phase 24 | Complete |
+| SYNC-03 | Phase 24 | Complete |
+| SYNC-04 | Phase 24 | Complete |
 | GROUP-01 | Phase 21 | Complete |
 | GROUP-02 | Phase 21 | Complete |
 | GROUP-03 | Phase 21 | Complete |
@@ -171,7 +171,7 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | FIX-03 | Phase 17 | Gaps Found |
 | RESID-01 | Phase 17 | Gaps Found |
 | RESID-02 | Phase 17 | Complete |
-| RESID-03 | Phase 24 | Pending |
+| RESID-03 | Phase 24 | Complete |
 | RESID-04 | Phase 18 | Gaps Found |
 | REL-01 | Phase 26 | Pending |
 | REL-02 | Phase 26 | Pending |
