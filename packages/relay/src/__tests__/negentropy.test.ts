@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Observable, Subject } from "rxjs";
+import { EMPTY, Observable, Subject } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
 import { buildStorageVector, NegentropyError, negentropySync } from "../negentropy.js";
@@ -98,6 +98,19 @@ describe("negentropySync", () => {
 
     await expect(error).resolves.toBeInstanceOf(NegentropyError);
     expect(socket.sent.filter((message) => message[0] === "NEG-CLOSE")).toEqual([["NEG-CLOSE", "failure"]]);
+  });
+
+  it("errors when the upstream completes before a terminal round", async () => {
+    const socket = new NegentropySocket();
+    vi.spyOn(socket, "multiplex").mockReturnValue(EMPTY);
+    const error = new Promise<unknown>((resolve) =>
+      negentropySync(buildStorageVector([]), socket, {}, { id: "premature" }).subscribe({ error: resolve }),
+    );
+
+    await expect(error).resolves.toMatchObject({
+      name: "NegentropyError",
+      reason: "error: negotiation completed before terminal round",
+    });
   });
 
   it("aborts without fabricating a round and removes the interaction", async () => {

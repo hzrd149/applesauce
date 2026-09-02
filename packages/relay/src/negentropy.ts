@@ -1,7 +1,7 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
 import { type Filter } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { concatMap, defer, EMPTY, finalize, from, map, Observable, share, switchMap, takeUntil, takeWhile } from "rxjs";
+import { concatMap, concatWith, defer, EMPTY, finalize, from, map, Observable, share, switchMap, takeUntil, takeWhile, throwError } from "rxjs";
 
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
 import { MultiplexWebSocket, NegentropyOptions, NegentropyRound } from "./types.js";
@@ -77,6 +77,7 @@ export function negentropySync(
   return defer(() => {
     if (opts?.signal?.aborted) return EMPTY;
     const state = new Negentropy(storage, opts?.frameSizeLimit);
+    let terminalRoundSeen = false;
     return from(state.initiate<string>()).pipe(
       switchMap((initial) =>
         socket
@@ -98,11 +99,19 @@ export function negentropySync(
             }),
             concatMap(async (message) => {
               const [followUp, have, need] = await state.reconcile<string>(message);
+              if (followUp === null) terminalRoundSeen = true;
               if (followUp !== null) socket.next(["NEG-MSG", id, followUp]);
               return { followUp, round: { have, need } };
             }),
             takeWhile(({ followUp }) => followUp !== null, true),
             map(({ round }) => round),
+            concatWith(
+              defer(() =>
+                terminalRoundSeen
+                  ? EMPTY
+                  : throwError(() => new NegentropyError("error: negotiation completed before terminal round")),
+              ),
+            ),
             takeUntil(abort$),
           ),
       ),
