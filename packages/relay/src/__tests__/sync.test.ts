@@ -96,4 +96,35 @@ describe("sync scheduler", () => {
     expect(spy.getError()).toBeInstanceOf(RangeError);
     expect(negotiate).not.toHaveBeenCalled();
   });
+
+  it("emits exact sent and send-failed outcomes with normalized attribution", async () => {
+    const first = event(201);
+    const second = event(202);
+    const negative = { ok: false, from: relay.url, message: "blocked", error: new Error("blocked") };
+    const thrown = new Error("socket failed");
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [first.id, second.id], need: [] }));
+    vi.spyOn(relay, "event")
+      .mockReturnValueOnce(of(negative))
+      .mockReturnValueOnce(defer(() => { throw thrown; }));
+
+    const spy = subscribeSpyTo(relay.sync([first, second], {}, SyncDirection.SEND));
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([
+      { type: "send-failed", from: "wss://sync-test/", event: first, error: negative.error, response: negative },
+      { type: "send-failed", from: "wss://sync-test/", event: second, error: thrown },
+    ]);
+  });
+
+  it("treats zero-event EOSE as a successful empty RECEIVE", async () => {
+    const missing = event(301);
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [], need: [missing.id] }));
+    vi.spyOn(relay, "req").mockReturnValue(of({ type: "EOSE", from: relay.url, id: "empty" }));
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE), { expectErrors: true });
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([]);
+    expect(spy.receivedError()).toBe(false);
+  });
 });
