@@ -3279,6 +3279,45 @@ describe("sync", () => {
     await spy.onError();
     expect(spy.receivedError()).toBe(true);
   });
+
+  it("sync reconnects an unclean negotiation with a fresh id", async () => {
+    const close = { wasClean: false, code: 1006, reason: "relay crashed" };
+    const ids: string[] = [];
+    let attempts = 0;
+    vi.spyOn(relay, "negentropy").mockImplementation((_store, _filter, opts) =>
+      defer(() => {
+        ids.push(opts?.id ?? "missing");
+        attempts += 1;
+        return attempts === 1 ? throwError(() => close) : of({ have: [], need: [] });
+      }),
+    );
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { reconnect: { count: 1, delay: 0 } }), {
+      expectErrors: true,
+    });
+    await spy.onComplete();
+
+    expect(attempts).toBe(2);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe("missing");
+    expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it("sync does not reconnect relay verdict failures", async () => {
+    let attempts = 0;
+    vi.spyOn(relay, "negentropy").mockImplementation(() =>
+      defer(() => {
+        attempts += 1;
+        return throwError(() => new RelayClosedError("restricted: denied"));
+      }),
+    );
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { reconnect: 3 }), { expectErrors: true });
+    await spy.onError();
+
+    expect(attempts).toBe(1);
+    expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+  });
 });
 
 describe("operation-scoped negentropy/sync auth (13-06)", () => {
