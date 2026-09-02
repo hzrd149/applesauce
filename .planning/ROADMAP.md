@@ -279,20 +279,20 @@ Plans:
   4. A SEND direction where every upload was rejected does not print "Upload complete" — the caller can observe send failures as values, not just received events.
   5. The non-auth negentropy fallback force-closes any open auth phase, and a zero-event EOSE on `sync()`'s RECEIVE branch no longer rejects the whole sync with an `EmptyError`.
 
-**Plans**: 10 plans
+**Plans**: 10/10 plans executed
 
 Plans:
 
-- [ ] 24-01-PLAN.md — Raw multi-round negentropy Observable, errors, and teardown
-- [ ] 24-02-PLAN.md — Call-scoped sync authentication, reconnect, and caller-owned lifetime
-- [ ] 24-03-PLAN.md — Fair bounded scheduler and explicit transfer/store outcomes
-- [ ] 24-04-PLAN.md — Group/Pool sync isolation and raw multi-relay negentropy removal
-- [ ] 24-05-PLAN.md — Loader fallback auth cleanup and structural result migration
-- [ ] 24-06-PLAN.md — Protocol ordering/non-blocking mutation proofs 1–3
-- [ ] 24-07-PLAN.md — Scheduler/auth/reconnect mutation proofs 4–7
-- [ ] 24-08-PLAN.md — Public types/exports and documentation migration
-- [ ] 24-09-PLAN.md — Stale-contract inventory and canonical/historical provenance
-- [ ] 24-10-PLAN.md — Changeset reconciliation, exact parsers, and full gates
+- [x] 24-01-PLAN.md — Raw multi-round negentropy Observable, errors, and teardown
+- [x] 24-02-PLAN.md — Call-scoped sync authentication, reconnect, and caller-owned lifetime
+- [x] 24-03-PLAN.md — Fair bounded scheduler and explicit transfer/store outcomes
+- [x] 24-04-PLAN.md — Group/Pool sync isolation and raw multi-relay negentropy removal
+- [x] 24-05-PLAN.md — Loader fallback auth cleanup and structural result migration
+- [x] 24-06-PLAN.md — Protocol ordering/non-blocking mutation proofs 1–3
+- [x] 24-07-PLAN.md — Scheduler/auth/reconnect mutation proofs 4–7
+- [x] 24-08-PLAN.md — Public types/exports and documentation migration
+- [x] 24-09-PLAN.md — Stale-contract inventory and canonical/historical provenance
+- [x] 24-10-PLAN.md — Changeset reconciliation, exact parsers, and full gates
 
 ### Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2
 
