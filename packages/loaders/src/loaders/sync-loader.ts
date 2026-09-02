@@ -648,6 +648,8 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
                     throw error;
                   }
 
+                  // Re-arm the fallback's stall clock before its request observable is constructed.
+                  forceCloseAuthPhases();
                   log("Negentropy sync failed for %s, falling back to request: %s", url, error?.message ?? error);
                   // Surface the fallback as its own status change before streaming the request's events
                   return concat(
