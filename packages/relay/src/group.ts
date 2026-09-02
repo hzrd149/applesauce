@@ -34,7 +34,6 @@ import {
   timer,
   toArray,
 } from "rxjs";
-import { type ReconcileFunction } from "./negentropy.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
 import { AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
@@ -59,6 +58,8 @@ import {
   RelayOutcome,
   RelayStatus,
 } from "./types.js";
+
+type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
 
 /** Aggregate failure raised by high-level group requests and subscriptions. */
 export class RelayGroupError extends AggregateError {

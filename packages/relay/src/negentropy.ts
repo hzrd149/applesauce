@@ -14,11 +14,6 @@ import { MultiplexWebSocket, NegentropyOptions, NegentropyRound } from "./types.
  */
 export type { NegentropyOptions, NegentropyRound } from "./types.js";
 
-/** @deprecated Multi-relay callers are migrated in the coordinated group/pool plan. */
-export type ReconcileFunction = (have: string[], need: string[]) => Promise<void>;
-/** @deprecated Use NegentropyOptions for raw Relay.negentropy calls. */
-export type NegentropySyncOptions = NegentropyOptions;
-
 const log = logger.extend("negentropy");
 
 /**

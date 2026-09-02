@@ -20,13 +20,11 @@ import {
   take,
 } from "rxjs";
 import { RelayGroup } from "./group.js";
-import type { NegentropySyncOptions, ReconcileFunction } from "./negentropy.js";
 import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
   FilterInput,
   GroupReqMessage,
   GroupReqOptions,
-  NegentropyReadStore,
   NegentropySyncStore,
   PoolRelayInput,
   PublishResponse,
@@ -159,10 +157,10 @@ export class RelayPool {
   /** Negentropy sync event ids with the relays and an event store */
   negentropy(
     relays: PoolRelayInput,
-    store: NegentropyReadStore,
-    filter: Filter,
-    reconcile: ReconcileFunction,
-    opts?: NegentropySyncOptions,
+    store: Parameters<RelayGroup["negentropy"]>[0],
+    filter: Parameters<RelayGroup["negentropy"]>[1],
+    reconcile: Parameters<RelayGroup["negentropy"]>[2],
+    opts?: Parameters<RelayGroup["negentropy"]>[3],
   ): Promise<boolean> {
     return this.group(relays).negentropy(store, filter, reconcile, opts);
   }
