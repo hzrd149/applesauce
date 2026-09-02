@@ -1716,16 +1716,20 @@ export class Relay {
       );
 
     return new Observable<SyncMessage>((observer) => {
-      const controller = new AbortController();
       type Lane = "send" | "receive";
       type Task = { lane: Lane; run: () => Promise<SyncMessage[]> };
-      const queues: Record<Lane, Task[]> = { send: [], receive: [] };
-      let nextLane: Lane = "send";
-      let active = 0;
-      let negotiationDone = false;
+      type AttemptState = {
+        controller: AbortController;
+        cancelled$: Observable<void>;
+        queues: Record<Lane, Task[]>;
+        nextLane: Lane;
+        active: number;
+        negotiationDone: boolean;
+      };
       let stopped = false;
       let negotiationSub: Subscription | undefined;
-      const cancelled$ = new Observable<void>((subscriber) => {
+      let attempt: AttemptState | undefined;
+      const cancellationFor = (controller: AbortController) => new Observable<void>((subscriber) => {
         if (controller.signal.aborted) {
           subscriber.next();
           subscriber.complete();
@@ -1738,12 +1742,39 @@ export class Relay {
         controller.signal.addEventListener("abort", abort, { once: true });
         return () => controller.signal.removeEventListener("abort", abort);
       });
+      const startAttempt = (): AttemptState => {
+        if (attempt) {
+          attempt.queues.send.length = 0;
+          attempt.queues.receive.length = 0;
+          attempt.controller.abort();
+        }
+        const controller = new AbortController();
+        attempt = {
+          controller,
+          cancelled$: cancellationFor(controller),
+          queues: { send: [], receive: [] },
+          nextLane: "send",
+          active: 0,
+          negotiationDone: false,
+        };
+        return attempt;
+      };
+      const discardAttempt = () => {
+        const discarded = attempt;
+        attempt = undefined;
+        if (!discarded) return;
+        discarded.queues.send.length = 0;
+        discarded.queues.receive.length = 0;
+        discarded.controller.abort();
+      };
       const cleanup = () => {
         if (stopped) return;
         stopped = true;
-        queues.send.length = 0;
-        queues.receive.length = 0;
-        controller.abort();
+        if (attempt) {
+          attempt.queues.send.length = 0;
+          attempt.queues.receive.length = 0;
+          attempt.controller.abort();
+        }
         negotiationSub?.unsubscribe();
       };
       const onCallerAbort = () => {
@@ -1758,40 +1789,42 @@ export class Relay {
         cleanup();
         observer.error(error);
       };
-      const maybeComplete = () => {
-        if (!stopped && negotiationDone && active === 0 && queues.send.length === 0 && queues.receive.length === 0) {
+      const maybeComplete = (state: AttemptState) => {
+        if (attempt === state && !stopped && state.negotiationDone && state.active === 0 && state.queues.send.length === 0 && state.queues.receive.length === 0) {
           stopped = true;
           opts?.signal?.removeEventListener("abort", onCallerAbort);
           observer.complete();
         }
       };
-      const takeTask = (): Task | undefined => {
-        const preferred = queues[nextLane];
-        const alternate: Lane = nextLane === "send" ? "receive" : "send";
-        const task = preferred.shift() ?? queues[alternate].shift();
-        if (task) nextLane = task.lane === "send" ? "receive" : "send";
+      const takeTask = (state: AttemptState): Task | undefined => {
+        const preferred = state.queues[state.nextLane];
+        const alternate: Lane = state.nextLane === "send" ? "receive" : "send";
+        const task = preferred.shift() ?? state.queues[alternate].shift();
+        if (task) state.nextLane = task.lane === "send" ? "receive" : "send";
         return task;
       };
-      const drain = () => {
-        while (!stopped && active < concurrency) {
-          const task = takeTask();
+      const drain = (state: AttemptState) => {
+        while (attempt === state && !stopped && state.active < concurrency) {
+          const task = takeTask(state);
           if (!task) break;
-          active += 1;
+          state.active += 1;
           void task.run().then(
             (messages) => {
-              if (!stopped) for (const message of messages) observer.next(message);
+              if (attempt === state && !stopped) for (const message of messages) observer.next(message);
             },
-            fail,
+            (error) => {
+              if (attempt === state) fail(error);
+            },
           ).finally(() => {
-            active -= 1;
-            drain();
-            maybeComplete();
+            state.active -= 1;
+            drain(state);
+            maybeComplete(state);
           });
         }
-        maybeComplete();
+        maybeComplete(state);
       };
-      const enqueue = (task: Task) => {
-        queues[task.lane].push(task);
+      const enqueue = (state: AttemptState, task: Task) => {
+        state.queues[task.lane].push(task);
       };
 
       if (opts?.signal?.aborted) {
@@ -1800,27 +1833,32 @@ export class Relay {
       }
 
       negotiationSub = defer(() => {
+        const state = startAttempt();
         const id = nanoid();
         return withSyncAuth(
-          this.negentropy(store, filters, { id, signal: controller.signal }),
+          this.negentropy(store, filters, { id, signal: state.controller.signal }),
           () => ({ verb: "NEG-OPEN", id, filter: filters }),
-        );
+        ).pipe(map((round) => ({ round, state })));
       })
         .pipe(
+          catchError((error) => {
+            if (isReconnectableTransportError(error)) discardAttempt();
+            return throwError(() => error);
+          }),
           this.customConnectionRetryOperator(opts?.reconnect),
-          takeUntil(cancelled$),
         )
         .subscribe({
-        next: ({ have, need }) => {
+        next: ({ round: { have, need }, state }) => {
+          if (attempt !== state) return;
           if (direction & SyncDirection.SEND) {
-            for (const eventId of have) enqueue({
+            for (const eventId of have) enqueue(state, {
               lane: "send",
               run: async () => {
                 const [event] = await getEvents([eventId]);
                 if (!event) return [];
                 try {
                   const response = await lastValueFrom(
-                    withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })).pipe(takeUntil(cancelled$)),
+                    withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })).pipe(takeUntil(state.cancelled$)),
                   );
                   if (response.ok) {
                     addSeenRelay(event, this.url);
@@ -1835,7 +1873,7 @@ export class Relay {
             });
           }
           if (direction & SyncDirection.RECEIVE) {
-            for (const eventId of need) enqueue({
+            for (const eventId of need) enqueue(state, {
               lane: "receive",
               run: async () => {
                 const requestId = nanoid();
@@ -1851,18 +1889,19 @@ export class Relay {
                       ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
                       : identity,
                     toArray(),
-                    takeUntil(cancelled$),
+                    takeUntil(state.cancelled$),
                   ),
                 );
                 return events.map((event) => ({ type: "received", from: fromRelay, event }));
               },
             });
           }
-          drain();
+          drain(state);
         },
         complete: () => {
-          negotiationDone = true;
-          maybeComplete();
+          if (!attempt) return;
+          attempt.negotiationDone = true;
+          maybeComplete(attempt);
         },
         error: fail,
       });

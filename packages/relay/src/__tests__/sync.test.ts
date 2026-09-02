@@ -112,6 +112,70 @@ describe("sync scheduler", () => {
     await spy.onComplete();
   });
 
+  it("discards queued and in-flight work before reconnecting", async () => {
+    const first = event(111);
+    const queued = event(112);
+    const attempts = [new Subject<{ have: string[]; need: string[] }>(), new Subject<{ have: string[]; need: string[] }>()];
+    const staleSend = new Subject<any>();
+    const negotiate = vi.spyOn(relay, "negentropy")
+      .mockReturnValueOnce(attempts[0])
+      .mockReturnValueOnce(attempts[1]);
+    const send = vi.spyOn(relay, "event").mockReturnValue(staleSend);
+    const spy = subscribeSpyTo(
+      relay.sync([first, queued], {}, SyncDirection.SEND, { concurrency: 1, reconnect: { count: 1, delay: 0 } }),
+      { expectErrors: true },
+    );
+
+    attempts[0].next({ have: [first.id, queued.id], need: [] });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    attempts[0].error({ wasClean: false, code: 1006 });
+    await vi.waitFor(() => expect(negotiate).toHaveBeenCalledTimes(2));
+
+    staleSend.next({ ok: false, from: relay.url, message: "stale" });
+    staleSend.complete();
+    attempts[1].next({ have: [], need: [] });
+    attempts[1].complete();
+    await spy.onComplete();
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(spy.getValues()).toEqual([]);
+  });
+
+  it("emits only the replacement attempt outcome for repeated work", async () => {
+    const value = event(121);
+    const attempts = [new Subject<{ have: string[]; need: string[] }>(), new Subject<{ have: string[]; need: string[] }>()];
+    const staleSend = new Subject<any>();
+    const currentSend = new Subject<any>();
+    const negotiate = vi.spyOn(relay, "negentropy")
+      .mockReturnValueOnce(attempts[0])
+      .mockReturnValueOnce(attempts[1]);
+    const send = vi.spyOn(relay, "event")
+      .mockReturnValueOnce(staleSend)
+      .mockReturnValueOnce(currentSend);
+    const spy = subscribeSpyTo(
+      relay.sync([value], {}, SyncDirection.SEND, { reconnect: { count: 1, delay: 0 } }),
+      { expectErrors: true },
+    );
+
+    attempts[0].next({ have: [value.id], need: [] });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    attempts[0].error({ wasClean: false, code: 1006 });
+    await vi.waitFor(() => expect(negotiate).toHaveBeenCalledTimes(2));
+    attempts[1].next({ have: [value.id], need: [] });
+    attempts[1].complete();
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+
+    staleSend.next({ ok: false, from: relay.url, message: "stale" });
+    staleSend.complete();
+    currentSend.next({ ok: true, from: relay.url });
+    currentSend.complete();
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([
+      expect.objectContaining({ type: "sent", event: value }),
+    ]);
+  });
+
   it("rejects invalid concurrency before starting protocol work", async () => {
     const negotiate = vi.spyOn(relay, "negentropy");
     const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.BOTH, { concurrency: 0 }), { expectErrors: true });
