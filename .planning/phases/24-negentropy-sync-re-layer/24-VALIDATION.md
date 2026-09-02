@@ -36,8 +36,8 @@ created: 2026-09-02
 | 24-07-02 | SYNC-03 | mutations 6/7 RED→GREEN | pending |
 | 24-08-01 | SYNC-01..04 | public type/export negatives | pending |
 | 24-08-02 | SYNC-01..04 | docs migration | pending |
-| 24-09-01 | SYNC-01..04/RESID-03 | provenance/no-timeout | pending |
-| 24-09-02 | all | changesets/full gates | pending |
+| 24-09-01 | SYNC-01..04/RESID-03 | fixed + live stale-contract inventory; no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | pending |
+| 24-09-02 | all | explicit ten-note retain/revise/remove audit; exact package/bump + one-change/single-sentence parser across three new and nine retained/revised notes; removed-note absence and retained digests; full gates | pending |
 
 ## Wave 0 / Non-vacuity
 - [ ] Create real >32 and synchronous subscriber ordering tests before protocol rewrite.
