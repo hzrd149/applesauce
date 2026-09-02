@@ -67,6 +67,25 @@ created: 2026-09-02
 ## Failure Policy
 Missing follow-up, emit-before-write, blocked negotiation, active>4, starvation, multiplied auth budget, stale reconnect state, duplicate close/execution, timeout option, silent send failure, EmptyError, unattributed Group failure, stale docs/types/provenance, or mutation residue is stop-and-investigate.
 
+## Live Contract Inventory (24-09)
+
+The fixed inventory below equals the live `rg -l` discovery set; live-minus-classified is empty.
+
+### Affected
+
+- **Implementation/types:** `packages/relay/src/{negentropy,relay,group,pool,types,index}.ts`, `packages/relay/type-tests/sync-types.ts`, `packages/relay/tsconfig.type-tests.json`, `packages/loaders/src/loaders/sync-loader.ts`, `packages/loaders/src/types.ts`.
+- **Tests:** `packages/relay/src/__tests__/{relay,group,pool,negentropy,sync,exports}.test.ts`, `packages/loaders/src/loaders/__tests__/sync-loader.test.ts`.
+- **Docs:** `apps/docs/loading/relays/{negentropy,relays,pool}.md`, `apps/docs/loading/loaders/upstream-pool.md`.
+- **Examples:** `apps/examples/src/examples/negentrapy/{mentions,note-reactions,relay-difference}.tsx`, `apps/examples/src/examples/messages/{personal-notes,gift-wrap}.tsx`, `apps/examples/src/examples/relay/multi-user-sync-auth.tsx`.
+
+### Unaffected
+
+- `apps/agent-skills/src/skill/references/overview.md` preserves scalar `pool.sync` topology without result or lifetime claims.
+- `apps/agent-skills/src/skill/references/casts.md` and `packages/loaders/src/helpers/{cache,upstream}.ts` use unrelated cast/cache synchronization vocabulary.
+- `packages/loaders/src/loaders/{address-loader,event-loader,reactions-loader,social-graph,tag-value-loader,timeline-loader,user-lists-loader,zaps-loader}.ts` use generic Observable/cache synchronization and do not expose the negentropy contract.
+
+Any future live discovery must receive an explicit affected or unaffected disposition before this gate passes.
+
 ## Sign-Off
 - [x] Every task has automated verification.
 - [x] All requirements and D-01..27 map to evidence.
