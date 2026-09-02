@@ -1,6 +1,6 @@
 ---
 phase: 24-negentropy-sync-re-layer
-reviewed: 2026-09-02T17:19:24Z
+reviewed: 2026-09-02T17:33:20Z
 depth: deep
 files_reviewed: 23
 files_reviewed_list:
@@ -28,48 +28,38 @@ files_reviewed_list:
   - packages/relay/src/types.ts
   - packages/relay/type-tests/sync-types.ts
 findings:
-  critical: 3
+  critical: 0
   warning: 0
   info: 0
-  total: 3
-status: issues_found
+  total: 0
+status: clean
 ---
 
 # Phase 24: Code Review Report
 
-**Reviewed:** 2026-09-02T17:19:24Z
+**Reviewed:** 2026-09-02T17:33:20Z
 **Depth:** deep
 **Files Reviewed:** 23
-**Status:** issues_found
+**Status:** clean
 
 ## Summary
 
-The raw multi-round protocol stream, high-level sync auth/reconnect/scheduler, structured outcomes and store handling, Group/Pool attribution, loader fallback transition, public types, docs, changesets, and mutation evidence were reviewed across their call chains. The relay suite passes 402 tests and loaders pass 130 tests, but three untested lifecycle defects remain.
+The Phase 24 implementation, all three prior review fixes, and the canonical-only Plan 24-11 closure were re-reviewed. No production or test source changed after the review fixes.
+
+All prior findings remain closed:
+
+- Reconnect now owns generation-scoped controllers, queues, active work, and stale-result guards; failed-attempt work is discarded before a fresh negotiation.
+- Raw negentropy tracks terminal-round receipt and raises `NegentropyError` when its upstream completes prematurely.
+- Group sync tracks normalized dynamic membership by relay instance/token, cancels removed or replaced relays, ignores late stale signals, and supports observable-controlled groups.
+
+Plan 24-11 changes only planning/canonical artifacts. `REQUIREMENTS.md`, validation, verification, Roadmap, and state now consistently record the already-verified five requirement completions and 17/17 verification result. The targeted negentropy, scheduler, and Group suites passed 47 tests.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
-
-### CR-01: Reconnect retains work and results from the failed negotiation attempt
-
-**File:** `packages/relay/src/relay.ts:1714-1817`
-**Issue:** `customConnectionRetryOperator` wraps only the negentropy Observable, while `queues`, `active`, and all transfer promises are allocated outside the retried `defer`. When an unclean transport failure triggers a fresh negotiation, queued-but-not-started work from the failed attempt is not discarded and in-flight work continues settling against the same observer. Transport-failed SENDs may emit `send-failed`, then the fresh negotiation can enqueue the same event again and later emit `sent`; queued items can likewise run after reconnect even if the rebuilt vector no longer requests them. This violates the fresh-attempt boundary and makes outcomes dishonest.
-**Fix:** Put negotiation plus its attempt-owned queues/transfers inside one retryable attempt boundary. On reconnectable failure, abort and drain/cancel that attempt without publishing stale settlements, clear queued work, then build fresh storage, ID, listeners, scheduler state, and transfers. Keep only completed successful store effects across attempts.
-
-### CR-02: Premature protocol completion is accepted as successful negotiation
-
-**File:** `packages/relay/src/negentropy.ts:78-97`
-**Issue:** Completion of `socket.multiplex()` flows directly to normal Observable completion even when no terminal round (`followUp === null`) was decoded. A clean socket/listener completion, adapter completion, or other premature upstream termination therefore looks identical to successful NIP-77 completion. High-level sync marks `negotiationDone` and may complete successfully, contrary to the contract that premature transport termination uses the error channel.
-**Fix:** Track whether a terminal round was processed. If the incoming stream completes before that flag is set (and cancellation was not requested), emit a typed transport/protocol error. Add raw and high-level tests for premature completion distinct from abort/unsubscribe.
-
-### CR-03: Group sync captures membership eagerly and ignores later removal
-
-**File:** `packages/relay/src/group.ts:518-536`
-**Issue:** `from(this.relays)` evaluates the mutable group's relay array when `sync()` is called, not when its cold Observable is subscribed. Removing or replacing a relay between method call and subscription still syncs the stale instance; removing an active relay also does not cancel its sync and its later values/failure remain attributed as current. For observable-controlled groups, accessing `this.relays` throws synchronously before an Observable is returned. This is inconsistent with Group's membership-aware APIs and makes Pool's declared observable relay input unsafe for `sync()`.
-**Fix:** Build Group sync from `relays$` with instance-aware normalized membership tracking: subscribe/cancel per current relay, ignore late removed signals, and attribute only active instances. At minimum defer snapshot acquisition to subscription and reject unsupported controlled input in the Observable error channel, but live removal requires the same token/subscription pattern used by other Group operations.
+All reviewed files meet the phase's correctness, security, and maintainability requirements. No issues found.
 
 ---
 
-_Reviewed: 2026-09-02T17:19:24Z_
+_Reviewed: 2026-09-02T17:33:20Z_
 _Reviewer: the agent (gsd-code-reviewer)_
 _Depth: deep_
