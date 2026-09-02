@@ -33,7 +33,7 @@ created: 2026-09-02
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
 | 25-01-01 | 01 | 1 | ECO-02 | T-25-SC | Approve SUS React test packages before mutation | legitimacy checkpoint | Research audit exists; human registry verification is the blocking gate | ✅ planned | ⬜ pending |
-| 25-01-02 | 01 | 1 | ECO-02 | T-25-01, T-25-02 | Establish renderer dependencies, jsdom, fixtures, and sync/async tracer | rendering integration | `pnpm --filter applesauce-react test -- use-observable-state.test.tsx && pnpm --filter applesauce-react build` | ✅ created by task | ⬜ pending |
+| 25-01-02 | 01 | 1 | ECO-02 | T-25-01, T-25-02 | Establish both-package React 19 baseline, synchronized lockfile, renderer dependencies, jsdom, fixtures, and sync/async tracer | manifest + frozen-lockfile + rendering integration | Exact four-range manifest assertion, `pnpm install --frozen-lockfile`, focused React test, and both package builds | ✅ created/updated by task | ⬜ pending |
 | 25-02-01 | 02 | 2 | ECO-02 | T-25-03 | Ignore stale values/errors and release subscriptions | rendering integration | `pnpm --filter applesauce-react test -- use-observable-state.test.tsx use-$.test.tsx` | ✅ created by task | ⬜ pending |
 | 25-02-02 | 02 | 2 | ECO-02 | T-25-04, T-25-05 | Enforce provider contracts and matching-major CI swaps | rendering + workflow structure | `pnpm --filter applesauce-react test -- providers.test.tsx` plus four-package workflow assertion | ✅ created by task | ⬜ pending |
 | 25-03-01 | 03 | 2 | ECO-03 | T-25-SC | Approve worker-relay v2 package before mutation | legitimacy checkpoint | Existing v1 range assertion; human registry verification is the blocking gate | ✅ planned | ⬜ pending |
@@ -46,10 +46,10 @@ created: 2026-09-02
 
 ## Wave 0 Requirements
 
-- [x] Plan 25-01 Task 2 owns installation of `@testing-library/react`, `react-dom`, `@types/react-dom`, and `jsdom` after Task 1's blocking legitimacy checkpoint.
+- [x] Plan 25-01 Task 2 owns the complete D-03 baseline: matching `react`, `react-dom`, `@types/react`, and `@types/react-dom` React 19 ranges in both package manifests, installation of the React renderer test dependencies after Task 1's blocking legitimacy checkpoint, and the single synchronized `pnpm-lock.yaml` update.
 - [x] Plan 25-01 Task 2 owns package-local jsdom selection plus the tracked-observable fixture; Plan 25-02 Task 1 expands it with error-boundary and teardown accounting.
 - [x] Plan 25-02 Task 2 owns local proof and CI encoding of one explicit no-lockfile command that swaps react, react-dom, @types/react, and @types/react-dom to each matrix major.
-- [x] Plan 25-03 Task 2 owns the exact browser-smoke procedure through its `<human-check>` after its automated build/API audit; no new general E2E harness is required.
+- [x] Plan 25-03 Task 2 depends on the D-03 baseline, retains all four application React 19 ranges, and owns only the later worker-relay manifest/lockfile update plus the exact browser-smoke procedure through its `<human-check>` after its automated build/API audit; no new general E2E harness is required.
 
 ## Manual-Only Verifications
 
