@@ -179,7 +179,7 @@ export class RelayPool {
     relays: PoolRelayInput,
     filters: Parameters<RelayGroup["request"]>[0],
     opts?: Parameters<RelayGroup["request"]>[1],
-  ): Observable<NostrEvent> {
+  ): ReturnType<RelayGroup["request"]> {
     return this.group(relays).request(filters, opts);
   }
 
@@ -188,7 +188,7 @@ export class RelayPool {
     relays: PoolRelayInput,
     filters: Parameters<RelayGroup["subscription"]>[0],
     options?: Parameters<RelayGroup["subscription"]>[1],
-  ): Observable<NostrEvent> {
+  ): ReturnType<RelayGroup["subscription"]> {
     return this.group(relays).subscription(filters, options);
   }
 
@@ -250,7 +250,7 @@ export class RelayPool {
     // D-05: derived from RelayGroup.sync (literal 5 of 5, the last hand-declared option literal) so a
     // future option added there reaches the pool surface automatically.
     opts?: Parameters<RelayGroup["sync"]>[3],
-  ): Observable<NostrEvent> {
+  ): ReturnType<RelayGroup["sync"]> {
     // Never filter out offline relays in manual methods
     return this.group(relays, false).sync(store, filter, direction, opts);
   }

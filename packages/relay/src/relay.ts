@@ -50,6 +50,7 @@ import {
   throwError,
   timeout,
   timer,
+  toArray,
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
@@ -99,6 +100,7 @@ import {
   RelaySubscriptionOptions,
   RelaySubscriptionResponse,
   RelaySyncOptions,
+  SyncMessage,
 } from "./types.js";
 
 const AUTH_REQUIRED_PREFIX = "auth-required:";
@@ -1678,7 +1680,11 @@ export class Relay {
     filters: Filter,
     direction: SyncDirection = SyncDirection.RECEIVE,
     opts?: RelaySyncOptions,
-  ): Observable<NostrEvent> {
+  ): Observable<SyncMessage> {
+    const concurrency = opts?.concurrency ?? 4;
+    if (!Number.isFinite(concurrency) || !Number.isInteger(concurrency) || concurrency <= 0)
+      return throwError(() => new RangeError("concurrency must be a finite positive integer"));
+
     const getEvents = async (ids: string[]) => {
       if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
       else return store.getByFilters({ ids });
@@ -1708,12 +1714,16 @@ export class Relay {
         this.authRetryOperator(describeRequest, authOptions, authGate, () => false, authCounter),
       );
 
-    return new Observable<NostrEvent>((observer) => {
+    return new Observable<SyncMessage>((observer) => {
       const controller = new AbortController();
-      let cleanupCalled = false;
-      const onCallerAbort = () => controller.abort(opts?.signal?.reason);
-      opts?.signal?.addEventListener("abort", onCallerAbort, { once: true });
-      if (opts?.signal?.aborted) onCallerAbort();
+      type Lane = "send" | "receive";
+      type Task = { lane: Lane; run: () => Promise<SyncMessage[]> };
+      const queues: Record<Lane, Task[]> = { send: [], receive: [] };
+      let nextLane: Lane = "send";
+      let active = 0;
+      let negotiationDone = false;
+      let stopped = false;
+      let negotiationSub: Subscription | undefined;
       const cancelled$ = new Observable<void>((subscriber) => {
         if (controller.signal.aborted) {
           subscriber.next();
@@ -1727,17 +1737,68 @@ export class Relay {
         controller.signal.addEventListener("abort", abort, { once: true });
         return () => controller.signal.removeEventListener("abort", abort);
       });
-
-      // Store reference to cleanup the negentropy properly
       const cleanup = () => {
-        if (!cleanupCalled) {
-          cleanupCalled = true;
+        if (stopped) return;
+        stopped = true;
+        queues.send.length = 0;
+        queues.receive.length = 0;
+        controller.abort();
+        negotiationSub?.unsubscribe();
+      };
+      const onCallerAbort = () => {
+        if (stopped) return;
+        cleanup();
+        observer.complete();
+      };
+      opts?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+
+      const fail = (error: unknown) => {
+        if (stopped) return;
+        cleanup();
+        observer.error(error);
+      };
+      const maybeComplete = () => {
+        if (!stopped && negotiationDone && active === 0 && queues.send.length === 0 && queues.receive.length === 0) {
+          stopped = true;
           opts?.signal?.removeEventListener("abort", onCallerAbort);
-          controller.abort();
+          observer.complete();
         }
       };
+      const takeTask = (): Task | undefined => {
+        const preferred = queues[nextLane];
+        const alternate: Lane = nextLane === "send" ? "receive" : "send";
+        const task = preferred.shift() ?? queues[alternate].shift();
+        if (task) nextLane = task.lane === "send" ? "receive" : "send";
+        return task;
+      };
+      const drain = () => {
+        while (!stopped && active < concurrency) {
+          const task = takeTask();
+          if (!task) break;
+          active += 1;
+          void task.run().then(
+            (messages) => {
+              if (!stopped) for (const message of messages) observer.next(message);
+            },
+            fail,
+          ).finally(() => {
+            active -= 1;
+            drain();
+            maybeComplete();
+          });
+        }
+        maybeComplete();
+      };
+      const enqueue = (task: Task) => {
+        queues[task.lane].push(task);
+      };
 
-      defer(() => {
+      if (opts?.signal?.aborted) {
+        onCallerAbort();
+        return cleanup;
+      }
+
+      negotiationSub = defer(() => {
         const id = nanoid();
         return withSyncAuth(
           this.negentropy(store, filters, { id, signal: controller.signal }),
@@ -1746,70 +1807,69 @@ export class Relay {
       })
         .pipe(
           this.customConnectionRetryOperator(opts?.reconnect),
-          mergeMap(async ({ have, need }) => {
-          // NOTE: it may be more efficient to sync all the events later in a single batch
-
-          // Send missing events to the relay
-          if (direction & SyncDirection.SEND && have.length > 0) {
-            const events = await getEvents(have);
-
-            // Send all events to the relay, marking them as seen on this relay once accepted.
-            // The events were not fetched from the relay, but after a successful publish the relay has them.
-            await Promise.allSettled(
-              events.map(async (event) => {
-                // RAUTH-08/Phase 15: forward the caller's auth options — leaving this call unthreaded
-                // would make it default to waitForAuth: true with no handler and wait the 30s default
-                // for an unrelated pubkey, entirely disconnected from what the caller configured.
-                const response = await lastValueFrom(
-                  withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })),
-                );
-                if (response.ok) addSeenRelay(event, this.url);
-                return response;
-              }),
-            );
-          }
-
-          // Fetch missing events from the relay
-          if (direction & SyncDirection.RECEIVE && need.length > 0) {
-            const requestId = nanoid();
-            await lastValueFrom(
-              // RAUTH-08/Phase 15: forward the caller's auth options here too — same rationale as the
-              // SEND-direction event() call above.
-              withSyncAuth(
-                defer(() => {
-                  return this.req({ ids: need }, { id: requestId });
-                }),
-                () => ({ verb: "REQ", id: requestId, filters: [{ ids: need }] }),
-              ).pipe(
-                // Complete when EOSE is received
-                takeWhile((message) => message.type !== "EOSE"),
-                // Filter only for event messages
-                filter((message) => message.type === "EVENT"),
-                // Extract event messages
-                map((message) => message.event),
-                // Add events to the store if its writable
-                Reflect.has(store, "add")
-                  ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
-                  : identity,
-                // Pass events to observer
-                tap((event) => observer.next(event)),
-              ),
-            );
-          }
-          }),
           takeUntil(cancelled$),
         )
         .subscribe({
+        next: ({ have, need }) => {
+          if (direction & SyncDirection.SEND) {
+            for (const eventId of have) enqueue({
+              lane: "send",
+              run: async () => {
+                const [event] = await getEvents([eventId]);
+                if (!event) return [];
+                try {
+                  const response = await lastValueFrom(
+                    withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })).pipe(takeUntil(cancelled$)),
+                  );
+                  if (response.ok) {
+                    addSeenRelay(event, this.url);
+                    return [{ type: "sent", from: this.url, event, response }];
+                  }
+                  return [{ type: "send-failed", from: this.url, event, error: response.error ?? new RelayEventVerdictError(response.message ?? "Relay rejected event"), response }];
+                } catch (error) {
+                  if (error instanceof AuthRequiredError || error instanceof AuthHandlerError || error instanceof AuthTimeoutError) throw error;
+                  return [{ type: "send-failed", from: this.url, event, error }];
+                }
+              },
+            });
+          }
+          if (direction & SyncDirection.RECEIVE) {
+            for (const eventId of need) enqueue({
+              lane: "receive",
+              run: async () => {
+                const requestId = nanoid();
+                const events = await lastValueFrom(
+                  withSyncAuth(
+                    defer(() => this.req({ ids: [eventId] }, { id: requestId })),
+                    () => ({ verb: "REQ", id: requestId, filters: [{ ids: [eventId] }] }),
+                  ).pipe(
+                    takeWhile((message) => message.type !== "EOSE"),
+                    filter((message) => message.type === "EVENT"),
+                    map((message) => message.event),
+                    Reflect.has(store, "add")
+                      ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
+                      : identity,
+                    toArray(),
+                    takeUntil(cancelled$),
+                  ),
+                );
+                return events.map((event) => ({ type: "received", from: this.url, event }));
+              },
+            });
+          }
+          drain();
+        },
         complete: () => {
-          if (!cleanupCalled) observer.complete();
+          negotiationDone = true;
+          maybeComplete();
         },
-        error: (err) => {
-          if (!cleanupCalled) observer.error(err);
-        },
+        error: fail,
       });
 
-      // Cancel the sync when the observable is unsubscribed
-      return cleanup;
+      return () => {
+        opts?.signal?.removeEventListener("abort", onCallerAbort);
+        cleanup();
+      };
     }).pipe(
       // Only create one upstream subscription
       share(),

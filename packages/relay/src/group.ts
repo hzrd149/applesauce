@@ -541,7 +541,7 @@ export class RelayGroup {
     // D-05: derived from Relay.sync (literal 4 of 5) rather than hand-declared, so a future option
     // added to Relay.sync propagates here automatically.
     opts?: Parameters<Relay["sync"]>[3],
-  ): Observable<NostrEvent> {
+  ): ReturnType<Relay["sync"]> {
     // Get an array of relays that support NIP-77 negentropy sync
     return defer(async () => {
       const supported = await Promise.all(
