@@ -339,21 +339,19 @@ This illustrates the required semantic distinction; implementation must retain e
 | A4 | Warning-sign descriptions predict likely failures. | Common Pitfalls | Low; diagnostics only. |
 | A5 | The suggested falsy-sentinel sketch integrates cleanly with encrypted fallback. | Code Examples | Medium; regression tests, not the sketch, define correctness. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Does the current hook implementation already satisfy Strict Mode teardown and stale-source isolation?**
+1. **RESOLVED — Does the current hook implementation already satisfy Strict Mode teardown and stale-source isolation?**
    - What we know: subscription begins during state initialization and effect cleanup owns teardown. [VERIFIED: codebase]
-   - What's unclear: behavior across both renderers cannot be proved without the new suite. [VERIFIED: absence of tests]
-   - Recommendation: make the harness/test plan precede any hook refactor; fix behavior only when a failing locked case demonstrates it. [ASSUMED]
+   - Adopted disposition: Plan 25-01 establishes the renderer harness first; Plan 25-02 locks teardown and stale-source behavior in tests under both supported majors and permits a production-hook correction only when a locked regression fails. Existing implementation behavior is not accepted without that evidence. [RESOLVED: Plans 25-01 and 25-02]
 
-2. **How deep should worker-relay runtime verification go in CI?**
+2. **RESOLVED — How deep should worker-relay runtime verification go in CI?**
    - What we know: TypeScript/Vite build verifies both import paths and v2 API shape; true SQLite OPFS behavior needs a browser. [VERIFIED: codebase + worker-relay source]
-   - What's unclear: the existing test workflow does not wire a browser project despite installed Playwright packages. [VERIFIED: codebase]
-   - Recommendation: require build plus a focused manual browser smoke in phase verification; automate a Playwright smoke only if reliable routing/fixtures fit within this phase without creating general example-app E2E infrastructure. [ASSUMED]
+   - Adopted disposition: require the automated examples build plus the exact real-browser smoke in Plan 25-03's `<human-check>` for both OPFS routes. General example-app Playwright infrastructure is outside this phase; the executor records the browser evidence through the plan's end-of-phase human-check rather than treating it as an unresolved automation choice. [RESOLVED: Plan 25-03 and UI-SPEC]
 
-3. **Should the three folded published-package fixes share a changeset?**
+3. **RESOLVED — Should the three folded published-package fixes share a changeset?**
    - What we know: AGENTS.md requires exactly one change per changeset; the fixes touch core, wallet, and common independently. [VERIFIED: AGENTS.md + codebase]
-   - Recommendation: create three patch changesets, one per package/fix, each with a single-sentence body. [VERIFIED: AGENTS.md]
+   - Adopted disposition: Plan 25-04 creates three patch changesets, one per package/fix, each with a single-sentence body. [RESOLVED: AGENTS.md and Plan 25-04]
 
 ## Environment Availability
 
