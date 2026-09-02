@@ -40,8 +40,8 @@ created: 2026-09-02
 | 24-09-02 | SYNC-01..04/RESID-03 | no-timeout positives; Phase 13 supersession; independent loader-open-auth-before-fallback and zero-event-EOSE-without-EmptyError evidence | passed |
 | 24-10-01 | all | ten-note dispositions; Intl sentence count and exact package/bump/subject across twelve remaining notes; retained equality and removed absence | passed |
 | 24-10-02 | all | runtime/type/export/docs/provenance/dependency/seven-mutation full gates | passed |
-| 24-11-01 | SYNC-01..04/RESID-03 | canonical checklist and traceability exact-status parser | pending |
-| 24-11-02 | all | validation/verification 17-of-17 consistency and zero production diff | pending |
+| 24-11-01 | SYNC-01..04/RESID-03 | canonical checklist and traceability exact-status parser | passed |
+| 24-11-02 | all | validation/verification 17-of-17 consistency and zero production diff | passed |
 
 ## Wave 0 / Non-vacuity
 - [x] Create real >32 and synchronous subscriber ordering tests before protocol rewrite.
