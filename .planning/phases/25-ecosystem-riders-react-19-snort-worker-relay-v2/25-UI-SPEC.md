@@ -1,10 +1,11 @@
 ---
 phase: 25
 slug: ecosystem-riders-react-19-snort-worker-relay-v2
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-09-02
+reviewed_at: 2026-09-02
 ---
 
 # Phase 25 — UI Design Contract
@@ -110,7 +111,7 @@ Applicable state considerations resolved: 8 covered, 0 backstop, 0 unresolved.
 |----------|------------|--------|---------------------|
 | empty | Notes list; database results | ✅ covered | Zero notes retains `No notes found`; zero database rows retains the documented empty-state copy from the Copywriting Contract |
 | loading | Import/search controls; route/worker initialization | ✅ covered | Existing spinners and disabled controls remain operation-scoped; initialization either resolves to the populated/empty view or the existing route error boundary |
-| error | Worker initialization, import, search, and query flows | ✅ covered | Failures settle into the existing alert or route error surface and do not masquerade as empty success or perpetual loading |
+| error | Worker initialization, import, search, and query flows | ✅ covered | Failures show the exact actionable message and recovery control defined in the Copywriting Contract; they do not masquerade as empty success or perpetual loading |
 | populated | Cache notes, stats, and database result table | ✅ covered | Successful v2 queries render the same stats, note rows, event rows, and detail interactions as the current implementation |
 | partial | Cached stats and imported/search results | ✅ covered | Partial available data remains renderable using existing zero/fallback values; one failed operation does not erase already-rendered content |
 | overflow | Event table, identifiers, and note content | ✅ covered | Preserve existing table overflow, identifier truncation, and note wrapping; the dependency migration may not change containment |
@@ -132,11 +133,11 @@ Runtime package legitimacy is handled by the technical plan's dependency-install
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved on 2026-09-02
