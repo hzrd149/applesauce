@@ -76,7 +76,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 21: Group Error Surface — request()/subscription()** - Total group failure raises a real aggregate error instead of completing empty or hanging forever (completed 2026-09-01)
 - [x] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop (completed 2026-09-01)
 - [x] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively (completed 2026-09-02)
-- [ ] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions
+- [x] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions (completed 2026-09-02)
 - [ ] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
 
@@ -279,7 +279,7 @@ Plans:
   4. A SEND direction where every upload was rejected does not print "Upload complete" — the caller can observe send failures as values, not just received events.
   5. The non-auth negentropy fallback force-closes any open auth phase, and a zero-event EOSE on `sync()`'s RECEIVE branch no longer rejects the whole sync with an `EmptyError`.
 
-**Plans**: 10/11 plans executed
+**Plans**: 11/11 plans complete
 
 Plans:
 
@@ -293,7 +293,7 @@ Plans:
 - [x] 24-08-PLAN.md — Public types/exports and documentation migration
 - [x] 24-09-PLAN.md — Stale-contract inventory and canonical/historical provenance
 - [x] 24-10-PLAN.md — Changeset reconciliation, exact parsers, and full gates
-- [ ] 24-11-PLAN.md — Canonical requirement-status and verification reconciliation
+- [x] 24-11-PLAN.md — Canonical requirement-status and verification reconciliation
 
 ### Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2
 
