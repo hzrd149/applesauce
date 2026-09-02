@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
-import { defer, firstValueFrom, mergeMap, of, Subject, throwError, timer } from "rxjs";
+import { defer, finalize, firstValueFrom, mergeMap, NEVER, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat, retry, take } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
@@ -3317,6 +3317,55 @@ describe("sync", () => {
 
     expect(attempts).toBe(1);
     expect(spy.getError()).toBeInstanceOf(RelayClosedError);
+  });
+
+  it("sync auth uses one global budget across negotiation and EVENT", async () => {
+    let negotiationSubscriptions = 0;
+    let eventSubscriptions = 0;
+    const onAuthRequired = vi.fn(() => {
+      relay.authentications$.next({
+        [mockEvent.pubkey]: { event: mockEvent as any, response: { ok: true, from: relay.url } },
+      });
+    });
+    vi.spyOn(relay, "negentropy").mockImplementation(() =>
+      defer(() => {
+        negotiationSubscriptions += 1;
+        return negotiationSubscriptions === 1
+          ? throwError(() => new AuthRequiredError("auth-required: negotiate"))
+          : of({ have: [mockEvent.id], need: [] });
+      }),
+    );
+    vi.spyOn(relay, "event").mockImplementation(() =>
+      defer(() => {
+        eventSubscriptions += 1;
+        return throwError(() => new AuthRequiredError("auth-required: event"));
+      }),
+    );
+
+    const spy = subscribeSpyTo(
+      relay.sync([mockEvent], {}, SyncDirection.SEND, { authRetries: 1, onAuthRequired, authTimeout: false }),
+      { expectErrors: true },
+    );
+    await spy.onComplete();
+
+    expect(negotiationSubscriptions).toBe(2);
+    expect(eventSubscriptions).toBe(1);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("sync cancel signal tears down the active negotiation", async () => {
+    const controller = new AbortController();
+    const teardown = vi.fn();
+    vi.spyOn(relay, "negentropy").mockReturnValue(NEVER.pipe(finalize(teardown)));
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { signal: controller.signal }), {
+      expectErrors: true,
+    });
+    controller.abort();
+    await spy.onComplete();
+
+    expect(teardown).toHaveBeenCalledOnce();
+    expect(spy.getValues()).toEqual([]);
   });
 });
 
