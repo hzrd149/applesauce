@@ -339,15 +339,31 @@ describe("RAUTH-05 group-level auth independence (13-07)", () => {
 });
 
 describe("D-19: RelayGroup.sync per-relay isolation (13-07)", () => {
-  it("one relay's sync failure does not stop another relay's events, and the group sync still completes", async () => {
+  it("one relay's sync failure emits an attributed value while a sibling result passes unchanged", async () => {
+    const cause = new Error("relay1 sync failed");
+    const received = { type: "received" as const, from: "wss://relay2.test/", event: mockEvent };
     vi.spyOn(relay1, "getSupported").mockResolvedValue([77]);
     vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
-    vi.spyOn(relay1, "sync").mockReturnValue(throwError(() => new Error("relay1 sync failed")));
-    vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+    vi.spyOn(relay1, "sync").mockReturnValue(throwError(() => cause));
+    vi.spyOn(relay2, "sync").mockReturnValue(of(received));
 
-    const events = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
+    const messages = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
 
-    expect(events).toEqual([mockEvent]);
+    expect(messages).toContain(received);
+    expect(messages).toContainEqual({ type: "relay-failed", from: "wss://relay1.test/", error: cause });
+  });
+
+  it("attributes support-check failure and an empty group completes", async () => {
+    const cause = new Error("nip11 failed");
+    vi.spyOn(relay1, "getSupported").mockRejectedValue(cause);
+    vi.spyOn(relay2, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(relay2, "sync").mockReturnValue(of());
+
+    const messages = await lastValueFrom(group.sync([], {}).pipe(toArray()));
+    expect(messages).toEqual([{ type: "relay-failed", from: "wss://relay1.test/", error: cause }]);
+
+    const empty = await lastValueFrom(new RelayGroup([]).sync([], {}).pipe(toArray()));
+    expect(empty).toEqual([]);
   });
 });
 
