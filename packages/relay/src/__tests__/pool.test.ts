@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
-import { BehaviorSubject, lastValueFrom, of, throwError } from "rxjs";
+import { BehaviorSubject, lastValueFrom, of, throwError, toArray } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -407,5 +407,29 @@ describe("RAUTH-08 pool boundary threading (13-07)", () => {
 
     expect(syncSpy).toHaveBeenCalledWith([], { kinds: [1] }, undefined, expect.objectContaining(authOptions));
     expect(reqSpy.mock.calls[0][1]).toEqual(expect.objectContaining(authOptions));
+  });
+});
+
+describe("sync and raw negentropy surface", () => {
+  it("forwards Group sync values and attributed failures unchanged", async () => {
+    const urls = ["wss://relay1.example.com", "wss://relay2.example.com"];
+    const first = pool.relay(urls[0]);
+    const second = pool.relay(urls[1]);
+    const received = { type: "received" as const, from: "wss://relay1.example.com/", event: mockEvent };
+    const cause = new Error("second failed");
+    vi.spyOn(first, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(second, "getSupported").mockResolvedValue([77]);
+    vi.spyOn(first, "sync").mockReturnValue(of(received));
+    vi.spyOn(second, "sync").mockReturnValue(throwError(() => cause));
+
+    const messages = await lastValueFrom(pool.sync(urls, [], {}).pipe(toArray()));
+
+    expect(messages).toContain(received);
+    expect(messages).toContainEqual({ type: "relay-failed", from: "wss://relay2.example.com/", error: cause });
+  });
+
+  it("removes raw multi-relay negentropy from Group and Pool", () => {
+    expect((pool as any).negentropy).toBeUndefined();
+    expect((pool.group([]) as any).negentropy).toBeUndefined();
   });
 });
