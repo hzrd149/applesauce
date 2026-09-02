@@ -808,6 +808,26 @@ describe("createSyncLoader", () => {
     expect(events).toEqual([a]);
     expect(request).toHaveBeenCalledTimes(1);
   });
+
+  it("maps only received sync results to loader events", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("received");
+    const sync = vi.fn().mockReturnValue(
+      of(
+        { type: "sent", from: "wss://relay/", event: a, response: { ok: true, from: "wss://relay/" } },
+        { type: "send-failed", from: "wss://relay/", event: a, error: new Error("rejected") },
+        { type: "relay-failed", from: "wss://other/", error: new Error("offline") },
+        { type: "received", from: "wss://relay/", event: a },
+      ),
+    );
+    const request = vi.fn().mockReturnValue(of());
+    const loader = createSyncLoader({ eventStore, request, getSupported: vi.fn().mockResolvedValue([77]), sync: sync as any });
+
+    const events = await collect(loader({ relays: ["wss://relay/"], filter }).events$);
+
+    expect(events).toEqual([a]);
+    expect(request).not.toHaveBeenCalled();
+  });
 });
 
 /** Returns an observable that errors immediately with `error`, defaulting to a generic sync failure */
