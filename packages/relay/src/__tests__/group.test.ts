@@ -360,12 +360,14 @@ describe("dropped-relay diagnostics (14-03): human prose names the failure class
     vi.spyOn(relay1, "sync").mockReturnValue(
       throwError(() => new AuthRequiredError("auth-required: need to authenticate")),
     );
-    vi.spyOn(relay2, "sync").mockReturnValue(of(mockEvent));
+    vi.spyOn(relay2, "sync").mockReturnValue(of({ type: "received", from: relay2.url, event: mockEvent }));
 
     await withDebugCapture(NAMESPACE, async (lines) => {
       const events = await lastValueFrom(group.sync([], { kinds: [1] }).pipe(toArray()));
-      // Surviving relay's events still reach the subscriber despite relay1 being dropped.
-      expect(events).toEqual([mockEvent]);
+      expect(events).toEqual([
+        expect.objectContaining({ type: "relay-failed", from: "wss://relay1.test/" }),
+        { type: "received", from: relay2.url, event: mockEvent },
+      ]);
 
       const droppedLines = lines().filter((l) => l.includes(relay1.url));
       expect(droppedLines).toHaveLength(1);

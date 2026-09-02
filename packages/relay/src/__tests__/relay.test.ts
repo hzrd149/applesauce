@@ -3131,18 +3131,15 @@ describe("negentropy", () => {
 
     const store: NostrEvent[] = [];
     const filter = { kinds: [1] };
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    await expect(relay.negentropy(store, filter, reconcile)).rejects.toThrow("Relay does not support NIP-77");
+    const spy = subscribeSpyTo(relay.negentropy(store, filter), { expectErrors: true });
+    await spy.onError();
+    expect(spy.getError()).toEqual(expect.objectContaining({ message: "Relay does not support NIP-77" }));
   });
 
   it("should send NEG-OPEN when starting sync", async () => {
     const store: NostrEvent[] = [];
     const filter = { kinds: [1] };
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    // Start negentropy sync
-    const negPromise = relay.negentropy(store, filter, reconcile).catch(() => {});
+    const spy = subscribeSpyTo(relay.negentropy(store, filter), { expectErrors: true });
 
     // Wait for connection and NEG-OPEN message
     await server.connected;
@@ -3153,15 +3150,13 @@ describe("negentropy", () => {
 
     // Send error to end the test
     server.send(["NEG-ERR", negOpenMsg[1], "test done"]);
-    await negPromise;
+    await spy.onError();
   });
 
   it("should handle NEG-ERR messages by throwing an error", async () => {
     const store: NostrEvent[] = [];
     const filter = { kinds: [1] };
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay.negentropy(store, filter, reconcile);
+    const spy = subscribeSpyTo(relay.negentropy(store, filter), { expectErrors: true });
 
     await server.connected;
     const negOpenMsg = (await server.nextMessage) as any[];
@@ -3170,8 +3165,8 @@ describe("negentropy", () => {
     // Send error response
     server.send(["NEG-ERR", negId, "Something went wrong"]);
 
-    // Verify the promise rejects with the error
-    await expect(negPromise).rejects.toThrow("Something went wrong");
+    await spy.onError();
+    expect(spy.getError()).toEqual(expect.objectContaining({ message: "Something went wrong" }));
 
     // NEG-CLOSE should still be sent
     await expect(server).toReceiveMessage(["NEG-CLOSE", negId]);
@@ -3180,20 +3175,14 @@ describe("negentropy", () => {
   it("should support abort signal to cancel sync", async () => {
     const store: NostrEvent[] = [];
     const filter = { kinds: [1] };
-    const reconcile = vi.fn().mockResolvedValue(undefined);
     const controller = new AbortController();
 
     // Abort immediately before starting sync
     controller.abort();
 
-    const negPromise = relay.negentropy(store, filter, reconcile, { signal: controller.signal });
-
-    // Should return false when aborted
-    const result = await negPromise;
-    expect(result).toBe(false);
-
-    // Verify reconcile was never called since we aborted before sync started
-    expect(reconcile).not.toHaveBeenCalled();
+    const spy = subscribeSpyTo(relay.negentropy(store, filter, { signal: controller.signal }), { expectErrors: true });
+    await spy.onComplete();
+    expect(spy.getValues()).toEqual([]);
   });
 });
 
@@ -3369,7 +3358,7 @@ describe("sync", () => {
   });
 });
 
-describe("legacy raw negentropy auth (13-06)", () => {
+describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () => {
   beforeEach(() => {
     // Mock relay to support NIP-77
     vi.spyOn(relay, "getSupported").mockResolvedValue([1, 77]);
@@ -3393,7 +3382,7 @@ describe("legacy raw negentropy auth (13-06)", () => {
     server.send(["NEG-MSG", negOpenMsg[1], responseMsg]);
   }
 
-  it("RAUTH-02: after an earlier REQ received auth-required, a fresh negentropy negotiation still sends its NEG-OPEN frame immediately", async () => {
+  it("RAUTH-02: after an earlier REQ received auth-required, a fresh sync negotiation sends NEG-OPEN immediately", async () => {
     // Keep watchTower's connection alive independent of the auth-blocked REQ below: once that REQ's own
     // auth phase begins, its inner observable completes and unsubscribes from watchTower, and without
     // another subscriber holding the connection open this fixture's keepAlive=0 would drop it (and
@@ -3409,8 +3398,7 @@ describe("legacy raw negentropy auth (13-06)", () => {
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
 
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, { authTimeout: 30 }).catch(() => {});
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { authTimeout: 30 }), { expectErrors: true });
 
     // The negotiation must send NEG-OPEN immediately, before any AUTH frame is ever sent
     const negOpenMsg = (await server.nextMessage) as any[];
@@ -3418,10 +3406,10 @@ describe("legacy raw negentropy auth (13-06)", () => {
     expect(server.messages.some((m: any) => Array.isArray(m) && m[0] === "AUTH")).toBe(false);
 
     server.send(["NEG-ERR", negOpenMsg[1], "test done"]);
-    await negPromise;
+    await spy.onError();
   });
 
-  it('RAUTH-01/RAUTH-03: invokes onAuthRequired for raw negentropy and resends after authentication', async () => {
+  it('RAUTH-01/RAUTH-03: invokes onAuthRequired for sync negotiation and resends after authentication', async () => {
     // Simulates out-of-band authentication landing on this connection (this suite's established
     // convention, e.g. 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip —
     // negentropy() never subscribes watchTower, so a real AUTH challenge is never observed by
@@ -3429,9 +3417,7 @@ describe("legacy raw negentropy auth (13-06)", () => {
     const onAuthRequired = vi.fn(() => {
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, { onAuthRequired }).catch(() => {});
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
 
     const negOpen1 = (await server.nextMessage) as any[];
     expect(negOpen1[0]).toBe("NEG-OPEN");
@@ -3452,16 +3438,14 @@ describe("legacy raw negentropy auth (13-06)", () => {
     );
 
     server.send(["NEG-ERR", negOpen2[1], "test done"]);
-    await negPromise;
+    await spy.onError();
   });
 
   it("RAUTH-03: a relay that keeps rejecting receives exactly authRetries + 1 NEG-OPEN frames (default authRetries:1)", async () => {
     const onAuthRequired = vi.fn(() => {
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, { onAuthRequired }).catch((err) => err);
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
 
     const negOpen1 = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen1[1], "auth-required: need to authenticate"]);
@@ -3473,8 +3457,8 @@ describe("legacy raw negentropy auth (13-06)", () => {
     // NEG-OPEN.
     server.send(["NEG-ERR", negOpen2[1], "auth-required: need to authenticate"]);
 
-    const result = await negPromise;
-    expect(result).toBeInstanceOf(AuthRequiredError);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
 
     const negOpenFrames = server.messages.filter((m: any) => Array.isArray(m) && m[0] === "NEG-OPEN");
@@ -3483,17 +3467,13 @@ describe("legacy raw negentropy auth (13-06)", () => {
 
   it("RAUTH-03: authRetries:0 exhausts immediately without invoking the handler or retrying", async () => {
     const onAuthRequired = vi.fn();
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay
-      .negentropy([], { kinds: [1] }, reconcile, { onAuthRequired, authRetries: 0 })
-      .catch((err) => err);
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authRetries: 0 }), { expectErrors: true });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
 
-    const result = await negPromise;
-    expect(result).toBeInstanceOf(AuthRequiredError);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
     expect(onAuthRequired).not.toHaveBeenCalled();
 
     const negOpenFrames = server.messages.filter((m: any) => Array.isArray(m) && m[0] === "NEG-OPEN");
@@ -3502,61 +3482,49 @@ describe("legacy raw negentropy auth (13-06)", () => {
 
   it("RAUTH-04: a short authTimeout rejects the negotiation with AuthTimeoutError", async () => {
     const onAuthRequired = vi.fn();
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay
-      .negentropy([], { kinds: [1] }, reconcile, { onAuthRequired, authTimeout: 30 })
-      .catch((err) => err);
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authTimeout: 30 }), { expectErrors: true });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
 
-    const result = await negPromise;
-    expect(result).toBeInstanceOf(AuthTimeoutError);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthTimeoutError);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
   });
 
   it("RAUTH-04: a rejecting handler rejects the negotiation with AuthHandlerError carrying the rejection as cause", async () => {
     const cause = new Error("nope");
     const onAuthRequired = vi.fn().mockRejectedValue(cause);
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, { onAuthRequired }).catch((err) => err);
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
 
-    const result = await negPromise;
-    expect(result).toBeInstanceOf(AuthHandlerError);
-    expect((result as AuthHandlerError).cause).toBe(cause);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthHandlerError);
+    expect((spy.getError() as AuthHandlerError).cause).toBe(cause);
   });
 
   it("RAUTH-06: waitForAuth:false rejects immediately with AuthRequiredError without invoking the handler", async () => {
     const onAuthRequired = vi.fn();
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay
-      .negentropy([], { kinds: [1] }, reconcile, { onAuthRequired, waitForAuth: false })
-      .catch((err) => err);
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, waitForAuth: false }), { expectErrors: true });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
 
-    const result = await negPromise;
-    expect(result).toBeInstanceOf(AuthRequiredError);
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(AuthRequiredError);
     expect(onAuthRequired).not.toHaveBeenCalled();
   });
 
-  it("Abort: aborting the caller's signal while a raw auth phase is pending resolves rather than rejecting", async () => {
+  it("Abort: aborting the caller's signal while a sync auth phase is pending completes", async () => {
     const controller = new AbortController();
     const onAuthRequired = vi.fn(); // never authenticates — the abort, not the handler, must resolve this
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, {
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, {
       onAuthRequired,
       authTimeout: false,
       signal: controller.signal,
-    });
+    }), { expectErrors: true });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
@@ -3567,36 +3535,7 @@ describe("legacy raw negentropy auth (13-06)", () => {
 
     controller.abort();
 
-    const result = await negPromise;
-    expect(result).toBe(false);
-  });
-
-  it("RAUTH-09: authRequiredForRead$ flips true when a negentropy negotiation receives auth-required", async () => {
-    // Keep the underlying connection alive across negentropySync's own per-attempt subscribe/unsubscribe
-    // cycle (it sends NEG-CLOSE and tears down its socket subscription as soon as NEG-ERR arrives) —
-    // negentropy() never touches watchTower, so without another subscriber holding the raw socket open
-    // this fixture's keepAlive=0 would drop the connection (and resetState() would clear the flag) right
-    // as the failed attempt's own subscription tears down.
-    subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "keepalive" }));
-    await server.nextMessage; // drain the keepalive REQ frame
-
-    const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
-    expect(flagSpy.getLastValue()).toBe(false);
-
-    const reconcile = vi.fn().mockResolvedValue(undefined);
-    const negPromise = relay.negentropy([], { kinds: [1] }, reconcile, { authTimeout: 30 }).catch(() => {});
-
-    const negOpen = (await server.nextMessage) as any[];
-    server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
-
-    // Unlike req()/count()/event() (whose flag update happens synchronously within the same
-    // observer-notification stack as server.send), negentropy()'s auth-required detection runs inside
-    // an async function's await continuation, which always resumes on a later microtask/task — so a
-    // short real wait (rather than an immediate check) is what actually observes it here.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(flagSpy.getLastValue()).toBe(true);
-
-    await negPromise;
+    await spy.onComplete();
   });
 
   it("RAUTH-08: sync()'s internal SEND direction invokes the caller's onAuthRequired", async () => {
