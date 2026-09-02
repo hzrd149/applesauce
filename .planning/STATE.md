@@ -5,8 +5,8 @@ milestone_name: relay-method-layering
 current_phase: 24
 current_phase_name: Negentropy & Sync Re-layer
 status: planning
-stopped_at: Completed 23-08-PLAN.md
-last_updated: "2026-09-02T00:02:34.893Z"
+stopped_at: Phase 24 context gathered
+last_updated: "2026-09-02T15:38:22.112Z"
 last_activity: 2026-09-02
 last_activity_desc: Phase 23 complete, transitioned to Phase 24
 progress:
@@ -477,9 +477,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-02T00:01:23.764Z
-Stopped at: Completed 23-08-PLAN.md
-Resume file: None
+Last session: 2026-09-02T15:38:22.087Z
+Stopped at: Phase 24 context gathered
+Resume file: .planning/phases/24-negentropy-sync-re-layer/24-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
