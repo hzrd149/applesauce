@@ -3369,7 +3369,7 @@ describe("sync", () => {
   });
 });
 
-describe("operation-scoped negentropy/sync auth (13-06)", () => {
+describe("legacy raw negentropy auth (13-06)", () => {
   beforeEach(() => {
     // Mock relay to support NIP-77
     vi.spyOn(relay, "getSupported").mockResolvedValue([1, 77]);
@@ -3421,7 +3421,7 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     await negPromise;
   });
 
-  it('RAUTH-01/RAUTH-03: invokes onAuthRequired with operation "sync" and resends the negotiation after the handler authenticates', async () => {
+  it('RAUTH-01/RAUTH-03: invokes onAuthRequired for raw negentropy and resends after authentication', async () => {
     // Simulates out-of-band authentication landing on this connection (this suite's established
     // convention, e.g. 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip —
     // negentropy() never subscribes watchTower, so a real AUTH challenge is never observed by
@@ -3547,7 +3547,7 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     expect(onAuthRequired).not.toHaveBeenCalled();
   });
 
-  it("Abort: aborting the caller's signal while an auth phase is pending resolves the sync rather than rejecting", async () => {
+  it("Abort: aborting the caller's signal while a raw auth phase is pending resolves rather than rejecting", async () => {
     const controller = new AbortController();
     const onAuthRequired = vi.fn(); // never authenticates — the abort, not the handler, must resolve this
     const reconcile = vi.fn().mockResolvedValue(undefined);
@@ -3614,7 +3614,9 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     // completes in one round trip and sync() dispatches it as an internal EVENT send.
     await serverRespondToNegOpen(negOpen, []);
 
-    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
+    let eventMsg = (await server.nextMessage) as any[];
+    while (eventMsg[0] !== "EVENT") eventMsg = (await server.nextMessage) as any[];
+    expect(eventMsg).toEqual(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
 
     // This must fail RED against a sync() whose internal event() call passes no options — the caller's
@@ -3644,7 +3646,8 @@ describe("operation-scoped negentropy/sync auth (13-06)", () => {
     // round trip and sync() dispatches an internal REQ to fetch it.
     await serverRespondToNegOpen(negOpen, [mockEvent.id]);
 
-    const reqMsg = (await server.nextMessage) as any[];
+    let reqMsg = (await server.nextMessage) as any[];
+    while (reqMsg[0] !== "REQ") reqMsg = (await server.nextMessage) as any[];
     expect(reqMsg[0]).toBe("REQ");
     server.send(["CLOSED", reqMsg[1], "auth-required: need to authenticate"]);
 

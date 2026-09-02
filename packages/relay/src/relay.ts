@@ -1694,20 +1694,56 @@ export class Relay {
       authTimeout: opts?.authTimeout,
       authRetries: opts?.authRetries,
     };
+    const authGate = new AuthPhaseGate();
+    const authCounter = { consecutive: 0 };
+
+    const withSyncAuth = <T>(
+      source: Observable<T>,
+      describeRequest: () => RelayAuthWireRequest,
+    ): Observable<T> =>
+      source.pipe(
+        catchError((error) =>
+          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
+        ),
+        this.authRetryOperator(describeRequest, authOptions, authGate, () => false, authCounter),
+      );
 
     return new Observable<NostrEvent>((observer) => {
       const controller = new AbortController();
       let cleanupCalled = false;
+      const onCallerAbort = () => controller.abort(opts?.signal?.reason);
+      opts?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+      if (opts?.signal?.aborted) onCallerAbort();
+      const cancelled$ = new Observable<void>((subscriber) => {
+        if (controller.signal.aborted) {
+          subscriber.next();
+          subscriber.complete();
+          return;
+        }
+        const abort = () => {
+          subscriber.next();
+          subscriber.complete();
+        };
+        controller.signal.addEventListener("abort", abort, { once: true });
+        return () => controller.signal.removeEventListener("abort", abort);
+      });
 
       // Store reference to cleanup the negentropy properly
       const cleanup = () => {
         if (!cleanupCalled) {
           cleanupCalled = true;
+          opts?.signal?.removeEventListener("abort", onCallerAbort);
           controller.abort();
         }
       };
 
-      defer(() => this.negentropy(store, filters, { id: nanoid(), signal: controller.signal }))
+      defer(() => {
+        const id = nanoid();
+        return withSyncAuth(
+          this.negentropy(store, filters, { id, signal: controller.signal }),
+          () => ({ verb: "NEG-OPEN", id, filter: filters }),
+        );
+      })
         .pipe(
           this.customConnectionRetryOperator(opts?.reconnect),
           mergeMap(async ({ have, need }) => {
@@ -1724,7 +1760,9 @@ export class Relay {
                 // RAUTH-08/Phase 15: forward the caller's auth options — leaving this call unthreaded
                 // would make it default to waitForAuth: true with no handler and wait the 30s default
                 // for an unrelated pubkey, entirely disconnected from what the caller configured.
-                const response = await this.publish(event, authOptions);
+                const response = await lastValueFrom(
+                  withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })),
+                );
                 if (response.ok) addSeenRelay(event, this.url);
                 return response;
               }),
@@ -1733,10 +1771,16 @@ export class Relay {
 
           // Fetch missing events from the relay
           if (direction & SyncDirection.RECEIVE && need.length > 0) {
+            const requestId = nanoid();
             await lastValueFrom(
               // RAUTH-08/Phase 15: forward the caller's auth options here too — same rationale as the
               // SEND-direction event() call above.
-              this[RELAY_REQ_LIFECYCLE]({ ids: need }, { ...authOptions, reconnect: this.requestReconnect }).pipe(
+              withSyncAuth(
+                defer(() => {
+                  return this.req({ ids: need }, { id: requestId });
+                }),
+                () => ({ verb: "REQ", id: requestId, filters: [{ ids: need }] }),
+              ).pipe(
                 // Complete when EOSE is received
                 takeWhile((message) => message.type !== "EOSE"),
                 // Filter only for event messages
@@ -1753,6 +1797,7 @@ export class Relay {
             );
           }
           }),
+          takeUntil(cancelled$),
         )
         .subscribe({
         complete: () => {
