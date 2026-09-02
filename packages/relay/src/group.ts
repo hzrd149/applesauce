@@ -11,7 +11,6 @@ import {
   connect,
   defaultIfEmpty,
   defer,
-  EMPTY,
   filter,
   from,
   identity,
@@ -48,6 +47,7 @@ import {
   GroupRequestCompleteOperator,
   GroupRequestOptions,
   GroupSubscriptionOptions,
+  GroupSyncMessage,
   NegentropyReadStore,
   NegentropySyncStore,
   PublishOptions,
@@ -541,35 +541,21 @@ export class RelayGroup {
     // D-05: derived from Relay.sync (literal 4 of 5) rather than hand-declared, so a future option
     // added to Relay.sync propagates here automatically.
     opts?: Parameters<Relay["sync"]>[3],
-  ): ReturnType<Relay["sync"]> {
-    // Get an array of relays that support NIP-77 negentropy sync
-    return defer(async () => {
-      const supported = await Promise.all(
-        this.relays.map(async (relay) => [relay, await relay.getSupported()] as const),
-      );
-      const relays = supported.filter(([_, supported]) => supported?.includes(77)).map(([relay]) => relay);
-      if (relays.length === 0) throw new Error("No relays support NIP-77 negentropy sync");
-      return relays;
-    }).pipe(
-      // Once relays are selected, sync all the relays in parallel
-      switchMap((relays) =>
-        merge(
-          ...relays.map((relay) =>
-            relay.sync(store, filter, direction, opts).pipe(
-              // D-19: isolate one relay's sync failure so it doesn't end the sync for the rest of the
-              // group, matching the fan-out fidelity the REQ path and publish path already have.
-              // sync() has no error channel (Observable<NostrEvent>), so the dropped relay is visible
-              // in debug output only — a status channel for it remains out of scope (resolved by
-              // Phase 14/ALOG-02 as a logging-only diagnostic, not a new observable).
-              catchError((err) => {
-                const reason = RELAY_AUTH_ERROR_NAMES.has(err?.name)
-                  ? `an auth failure (${err.name})`
-                  : err?.message || "an unknown error";
-                this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, err);
-                return EMPTY;
-              }),
-            ),
-          ),
+  ): Observable<GroupSyncMessage> {
+    return from(this.relays).pipe(
+      mergeMap((relay) =>
+        defer(() => from(relay.getSupported())).pipe(
+          switchMap((supported) => {
+            if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77");
+            return relay.sync(store, filter, direction, opts);
+          }),
+          catchError((error) => {
+            const reason = RELAY_AUTH_ERROR_NAMES.has(error?.name)
+              ? `an auth failure (${error.name})`
+              : error?.message || "an unknown error";
+            this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, error);
+            return of({ type: "relay-failed", from: normalizeURL(relay.url), error } satisfies GroupSyncMessage);
+          }),
         ),
       ),
       // Only create one upstream subscription

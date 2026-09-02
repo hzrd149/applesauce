@@ -172,6 +172,8 @@ export type SyncMessage =
   | { type: "sent"; from: string; event: NostrEvent; response: PublishResponse }
   | { type: "send-failed"; from: string; event: NostrEvent; error: unknown; response?: PublishResponse };
 
+export type GroupSyncMessage = SyncMessage | { type: "relay-failed"; from: string; error: unknown };
+
 /** Internal type emitted when REQ is sent to the relay */
 export type RelayReqOpenMessage = { type: "OPEN"; from: string; id: string; filters: Filter[] };
 /** Internal type emitted when an event is received from the relay */
