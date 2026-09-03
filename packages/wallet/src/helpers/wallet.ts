@@ -142,5 +142,6 @@ export async function unlockWallet(
 export function lockWallet(wallet: NostrEvent) {
   Reflect.deleteProperty(wallet, WalletPrivateKeySymbol);
   Reflect.deleteProperty(wallet, WalletMintsSymbol);
+  Reflect.deleteProperty(wallet, WalletRelaysSymbol);
   lockHiddenTags(wallet);
 }
