@@ -35,10 +35,9 @@ const workerScript = import.meta.env.DEV
 
 const workerRelay = new WorkerRelayInterface(workerScript);
 
-// load sqlite database and run migrations
-await workerRelay.init({
+// Load sqlite database and run migrations without rejecting module evaluation.
+const workerRelayReady = workerRelay.init({
   databasePath: "relay.db",
-  insertBatchSize: 500,
 });
 
 class WorkerRelayEventDatabase implements IAsyncEventDatabase {
@@ -120,6 +119,11 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const viewEvent$ = new BehaviorSubject<NostrEvent | null>(null);
+
+type OperationError = {
+  message: string;
+  retry?: "search" | "import" | "clear";
+};
 
 // Helper function to truncate text
 function truncate(text: string, maxLength: number = 50): string {
@@ -204,7 +208,11 @@ function EventRow({ event }: { event: NostrEvent }) {
       <td>{truncate(event.content, 80)}</td>
       <td className="text-sm">{formatDate(event.created_at)}</td>
       <td>
-        <button className="btn btn-primary btn-sm btn-soft" onClick={() => viewEvent$.next(event)}>
+        <button
+          aria-label="Open Event"
+          className="btn btn-primary btn-sm btn-soft"
+          onClick={() => viewEvent$.next(event)}
+        >
           Open
         </button>
       </td>
@@ -317,16 +325,17 @@ function NoteCard({ note }: { note: NostrEvent }) {
 }
 
 // Main search component
-export default function WorkerRelaySearch() {
+function WorkerRelaySearch() {
   const [kind, setKind] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<NostrEvent[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OperationError | null>(null);
   const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
 
   const viewEvent = useObservableEagerState(viewEvent$);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastImportFileRef = useRef<File | null>(null);
 
   const loadEvents = useCallback(async () => {
     const filter: Filter = {
@@ -345,9 +354,8 @@ export default function WorkerRelaySearch() {
     try {
       const events = await eventStore.getTimeline(filter);
       setSearchResults(events);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Search failed");
-      setSearchResults([]);
+    } catch {
+      setError({ message: "Search failed. Check the filters and try again.", retry: "search" });
     } finally {
       setIsLoading(false);
     }
@@ -366,16 +374,7 @@ export default function WorkerRelaySearch() {
   // Load events 500 ms after finish typing
   useDebounce(loadEvents, 500, [searchQuery]);
 
-  // Handle file import
-  const handleFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith(".jsonl")) {
-      setError("Please select a .jsonl file");
-      return;
-    }
-
+  const importFile = async (file: File) => {
     setIsLoading(true);
     setError(null);
 
@@ -383,11 +382,25 @@ export default function WorkerRelaySearch() {
       const stats = await importEventsFromJsonl(file, eventStore);
       setImportStats(stats);
       await loadEvents(); // Reload events after import
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+    } catch {
+      setError({ message: "Import failed. Choose a valid .jsonl file and try again.", retry: "import" });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle file import
+  const handleFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".jsonl")) {
+      setError({ message: "Please select a .jsonl file" });
+      return;
+    }
+
+    lastImportFileRef.current = file;
+    await importFile(file);
 
     // Reset file input
     if (fileInputRef.current) {
@@ -398,7 +411,7 @@ export default function WorkerRelaySearch() {
   // Handle export
   const handleExport = () => {
     if (searchResults.length === 0) {
-      setError("No events to export");
+      setError({ message: "No events to export" });
       return;
     }
 
@@ -407,12 +420,7 @@ export default function WorkerRelaySearch() {
     downloadFile(jsonlContent, `nostr-events-${timestamp}.jsonl`, "application/json");
   };
 
-  // Handle clear database
-  const handleClearDatabase = async () => {
-    if (!confirm("Are you sure you want to clear all events? This action cannot be undone.")) {
-      return;
-    }
-
+  const clearDatabase = async () => {
     setIsLoading(true);
     setError(null);
 
@@ -422,11 +430,23 @@ export default function WorkerRelaySearch() {
 
       setSearchResults([]);
       setImportStats(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear database");
+    } catch {
+      setError({ message: "Database couldn't be cleared. Try again.", retry: "clear" });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Handle clear database
+  const handleClearDatabase = async () => {
+    if (!confirm("Are you sure you want to clear all events? This action cannot be undone.")) return;
+    await clearDatabase();
+  };
+
+  const retryError = () => {
+    if (error?.retry === "search") void loadEvents();
+    if (error?.retry === "import" && lastImportFileRef.current) void importFile(lastImportFileRef.current);
+    if (error?.retry === "clear") void clearDatabase();
   };
 
   return (
@@ -448,7 +468,12 @@ export default function WorkerRelaySearch() {
       {/* Error Display */}
       {error && (
         <div className="alert alert-error mb-6">
-          <span>{error}</span>
+          <span>{error.message}</span>
+          {error.retry && (
+            <button className="btn btn-sm" onClick={retryError} disabled={isLoading}>
+              {error.retry === "search" ? "Retry Search" : error.retry === "import" ? "Try Import Again" : "Retry Clear"}
+            </button>
+          )}
         </div>
       )}
 
@@ -626,7 +651,7 @@ export default function WorkerRelaySearch() {
 
         {/* No Results Message */}
         {!isLoading && searchQuery && searchResults.length === 0 && !error && (
-          <div className="text-center text-base-content/70 mt-8">No events found for "{searchQuery}"</div>
+          <div className="text-center text-base-content/70 mt-8">No events found for “{searchQuery}”</div>
         )}
 
         {!isLoading && !searchQuery && searchResults.length === 0 && !error && (
@@ -644,4 +669,29 @@ export default function WorkerRelaySearch() {
       </dialog>
     </div>
   );
+}
+
+export default function WorkerRelayDatabaseRoute() {
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    workerRelayReady.then(() => setReady(true)).catch(() => setFailed(true));
+  }, []);
+
+  if (failed) {
+    return (
+      <div className="p-6">
+        <div className="alert alert-error">
+          <span>Worker Relay couldn't start. Reload the example to try again.</span>
+          <button className="btn btn-sm" onClick={() => window.location.reload()}>
+            Reload Example
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ready) return <div className="p-6">Starting Worker Relay…</div>;
+  return <WorkerRelaySearch />;
 }

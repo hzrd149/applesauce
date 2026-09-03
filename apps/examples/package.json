@@ -18,7 +18,7 @@
     "@noble/ciphers": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@nostrify/nostrify": "jsr:^0.46.5",
-    "@snort/worker-relay": "^1.5.0",
+    "@snort/worker-relay": "^2.0.1",
     "@tiptap/core": "^3.22.1",
     "@tiptap/react": "^3.22.1",
     "@tiptap/starter-kit": "^3.22.1",

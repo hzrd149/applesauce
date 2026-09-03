@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { ReactElement, useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
@@ -12,7 +12,7 @@ export default function ExamplePage() {
   const [path, setPath] = useState("");
   const [source, setSource] = useState("");
   const [metadata, setMetadata] = useState<Example["metadata"]>();
-  const [Component, setComponent] = useState<(() => JSX.Element) | null>();
+  const [Component, setComponent] = useState<(() => ReactElement) | null>();
   const [copied, setCopied] = useState(false);
 
   const example = examples.find((e) => e.id === exampleId);

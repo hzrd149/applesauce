@@ -25,10 +25,9 @@ const workerScript = import.meta.env.DEV
 
 const workerRelay = new WorkerRelayInterface(workerScript);
 
-// load sqlite database and run migrations
-await workerRelay.init({
+// Load sqlite database and run migrations without rejecting module evaluation.
+const workerRelayReady = workerRelay.init({
   databasePath: "cache-relay.db",
-  insertBatchSize: 500,
 });
 
 // Setup event store and relay pool
@@ -157,9 +156,10 @@ function CacheStats() {
   );
 }
 
-export default function WorkerRelayCacheExample() {
+function WorkerRelayCacheExample() {
   const [live, setLive] = useState(true);
   const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const [loadError, setLoadError] = useState(false);
 
   // Create a timeline loader that loads from the cache and the relay
   const loader = useMemo(
@@ -179,9 +179,14 @@ export default function WorkerRelayCacheExample() {
     [relay, live],
   );
 
+  const loadMore = () => {
+    setLoadError(false);
+    loader().subscribe({ error: () => setLoadError(true) });
+  };
+
   // load initial page of events
   useEffect(() => {
-    loader().subscribe();
+    loadMore();
   }, []);
 
   // Get a timeline of notes from the store
@@ -213,14 +218,51 @@ export default function WorkerRelayCacheExample() {
 
       {/* Results */}
       <div className="flex gap-2 flex-col">
+        {loadError && (
+          <div className="alert alert-error mt-4">
+            <span>Notes couldn't be loaded. Check the relay connection and try again.</span>
+            <button className="btn btn-sm" onClick={loadMore}>
+              Try Again
+            </button>
+          </div>
+        )}
         {notes?.map((note) => (
           <NoteCard key={note.id} note={note} />
         ))}
 
-        <button className="btn btn-primary mx-auto mt-10" onClick={() => loader().subscribe()}>
+        {notes?.length === 0 && !loadError && (
+          <div className="text-center text-base-content/70 mt-8">No notes found</div>
+        )}
+
+        <button className="btn btn-primary mx-auto mt-10" onClick={loadMore}>
           Load More
         </button>
       </div>
     </div>
   );
+}
+
+export default function WorkerRelayCacheRoute() {
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    workerRelayReady.then(() => setReady(true)).catch(() => setFailed(true));
+  }, []);
+
+  if (failed) {
+    return (
+      <div className="p-6">
+        <div className="alert alert-error">
+          <span>Worker Relay couldn't start. Reload the example to try again.</span>
+          <button className="btn btn-sm" onClick={() => window.location.reload()}>
+            Reload Example
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ready) return <div className="p-6">Starting Worker Relay…</div>;
+  return <WorkerRelayCacheExample />;
 }
