@@ -110,6 +110,8 @@ export default function MultiUserSyncAuthExample() {
     if (!syncing) return of([] as NostrEvent[]);
 
     return pool.sync([url], [], { kinds: [1059], "#p": pubkeys }, SyncDirection.RECEIVE, { waitForAuth: pubkeys }).pipe(
+      filter((message) => message.type === "received"),
+      map((message) => message.event),
       tap({
         next: (event) => logAction(`Synced gift wrap ${event.id.slice(0, 8)}`),
         complete: () => {

@@ -10,7 +10,7 @@ import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, map, NEVER, of, startWith, switchMap } from "rxjs";
+import { BehaviorSubject, filter as rxFilter, map, NEVER, of, startWith, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 
 // Create relay pool for connections
@@ -177,6 +177,8 @@ export default function MentionsExample() {
 
     // Run the sync using the user's inbox relays
     return pool.sync(mailboxes.inboxes, eventStore, filter).pipe(
+      rxFilter((message) => message.type === "received"),
+      map((message) => message.event),
       // Add all events to the event store
       mapEventsToStore(eventStore),
     );

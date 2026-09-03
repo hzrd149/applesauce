@@ -11,7 +11,7 @@ import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { decodePointer, EventPointer, neventEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
-import { BehaviorSubject, map, NEVER, of } from "rxjs";
+import { BehaviorSubject, filter as rxFilter, map, NEVER, of } from "rxjs";
 import RelayAddForm from "../../components/add-relay-form";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 
@@ -307,6 +307,8 @@ export default function PoolSyncReactions() {
 
     // Otherwise run the sync
     return pool.sync(relays, eventStore, filter).pipe(
+      rxFilter((message) => message.type === "received"),
+      map((message) => message.event),
       // Add all events to the event store
       mapEventsToStore(eventStore),
     );

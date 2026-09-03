@@ -10,7 +10,7 @@ import { useObservableEagerState, use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds } from "applesauce-core/helpers";
 import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, of, startWith, switchMap } from "rxjs";
+import { BehaviorSubject, lastValueFrom, of, startWith, switchMap, tap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 
 // Create relay pool for connections
@@ -43,24 +43,14 @@ const syncIdsFromRelay = async (relay: string, filter: Filter, signal: AbortSign
   const supported = await relayInstance.getSupported();
   if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77 (Negentropy)");
 
-  return new Promise<string[]>((resolve, reject) => {
-    const eventIds: string[] = [];
-
-    // Use negentropy to get just the event IDs without sending/receiving events
-    relayInstance
-      .negentropy(
-        [], // Empty store - we don't want to send any events
-        filter,
-        async (_have, need) => {
-          // 'need' contains the event IDs that the relay has but we don't
-          eventIds.push(...need);
-          // Don't send or receive any events, just collect the IDs
-        },
-        { signal },
-      )
-      .then(() => resolve(eventIds))
-      .catch(reject);
-  });
+  const eventIds: string[] = [];
+  await lastValueFrom(
+    relayInstance.negentropy([], filter, { signal }).pipe(
+      tap(({ need }) => eventIds.push(...need)),
+    ),
+    { defaultValue: undefined },
+  );
+  return eventIds;
 };
 
 // Type for sync results
