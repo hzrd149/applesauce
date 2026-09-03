@@ -4,17 +4,17 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 25
 current_phase_name: ecosystem-riders-react-19-snort-worker-relay-v2
-status: executing
-stopped_at: Completed 25-02-PLAN.md
-last_updated: "2026-09-03T15:30:14.173Z"
+status: verifying
+stopped_at: Completed 25-03-PLAN.md
+last_updated: "2026-09-03T15:39:06.889Z"
 last_activity: 2026-09-03
 last_activity_desc: Phase 25 execution started
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 61
-  completed_plans: 60
-  percent: 82
+  completed_plans: 61
+  percent: 91
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 
 Phase: 25 (ecosystem-riders-react-19-snort-worker-relay-v2) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-03 — Phase 25 execution started
 
-Progress: [██████████] 98%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -159,6 +159,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25 P04 | 3min | 3 tasks | 8 files |
 | Phase 25 P01 | 8min | 2 tasks | 12 files |
 | Phase 25 P02 | 5min | 2 tasks | 6 files |
+| Phase 25 P03 | 8min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -367,6 +368,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Unwrap RelayPool group-sync messages at example call sites before applying event operators.
 - [Phase ?]: 25-02: Close the synchronous observable render probe immediately and create the retained subscription in the effect so Strict Mode cannot orphan it.
 - [Phase ?]: 25-02: Swap React, React DOM, and both type packages together per CI major and run one identical suite.
+- [Phase ?]: 25-03: Gate worker-backed route rendering on a retained initialization promise so startup failures settle into actionable UI.
+- [Phase ?]: 25-03: Preserve cache-relay.db and relay.db identities and rely on worker-relay v2 migrations without clearing OPFS data.
 
 ### Pending Todos
 
@@ -486,8 +489,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-03T15:30:14.147Z
-Stopped at: Completed 25-02-PLAN.md
+Last session: 2026-09-03T15:39:06.861Z
+Stopped at: Completed 25-03-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
