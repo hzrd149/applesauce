@@ -50,18 +50,17 @@ export function getAppDataContent<
   R extends unknown = unknown,
   T extends { kind: number; content: string } = NostrEvent,
 >(event: T): R | undefined {
-  const cached = Reflect.get(event, AppDataContentSymbol) as R | undefined;
-  if (cached) return cached;
+  if (Reflect.has(event, AppDataContentSymbol)) return Reflect.get(event, AppDataContentSymbol) as R;
 
   // If content is empty, return undefined
   if (event.content.length === 0) return undefined;
 
   let data = getAppDataEncryption(event) ? undefined : (safeParse(event.content) as R);
-  if (!data) {
+  if (data === undefined) {
     const decrypted = getHiddenContent(event);
-    if (decrypted) data = safeParse<R>(decrypted);
+    if (decrypted !== undefined) data = safeParse<R>(decrypted);
   }
-  if (!data) return undefined;
+  if (data === undefined) return undefined;
 
   // Derived from the event's own (possibly encrypted) content — identity memo (see
   // applesauce-core's cache.ts taxonomy). Written non-enumerable via setCachedValue (05.1-09) so
