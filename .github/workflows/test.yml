@@ -48,6 +48,36 @@ jobs:
       - name: Run tests
         run: pnpm exec vitest run
 
+  test-react:
+    name: Test applesauce-react on React ${{ matrix.react-major }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        react-major: [18, 19]
+      fail-fast: false
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select React ${{ matrix.react-major }}
+        run: pnpm --filter applesauce-react add --save-dev --no-lockfile "react@^${{ matrix.react-major }}.0.0" "react-dom@^${{ matrix.react-major }}.0.0" "@types/react@^${{ matrix.react-major }}.0.0" "@types/react-dom@^${{ matrix.react-major }}.0.0"
+
+      - name: Run applesauce-react tests
+        run: pnpm --filter applesauce-react test
+
   test-bun:
     name: Test on Bun ${{ matrix.bun-version }}
     needs: build

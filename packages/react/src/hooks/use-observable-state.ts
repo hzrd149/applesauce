@@ -57,8 +57,8 @@ function createSubscription<T>(observable: Observable<T>): SubscriptionState<T> 
  * If the Observable does not emit synchronously, the hook returns `undefined`
  * for the initial render (unlike `useObservableEagerState` which throws).
  *
- * The observable is only subscribed to once - the subscription created during
- * the initial probe is kept alive and reused, avoiding issues with cold observables.
+ * The synchronous render probe is closed immediately. The retained subscription
+ * is created by the effect so React Strict Mode cannot orphan render-phase work.
  *
  * @template TState State type.
  * @param state$ An Observable of state values.
@@ -81,6 +81,7 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
 
     // Create subscription and probe for sync value
     const subState = createSubscription(state$);
+    subState.subscription.unsubscribe();
     subStateRef.current = subState;
 
     // Return sync value if available
@@ -98,7 +99,7 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
     let subState = subStateRef.current;
 
     // If observable changed, create new subscription
-    if (!subState || subState.observable !== state$) {
+    if (!subState || subState.observable !== state$ || subState.subscription.closed) {
       // Clean up old subscription
       subState?.subscription.unsubscribe();
 
