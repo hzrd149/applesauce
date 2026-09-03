@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, render, renderHook, screen } from "@testing-library/react";
-import { StrictMode } from "react";
+import { StrictMode, useEffect, useLayoutEffect } from "react";
 import { BehaviorSubject, Observable } from "rxjs";
 import { describe, expect, it } from "vitest";
 import {
@@ -43,6 +43,43 @@ describe("useObservableState", () => {
     expect(result.current).toBeUndefined();
     act(() => replacement.next("fresh"));
     expect(result.current).toBe("fresh");
+  });
+
+  it("subscribes to a replacement before a later sibling emits in the same commit", () => {
+    const oldSource = createControlledObservable<string>();
+    const replacement = createControlledObservable<string>();
+    const order: string[] = [];
+
+    function Consumer({ source }: { source: Observable<string> }) {
+      const value = useObservableState(source);
+      useLayoutEffect(() => void order.push("consumer-layout"), [source]);
+      useEffect(() => void order.push("consumer-passive"), [source]);
+      return <span>{value ?? "empty"}</span>;
+    }
+
+    function Emitter({ source }: { source: ReturnType<typeof createControlledObservable<string>> }) {
+      useLayoutEffect(() => {
+        order.push("emitter-layout");
+        source.next("fresh");
+      }, [source]);
+      return null;
+    }
+
+    function Parent({ replacementCommit }: { replacementCommit: boolean }) {
+      return (
+        <>
+          <Consumer source={replacementCommit ? replacement.observable : oldSource.observable} />
+          {replacementCommit && <Emitter source={replacement} />}
+        </>
+      );
+    }
+
+    const view = render(<Parent replacementCommit={false} />);
+    order.length = 0;
+    view.rerender(<Parent replacementCommit />);
+
+    expect(order).toEqual(["consumer-layout", "emitter-layout", "consumer-passive"]);
+    expect(screen.getByText("fresh")).toBeTruthy();
   });
 
   it("routes subscription-time and active errors to an error boundary", () => {
