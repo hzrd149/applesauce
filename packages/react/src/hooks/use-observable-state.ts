@@ -17,9 +17,9 @@ interface SubscriptionState<T> {
   latestValue: T | typeof NO_VALUE;
   /** Latest error received */
   latestError: unknown;
-  /** Callback to update React state - set by useEffect */
+  /** Callback to update React state - set by the retained subscription effect */
   onValue: ((value: T) => void) | null;
-  /** Callback to handle errors - set by useEffect */
+  /** Callback to handle errors - set by the retained subscription effect */
   onError: (() => void) | null;
 }
 
@@ -94,8 +94,8 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
     state$Ref.current = state$;
   });
 
-  // Handle observable changes and register callbacks
-  useEffect(() => {
+  // Handle observable changes and register callbacks before later layout effects emit
+  useIsomorphicLayoutEffect(() => {
     let subState = subStateRef.current;
 
     // If observable changed, create new subscription
@@ -114,13 +114,13 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
         setState(undefined);
       }
     } else {
-      // Same observable - check if we missed any values between useState and useEffect
+      // Same observable - check if we missed any values between useState and this effect
       if (subState.latestValue !== NO_VALUE && subState.latestValue !== state) {
         setState(subState.latestValue);
       }
     }
 
-    // Check for errors that occurred before useEffect
+    // Check for errors that occurred before this effect
     if (subState.latestError !== null) {
       forceUpdate();
     }
