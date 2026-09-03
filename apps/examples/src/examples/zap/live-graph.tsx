@@ -339,7 +339,7 @@ export default function ZapLiveGraph() {
   }, [ensureNode, scheduleRefresh]);
 
   // ForceGraph2D ref — used to tune the physics for slow, gentle motion
-  const fgRef = useRef<ForceGraphMethods<ZapNode, ZapLink>>();
+  const fgRef = useRef<ForceGraphMethods<ZapNode, ZapLink> | undefined>(undefined);
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;

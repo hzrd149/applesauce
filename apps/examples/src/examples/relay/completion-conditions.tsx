@@ -173,7 +173,7 @@ export default function CompletionConditions() {
   }, []);
 
   // Use ref to store subscriptions so we can cleanup
-  const subscriptionsRef = useRef<Subscription>();
+  const subscriptionsRef = useRef<Subscription | undefined>(undefined);
 
   // Start query
   const handleQuery = useCallback(() => {

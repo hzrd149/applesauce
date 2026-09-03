@@ -494,7 +494,7 @@ interface WordCloudChartProps {
   relayUrl: string | null;
   wordCloudData: { labels: string[]; datasets: Array<{ label: string; data: number[] }> } | null;
   chartOptions: any;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 function WordCloudChart({ relayUrl, wordCloudData, chartOptions, containerRef }: WordCloudChartProps) {
