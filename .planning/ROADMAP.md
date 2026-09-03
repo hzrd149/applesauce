@@ -77,7 +77,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 22: REQ Family Re-layer** - `req()` sheds reconnect/resubscribe/auth retry; `request()`/`subscription()` own them, including subscription's own re-establish loop (completed 2026-09-01)
 - [x] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively (completed 2026-09-02)
 - [x] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions (completed 2026-09-02)
-- [ ] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work
+- [x] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work (completed 2026-09-03)
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
 
 ## Phase Details

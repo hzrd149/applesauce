@@ -231,6 +231,7 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ Concord authenticates per scope, not per client: each community and private-channel engine answers only the `missingPubkeys` its own scope holds keys for, and a reconnect re-authenticates exactly that set — v1.2 (Phase 15, CAUTH-01/02/04)
 - ✓ Concord's client-wide auth driver machinery is gone — `relay-auth.ts` deleted along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and `autoAuthenticate`, with a two-root structural guard failing CI on reintroduction — v1.2 (Phase 15, CAUTH-03, widened from stream-keys-only to cover the user-key half)
 - ✓ Relay/SQLite/group-pointer correctness and Concord residual publication honesty — v7.0.0 (Phase 17, FIX-01/02/03 and RESID-01/02). Hostile CLOSED prefixes cannot reach the prototype chain, SQLite consumers install one backend, compatibility pointers retain relay identity, transient AUTH stays out of fatal UI state, and invite revocation requires acknowledged publication
+- ✓ React 19 workspace support retains the React 18 consumer contract, and both OPFS examples run on `@snort/worker-relay` v2 without destructive migration — v7.0.0 (Phase 25, ECO-02/03)
 
 ### Active
 
@@ -317,6 +318,9 @@ This document evolves at phase transitions and milestone boundaries.
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
+
+---
+*Last updated: 2026-09-03 — Phase 25 ecosystem riders verified complete. React 18/19 share one rendering suite, worker-relay v2 preserves existing OPFS data, and Phase 26 release coordination is next.*
 
 ---
 *Last updated: 2026-08-20 — Phase 17 correctness fixes and Concord residuals verified complete (14/14 must-haves).
