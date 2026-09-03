@@ -90,7 +90,7 @@ findings changed the plan and are marked **[research]** below.
 ### Ecosystem
 
 - [x] **ECO-01**: The workspace builds, tests, and emits declarations under TypeScript 7
-- [ ] **ECO-02**: **[research]** `applesauce-react`'s already-declared React 19 support is backed by evidence — the package's first rendering tests exist and pass against both React 18 and 19, covering `use$`/`useObservableState` and the providers
+- [x] **ECO-02**: **[research]** `applesauce-react`'s already-declared React 19 support is backed by evidence — the package's first rendering tests exist and pass against both React 18 and 19, covering `use$`/`useObservableState` and the providers
 - [ ] **ECO-03**: `apps/examples` runs on `@snort/worker-relay` v2, with the removed `insertBatchSize` option and the now-synchronous `setEventMetadata` handled at both call sites
 
 ## Future Requirements

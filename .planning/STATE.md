@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25
 current_phase_name: ecosystem-riders-react-19-snort-worker-relay-v2
 status: executing
-stopped_at: Completed 25-03-PLAN.md
-last_updated: "2026-09-03T15:54:17.015Z"
+stopped_at: Completed 25-05-PLAN.md
+last_updated: "2026-09-03T16:23:38.381Z"
 last_activity: 2026-09-03
 last_activity_desc: Phase 25 execution started
 progress:
   total_phases: 11
   completed_phases: 10
   total_plans: 62
-  completed_plans: 61
+  completed_plans: 62
   percent: 91
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 25 (ecosystem-riders-react-19-snort-worker-relay-v2) — EXECUTING
-Plan: 4 of 4
+Plan: 2 of 5
 Status: Ready to execute
 Last activity: 2026-09-03 — Phase 25 execution started
 
@@ -160,6 +160,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25 P01 | 8min | 2 tasks | 12 files |
 | Phase 25 P02 | 5min | 2 tasks | 6 files |
 | Phase 25 P03 | 8min | 2 tasks | 5 files |
+| Phase 25 P05 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -370,6 +371,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 25-02: Swap React, React DOM, and both type packages together per CI major and run one identical suite.
 - [Phase ?]: 25-03: Gate worker-backed route rendering on a retained initialization promise so startup failures settle into actionable UI.
 - [Phase ?]: 25-03: Preserve cache-relay.db and relay.db identities and rely on worker-relay v2 migrations without clearing OPFS data.
+- [Phase ?]: Plan 25-05: Retained observable replacement subscriptions now use the isomorphic layout-effect seam while render probes remain self-closing.
 
 ### Pending Todos
 
@@ -489,8 +491,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-03T15:39:06.861Z
-Stopped at: Completed 25-03-PLAN.md
+Last session: 2026-09-03T16:23:38.354Z
+Stopped at: Completed 25-05-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
