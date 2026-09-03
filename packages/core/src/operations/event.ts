@@ -130,10 +130,8 @@ export function stamp<K extends number = number>(
     Reflect.deleteProperty(newDraft, "id");
     Reflect.deleteProperty(newDraft, "sig");
 
-    // copy the plaintext hidden content if its on the draft. Written non-enumerably via
-    // setCachedValue (the one rule) so it cannot be re-copied across a later kind-changing
-    // spread; the Reflect.has/get read is enumerability-blind, so it carries the symbol
-    // regardless of how it was written upstream.
+    // Copy cached plaintext from the input regardless of its enumerability. setCachedValue
+    // writes the destination cache non-enumerably, so a later spread will not copy it again.
     if (Reflect.has(draft, EncryptedContentSymbol))
       setCachedValue(newDraft, EncryptedContentSymbol, Reflect.get(draft, EncryptedContentSymbol)!);
 
