@@ -23,6 +23,13 @@ function createEncryptedAppDataEvent(data: unknown): NostrEvent {
   };
 }
 
+function createPlaintextAppDataEvent(data: unknown): NostrEvent {
+  return {
+    ...createEncryptedAppDataEvent(data),
+    content: JSON.stringify(data),
+  };
+}
+
 describe("lockAppData", () => {
   it("clears the decrypted plaintext from AppDataContentSymbol so a locked event stops returning it (CR-03)", async () => {
     const data = { foo: "bar" };
@@ -72,5 +79,28 @@ describe("getAppDataContent non-enumerability (05.1-09)", () => {
 
     expect(Reflect.has(event, AppDataContentSymbol)).toBe(false);
     expect(getAppDataContent(event)).toBeUndefined();
+  });
+});
+
+describe("getAppDataContent falsy values", () => {
+  it.each([
+    ["false", false],
+    ["zero", 0],
+    ["null", null],
+    ["empty string", ""],
+  ])("returns and caches valid %s JSON", (_name, value) => {
+    const event = createPlaintextAppDataEvent(value);
+
+    expect(getAppDataContent(event)).toBe(value);
+    expect(Reflect.has(event, AppDataContentSymbol)).toBe(true);
+    expect(Reflect.get(event, AppDataContentSymbol)).toBe(value);
+  });
+
+  it("returns undefined for invalid JSON without caching it", () => {
+    const event = createPlaintextAppDataEvent(null);
+    event.content = "not-json";
+
+    expect(getAppDataContent(event)).toBeUndefined();
+    expect(Reflect.has(event, AppDataContentSymbol)).toBe(false);
   });
 });
