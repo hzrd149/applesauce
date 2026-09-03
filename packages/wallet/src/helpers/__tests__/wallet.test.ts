@@ -14,6 +14,7 @@ import {
   getWalletPrivateKey,
   getWalletRelays,
   isWalletUnlocked,
+  lockWallet,
   WalletMintsSymbol,
   WalletPrivateKeySymbol,
   WalletRelaysSymbol,
@@ -60,5 +61,25 @@ describe("getWalletMints / getWalletPrivateKey / getWalletRelays", () => {
     expect(getWalletMints(wallet)).toBe(mints);
     expect(getWalletPrivateKey(wallet)).toBe(key);
     expect(getWalletRelays(wallet)).toBe(relays);
+  });
+
+  it("clears every decrypted cache when locking", async () => {
+    const wallet = await WalletFactory.create(
+      ["https://mint.example"],
+      generateSecretKey(),
+      ["wss://relay.example/"],
+    )
+      .as(user)
+      .sign();
+
+    getWalletMints(wallet);
+    getWalletPrivateKey(wallet);
+    getWalletRelays(wallet);
+    lockWallet(wallet);
+
+    expect(WalletPrivateKeySymbol in wallet).toBe(false);
+    expect(WalletMintsSymbol in wallet).toBe(false);
+    expect(WalletRelaysSymbol in wallet).toBe(false);
+    expect(isWalletUnlocked(wallet)).toBe(false);
   });
 });
