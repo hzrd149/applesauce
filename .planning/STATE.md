@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 25
-current_phase_name: Ecosystem Riders — React 19 & @snort/worker-relay v2
-status: discussing
-stopped_at: Phase 25 UI-SPEC approved
-last_updated: "2026-09-02T21:27:03.946Z"
-last_activity: 2026-09-02
-last_activity_desc: Phase 24 complete, transitioned to Phase 25
+current_phase_name: ecosystem-riders-react-19-snort-worker-relay-v2
+status: executing
+stopped_at: Completed 25-04-PLAN.md
+last_updated: "2026-09-03T14:45:12.678Z"
+last_activity: 2026-09-03
+last_activity_desc: Phase 25 execution started
 progress:
   total_phases: 11
   completed_phases: 9
-  total_plans: 57
-  completed_plans: 57
+  total_plans: 61
+  completed_plans: 58
   percent: 82
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-19)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 25 — Ecosystem Riders — React 19 & @snort/worker-relay v2
+**Current focus:** Phase 25 — ecosystem-riders-react-19-snort-worker-relay-v2
 
 ## Current Position
 
-Phase: 25 — Ecosystem Riders — React 19 & @snort/worker-relay v2
-Plan: Not started
-Status: discussing
-Last activity: 2026-09-02 — Phase 24 complete, transitioned to Phase 25
+Phase: 25 (ecosystem-riders-react-19-snort-worker-relay-v2) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-03 — Phase 25 execution started
 
-Progress: [██████████] 100%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -156,6 +156,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 22 P09 | 9m | 2 tasks | 8 files |
 | Phase 23 P07 | 12m | 13 tasks | 24 files |
 | Phase 23 P08 | 12 min | 2 tasks | 4 files |
+| Phase 25 P04 | 3min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -358,6 +359,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Phase 19: COUNT uses one whole-request deadline outside transport-only retry and suspends it during auth.
 - [Phase ?]: Phase 20: event() and auth() use fixed public verbs over one private one-frame/one-reply primitive.
 - [Phase ?]: Phase 20: authenticate() uses one 30-second-default absolute deadline and one default freshness retry.
+- [Phase ?]: Use Reflect.has for the application-data cache so cached null and other falsy values remain distinguishable from absence.
+- [Phase ?]: Delete WalletRelaysSymbol directly at lockWallet's existing cleanup boundary alongside the other decrypted caches.
 
 ### Pending Todos
 
@@ -477,9 +480,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-02T21:27:03.916Z
-Stopped at: Phase 25 UI-SPEC approved
-Resume file: .planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-UI-SPEC.md
+Last session: 2026-09-03T14:45:12.647Z
+Stopped at: Completed 25-04-PLAN.md
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
