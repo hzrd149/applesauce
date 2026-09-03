@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25
 current_phase_name: ecosystem-riders-react-19-snort-worker-relay-v2
 status: executing
-stopped_at: Completed 25-04-PLAN.md
-last_updated: "2026-09-03T14:45:12.678Z"
+stopped_at: Completed 25-01-PLAN.md
+last_updated: "2026-09-03T14:58:45.150Z"
 last_activity: 2026-09-03
 last_activity_desc: Phase 25 execution started
 progress:
   total_phases: 11
   completed_phases: 9
   total_plans: 61
-  completed_plans: 58
+  completed_plans: 59
   percent: 82
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-08-19)
 ## Current Position
 
 Phase: 25 (ecosystem-riders-react-19-snort-worker-relay-v2) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-03 — Phase 25 execution started
 
-Progress: [██████████] 95%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -157,6 +157,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 23 P07 | 12m | 13 tasks | 24 files |
 | Phase 23 P08 | 12 min | 2 tasks | 4 files |
 | Phase 25 P04 | 3min | 3 tasks | 8 files |
+| Phase 25 P01 | 8min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -361,6 +362,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Phase 20: authenticate() uses one 30-second-default absolute deadline and one default freshness retry.
 - [Phase ?]: Use Reflect.has for the application-data cache so cached null and other falsy values remain distinguishable from absence.
 - [Phase ?]: Delete WalletRelaysSymbol directly at lockWallet's existing cleanup boundary alongside the other decrypted caches.
+- [Phase ?]: Keep the published React peer range at ^18.0.0 || ^19.0.0 while using React 19 for ordinary workspace development.
+- [Phase ?]: Unwrap RelayPool group-sync messages at example call sites before applying event operators.
 
 ### Pending Todos
 
@@ -480,8 +483,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-03T14:45:12.647Z
-Stopped at: Completed 25-04-PLAN.md
+Last session: 2026-09-03T14:58:45.124Z
+Stopped at: Completed 25-01-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

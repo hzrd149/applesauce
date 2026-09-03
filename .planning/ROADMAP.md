@@ -305,13 +305,13 @@ Plans:
   1. `packages/react` has rendering tests for `use$`/`useObservableState` and its providers, and they pass against both React 18 and React 19.
   2. `apps/examples` runs correctly on `@snort/worker-relay@2`, with the removed `insertBatchSize` option and the now-synchronous `setEventMetadata` handled at every call site.
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 25-01-PLAN.md — React 19 rendering-test tracer and approved test infrastructure
+- [x] 25-01-PLAN.md — React 19 rendering-test tracer and approved test infrastructure
 - [x] 25-04-PLAN.md — Three folded Phase 05.1 regressions and changesets
 
 **Wave 2** *(blocked on Wave 1 completion)*
