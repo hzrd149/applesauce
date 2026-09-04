@@ -44,9 +44,14 @@ describe("chat operations", () => {
       ])(withImeta("https://x/1"));
 
       const imeta = draft.tags.find((t) => t[0] === "imeta")!;
-      expect(imeta).toContain(`decryption-key ${"a".repeat(64)}`);
-      expect(imeta).toContain(`decryption-nonce ${"b".repeat(32)}`);
-      expect(imeta).toContain("encryption-algorithm aes-gcm");
+      expect(imeta).toEqual([
+        "imeta",
+        "url https://x/1",
+        "m image/png",
+        "encryption-algorithm aes-gcm",
+        `decryption-key ${"a".repeat(64)}`,
+        `decryption-nonce ${"b".repeat(32)}`,
+      ]);
     });
 
     it("leaves non-matching imeta tags untouched", async () => {

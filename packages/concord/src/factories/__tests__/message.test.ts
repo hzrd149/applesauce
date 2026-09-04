@@ -13,6 +13,7 @@ import { kinds } from "applesauce-core/helpers/event";
 import { bindToChannel, includeMediaEncryption } from "../../operations/channel.js";
 import { checkChatBinding } from "../../helpers/chat.js";
 import { controlGroupKey } from "../../helpers/crypto.js";
+import { parseImeta } from "../../helpers/imeta.js";
 import { sealRumor, toRumor, wrapSeal } from "../../operations/gift-wrap.js";
 import { decodeWrap } from "../../helpers/gift-wrap.js";
 
@@ -39,8 +40,21 @@ describe("channel message composition", () => {
 
     expect(t.tags).toContainEqual(["q", "e1", "", "a1"]);
     const imeta = t.tags.find((tag) => tag[0] === "imeta")!;
-    expect(imeta).toContain("url https://x/1");
-    expect(imeta).toContain(`decryption-key ${"a".repeat(64)}`);
+    expect(imeta).toEqual([
+      "imeta",
+      "url https://x/1",
+      "m image/png",
+      "encryption-algorithm aes-gcm",
+      `decryption-key ${"a".repeat(64)}`,
+      `decryption-nonce ${"b".repeat(32)}`,
+    ]);
+    const attachment = parseImeta(t.tags).get("https://x/1")!;
+    expect(attachment.encryption).toEqual({
+      algorithm: "aes-gcm",
+      key: "a".repeat(64),
+      nonce: "b".repeat(32),
+    });
+    expect(attachment.encryptionError).toBeUndefined();
   });
 
   it("round-trips through the envelope", async () => {
