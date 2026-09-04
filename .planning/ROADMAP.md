@@ -364,12 +364,12 @@ Plans:
 **Goal:** Audit Concord media encryption and decryption across epoch rotations, confirming historical media resolves the correct key material and fixing any verified defect.
 **Requirements**: TBD
 **Depends on:** Phase 25
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 25.1-01-PLAN.md — Lossless attachment diagnostics and exact wire compatibility tracer
+- [x] 25.1-01-PLAN.md — Lossless attachment diagnostics and exact wire compatibility tracer
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

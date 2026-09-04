@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 26
-current_phase_name: Release Coordination — v7.0.0
+current_phase: 25.1
+current_phase_name: concord-media-epoch-key-decryption-audit
 status: executing
-stopped_at: Phase 25.1 context gathered
-last_updated: "2026-09-04T14:57:20.100Z"
-last_activity: 2026-09-03
-last_activity_desc: Phase 25 complete, transitioned to Phase 26
+stopped_at: Completed 25.1-01-PLAN.md
+last_updated: "2026-09-04T15:27:58.539Z"
+last_activity: 2026-09-04
+last_activity_desc: Phase 25.1 execution started
 progress:
   total_phases: 15
   completed_phases: 10
   total_plans: 64
-  completed_plans: 62
+  completed_plans: 63
   percent: 67
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-03)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 26 — Release Coordination — v7.0.0
+**Current focus:** Phase 25.1 — concord-media-epoch-key-decryption-audit
 
 ## Current Position
 
-Phase: 26 — Release Coordination — v7.0.0
-Plan: Not started
+Phase: 25.1 (concord-media-epoch-key-decryption-audit) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-09-03 — Phase 25 complete, transitioned to Phase 26
+Last activity: 2026-09-04 — Phase 25.1 execution started
 
-Progress: [████████████████████] 62/62 plans (100%)
+Progress: [████████████████████] 62/62 plans ([██████████] 98%)
 
 ## Performance Metrics
 
@@ -161,6 +161,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25 P02 | 5min | 2 tasks | 6 files |
 | Phase 25 P03 | 8min | 2 tasks | 5 files |
 | Phase 25 P05 | 3min | 2 tasks | 2 files |
+| Phase 25.1 P01 | 3min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -372,6 +373,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 25-03: Gate worker-backed route rendering on a retained initialization promise so startup failures settle into actionable UI.
 - [Phase ?]: 25-03: Preserve cache-relay.db and relay.db identities and rely on worker-relay v2 migrations without clearing OPFS data.
 - [Phase ?]: Plan 25-05: Retained observable replacement subscriptions now use the isomorphic layout-effect seam while render probes remain self-closing.
+- [Phase ?]: Malformed recognized encryption metadata retains its URL-bearing attachment and reports one value-free MediaAttachmentError.
+- [Phase ?]: rawImeta is a shallow copy of the full source tag, while normalized parsing keeps deliberate last-value semantics.
 
 ### Pending Todos
 
@@ -491,9 +494,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-04T13:59:45.351Z
-Stopped at: Phase 25.1 context gathered
-Resume file: .planning/phases/25.1-concord-media-epoch-key-decryption-audit/25.1-CONTEXT.md
+Last session: 2026-09-04T15:27:58.515Z
+Stopped at: Completed 25.1-01-PLAN.md
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
