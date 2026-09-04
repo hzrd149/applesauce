@@ -23,10 +23,51 @@ export interface AttachmentEncryption {
   nonce: string;
 }
 
+export type MediaAttachmentEncryptionField =
+  | "encryption-algorithm"
+  | "decryption-key"
+  | "decryption-nonce";
+
+/** A value-free description of one malformed encryption field. */
+export interface MediaAttachmentFieldIssue {
+  readonly field: MediaAttachmentEncryptionField;
+  readonly message: string;
+}
+
+/** Safe, consumer-facing root error for attachment metadata diagnostics. */
+export class MediaAttachmentError extends Error {
+  constructor(message: string, public readonly issues: readonly MediaAttachmentFieldIssue[]) {
+    super(message);
+    this.name = "MediaAttachmentError";
+  }
+}
+
+/** Encryption metadata is incomplete or contains an invalid field encoding. */
+export class InvalidMediaAttachmentEncryptionError extends MediaAttachmentError {
+  constructor(issues: readonly MediaAttachmentFieldIssue[]) {
+    super("Invalid media attachment encryption metadata", issues);
+    this.name = "InvalidMediaAttachmentEncryptionError";
+  }
+}
+
+/** Encryption metadata names an algorithm this package cannot decrypt. */
+export class UnsupportedMediaAttachmentAlgorithmError extends MediaAttachmentError {
+  constructor() {
+    super("Unsupported media attachment encryption algorithm", [
+      { field: "encryption-algorithm", message: "Algorithm is not supported" },
+    ]);
+    this.name = "UnsupportedMediaAttachmentAlgorithmError";
+  }
+}
+
 /** A parsed imeta attachment: the common file-metadata fields plus optional client-encryption. */
 export type MediaAttachment = FileMetadataFields & {
   /** Present only when the blob is client-encrypted. */
   encryption?: AttachmentEncryption;
+  /** Present when recognized encryption metadata cannot be parsed safely. */
+  encryptionError?: MediaAttachmentError;
+  /** Lossless shallow copy of the source imeta tag. May contain secret key material. */
+  rawImeta?: string[];
 };
 
 /** Lowercase-hex validator (even length, hex digits only; optional exact length). */
@@ -37,7 +78,10 @@ function isHex(s: string | undefined, len?: number): s is string {
 }
 
 /** Parse the Concord client-encryption fields (if any) from an imeta tag's entries. */
-function parseEncryption(tag: string[]): AttachmentEncryption | undefined {
+function parseEncryption(tag: string[]): {
+  encryption?: AttachmentEncryption;
+  encryptionError?: MediaAttachmentError;
+} {
   const entry: Record<string, string> = {};
   for (let i = 1; i < tag.length; i++) {
     const sp = tag[i].indexOf(" ");
@@ -48,9 +92,18 @@ function parseEncryption(tag: string[]): AttachmentEncryption | undefined {
   const algorithm = entry["encryption-algorithm"];
   const key = entry["decryption-key"];
   const nonce = entry["decryption-nonce"];
-  if (!algorithm || algorithm.toLowerCase() !== "aes-gcm") return undefined;
-  if (!isHex(key, 64) || !isHex(nonce)) return undefined;
-  return { algorithm: "aes-gcm", key: key.toLowerCase(), nonce: nonce.toLowerCase() };
+  if (algorithm === undefined && key === undefined && nonce === undefined) return {};
+  if (algorithm !== undefined && algorithm.toLowerCase() !== "aes-gcm") {
+    return { encryptionError: new UnsupportedMediaAttachmentAlgorithmError() };
+  }
+
+  const issues: MediaAttachmentFieldIssue[] = [];
+  if (algorithm === undefined) issues.push({ field: "encryption-algorithm", message: "Algorithm is required" });
+  if (!isHex(key, 64)) issues.push({ field: "decryption-key", message: "Key must be 32-byte hexadecimal" });
+  if (!isHex(nonce)) issues.push({ field: "decryption-nonce", message: "Nonce must be non-empty, even-length hexadecimal" });
+  if (issues.length > 0) return { encryptionError: new InvalidMediaAttachmentEncryptionError(issues) };
+
+  return { encryption: { algorithm: "aes-gcm", key: key.toLowerCase(), nonce: nonce.toLowerCase() } };
 }
 
 /** Parse every `imeta` tag on an event into a map keyed by URL. */
@@ -58,9 +111,10 @@ export function parseImeta(tags: string[][]): Map<string, MediaAttachment> {
   const map = new Map<string, MediaAttachment>();
   for (const tag of tags) {
     if (tag[0] !== "imeta") continue;
+    const rawImeta = [...tag];
     const base = getFileMetadataFromImetaTag(tag);
     if (!base.url) continue;
-    map.set(base.url, { ...base, encryption: parseEncryption(tag) });
+    map.set(base.url, { ...base, ...parseEncryption(tag), rawImeta });
   }
   return map;
 }
