@@ -367,8 +367,12 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 25.1-01-PLAN.md — Lossless attachment diagnostics and exact wire compatibility tracer
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 25.1-02-PLAN.md — Real AES-GCM historical media proofs across refounding and rekeying
 
 ### Phase 26: Release Coordination — v7.0.0
