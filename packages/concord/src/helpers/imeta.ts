@@ -100,7 +100,7 @@ function parseEncryption(tag: string[]): {
   const issues: MediaAttachmentFieldIssue[] = [];
   if (algorithm === undefined) issues.push({ field: "encryption-algorithm", message: "Algorithm is required" });
   if (!isHex(key, 64)) issues.push({ field: "decryption-key", message: "Key must be 32-byte hexadecimal" });
-  if (!isHex(nonce)) issues.push({ field: "decryption-nonce", message: "Nonce must be non-empty, even-length hexadecimal" });
+  if (!isHex(nonce, 32)) issues.push({ field: "decryption-nonce", message: "Nonce must be 16-byte hexadecimal" });
   if (issues.length > 0) return { encryptionError: new InvalidMediaAttachmentEncryptionError(issues) };
 
   return { encryption: { algorithm: "aes-gcm", key: key.toLowerCase(), nonce: nonce.toLowerCase() } };
