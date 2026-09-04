@@ -12,14 +12,15 @@ import { kinds, type NostrEvent } from "applesauce-core/helpers/event";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore, RumorStore } from "applesauce-core";
 import { ChatMessageFactory } from "applesauce-common/factories";
-import { bytesToHex } from "@noble/hashes/utils.js";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
 
 import { createCommunity } from "../../helpers/community.js";
 import { buildChannelRekey, deriveChannelKeys } from "../../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../../helpers/gift-wrap.js";
 import { giftWrap } from "../../operations/gift-wrap.js";
-import { bindToChannel } from "../../operations/channel.js";
+import { bindToChannel, includeMediaEncryption } from "../../operations/channel.js";
+import { parseImeta } from "../../helpers/imeta.js";
 import type { ChannelKey } from "../../types.js";
 import { ConcordPrivateChannel } from "../private-channel.js";
 import {
@@ -74,6 +75,98 @@ function servingPool(events: NostrEvent[], subCapture?: CapturedFilter[]): Relay
 }
 
 describe("ConcordPrivateChannel (DI, served wraps)", () => {
+  it("decrypts each historical attachment with its own imeta key after rekeying", async () => {
+    const owner = new PrivateKeySigner(generateSecretKey());
+    const ownerPub = await owner.getPublicKey();
+    const me = new PrivateKeySigner(generateSecretKey());
+    const myPub = await me.getPublicKey();
+    const g = await createCommunity({ ownerPubkey: ownerPub, name: "T", relays: ["wss://fake"] });
+    const material = g.material;
+    const channel: ChannelKey = {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "secret",
+    };
+    const encrypt = async (url: string, plaintext: string) => {
+      const key = generateSecretKey();
+      const nonce = crypto.getRandomValues(new Uint8Array(16));
+      const cryptoKey = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["encrypt"]);
+      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, cryptoKey, new TextEncoder().encode(plaintext));
+      return { url, plaintext, ciphertext, key: bytesToHex(key), nonce: bytesToHex(nonce) };
+    };
+    const makeRumor = async (attachment: Awaited<ReturnType<typeof encrypt>>, epoch: number) => {
+      let draft = await ChatMessageFactory.create(attachment.url).attachments([
+        { url: attachment.url, type: "application/octet-stream" },
+      ]);
+      draft = await includeMediaEncryption([
+        { url: attachment.url, algorithm: "aes-gcm", key: attachment.key, nonce: attachment.nonce },
+      ])(draft);
+      return bindToChannel(channel.id, epoch)(draft);
+    };
+
+    const before = await encrypt("https://media.test/epoch-1", "private epoch one");
+    const k1 = deriveChannelKeys(material, channel);
+    const wraps: NostrEvent[] = [await giftWrap(k1.current.sk, k1.current.convKey, me)(await makeRumor(before, 1))];
+    const plan = await buildChannelRekey(material, channel, owner, { recipients: [ownerPub, myPub], self: ownerPub });
+    wraps.push(...plan.rekeyWraps);
+    const after = await encrypt("https://media.test/epoch-2", "private epoch two");
+    const k2 = deriveChannelKeys(material, plan.next);
+    wraps.push(await giftWrap(k2.current.sk, k2.current.convKey, me)(await makeRumor(after, 2)));
+
+    const store = new RumorStore();
+    let persisted: ChannelKey | undefined;
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => material,
+      signer: me,
+      pubkey: myPub,
+      pool: servingPool(wraps),
+      eventStore: new EventStore(),
+      store,
+      relays: ["wss://fake"],
+      isAuthorized: (r) => r === ownerPub,
+      onKeyChange: (ck) => (persisted = ck),
+    });
+    await sub.start();
+    await settle();
+
+    expect(sub.epoch$.value).toBe(2);
+    expect(persisted?.held?.[0]).toMatchObject({ epoch: 1, key: channel.key });
+    const messages = store.getTimeline([{ kinds: [kinds.ChatMessage] }]);
+    const parsed = new Map(messages.flatMap((message) => [...parseImeta(message.tags)]));
+    const decrypt = async (fixture: typeof before) => {
+      const encryption = parsed.get(fixture.url)!.encryption!;
+      const key = await crypto.subtle.importKey("raw", hexToBytes(encryption.key), "AES-GCM", false, ["decrypt"]);
+      const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: hexToBytes(encryption.nonce) },
+        key,
+        fixture.ciphertext,
+      );
+      return new TextDecoder().decode(plaintext);
+    };
+    expect(await decrypt(before)).toBe(before.plaintext);
+    expect(await decrypt(after)).toBe(after.plaintext);
+    expect([before.key, before.nonce]).not.toEqual([after.key, after.nonce]);
+    const channelSecrets = [
+      channel.key,
+      plan.next.key,
+      bytesToHex(k1.current.sk),
+      bytesToHex(k1.current.convKey),
+      bytesToHex(k2.current.sk),
+      bytesToHex(k2.current.convKey),
+    ];
+    expect(channelSecrets).not.toContain(before.key);
+    expect(channelSecrets).not.toContain(after.key);
+    const wrong = parsed.get(after.url)!.encryption!;
+    const wrongKey = await crypto.subtle.importKey("raw", hexToBytes(wrong.key), "AES-GCM", false, ["decrypt"]);
+    await expect(
+      crypto.subtle.decrypt({ name: "AES-GCM", iv: hexToBytes(wrong.nonce) }, wrongKey, before.ciphertext),
+    ).rejects.toThrow();
+
+    sub.dispose();
+  });
+
   it("syncs epoch-1 history, follows a channel Rekey, and syncs the adopted epoch", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
