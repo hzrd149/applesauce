@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25.1
 current_phase_name: concord-media-epoch-key-decryption-audit
 status: executing
-stopped_at: Completed 25.1-02-PLAN.md
-last_updated: "2026-09-04T16:07:54.779Z"
+stopped_at: Completed 25.1-03-PLAN.md
+last_updated: "2026-09-04T16:13:39.579Z"
 last_activity: 2026-09-04
 last_activity_desc: Phase 25.1 execution started
 progress:
   total_phases: 15
   completed_phases: 11
   total_plans: 65
-  completed_plans: 64
+  completed_plans: 65
   percent: 73
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-03)
 ## Current Position
 
 Phase: 25.1 (concord-media-epoch-key-decryption-audit) — EXECUTING
-Plan: 2 of 2
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-09-04 — Phase 25.1 execution started
 
@@ -163,6 +163,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25 P05 | 3min | 2 tasks | 2 files |
 | Phase 25.1 P01 | 3min | 3 tasks | 5 files |
 | Phase 25.1 P02 | 4min | 2 tasks | 2 files |
+| Phase 25.1 P03 | 4min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -378,6 +379,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: rawImeta is a shallow copy of the full source tag, while normalized parsing keeps deliberate last-value semantics.
 - [Phase ?]: Historical blob decryption reads only each decoded rumor's parsed imeta key and nonce; epoch material is asserted unequal and never used as a file key.
 - [Phase ?]: Native AES-GCM wrong-key rejection is the non-vacuous oracle for both community and private-channel rotation paths.
+- [Phase ?]: Attachment AES-GCM nonces must be exactly 16 bytes encoded as 32 hexadecimal characters before encryption metadata is exposed.
+- [Phase ?]: Malformed nonce lengths reuse the existing value-free InvalidMediaAttachmentEncryptionError while retaining the attachment and raw imeta.
 
 ### Pending Todos
 
@@ -497,8 +500,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-04T15:40:32.823Z
-Stopped at: Completed 25.1-02-PLAN.md
+Last session: 2026-09-04T16:13:30.898Z
+Stopped at: Completed 25.1-03-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

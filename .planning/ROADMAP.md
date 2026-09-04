@@ -364,7 +364,7 @@ Plans:
 **Goal:** Audit Concord media encryption and decryption across epoch rotations, confirming historical media resolves the correct key material and fixing any verified defect.
 **Requirements**: TBD
 **Depends on:** Phase 25
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -377,7 +377,7 @@ Plans:
 
 **Wave 3** *(gap closure; blocked on Waves 1-2 completion)*
 
-- [ ] 25.1-03-PLAN.md — Enforce the documented 16-byte attachment nonce and prove parser boundaries
+- [x] 25.1-03-PLAN.md — Enforce the documented 16-byte attachment nonce and prove parser boundaries
 
 ### Phase 26: Release Coordination — v7.0.0
 
