@@ -24,6 +24,47 @@ describe("parseImeta", () => {
     expect(attachment.encryptionError).toBeUndefined();
   });
 
+  it.each([
+    ["one-byte", "00"],
+    ["15-byte", "A".repeat(30)],
+    ["17-byte", "C".repeat(34)],
+  ])("rejects a %s hexadecimal nonce without exposing its value", (_name, invalidNonce) => {
+    const rawImeta = [
+      "imeta",
+      `url ${url}`,
+      "encryption-algorithm aes-gcm",
+      `decryption-key ${key}`,
+      `decryption-nonce ${invalidNonce}`,
+    ];
+    const attachment = parseImeta([rawImeta]).get(url)!;
+
+    expect(attachment).toBeDefined();
+    expect(attachment.rawImeta).toEqual(rawImeta);
+    expect(attachment.encryption).toBeUndefined();
+    expect(attachment.encryptionError).toBeInstanceOf(InvalidMediaAttachmentEncryptionError);
+    expect(attachment.encryptionError!.issues).toEqual([
+      { field: "decryption-nonce", message: "Nonce must be 16-byte hexadecimal" },
+    ]);
+    expect(attachment.encryptionError!.message).not.toContain(invalidNonce);
+    expect(JSON.stringify(attachment.encryptionError)).not.toContain(invalidNonce);
+  });
+
+  it("accepts exactly 16 nonce bytes and normalizes uppercase hexadecimal", () => {
+    const supportedNonce = "B".repeat(32);
+    const attachment = parse(
+      "encryption-algorithm AES-GCM",
+      `decryption-key ${key}`,
+      `decryption-nonce ${supportedNonce}`,
+    );
+
+    expect(attachment.encryption).toEqual({
+      algorithm: "aes-gcm",
+      key: key.toLowerCase(),
+      nonce: supportedNonce.toLowerCase(),
+    });
+    expect(attachment.encryptionError).toBeUndefined();
+  });
+
   it("treats zero recognized fields as an unencrypted attachment", () => {
     const attachment = parse("m image/png", "unknown value");
     expect(attachment.encryption).toBeUndefined();
