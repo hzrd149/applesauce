@@ -10,6 +10,7 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { normalizeURL } from "applesauce-core/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
+import { ChatMessageFactory } from "applesauce-common/factories";
 import type { PublishResponse, Relay, RelayPool, RelayStatus } from "applesauce-relay";
 
 import { getEventHash, kinds, type NostrEvent, type Rumor } from "applesauce-core/helpers/event";
@@ -26,6 +27,8 @@ import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { hasPerm } from "../../helpers/permissions.js";
 import { INVITE_BUNDLE_KIND, getInviteBundle } from "../../helpers/invite-bundle.js";
 import { bindToChannel } from "../../operations/channel.js";
+import { includeMediaEncryption } from "../../operations/channel.js";
+import { parseImeta } from "../../helpers/imeta.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import { createUserAuthHandler } from "../auth.js";
@@ -113,6 +116,88 @@ function mkStatus(over: Partial<RelayStatus> & { url: string }): RelayStatus {
 }
 
 describe("ConcordCommunity (DI, no network)", () => {
+  it("decrypts each historical attachment with its own imeta key after refounding", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    const channelId = community.state$.value.channels.find((c) => c.name === "general")!.channel_id;
+    const encrypt = async (url: string, plaintext: string) => {
+      const key = generateSecretKey();
+      const nonce = crypto.getRandomValues(new Uint8Array(16));
+      const cryptoKey = await crypto.subtle.importKey("raw", key, "AES-GCM", false, ["encrypt"]);
+      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, cryptoKey, new TextEncoder().encode(plaintext));
+      return { url, plaintext, ciphertext, key: bytesToHex(key), nonce: bytesToHex(nonce) };
+    };
+    const publish = async (attachment: Awaited<ReturnType<typeof encrypt>>, epoch: number) => {
+      let draft = await ChatMessageFactory.create(attachment.url).attachments([
+        { url: attachment.url, type: "application/octet-stream" },
+      ]);
+      draft = await includeMediaEncryption([
+        { url: attachment.url, algorithm: "aes-gcm", key: attachment.key, nonce: attachment.nonce },
+      ])(draft);
+      await community.publishToPlane({ plane: "channel", channelId }, await bindToChannel(channelId, epoch)(draft), {});
+    };
+
+    const before = await encrypt("https://media.test/before", "before refounding");
+    const oldRoot = community.material.community_root;
+    const oldEpoch = community.material.root_epoch;
+    await publish(before, oldEpoch);
+    await community.refound({ keep: [pubkey] });
+    const after = await encrypt("https://media.test/after", "after refounding");
+    const newRoot = community.material.community_root;
+    const newEpoch = community.material.root_epoch;
+    await publish(after, newEpoch);
+    await settle();
+
+    const messages = community.channelStore(channelId).getTimeline([{ kinds: [kinds.ChatMessage] }]);
+    const parsed = new Map(messages.flatMap((message) => [...parseImeta(message.tags)]));
+    const decrypt = async (fixture: typeof before) => {
+      const encryption = parsed.get(fixture.url)!.encryption!;
+      const key = await crypto.subtle.importKey("raw", hexToBytes(encryption.key), "AES-GCM", false, ["decrypt"]);
+      const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: hexToBytes(encryption.nonce) },
+        key,
+        fixture.ciphertext,
+      );
+      return new TextDecoder().decode(plaintext);
+    };
+
+    expect(await decrypt(before)).toBe(before.plaintext);
+    expect(await decrypt(after)).toBe(after.plaintext);
+    expect([before.key, before.nonce]).not.toEqual([after.key, after.nonce]);
+    const cid = hexToBytes(community.material.community_id);
+    const channelSecrets = [
+      oldRoot,
+      newRoot,
+      bytesToHex(channelGroupKey(hexToBytes(oldRoot), cid, oldEpoch).convKey),
+      bytesToHex(channelGroupKey(hexToBytes(newRoot), cid, newEpoch).convKey),
+    ];
+    expect(channelSecrets).not.toContain(before.key);
+    expect(channelSecrets).not.toContain(after.key);
+    const wrong = parsed.get(after.url)!.encryption!;
+    const wrongKey = await crypto.subtle.importKey("raw", hexToBytes(wrong.key), "AES-GCM", false, ["decrypt"]);
+    await expect(
+      crypto.subtle.decrypt({ name: "AES-GCM", iv: hexToBytes(wrong.nonce) }, wrongKey, before.ciphertext),
+    ).rejects.toThrow();
+
+    community.dispose();
+  });
+
   it("reflects genesis + chat via optimistic local echo", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
