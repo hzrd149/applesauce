@@ -364,11 +364,12 @@ Plans:
 **Goal:** Audit Concord media encryption and decryption across epoch rotations, confirming historical media resolves the correct key material and fixing any verified defect.
 **Requirements**: TBD
 **Depends on:** Phase 25
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 25.1 to break down)
+- [ ] 25.1-01-PLAN.md — Lossless attachment diagnostics and exact wire compatibility tracer
+- [ ] 25.1-02-PLAN.md — Real AES-GCM historical media proofs across refounding and rekeying
 
 ### Phase 26: Release Coordination — v7.0.0
 
