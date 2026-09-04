@@ -10,6 +10,11 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
+**Phase 25.1 complete (2026-09-04).** Concord encrypted-media parsing now rejects malformed
+AES-GCM nonce lengths through safe typed diagnostics while preserving attachment metadata and exact
+wire emission; real cryptographic tests confirm historical per-file keys survive community
+refounding and private-channel rekeying.
+
 **Shipped v1.2 operation-scoped-relay-auth (2026-08-19).** Three milestones are complete: v1.0 made
 the event layer generic over unsigned rumors, v1.1 brought `applesauce-concord` into conformance with
 the CORD-01..07 protocol specs, and v1.2 moved NIP-42 authentication out of ambient relay-wide state
@@ -232,6 +237,7 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ Concord's client-wide auth driver machinery is gone — `relay-auth.ts` deleted along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and `autoAuthenticate`, with a two-root structural guard failing CI on reintroduction — v1.2 (Phase 15, CAUTH-03, widened from stream-keys-only to cover the user-key half)
 - ✓ Relay/SQLite/group-pointer correctness and Concord residual publication honesty — v7.0.0 (Phase 17, FIX-01/02/03 and RESID-01/02). Hostile CLOSED prefixes cannot reach the prototype chain, SQLite consumers install one backend, compatibility pointers retain relay identity, transient AUTH stays out of fatal UI state, and invite revocation requires acknowledged publication
 - ✓ React 19 workspace support retains the React 18 consumer contract, and both OPFS examples run on `@snort/worker-relay` v2 without destructive migration — v7.0.0 (Phase 25, ECO-02/03)
+- ✓ Concord encrypted attachments retain their own file keys across community refounding and private-channel rekeying, and malformed AES-GCM nonce lengths fail safely at parse time — Validated in Phase 25.1 (CONC-F3)
 
 ### Active
 
@@ -340,6 +346,8 @@ release coordination note. 999.17 (`debug` replacement) was considered and delib
 backlog: it is the one rider that genuinely needs a major, but also the largest by far.*
 
 ---
+*Last updated: 2026-09-04 — Phase 25.1 complete; Concord media attachment parsing and historical-key behavior verified 10/10.*
+
 *Last updated: 2026-08-18 — Phase 15 complete; milestone v1.2 operation-scoped-relay-auth fully executed. Started from three promoted
 backlog items (999.5, 999.4, 999.11) plus SEED-001's loaders sweep. Every premise was verified
 against the code before scoping: the relay-wide pre-block is live at `relay.ts:846/944/995/1063`,
