@@ -13,7 +13,14 @@ import {
 import { IEventSubscriptions } from "../event-store/interface.js";
 import { getInboxes, getOutboxes } from "../helpers/mailboxes.js";
 import { addRelayHintsToPointer, ProfilePointer } from "../helpers/pointers.js";
-import { removeBlacklistedRelays, selectOptimalRelays, setFallbackRelays } from "../helpers/relay-selection.js";
+import {
+  removeBlacklistedRelays,
+  selectOptimalRelays,
+  selectRelaysPerAuthor,
+  setFallbackRelays,
+  type SelectOptimalRelaysOptions,
+  type SelectRelaysPerAuthorOptions,
+} from "../helpers/relay-selection.js";
 
 /** RxJS operator that fetches outboxes for profile pointers from the event store */
 export function includeMailboxes(
@@ -72,10 +79,11 @@ export function includeFallbackRelays(
   );
 }
 
-/** A operator calls {@link selectOptimalRelays} and filters the relays for the user */
+/** An operator that calls {@link selectOptimalRelays} and filters the relays for the user */
 export function filterOptimalRelays(
   maxConnections: number | Observable<number>,
   maxRelaysPerUser: number | Observable<number>,
+  score?: SelectOptimalRelaysOptions["score"],
 ): MonoTypeOperatorFunction<ProfilePointer[]> {
   return pipe(
     // Combine with the observable so it re-emits when the max connections and max relays per user change
@@ -85,7 +93,18 @@ export function filterOptimalRelays(
     ),
     // Filter the relays for the user
     map(([users, maxConnections, maxRelaysPerUser]) =>
-      selectOptimalRelays(users, { maxConnections, maxRelaysPerUser }),
+      selectOptimalRelays(users, { maxConnections, maxRelaysPerUser, score }),
     ),
+  );
+}
+
+/** An operator that calls {@link selectRelaysPerAuthor} to select top-N relays per user */
+export function filterRelaysPerAuthor(
+  maxRelaysPerUser: number | Observable<number>,
+  score?: SelectRelaysPerAuthorOptions["score"],
+): MonoTypeOperatorFunction<ProfilePointer[]> {
+  return pipe(
+    combineLatestWith(isObservable(maxRelaysPerUser) ? maxRelaysPerUser : of(maxRelaysPerUser)),
+    map(([users, maxRelaysPerUser]) => selectRelaysPerAuthor(users, { maxRelaysPerUser, score })),
   );
 }
