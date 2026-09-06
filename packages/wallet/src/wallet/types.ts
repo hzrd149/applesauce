@@ -1,9 +1,8 @@
 import type { MeltProofsResponse, MeltQuoteBolt11Response, MintQuoteBolt11Response } from "@cashu/cashu-ts";
-import type { EventStore } from "applesauce-core";
+import type { Debugger, EventStore } from "applesauce-core";
 import type { EncryptedContentCache } from "applesauce-common/helpers";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
-import type { Debugger } from "debug";
 import type { Observable } from "rxjs";
 
 import type { WalletToken } from "../casts/wallet-token.js";

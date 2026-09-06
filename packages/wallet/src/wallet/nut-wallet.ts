@@ -11,8 +11,7 @@ import {
   Wallet as CashuWallet,
 } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
-import type { EventSigner } from "applesauce-core";
-import { ChainableObservable, logger as baseLogger, chainable, EventStore } from "applesauce-core";
+import { ChainableObservable, logger as baseLogger, chainable, EventStore, type Debugger, type EventSigner } from "applesauce-core";
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import {
@@ -35,7 +34,6 @@ import {
 } from "applesauce-common/helpers";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import type { Debugger } from "debug";
 import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscription } from "rxjs";
 import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rxjs/operators";
 

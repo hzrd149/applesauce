@@ -1,9 +1,8 @@
-import type { EventStore } from "applesauce-core";
+import type { Debugger, EventStore } from "applesauce-core";
 import { kinds, relaySet } from "applesauce-core/helpers";
 import type { Filter } from "applesauce-core/helpers";
 import { createSyncLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
-import type { Debugger } from "debug";
 import {
   catchError,
   concat,
