@@ -329,13 +329,25 @@ Plans:
 ### Phase 25.4: Replace the debug Dependency (INSERTED)
 
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
-**Requirements**: TBD
+**Requirements**: DEBUG-01
 **Depends on:** Phase 25.3
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 25.4 to break down)
+**Wave 1**
+
+- [ ] 25.4-01-PLAN.md — Core logger compatibility tracer and external dependency removal
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 25.4-02-PLAN.md — Relay real-output capture and auth logging migration
+- [ ] 25.4-03-PLAN.md — Concord public logger types and capture migration
+- [ ] 25.4-04-PLAN.md — Signers, wallet, and wallet-connect declaration migration
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 25.4-05-PLAN.md — Residual manifest cleanup, lockfile regeneration, and workspace proof
 
 ### Phase 25.3: Concord Invite-Bundle Rule-Table Hardening (INSERTED)
 

@@ -4,15 +4,15 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 25.4
 current_phase_name: Replace the debug Dependency
-status: planning
+status: executing
 stopped_at: Completed 25.3-03-PLAN.md
-last_updated: "2026-09-06T20:37:35.349Z"
+last_updated: "2026-09-06T20:44:40.133Z"
 last_activity: 2026-09-06
 last_activity_desc: Phase 25.3 complete, transitioned to Phase 25.4
 progress:
   total_phases: 15
   completed_phases: 13
-  total_plans: 75
+  total_plans: 80
   completed_plans: 75
   percent: 87
 ---
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 Phase: 25.4 — Replace the debug Dependency
 Plan: Not started
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-09-06 — Phase 25.3 complete, transitioned to Phase 25.4
 
 Progress: [██████████] 72/72 plans ([██████████] 100%)

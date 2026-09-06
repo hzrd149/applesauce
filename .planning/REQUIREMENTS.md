@@ -93,13 +93,13 @@ findings changed the plan and are marked **[research]** below.
 - [x] **ECO-02**: **[research]** `applesauce-react`'s already-declared React 19 support is backed by evidence — the package's first rendering tests exist and pass against both React 18 and 19, covering `use$`/`useObservableState` and the providers
 - [x] **ECO-03**: `apps/examples` runs on `@snort/worker-relay` v2, with the removed `insertBatchSize` option and the now-synchronous `setEventMetadata` handled at both call sites
 
+### Observability
+
+- [ ] **DEBUG-01**: Replace the `debug` dependency (999.17) while preserving the workspace's used callable logger, namespace extension/matching, printf output, capture harnesses, and public logger type surface
+
 ## Future Requirements
 
 Tracked, not in this roadmap.
-
-### Observability
-
-- **DEBUG-01**: Replace the `debug` dependency (999.17) — the one rider that genuinely needs a major, deliberately deferred as the largest. 109 `.extend()` sites, 52 `Debugger` type references, ~125 printf sites, and both test capture harnesses need a replacement mechanism
 
 ### COUNT
 
@@ -180,11 +180,12 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | ECO-01 | Phase 16 | Complete |
 | ECO-02 | Phase 25 | Complete |
 | ECO-03 | Phase 25 | Complete |
+| DEBUG-01 | Phase 25.4 | Pending |
 
 **Coverage:**
 
-- v1 requirements: 46 total
-- Mapped to phases: 46
+- v1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
 
 ---
