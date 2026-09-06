@@ -10,6 +10,11 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
+**Phase 25.3 complete (2026-09-06).** Concord invite-bundle rules are now structurally bound to
+protocol field types, persisted Invite List entries cross a closed validation boundary, and corrupt
+self-authored entries are quarantined per source without erasing valid state or triggering repair
+publication. The compiler, focused schemas, real event-store recovery path, and all 672 Concord tests pass.
+
 **Phase 25.1 complete (2026-09-04).** Concord encrypted-media parsing now rejects malformed
 AES-GCM nonce lengths through safe typed diagnostics while preserving attachment metadata and exact
 wire emission; real cryptographic tests confirm historical per-file keys survive community
@@ -346,7 +351,7 @@ release coordination note. 999.17 (`debug` replacement) was considered and delib
 backlog: it is the one rider that genuinely needs a major, but also the largest by far.*
 
 ---
-*Last updated: 2026-09-04 — Phase 25.1 complete; Concord media attachment parsing and historical-key behavior verified 10/10.*
+*Last updated: 2026-09-06 — Phase 25.3 complete; Concord invite validation and fail-soft reconciliation verified 11/11.*
 
 *Last updated: 2026-08-18 — Phase 15 complete; milestone v1.2 operation-scoped-relay-auth fully executed. Started from three promoted
 backlog items (999.5, 999.4, 999.11) plus SEED-001's loaders sweep. Every premise was verified
