@@ -19,8 +19,7 @@ import {
   startWith,
   switchMap,
 } from "rxjs";
-import type { Debugger } from "debug";
-import { EventStore, RumorStore } from "applesauce-core";
+import { EventStore, RumorStore, type Debugger } from "applesauce-core";
 import { finalizeEvent, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { ensureKTag } from "applesauce-core/helpers/factory";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";

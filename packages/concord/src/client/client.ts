@@ -23,8 +23,7 @@ import {
   timeout,
   toArray,
 } from "rxjs";
-import type { Debugger } from "debug";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore, mapEventsToTimeline, type Debugger } from "applesauce-core";
 import { castUser, type User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import { getReplaceableIdentifier, setHiddenContentCache } from "applesauce-core/helpers";
