@@ -469,6 +469,44 @@ it("binds the held-key refounder rule to its declared string value family", () =
   expect(source).toMatch(/HELD_KEY_FIELD_RULES\s*=\s*\{.*?refounder:\s*\{\s*kind:\s*"hex-key"/);
 });
 
+it("pins negative compiler assertions for every rule value family and optional absence", () => {
+  const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
+  const source = readFileSync(sourcePath, "utf8");
+
+  expect(source).toContain("export type BundleRuleMismatchAssertions");
+  expect(source.match(/AssertNever<Extract<RuleFor</g)).toHaveLength(5);
+});
+
+it("preserves omission for every omit-disposition field at every table depth", () => {
+  const bundle = baselineBundle();
+  const result = validateInviteBundle({
+    ...bundle,
+    held_roots: [{ epoch: 0, key: "44".repeat(32) }],
+    channels: [{ id: "11".repeat(32), key: "22".repeat(32), epoch: 2, name: "mods" }],
+    icon: undefined,
+    refounder: undefined,
+    label: undefined,
+    creator_npub: undefined,
+    expires_at: undefined,
+  });
+
+  expect(result).toBeDefined();
+  const probes: Array<[Record<string, unknown> | undefined, Record<string, BundleFieldRule>]> = [
+    [result as unknown as Record<string, unknown>, INVITE_BUNDLE_FIELD_RULES],
+    [result?.channels[0] as unknown as Record<string, unknown>, CHANNEL_KEY_FIELD_RULES],
+    [result?.held_roots?.[0] as unknown as Record<string, unknown>, HELD_KEY_FIELD_RULES],
+  ];
+  let checked = 0;
+  for (const [value, rules] of probes) {
+    for (const [field, rule] of Object.entries(rules)) {
+      if (rule.onAbsent !== "omit") continue;
+      expect(Object.prototype.hasOwnProperty.call(value, field)).toBe(false);
+      checked++;
+    }
+  }
+  expect(checked).toBeGreaterThan(0);
+});
+
 it("every exported *_FIELD_RULES table in invite-bundle.ts satisfies ExhaustiveBundleRules<> over a subject derived from InviteBundle", () => {
   const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
   const source = readFileSync(sourcePath, "utf8");
