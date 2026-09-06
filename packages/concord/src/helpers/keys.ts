@@ -34,7 +34,7 @@ import {
   findBlob,
   groupRotations,
   lowerKeyWins,
-  parseRekey,
+  parseRekeyResult,
   rekeyLocator,
   ROOT_SCOPE_HEX,
   buildRekeyRumors,
@@ -48,6 +48,7 @@ export type RotationAuthorityOutcome =
   | { kind: "eligible" }
   | { kind: "parked"; citation: Extract<EditionPinResult, { kind: "missing" | "mismatch" }> }
   | { kind: "unauthorized" }
+  | { kind: "rejected"; reason: "citation-mismatch" }
   | { kind: "malformed" };
 
 /**
@@ -61,10 +62,13 @@ export function classifyRotationAuthority(
   owner: string,
   controlEditions: Iterable<DecodedEvent>,
   isCurrentlyAuthorized: (rotator: string, vac: EditionPin) => boolean,
+  opts: { mismatchExhausted?: boolean } = {},
 ): RotationAuthorityOutcome {
   if (rotator === owner) return vac === undefined ? { kind: "eligible" } : { kind: "malformed" };
   if (!vac) return { kind: "malformed" };
   const citation = resolveEditionPin(controlEditions, vac);
+  if (citation.kind === "mismatch" && opts.mismatchExhausted)
+    return { kind: "rejected", reason: "citation-mismatch" };
   if (citation.kind === "missing" || citation.kind === "mismatch") return { kind: "parked", citation };
   if (citation.kind === "malformed") return { kind: "malformed" };
   return isCurrentlyAuthorized(rotator, vac) ? { kind: "eligible" } : { kind: "unauthorized" };
@@ -475,9 +479,28 @@ export async function buildRefounding(
 
 /** The outcome of folding the rekey blobs at the next-epoch base-rekey address. */
 export type RekeyOutcome =
-  | { kind: "adopt"; next: ConcordKeys; rotator: string; epoch: number }
-  | { kind: "removed"; epoch: number }
-  | { kind: "none" };
+  | { kind: "adopt"; next: ConcordKeys; rotator: string; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "removed"; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "none"; diagnostics?: RekeyCandidateDiagnostic[] };
+
+export type RekeyDiagnosticReason =
+  | "malformed"
+  | "incomplete"
+  | "inconsistent"
+  | "continuity-gap"
+  | "continuity-fork"
+  | "citation-missing"
+  | "citation-mismatch"
+  | "unauthorized"
+  | "owner-citation"
+  | "decrypt-failed";
+
+export interface RekeyCandidateDiagnostic {
+  candidateId: string;
+  status: "parked" | "rejected";
+  reason: RekeyDiagnosticReason;
+  cause?: unknown;
+}
 
 /**
  * Fold the rekey blobs at the next-epoch base-rekey address (CORD-06 §2/§3): a
@@ -495,7 +518,10 @@ export async function readRekey(
   signer: ISigner,
   channels: ChannelMetadata[],
   canRemoveSelf?: (rotator: string) => boolean,
-  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean,
+  verifyVac?: (
+    rotator: string,
+    vac: [string, string, string] | undefined,
+  ) => boolean | RotationAuthorityOutcome,
 ): Promise<RekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
   const scoped = await readRekeyScoped(
@@ -518,9 +544,11 @@ export async function readRekey(
       next: rollForward(keys, scoped.newKey, scoped.epoch, scoped.rotator, channels),
       rotator: scoped.rotator,
       epoch: scoped.epoch,
+      ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}),
     };
-  if (scoped.kind === "removed") return { kind: "removed", epoch: scoped.epoch };
-  return { kind: "none" };
+  if (scoped.kind === "removed")
+    return { kind: "removed", epoch: scoped.epoch, ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}) };
+  return { kind: "none", ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}) };
 }
 
 // ---- channel-scoped rekey (CORD-06) ----------------------------------------
@@ -560,13 +588,16 @@ interface ScopedHeld {
    * fail-closed-on-absence) — every real call site supplies one; tests may omit
    * it.
    */
-  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
+  verifyVac?: (
+    rotator: string,
+    vac: [string, string, string] | undefined,
+  ) => boolean | RotationAuthorityOutcome;
 }
 
 type ScopedRekeyOutcome =
-  | { kind: "adopt"; newKey: Uint8Array; rotator: string; epoch: number }
-  | { kind: "removed"; epoch: number }
-  | { kind: "none" };
+  | { kind: "adopt"; newKey: Uint8Array; rotator: string; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "removed"; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "none"; diagnostics?: RekeyCandidateDiagnostic[] };
 
 /**
  * The scope-generic core of the rekey read (CORD-06 §2/§3, D-06/D-10): among
@@ -592,19 +623,60 @@ async function readRekeyScoped(
   signer: ISigner,
 ): Promise<ScopedRekeyOutcome> {
   const heldEpoch = BigInt(held.heldEpoch);
-  const parsed = [...rekeyEvents].map((d) => parseRekey(d)).filter((p): p is NonNullable<typeof p> => p !== null);
-  const rotations = groupRotations(parsed).filter(
-    (set) =>
-      set.scopeIdHex === held.scopeIdHex &&
-      set.newEpoch === heldEpoch + 1n &&
-      isAuthorized(set.rotator) &&
-      checkContinuity(set, heldEpoch, held.heldKey).ok &&
-      // D-08/D-12: a non-owner set whose vac citation fails to verify against
-      // the folded Roster is excluded from candidacy entirely — treated as
-      // unauthorized, so it contributes to neither adopt nor removed.
-      (held.verifyVac === undefined || held.verifyVac(set.rotator, set.vac) === true),
-  );
-  if (rotations.length === 0) return { kind: "none" };
+  const diagnostics: RekeyCandidateDiagnostic[] = [];
+  const parsed = [...rekeyEvents].flatMap((event) => {
+    const result = parseRekeyResult(event);
+    if (result.kind === "parsed") return [result.value];
+    diagnostics.push({ candidateId: event.wrapId, status: "rejected", reason: "malformed", cause: result.cause });
+    return [];
+  });
+  const rotations = [];
+  for (const set of groupRotations(parsed)) {
+    if (set.scopeIdHex !== held.scopeIdHex || set.newEpoch !== heldEpoch + 1n) continue;
+    if (!set.consistent) {
+      diagnostics.push({ candidateId: set.candidateId, status: "parked", reason: "inconsistent" });
+      continue;
+    }
+    if (!set.complete) {
+      diagnostics.push({ candidateId: set.candidateId, status: "parked", reason: "incomplete" });
+      continue;
+    }
+    const continuity = checkContinuity(set, heldEpoch, held.heldKey);
+    if (!continuity.ok) {
+      diagnostics.push({
+        candidateId: set.candidateId,
+        status: continuity.reason === "gap" ? "parked" : "rejected",
+        reason: continuity.reason === "gap" ? "continuity-gap" : "continuity-fork",
+      });
+      continue;
+    }
+    if (!isAuthorized(set.rotator)) {
+      diagnostics.push({ candidateId: set.candidateId, status: "rejected", reason: "unauthorized" });
+      continue;
+    }
+    const authority = held.verifyVac?.(set.rotator, set.vac);
+    if (authority === false) {
+      diagnostics.push({ candidateId: set.candidateId, status: "rejected", reason: "unauthorized" });
+      continue;
+    }
+    if (authority !== undefined && authority !== true && authority.kind !== "eligible") {
+      let reason: RekeyDiagnosticReason;
+      if (authority.kind === "unauthorized") reason = "unauthorized";
+      else if (authority.kind === "malformed") reason = "owner-citation";
+      else if (authority.kind === "rejected") reason = authority.reason;
+      else reason = authority.citation.kind === "missing" ? "citation-missing" : "citation-mismatch";
+      diagnostics.push({
+        candidateId: set.candidateId,
+        status: authority.kind === "parked" ? "parked" : "rejected",
+        reason,
+      });
+      continue;
+    }
+    rotations.push(set);
+  }
+  const withDiagnostics = <T extends object>(outcome: T): T & { diagnostics?: RekeyCandidateDiagnostic[] } =>
+    diagnostics.length ? { ...outcome, diagnostics } : outcome;
+  if (rotations.length === 0) return withDiagnostics({ kind: "none" as const });
 
   const targetEpoch = held.heldEpoch + 1;
   const decryptable: { key: Uint8Array; rotator: string }[] = [];
@@ -627,12 +699,13 @@ async function readRekeyScoped(
       const plain = await signer.nip44!.decrypt(set.rotator, blob.wrapped);
       const newKey = decodeWrappedKey(base64ToBytes(plain), held.scopeId, set.newEpoch);
       decryptable.push({ key: newKey, rotator: set.rotator });
-    } catch {
+    } catch (cause) {
       // Blob found at our own locator but decrypt threw (D-06): positive
       // evidence we're IN this set, outcome undetermined. Contributes ONLY to
       // the ambiguity check below — never to removal, never to adoption.
       opaqueCompetitor = true;
       decryptThrew = true;
+      diagnostics.push({ candidateId: set.candidateId, status: "parked", reason: "decrypt-failed", cause });
     }
   }
 
@@ -644,8 +717,8 @@ async function readRekeyScoped(
     // D-10: an opaque competing fork means we cannot prove our decryptable
     // winner is the true global-lowest — defer rather than adopt a candidate
     // that might not be the winner.
-    if (opaqueCompetitor) return { kind: "none" };
-    return { kind: "adopt", newKey: winner.key, rotator: winner.rotator, epoch: targetEpoch };
+    if (opaqueCompetitor) return withDiagnostics({ kind: "none" as const });
+    return withDiagnostics({ kind: "adopt" as const, newKey: winner.key, rotator: winner.rotator, epoch: targetEpoch });
   }
 
   // No decryptable candidate at all. A decrypt-throw at our own locator is
@@ -653,21 +726,21 @@ async function readRekeyScoped(
   // never absence — so defer even when a competing no-blob removal set also
   // exists: transient keep-evidence outranks an unproven removal, and the
   // down-only re-read spine revisits this epoch once the signer recovers.
-  if (decryptThrew) return { kind: "none" };
+  if (decryptThrew) return withDiagnostics({ kind: "none" as const });
   // Only a genuine no-blob set can honor removal, and only from a rotator
   // authorized to remove US (CORD-04). An absent/false predicate denies the
   // removal (fail-closed): we keep our current key either way.
   for (const rotator of noBlobRotators) {
-    if (held.canRemoveSelf?.(rotator) === true) return { kind: "removed", epoch: targetEpoch };
+    if (held.canRemoveSelf?.(rotator) === true) return withDiagnostics({ kind: "removed" as const, epoch: targetEpoch });
   }
-  return { kind: "none" };
+  return withDiagnostics({ kind: "none" as const });
 }
 
 /** The outcome of folding a channel's rekey blobs at its next-epoch address. */
 export type ChannelRekeyOutcome =
-  | { kind: "adopt"; next: ChannelKey; rotator: string; epoch: number }
-  | { kind: "removed"; epoch: number }
-  | { kind: "none" };
+  | { kind: "adopt"; next: ChannelKey; rotator: string; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "removed"; epoch: number; diagnostics?: RekeyCandidateDiagnostic[] }
+  | { kind: "none"; diagnostics?: RekeyCandidateDiagnostic[] };
 
 /**
  * Roll a single {@link ChannelKey} forward to a new key/epoch, retaining the
@@ -821,7 +894,10 @@ export async function readChannelRekey(
   self: string,
   signer: ISigner,
   canRemoveSelf?: (rotator: string) => boolean,
-  verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean,
+  verifyVac?: (
+    rotator: string,
+    vac: [string, string, string] | undefined,
+  ) => boolean | RotationAuthorityOutcome,
 ): Promise<ChannelRekeyOutcome> {
   if (!signer.nip44) return { kind: "none" };
   const scoped = await readRekeyScoped(
@@ -844,7 +920,9 @@ export async function readChannelRekey(
       next: rollForwardChannel(channel, bytesToHex(scoped.newKey), scoped.epoch),
       rotator: scoped.rotator,
       epoch: scoped.epoch,
+      ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}),
     };
-  if (scoped.kind === "removed") return { kind: "removed", epoch: scoped.epoch };
-  return { kind: "none" };
+  if (scoped.kind === "removed")
+    return { kind: "removed", epoch: scoped.epoch, ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}) };
+  return { kind: "none", ...(scoped.diagnostics ? { diagnostics: scoped.diagnostics } : {}) };
 }
