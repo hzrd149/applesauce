@@ -22,6 +22,7 @@ import { createCommunity } from "../../helpers/community.js";
 import { JoinLeaveFactory, SnapshotFactory } from "../../factories/guestbook.js";
 import { EditionFactory } from "../../factories/control.js";
 import { channelGroupKey, channelRekeyGroupKey, controlGroupKey, grantLocator } from "../../helpers/crypto.js";
+import { deriveConcordKeys, rollForward } from "../../helpers/keys.js";
 import { computeEditionHash } from "../../helpers/editions.js";
 import { unlockDirectInvite } from "../../helpers/direct-invite.js";
 import { hasPerm } from "../../helpers/permissions.js";
@@ -116,6 +117,75 @@ function mkStatus(over: Partial<RelayStatus> & { url: string }): RelayStatus {
 }
 
 describe("ConcordCommunity (DI, no network)", () => {
+  it("keeps the settled root publicly visible until transition persistence succeeds", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+    let release!: () => void;
+    const persisted = new Promise<void>((resolve) => (release = resolve));
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool: fakePool(),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      onMaterialChange: () => persisted,
+    });
+    const initialRoot = community.material.community_root;
+    const next = rollForward(
+      deriveConcordKeys(genesis.material, []),
+      generateSecretKey(),
+      genesis.material.root_epoch + 1,
+      pubkey,
+      [],
+    );
+
+    const adoption = (community as unknown as { adoptRefounding(next: typeof next): Promise<void> }).adoptRefounding(next);
+    await Promise.resolve();
+    expect(community.material.community_root).toBe(initialRoot);
+    expect(community.epoch$.value).toBe(genesis.material.root_epoch);
+
+    release();
+    await adoption;
+    expect(community.material.community_root).toBe(next.material.community_root);
+    expect(community.epoch$.value).toBe(next.material.root_epoch);
+    expect(community.material.held_roots).toContainEqual(
+      expect.objectContaining({ epoch: genesis.material.root_epoch, key: initialRoot }),
+    );
+    community.dispose();
+  });
+
+  it("retains the settled root when transition persistence fails", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+    const cause = new Error("persistence failed");
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool: fakePool(),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      onMaterialChange: async () => Promise.reject(cause),
+    });
+    const next = rollForward(
+      deriveConcordKeys(genesis.material, []),
+      generateSecretKey(),
+      genesis.material.root_epoch + 1,
+      pubkey,
+      [],
+    );
+
+    await expect(
+      (community as unknown as { adoptRefounding(next: typeof next): Promise<void> }).adoptRefounding(next),
+    ).rejects.toBe(cause);
+    expect(community.material).toEqual(genesis.material);
+    expect(community.epoch$.value).toBe(genesis.material.root_epoch);
+    community.dispose();
+  });
+
   it("decrypts each historical attachment with its own imeta key after refounding", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
