@@ -57,7 +57,6 @@ import {
 } from "../helpers/keys.js";
 import type { GroupKey } from "../helpers/crypto.js";
 import { hasChannelKey } from "../helpers/community.js";
-import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { checkChatBinding } from "../helpers/chat.js";
@@ -88,6 +87,7 @@ import {
   type Rumor,
 } from "../types.js";
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
+import { RotationCoordinator, type RotationDiagnostic } from "./rotation.js";
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
 import {
@@ -356,12 +356,9 @@ export class ConcordCommunity {
    *  change re-derives the merged set via `openLive()`'s own widened guard. */
   private extrasSub: Subscription;
   private liveAuthors = "";
-  private rekeyTimer?: ReturnType<typeof setTimeout>;
-  /** epoch → lowest adopted root key (D-04 down-only anti-refork latch). A
-   *  strictly lower sibling replaces the entry; an equal-or-higher one is
-   *  ignored — a settled epoch can heal DOWN but never re-fork UP. In-memory
-   *  only per engine (not persisted; A3). */
-  private rekeyHandled = new Map<number, Uint8Array>();
+  private readonly rotationDiagnostics = new Subject<RotationDiagnostic>();
+  readonly rotationDiagnostics$ = this.rotationDiagnostics.asObservable();
+  private rotation!: RotationCoordinator<ConcordKeys>;
   private started = false;
   private disposed = false;
 
@@ -509,6 +506,20 @@ export class ConcordCommunity {
 
       this.rewireState();
 
+      this.rotation = new RotationCoordinator({
+        scopeId: "root",
+        diagnostics: this.rotationDiagnostics,
+        read: () => this.readRootRotation(),
+        keyOf: (next) => hexToBytes(next.material.community_root),
+        adopt: (next) => this.adoptRefounding(next),
+        remove: () => this.handleRemoved(),
+        fetch: async () => {
+          const events = await syncAuthors(this.syncContext(), [this.keys.nextBaseRekey.key.pk]);
+          await Promise.all(events.map((event) => this.onWrap(event)));
+        },
+        onFatal: (cause) => this.failRotation(cause),
+      });
+
       // D-09: guarded with `if (this.liveSub)` rather than firing unconditionally
       // — the ExtraRelays holder's internal BehaviorSubject always emits once
       // synchronously at construction (even with no `extraRelays` configured), and
@@ -600,7 +611,8 @@ export class ConcordCommunity {
     this.liveSub?.unsubscribe();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
-    if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
+    this.rotation.dispose();
+    this.rotationDiagnostics.complete();
     for (const engine of this.privateChannels.values()) engine.dispose();
     this.privateChannels.clear();
     for (const store of this.stores.values()) store.dispose();
@@ -675,10 +687,10 @@ export class ConcordCommunity {
 
   /** Decode a live gift wrap and route it (used by the live subscription and by
    *  the optimistic echo of our own publishes). */
-  private onWrap(event: NostrEvent): void {
+  private async onWrap(event: NostrEvent): Promise<void> {
     const info = this.keys.planes.get(event.pubkey);
     if (!info) return;
-    const canonical = (this.eventStore.add(event) as NostrEvent | null) ?? event;
+    const canonical = (await Promise.resolve(this.eventStore.add(event))) ?? event;
     const decoded = decodeWrapCached(canonical, info.convKey);
     if (!decoded) {
       // Epoch sourced from the enclosing scope's known value (channelEpochOf for
@@ -688,12 +700,12 @@ export class ConcordCommunity {
       this.decodeLog("dropped wrap=%s plane=%s epoch=%d", canonical.id.slice(0, 8), info.type, epoch);
       return;
     }
-    this.route(info, decoded);
+    await this.route(info, decoded);
   }
 
   /** The single funnel: apply the CORD-03 receive binding, then add the rumor
    *  to its plane store. Shared by sync and the live subscription. */
-  private route(info: PlaneInfo, decoded: DecodedEvent): void {
+  private async route(info: PlaneInfo, decoded: DecodedEvent): Promise<void> {
     if (info.type === "channel") {
       const epoch = info.epoch ?? channelEpochOf(this.keys, info.channelId!);
       // CORD-03 §3: drop any rumor whose channel/epoch binding doesn't match the
@@ -704,11 +716,8 @@ export class ConcordCommunity {
     // one. Folded state derives reactively from the store's `insert$` (which fires once the add
     // resolves) and the folds are order-independent, so fire-and-forget is correct here — but
     // surface async-database errors rather than dropping them.
-    Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor)).catch((err) => {
-      this.log("failed to add rumor to plane store: %s", (err as Error)?.message ?? err);
-      console.error("[applesauce-concord] Failed to add rumor to plane store:", err);
-    });
-    if (info.type === "rekey") this.scheduleRekeyCheck();
+    await Promise.resolve(this.storeFor(planeStoreKey(info)).add(decoded.rumor));
+    if (info.type === "rekey") this.rotation.notify();
   }
 
   // ---- sync context / subscriptions ---------------------------------------
@@ -815,7 +824,7 @@ export class ConcordCommunity {
         waitForAuth: authors,
         onAuthRequired: this.signers.onAuthRequired,
       })
-      .subscribe((event) => this.onWrap(event as NostrEvent));
+      .subscribe((event) => void this.onWrap(event as NostrEvent).catch((cause) => this.failRotation(cause)));
     this.log("live subscription open targets=%d", targets.length);
   }
 
@@ -900,6 +909,7 @@ export class ConcordCommunity {
       // (D-13) — so the sub-engine builds its own holder and stays reactive.
       extraRelays: this.extraRelaysOption,
       logger: this.log.extend("channel").extend(channelKey.id.slice(0, 8)),
+      rotationDiagnostics: this.rotationDiagnostics,
       isAuthorized: (rotator) => this.admin.hasPerm(rotator, PERM.MANAGE_CHANNELS),
       // A rotator may only remove US if they also strictly outrank us (CORD-04),
       // so an under-ranked channel manager can't rekey a higher-ranked member out.
@@ -916,10 +926,10 @@ export class ConcordCommunity {
   }
 
   /** Persist a rolled-forward channel key into `material.channels` (a channel Rekey). */
-  private persistChannelKey(channelKey: ChannelKey): void {
+  private async persistChannelKey(channelKey: ChannelKey): Promise<void> {
     const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
     this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
-    this.onMaterialChange?.(this.keys.material);
+    await this.onMaterialChange?.(this.keys.material);
     this.materialChanged$.next();
   }
 
@@ -959,15 +969,7 @@ export class ConcordCommunity {
 
   // ---- CORD-06 rekey read path (live adoption / removal) ------------------
 
-  private scheduleRekeyCheck(): void {
-    if (this.rekeyTimer) return;
-    this.rekeyTimer = setTimeout(() => {
-      this.rekeyTimer = undefined;
-      void this.checkRekey();
-    }, 200);
-  }
-
-  private async checkRekey(): Promise<void> {
+  private async readRootRotation() {
     const state = this.state$.value;
     // `getTimeline` is sync for an in-memory store and a Promise for an async-database-backed one.
     const rekeyTimeline = await Promise.resolve(this.storeFor("rekey").getTimeline([{}]));
@@ -987,21 +989,14 @@ export class ConcordCommunity {
       // sibling of sync.ts's syncEpoch gate).
       vacVerifier(state, PERM.BAN),
     );
-    if (outcome.kind === "none" || this.disposed) return;
-    if (outcome.kind === "removed") {
-      this.foldLog("rekey fold: removed epoch=%d", outcome.epoch);
-      this.handleRemoved();
-      return;
-    }
-    // Down-only latch (D-04): adopt when unlatched, or when the candidate root
-    // key is STRICTLY lower than the latched one; an equal-or-higher sibling is
-    // already-converged and ignored, so a settled epoch can never re-fork.
-    const candidate = hexToBytes(outcome.next.material.community_root);
-    const latched = this.rekeyHandled.get(outcome.epoch);
-    if (latched && !isStrictlyLowerKey(latched, candidate)) return;
-    this.rekeyHandled.set(outcome.epoch, candidate);
-    this.foldLog("rekey fold: adopting epoch=%d", outcome.epoch);
-    await this.adoptRefounding(outcome.next);
+    return outcome;
+  }
+
+  private failRotation(cause: unknown): void {
+    if (this.disposed) return;
+    this.error$.next(cause instanceof Error ? cause.message : String(cause));
+    this.phase$.next("error");
+    this.liveSub?.unsubscribe();
   }
 
   /** Follow a Refounding forward: swap in the rolled-forward key state, reopen the
@@ -1634,8 +1629,9 @@ export class ConcordCommunity {
         this.material.root_epoch !== plan.newEpoch ||
         this.material.community_root !== plan.next.material.community_root
       ) {
-        this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
-        await this.adoptRefounding(plan.next);
+        const next = deriveConcordKeys(plan.next.material, this.state$.value.channels, this.keys);
+        this.rotation.latch(plan.newEpoch, hexToBytes(next.material.community_root));
+        await this.adoptRefounding(next);
       }
       pending = await this.pendingRefounding.updateStage(pending, "adopted");
     }

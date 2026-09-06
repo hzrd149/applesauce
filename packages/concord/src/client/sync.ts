@@ -31,7 +31,7 @@ import { BACKFILL_KINDS, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { foldControl } from "../helpers/control.js";
 import { foldMembers } from "../helpers/guestbook.js";
 import { canActOn, refoundAuthority, resolveStanding, vacVerifier } from "../helpers/permissions.js";
-import { isStrictlyLowerKey } from "../helpers/rekey.js";
+import { shouldAdoptRotation } from "./rotation.js";
 import { PERM } from "../types.js";
 import type { CommunityState, DecodedEvent, JoinMaterial, Role } from "../types.js";
 
@@ -79,7 +79,7 @@ export interface SyncContext {
   relays: string[];
   /** Route one decoded plane event into its plane's RumorStore (the community applies
    *  the CORD-03 channel binding). */
-  route: (info: PlaneInfo, decoded: DecodedEvent) => void;
+  route: (info: PlaneInfo, decoded: DecodedEvent) => void | Promise<void>;
   /** The scope's own reactive auth handler — invoked by the relay when it
    *  refuses THIS operation, never called by the walk itself (D-01). Threaded
    *  into every loader request beside `waitForAuth` so the relay can answer its
@@ -142,8 +142,8 @@ export async function syncEpoch(
   chainHasNext: boolean,
 ): Promise<EpochResult> {
   let rumors = 0;
-  const emit = (info: PlaneInfo, d: DecodedEvent) => {
-    ctx.route(info, d);
+  const emit = async (info: PlaneInfo, d: DecodedEvent) => {
+    await ctx.route(info, d);
     rumors++;
   };
 
@@ -179,10 +179,12 @@ export async function syncEpoch(
       continue;
     }
     coreDecoded++;
-    if (info.type === "control") (control.push(d), emit(info, d));
-    else if (info.type === "guestbook") (guestbook.push(d), emit(info, d));
-    else if (info.type === "dissolved") (dissolved.push(d), emit(info, d));
-    else if (info.type === "rekey") (rekey.push(d), emit(info, d));
+    if (info.type === "control") control.push(d);
+    else if (info.type === "guestbook") guestbook.push(d);
+    else if (info.type === "dissolved") dissolved.push(d);
+    else if (info.type === "rekey") rekey.push(d);
+    else continue;
+    await emit(info, d);
   }
   // D-05 litmus: this MUST fire even when coreFetched.length === 0 — a zero-event
   // sync must read `fetched=0`, distinct from an arrived-but-undecryptable sync.
@@ -235,7 +237,7 @@ export async function syncEpoch(
     }
     channelDecodedCount++;
     channelDecoded.push(d);
-    emit(info, d);
+    await emit(info, d);
   }
   // D-05 litmus: always-on, even for zero fetched public-channel wraps.
   ctx.logger(
@@ -365,7 +367,7 @@ export async function syncEpochs(ctx: SyncContext, material: JoinMaterial): Prom
       if (
         result.reReadAdopted &&
         next &&
-        isStrictlyLowerKey(hexToBytes(next.community_root), result.reReadAdopted.key)
+        shouldAdoptRotation(hexToBytes(next.community_root), result.reReadAdopted.key)
       ) {
         chain = [...chain.slice(0, i + 1), result.reReadAdopted.material];
       }
