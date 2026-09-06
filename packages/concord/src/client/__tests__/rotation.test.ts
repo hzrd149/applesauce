@@ -139,4 +139,27 @@ describe("RotationCoordinator", () => {
     await coordinator.idle();
     expect(h.fatal).toEqual([cause]);
   });
+
+  it("does not latch a candidate whose local commit failed", async () => {
+    const candidate = { key: Uint8Array.of(1) };
+    const cause = new Error("persistence failed");
+    const adopt = vi.fn().mockRejectedValueOnce(cause).mockResolvedValueOnce(undefined);
+    const fatal: unknown[] = [];
+    const coordinator = new RotationCoordinator<Next>({
+      scopeId: "root",
+      read: async () => ({ kind: "adopt", epoch: 1, next: candidate }),
+      keyOf: (next) => next.key,
+      adopt,
+      remove: vi.fn(),
+      onFatal: (error) => fatal.push(error),
+    });
+
+    coordinator.notify();
+    await coordinator.idle();
+    coordinator.notify();
+    await coordinator.idle();
+
+    expect(fatal).toEqual([cause]);
+    expect(adopt).toHaveBeenCalledTimes(2);
+  });
 });
