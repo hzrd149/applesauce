@@ -16,7 +16,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
 
 import { createCommunity } from "../../helpers/community.js";
-import { buildChannelRekey, deriveChannelKeys } from "../../helpers/keys.js";
+import { buildChannelRekey, deriveChannelKeys, rollForwardChannel } from "../../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND } from "../../helpers/gift-wrap.js";
 import { giftWrap } from "../../operations/gift-wrap.js";
 import { bindToChannel, includeMediaEncryption } from "../../operations/channel.js";
@@ -75,6 +75,66 @@ function servingPool(events: NostrEvent[], subCapture?: CapturedFilter[]): Relay
 }
 
 describe("ConcordPrivateChannel (DI, served wraps)", () => {
+  it("keeps the settled channel visible until parent material persistence succeeds", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const channel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
+    const next = rollForwardChannel(channel, bytesToHex(generateSecretKey()), 2);
+    let release!: () => void;
+    const persisted = new Promise<void>((resolve) => (release = resolve));
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => genesis.material,
+      signer,
+      pubkey,
+      pool: servingPool([]),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: ["wss://fake"],
+      isAuthorized: () => true,
+      onKeyChange: () => persisted,
+    });
+    const adopt = (
+      sub as unknown as { rotation: { opts: { adopt(next: ChannelKey): Promise<void> } } }
+    ).rotation.opts.adopt(next);
+    await Promise.resolve();
+    expect(sub.epoch$.value).toBe(channel.epoch);
+
+    release();
+    await adopt;
+    expect(sub.epoch$.value).toBe(next.epoch);
+    expect(next.held).toContainEqual({ epoch: channel.epoch, key: channel.key });
+    sub.dispose();
+  });
+
+  it("retains the settled channel when parent material persistence fails", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const channel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
+    const next = rollForwardChannel(channel, bytesToHex(generateSecretKey()), 2);
+    const cause = new Error("persistence failed");
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => genesis.material,
+      signer,
+      pubkey,
+      pool: servingPool([]),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: ["wss://fake"],
+      isAuthorized: () => true,
+      onKeyChange: async () => Promise.reject(cause),
+    });
+
+    await expect(
+      (sub as unknown as { rotation: { opts: { adopt(next: ChannelKey): Promise<void> } } }).rotation.opts.adopt(next),
+    ).rejects.toBe(cause);
+    expect(sub.epoch$.value).toBe(channel.epoch);
+    sub.dispose();
+  });
+
   it("decrypts each historical attachment with its own imeta key after rekeying", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
