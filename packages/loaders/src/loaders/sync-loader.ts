@@ -1,4 +1,4 @@
-import { logger as baseLogger } from "applesauce-core";
+import { logger as baseLogger, type Debugger } from "applesauce-core";
 import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { addSeenRelay, relaySet } from "applesauce-core/helpers/relays";
@@ -189,7 +189,7 @@ export type SyncLoaderOptions = {
   /** The event store used to deduplicate events and as the local store for negentropy sync */
   eventStore: EventStoreInput;
   /** A logger to extend */
-  logger?: debug.Debugger;
+  logger?: Debugger;
 } & ({ pool: SyncLoaderPool } | SyncLoaderMethods);
 
 /** A request to load a set of events from a set of relays */
@@ -261,7 +261,7 @@ function paginatedRequest(
   // top level rather than derived here — this function is invoked from request$(), which lives
   // inside the switchMap projector below (a re-enterable reactive callback), so deriving on entry
   // would repeat the exact defect the requestLog hoist (14-02) fixed.
-  log?: debug.Debugger,
+  log?: Debugger,
   opts?: SyncMethodOptions,
 ): Observable<NostrEvent> {
   const since = filter.since;

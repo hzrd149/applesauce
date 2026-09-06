@@ -1,4 +1,4 @@
-import { EventStore } from "applesauce-core";
+import { EventStore, type Debugger } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
@@ -1149,15 +1149,15 @@ describe("13-12: D-16 all-name coverage and the paginated path's own bound", () 
 describe("14-02: sync-loader's request logger is derived once per relay (D-18)", () => {
   const filter: Filter = { kinds: [1], authors: [user.pubkey] };
 
-  /** A minimal spy standing in for an injected `debug.Debugger`: `.extend(ns)` records the
+  /** A minimal spy standing in for an injected `Debugger`: `.extend(ns)` records the
    *  namespace and returns a fresh chainable stub (mirroring the real `Debugger`'s callable +
-   *  `.extend()` shape); calling the returned function is a no-op. Cast to `debug.Debugger` since
+   *  `.extend()` shape); calling the returned function is a no-op. Cast to `Debugger` since
    *  it satisfies only the call/`.extend()` shape this file's log sites actually use. */
-  function spyExtendLogger(): { logger: debug.Debugger; extendCalls: string[] } {
+  function spyExtendLogger(): { logger: Debugger; extendCalls: string[] } {
     const extendCalls: string[] = [];
-    const node = (): debug.Debugger => {
-      const fn = ((..._args: unknown[]) => {}) as unknown as debug.Debugger;
-      (fn as unknown as { extend: (ns: string) => debug.Debugger }).extend = (ns: string) => {
+    const node = (): Debugger => {
+      const fn = ((..._args: unknown[]) => {}) as unknown as Debugger;
+      (fn as unknown as { extend: (ns: string) => Debugger }).extend = (ns: string) => {
         extendCalls.push(ns);
         return node();
       };

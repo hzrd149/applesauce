@@ -1,4 +1,4 @@
-import { logger as baseLogger } from "applesauce-core";
+import { logger as baseLogger, type Debugger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter, isFilterEqual, mergeFilters } from "applesauce-core/helpers/filter";
@@ -43,7 +43,7 @@ export type CommonTimelineLoaderOptions = Partial<{
   limit: number;
 
   /** Logger to extend */
-  logger?: debug.Debugger;
+  logger?: Debugger;
 }>;
 
 /**
