@@ -46,6 +46,7 @@ import {
 // Type-only: erased at runtime, so this doesn't create an import cycle with the
 // community module that constructs us.
 import type { ConcordCommunity } from "./community.js";
+import type { RefoundingResult } from "./refounding.js";
 import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
 import type { ConcordRumorStore, ConcordUploader } from "./storage.js";
 
@@ -384,7 +385,7 @@ export class ConcordCommunityAdmin {
     keep: string[];
     exclude?: string[];
     channelRekeys?: Array<{ channelId: string; keep: string[] }>;
-  }): Promise<void> {
+  }): Promise<RefoundingResult> {
     return this.opts.community.refound(opts);
   }
 
