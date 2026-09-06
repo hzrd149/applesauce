@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25.3
 current_phase_name: Concord Invite-Bundle Rule-Table Hardening
 status: planning
-stopped_at: Completed 25.2-07-PLAN.md
-last_updated: "2026-09-06T19:46:53.864Z"
+stopped_at: Completed 25.3-01-PLAN.md
+last_updated: "2026-09-06T20:18:38.882Z"
 last_activity: 2026-09-06
 last_activity_desc: Phase 25.2 complete, transitioned to Phase 25.3
 progress:
   total_phases: 15
   completed_phases: 12
-  total_plans: 72
-  completed_plans: 72
+  total_plans: 75
+  completed_plans: 73
   percent: 80
 ---
 
@@ -33,7 +33,7 @@ Plan: Not started
 Status: Ready to plan
 Last activity: 2026-09-06 — Phase 25.2 complete, transitioned to Phase 25.3
 
-Progress: [██████████] 72/72 plans (100%)
+Progress: [██████████] 72/72 plans ([██████████] 97%)
 
 ## Performance Metrics
 
@@ -165,6 +165,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.1 P02 | 4min | 2 tasks | 2 files |
 | Phase 25.1 P03 | 4min | 1 tasks | 2 files |
 | Phase 25.2 P07 | 8min | 2 tasks | 1 files |
+| Phase 25.3 P01 | 9min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -384,6 +385,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Malformed nonce lengths reuse the existing value-free InvalidMediaAttachmentEncryptionError while retaining the attachment and raw imeta.
 - [Phase ?]: 25.2-07: Inspect protected Refounding lifecycle state only through PendingRefoundingStore while exercising recovery through the public refound() request path.
 - [Phase ?]: 25.2-07: Arm persistence and snapshot failure injection only after fixture seeding so each oracle isolates its intended lifecycle boundary.
+- [Phase ?]: 25.3-01: Select invite rule families from the present field value type and constrain optional omission separately.
 
 ### Pending Todos
 
@@ -503,8 +505,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T19:42:40.679Z
-Stopped at: Completed 25.2-07-PLAN.md
+Last session: 2026-09-06T20:18:38.854Z
+Stopped at: Completed 25.3-01-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

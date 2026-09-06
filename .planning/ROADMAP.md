@@ -342,11 +342,11 @@ Plans:
 **Goal:** Strengthen Concord's invite-bundle rule tables and projections so field types and optional-field carry-forward are enforced structurally, and corrupt self-authored invite data fails safely.
 **Requirements**: CONC-F1
 **Depends on:** Phase 25.2
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 
-- [ ] 25.3-01-PLAN.md — Structurally bind all bundle rule tables to field types, optionality, and closed projection
+- [x] 25.3-01-PLAN.md — Structurally bind all bundle rule tables to field types, optionality, and closed projection
 - [ ] 25.3-02-PLAN.md — Add closed persisted-entry validation while preserving the open Invite List document
 - [ ] 25.3-03-PLAN.md — Quarantine corrupt entries with typed diagnostics, prior-state retention, and explicit-write recovery
 
