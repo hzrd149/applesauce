@@ -12,6 +12,7 @@ import {
   encodeWrappedKey,
   groupRotations,
   parseRekey,
+  parseRekeyResult,
   REKEY_KIND,
   rekeyScopeId,
   type RekeyRotation,
@@ -201,6 +202,51 @@ describe("rekey codec", () => {
     expect(sets).toHaveLength(1);
     expect(sets[0].consistent).toBe(true);
     expect(sets[0].complete).toBe(true);
+  });
+
+  it("retains a stable candidate id and exact missing indexes for partial sets", () => {
+    const scope = bytesToHex(rekeyScopeId({ kind: "root" }));
+    const rumor = (index: number): RumorTemplate => ({
+      kind: 3303,
+      content: "[]",
+      tags: [
+        ["scope", scope], ["newepoch", "3"], ["prevepoch", "2"],
+        ["prevcommit", "ab".repeat(32)], ["chunk", String(index), "3"], ["ms", "7"],
+      ],
+    });
+    const chunks = [1, 3].map((i) => parseRekey(decoded(rumor(i), "rotator"))!);
+    const forward = groupRotations(chunks)[0];
+    const reverse = groupRotations([...chunks].reverse())[0];
+    expect(forward.candidateId).toBe(reverse.candidateId);
+    expect(forward.missingIndexes).toEqual([2]);
+    expect(forward.complete).toBe(false);
+  });
+
+  it("reports bounded inconsistency reason enums independent of arrival order", () => {
+    const scope = bytesToHex(rekeyScopeId({ kind: "root" }));
+    const rumor = (count: number, prevEpoch: string, ms: string, vacHash: string): RumorTemplate => ({
+      kind: 3303,
+      content: "[]",
+      tags: [
+        ["scope", scope], ["newepoch", "3"], ["prevepoch", prevEpoch],
+        ["prevcommit", "ab".repeat(32)], ["chunk", "1", String(count)], ["ms", ms],
+        ["vac", "cd".repeat(32), "1", vacHash],
+      ],
+    });
+    const chunks = [
+      parseRekey(decoded(rumor(2, "2", "7", "ef".repeat(32)), "rotator"))!,
+      parseRekey(decoded(rumor(3, "1", "8", "01".repeat(32)), "rotator"))!,
+    ];
+    const expected = ["chunk-count", "prev-epoch", "vac", "generation"];
+    expect(groupRotations(chunks)[0].inconsistencies).toEqual(expected);
+    expect(groupRotations([...chunks].reverse())[0].inconsistencies).toEqual(expected);
+  });
+
+  it("preserves a safe malformed classification without reflecting hostile values", () => {
+    const hostile = "forged\nlog secret";
+    const result = parseRekeyResult(decoded({ kind: 3303, content: hostile, tags: [] }, "rotator"));
+    expect(result).toEqual({ kind: "malformed", reason: "scope" });
+    expect(JSON.stringify(result)).not.toContain(hostile);
   });
 
   it("buildRekeyRumors chunks blobs into complete 3303 rumors", async () => {
