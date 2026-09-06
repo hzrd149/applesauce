@@ -33,7 +33,7 @@ import { parseImeta } from "../../helpers/imeta.js";
 import { PERM, VSK, type RumorTemplate } from "../../types.js";
 import { ConcordCommunity, MissingChannelKeyError } from "../community.js";
 import { createUserAuthHandler } from "../auth.js";
-import type { ConcordUploader } from "../storage.js";
+import { memoryStorage, PendingRefoundingStore, type ConcordUploader } from "../storage.js";
 import {
   CORD_METADATA_CAPS,
   DELETE_KIND5_EXAMPLE,
@@ -1073,6 +1073,78 @@ describe("ConcordCommunity (DI, no network)", () => {
     expect(refoundedCount).toBe(1);
 
     community.dispose();
+  });
+
+  it("resumes a pending Refounding after reconstruction without rebuilding", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = ["wss://a", "wss://b", "wss://c"];
+    const storage = memoryStorage();
+    const pool = fakePool();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const firstPublished: NostrEvent[] = [];
+    let publishIndex = 0;
+    const disjointMajorities = [
+      [relays[0], relays[1]],
+      [relays[1], relays[2]],
+      [relays[0], relays[2]],
+    ];
+    (pool as unknown as { publish: unknown }).publish = async (_relays: string[], event: NostrEvent) => {
+      firstPublished.push(structuredClone(event));
+      const accepted = disjointMajorities[publishIndex++ % disjointMajorities.length];
+      return relays.map((from) => ({ ok: accepted.includes(from), from }));
+    };
+
+    const first = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      storage,
+      eventStore: new EventStore(),
+      relays,
+    });
+    await first.start();
+    for (const rumor of genesis.controlRumors)
+      await first.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await first.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    firstPublished.length = 0;
+    publishIndex = 0;
+    await expect(first.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
+    expect(firstPublished.length).toBeGreaterThanOrEqual(2);
+    expect(first.material.root_epoch).toBe(genesis.material.root_epoch);
+    const pendingStore = new PendingRefoundingStore(storage, signer, pubkey, genesis.material.community_id);
+    const prepared = await pendingStore.load();
+    expect(prepared?.stage).toBe("prepared");
+    expect(prepared?.plan.snapshotWraps.some((event) => firstPublished.some(({ id }) => id === event.id))).toBe(false);
+    first.dispose();
+
+    const resumedPublished: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (targets: string[], event: NostrEvent) => {
+      resumedPublished.push(structuredClone(event));
+      return okAll(targets);
+    };
+    const second = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      storage,
+      eventStore: new EventStore(),
+      relays,
+    });
+    const signSpy = vi.spyOn(signer, "signEvent");
+    const result = await second.refound({ keep: [], exclude: [], channelRekeys: [] });
+
+    expect(signSpy).not.toHaveBeenCalled();
+    expect(resumedPublished.slice(0, firstPublished.length)).toEqual(firstPublished);
+    expect(result.rotationId).toBe(prepared?.rotationId);
+    expect(result.rotationId).toBe(firstPublished[0].id);
+    expect(second.material.root_epoch).toBe(genesis.material.root_epoch + 1);
+    expect(await pendingStore.load()).toBeNull();
+    second.dispose();
   });
 
   it("honors the NEW epoch's guestbook snapshot after a Refounding, not the prior epoch's", async () => {
