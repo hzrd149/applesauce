@@ -15,4 +15,5 @@ export * from "./private-channel.js";
 export * from "./admin.js";
 export * from "./community.js";
 export * from "./refounding.js";
+export type { RotationDiagnostic, RotationDiagnosticReason } from "./rotation.js";
 export * from "./client.js";
