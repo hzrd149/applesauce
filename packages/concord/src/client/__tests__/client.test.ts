@@ -199,6 +199,7 @@ describe("ConcordClient community list (DI, no network)", () => {
       await new Promise<void>((resolve) => barriers.push(resolve));
     });
     const client = new ConcordClient({ signer, pool: fakePool().pool, storage });
+    Object.defineProperty(client, "pubkey", { value: pubkey });
     const entries = [first, second].map((material, added_at) => ({
       community_id: material.community_id,
       seed: material,
