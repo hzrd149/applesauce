@@ -9,6 +9,7 @@ import {
   isInviteListUnlocked,
   isInviteLive,
   isValidInviteList,
+  INVITE_LIST_INVITE_FIELDS,
   liveInviteEntries,
   mergeInvites,
   mergeTombstones,
@@ -87,6 +88,51 @@ describe("invite-list entry validation", () => {
     const result = validateInviteListInvite({ ...validEntry(), signer_sk: "not-a-secret-key" });
     expect(result).toEqual({ ok: false, field: "signer_sk", reason: "invalid" });
     expect(JSON.stringify(result)).not.toContain("not-a-secret-key");
+  });
+
+  it("declares and exercises every trusted entry field non-vacuously", () => {
+    expect(INVITE_LIST_INVITE_FIELDS).toEqual([
+      "token",
+      "signer_sk",
+      "community_id",
+      "url",
+      "label",
+      "channels",
+      "created_at",
+      "expires_at",
+    ]);
+  });
+
+  it.each(["token", "signer_sk", "community_id", "url", "created_at"] as const)(
+    "rejects an absent required %s independently",
+    (field) => {
+      const raw = { ...validEntry(), [field]: undefined };
+      expect(validateInviteListInvite(raw)).toEqual({ ok: false, field, reason: "missing" });
+    },
+  );
+
+  it.each(["label", "channels", "expires_at"] as const)("preserves absent optional %s as no own property", (field) => {
+    const result = validateInviteListInvite({ ...validEntry(), [field]: undefined });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(Object.prototype.hasOwnProperty.call(result.value, field)).toBe(false);
+  });
+
+  it.each([
+    ["label", 42],
+    ["channels", ["not-a-channel-id"]],
+    ["expires_at", 1.5],
+  ] as const)("rejects an invalid present optional %s", (field, value) => {
+    expect(validateInviteListInvite({ ...validEntry(), [field]: value })).toEqual({
+      ok: false,
+      field,
+      reason: "invalid",
+    });
+  });
+
+  it("accepts valid present optionals without coercion", () => {
+    const optionals = { label: "friends", channels: ["55".repeat(32)], expires_at: 2_000 };
+    const result = validateInviteListInvite({ ...validEntry(), ...optionals });
+    expect(result).toEqual({ ok: true, value: { ...validEntry(), ...optionals } });
   });
 });
 
