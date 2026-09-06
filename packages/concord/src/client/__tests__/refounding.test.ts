@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { PrivateKeySigner } from "applesauce-signers/signers/private-key-signer";
+import { generateSecretKey } from "applesauce-core/helpers/keys";
 
 import {
   RefoundingPublicationError,
   evaluateCommonRelayCoverage,
   type RefoundingArtifactPublication,
 } from "../refounding.js";
+import { PendingRefoundingStore, memoryStorage } from "../storage.js";
 
 const A = "wss://a.test/";
 const B = "wss://b.test/";
@@ -105,5 +108,50 @@ describe("RefoundingPublicationError", () => {
 
     expect(error.causes).toEqual([cause]);
     expect(error.message).not.toContain("untrusted relay text");
+  });
+});
+
+describe("PendingRefoundingStore", () => {
+  it("round-trips the complete prepared operation through self-encrypted storage", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const storage = memoryStorage();
+    const pending = new PendingRefoundingStore(storage, signer, pubkey, "community-a");
+    const record = {
+      version: 1 as const,
+      communityId: "community-a",
+      priorEpoch: 3,
+      rotationId: "rotation-id",
+      stage: "prepared" as const,
+      plan: {
+        rekeyWraps: [{ id: "root-wrap", content: "signed-secret" }],
+        channelRekeyWraps: [],
+        compactionWraps: [],
+        snapshotWraps: [],
+        next: { material: { community_id: "community-a", community_root: "next-root", root_epoch: 4 } },
+        newEpoch: 4,
+        rekeyKey: { sk: new Uint8Array([1, 2]), pk: "stream", convKey: new Uint8Array([3, 4]) },
+        channelRekeyKeys: [],
+      },
+      mandatoryEvidence: [],
+      commonRelays: [],
+      warnings: [],
+    };
+
+    await pending.save(record as never);
+    const raw = await storage.getItem(pending.key);
+    expect(raw).not.toContain("signed-secret");
+    expect(raw).not.toContain("next-root");
+    expect(await pending.load()).toEqual(record);
+  });
+
+  it("rejects authenticated records for a different community", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const storage = memoryStorage();
+    const first = new PendingRefoundingStore(storage, signer, pubkey, "community-a");
+    const second = new PendingRefoundingStore(storage, signer, pubkey, "community-b", first.key);
+    await first.save({ version: 1, communityId: "community-a", priorEpoch: 1 } as never);
+    await expect(second.load()).rejects.toThrow("community");
   });
 });
