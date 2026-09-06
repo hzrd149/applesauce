@@ -82,13 +82,14 @@ describe("logger", () => {
     expect(calls[1]).toBe("applesauce [Uninspectable]");
   });
 
-  it("treats hostile percent and newline values as data", () => {
+  it("escapes record delimiters in substitutions and extra values", () => {
     const calls: string[] = [];
     setLoggerSink((message) => calls.push(message));
     enableLoggerNamespaces("applesauce");
 
-    logger("challenge=%s", "%s%n\nforged");
+    logger("challenge=%s", "%s%n\r\nforged", "extra\u2028forged\u2029line");
 
-    expect(calls).toEqual(["applesauce challenge=%s%n\nforged"]);
+    expect(calls).toEqual(["applesauce challenge=%s%n\\r\\nforged extra\\u2028forged\\u2029line"]);
+    expect(calls[0].split(/\r?\n/)).toHaveLength(1);
   });
 });

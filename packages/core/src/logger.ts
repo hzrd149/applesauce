@@ -139,9 +139,18 @@ function formatExtra(value: unknown): string {
   return typeof value === "string" ? value : inspect(value);
 }
 
+function sanitizeRecord(message: string): string {
+  return message.replace(/[\r\n\u2028\u2029]/g, (character) => {
+    if (character === "\r") return "\\r";
+    if (character === "\n") return "\\n";
+    if (character === "\u2028") return "\\u2028";
+    return "\\u2029";
+  });
+}
+
 function createLogger(namespace: string): Debugger {
   const log = ((...args: unknown[]) => {
-    if (isLoggerNamespaceEnabled(namespace)) sink(`${namespace} ${format(args)}`);
+    if (isLoggerNamespaceEnabled(namespace)) sink(`${namespace} ${sanitizeRecord(format(args))}`);
   }) as Debugger;
 
   Object.defineProperties(log, {
