@@ -11,6 +11,7 @@ import { createCommunity } from "../community.js";
 import {
   addChannelKey,
   buildRefounding,
+  classifyRotationAuthority,
   channelEpochOf,
   deriveChannelKeys,
   deriveConcordKeys,
@@ -22,6 +23,42 @@ import {
 import { baseRekeyGroupKey, channelGroupKey, controlGroupKey, grantLocator, guestbookGroupKey } from "../crypto.js";
 import { decodeWrap, PLAINTEXT_SEAL_KIND } from "../gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial } from "../../types.js";
+
+const exactGrantHash = "1f9fd0df01ee39d92fa9b91eb9d5fb650069d0ffed814c1192986f3f52900a91";
+
+function exactGrantEdition(eid: string): DecodedEvent {
+  return {
+    rumor: {
+      id: "44".repeat(32),
+      pubkey: "55".repeat(32),
+      created_at: 1,
+      kind: 3308,
+      tags: [["vsk", "3"], ["eid", eid], ["ev", "1"]],
+      content: '{"member":"' + "22".repeat(32) + '","role_ids":["' + "33".repeat(32) + '"]}',
+    },
+    author: "55".repeat(32), wrapId: "66".repeat(32), sealKind: 20014, ms: 1000,
+  } as DecodedEvent;
+}
+
+describe("rotation authority classification", () => {
+  const owner = "aa".repeat(32);
+  const actor = "bb".repeat(32);
+  const eid = "11".repeat(32);
+  const pin: [string, string, string] = [eid, "1", exactGrantHash];
+
+  it("requires an exact edition pin before applying current-roster authority", () => {
+    const editions = [exactGrantEdition(eid)];
+    expect(classifyRotationAuthority(actor, pin, owner, editions, () => true)).toEqual({ kind: "eligible" });
+    expect(classifyRotationAuthority(actor, pin, owner, editions, () => false)).toEqual({ kind: "unauthorized" });
+  });
+
+  it("requires owners to omit vac", () => {
+    expect(classifyRotationAuthority(owner, undefined, owner, [], () => false)).toEqual({ kind: "eligible" });
+    expect(classifyRotationAuthority(owner, pin, owner, [exactGrantEdition(eid)], () => true)).toEqual({
+      kind: "malformed",
+    });
+  });
+});
 
 async function genesis(name = "Test") {
   const owner = new PrivateKeySigner(generateSecretKey());

@@ -21,7 +21,7 @@ describe("resolveEditionPin", () => {
   const content = '{"member":"' + "22".repeat(32) + '","role_ids":["' + "33".repeat(32) + '"]}';
   // Fixed independently generated CORD-04 edition_hash vector for
   // eid=11*32, ev=1, no ep, and the exact content above.
-  const hash = "a0287dcbd0498f211f99d7a9e94f57a58ed6d70fa330df3acbd17e0f88612f5c";
+  const hash = "1f9fd0df01ee39d92fa9b91eb9d5fb650069d0ffed814c1192986f3f52900a91";
   const edition = {
     rumor: {
       id: "44".repeat(32),

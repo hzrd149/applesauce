@@ -24,6 +24,7 @@ import {
 } from "./crypto.js";
 import type { GroupKey } from "./crypto.js";
 import { channelKeyFor } from "./community.js";
+import { resolveEditionPin, type EditionPin, type EditionPinResult } from "./editions.js";
 import {
   base64ToBytes,
   bytesToBase64,
@@ -42,6 +43,32 @@ import { giftWrap, rewrapSeal, sealRumor, toRumor, wrapSeal } from "../operation
 import { buildSnapshotFactories } from "../factories/guestbook.js";
 import { PLAINTEXT_SEAL_KIND } from "./gift-wrap.js";
 import type { ChannelKey, ChannelMetadata, DecodedEvent, JoinMaterial, RumorTemplate } from "../types.js";
+
+export type RotationAuthorityOutcome =
+  | { kind: "eligible" }
+  | { kind: "parked"; citation: Extract<EditionPinResult, { kind: "missing" | "mismatch" }> }
+  | { kind: "unauthorized" }
+  | { kind: "malformed" };
+
+/**
+ * Classify a rotation's CORD-04 authority without performing network work.
+ * Exact historical citation resolution is only a synchronization floor; the
+ * caller-provided current-roster verdict remains authoritative afterwards.
+ */
+export function classifyRotationAuthority(
+  rotator: string,
+  vac: EditionPin | undefined,
+  owner: string,
+  controlEditions: Iterable<DecodedEvent>,
+  isCurrentlyAuthorized: (rotator: string, vac: EditionPin) => boolean,
+): RotationAuthorityOutcome {
+  if (rotator === owner) return vac === undefined ? { kind: "eligible" } : { kind: "malformed" };
+  if (!vac) return { kind: "malformed" };
+  const citation = resolveEditionPin(controlEditions, vac);
+  if (citation.kind === "missing" || citation.kind === "mismatch") return { kind: "parked", citation };
+  if (citation.kind === "malformed") return { kind: "malformed" };
+  return isCurrentlyAuthorized(rotator, vac) ? { kind: "eligible" } : { kind: "unauthorized" };
+}
 
 /** A decrypt-side descriptor: which plane a stream pubkey addresses, and the
  *  NIP-44 conversation key that opens its wraps. */
