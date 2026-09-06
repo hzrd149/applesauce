@@ -353,7 +353,7 @@ Plans:
 **Goal:** Resolve Concord's remaining rotation robustness risks around multi-chunk relay coverage, live convergence, partial publication, swallowed errors, and rotation citation pinning.
 **Requirements**: CONC-F2
 **Depends on:** Phase 25.1
-**Plans:** 6 plans
+**Plans:** 7 plans
 
 Plans:
 
@@ -377,6 +377,7 @@ Plans:
 **Wave 5** *(blocked on final implementation acceptance)*
 
 - [ ] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
+- [ ] 25.2-07-PLAN.md — Crash-safe Refounding resume and cleanup-boundary integration coverage
 
 ### Phase 25.1: Concord Media Epoch-Key Decryption Audit (INSERTED)
 
