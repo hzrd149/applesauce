@@ -89,4 +89,21 @@ describe("RefoundingPublicationError", () => {
     expect(error.causes).toEqual([cause]);
     expect(error.message).not.toContain("relay-controlled secret text");
   });
+
+  it("retains typed causes from negative relay acknowledgements", () => {
+    const cause = new Error("relay rejected publication");
+    const coverage = evaluateCommonRelayCoverage(
+      [
+        {
+          artifact: { id: "control-id", kind: "control-compaction" },
+          responses: [{ ok: false, from: A, error: cause, message: "untrusted relay text" }],
+        },
+      ],
+      [A],
+    );
+    const error = new RefoundingPublicationError("rotation-id", coverage.evidence);
+
+    expect(error.causes).toEqual([cause]);
+    expect(error.message).not.toContain("untrusted relay text");
+  });
 });
