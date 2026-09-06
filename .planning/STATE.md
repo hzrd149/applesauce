@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 25.2
-current_phase_name: Concord Rotation Robustness Residuals
-status: executing
+current_phase: 25.3
+current_phase_name: Concord Invite-Bundle Rule-Table Hardening
+status: planning
 stopped_at: Completed 25.2-07-PLAN.md
-last_updated: "2026-09-06T19:42:40.707Z"
-last_activity: 2026-09-04
-last_activity_desc: Phase 25.1 complete, transitioned to Phase 25.2
+last_updated: "2026-09-06T19:46:53.864Z"
+last_activity: 2026-09-06
+last_activity_desc: Phase 25.2 complete, transitioned to Phase 25.3
 progress:
   total_phases: 15
   completed_phases: 12
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 ## Current Position
 
-Phase: 25.2 — Concord Rotation Robustness Residuals
-Plan: 7 of 7 in current phase
-Status: Phase execution complete; ready for verification
-Last activity: 2026-09-06 — Completed 25.2-07 Refounding recovery integration coverage
+Phase: 25.3 — Concord Invite-Bundle Rule-Table Hardening
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-06 — Phase 25.2 complete, transitioned to Phase 25.3
 
 Progress: [██████████] 72/72 plans (100%)
 

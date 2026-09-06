@@ -353,7 +353,7 @@ Plans:
 **Goal:** Resolve Concord's remaining rotation robustness risks around multi-chunk relay coverage, live convergence, partial publication, swallowed errors, and rotation citation pinning.
 **Requirements**: CONC-F2
 **Depends on:** Phase 25.1
-**Plans:** 7/7 plans executed
+**Plans:** 7/7 plans complete
 
 Plans:
 
