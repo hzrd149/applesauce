@@ -451,7 +451,7 @@ Plans:
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
 | 25.1 Concord Media Epoch-Key Decryption Audit | v7.0.0 | 0/TBD | Not started | - |
 | 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 7/7 | Complete | 2026-09-06 |
-| 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 0/TBD | Not started | - |
+| 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 3/3 | Complete | 2026-09-06 |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 0/TBD | Not started | - |
 | 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
 
