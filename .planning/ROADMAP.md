@@ -351,13 +351,32 @@ Plans:
 ### Phase 25.2: Concord Rotation Robustness Residuals (INSERTED)
 
 **Goal:** Resolve Concord's remaining rotation robustness risks around multi-chunk relay coverage, live convergence, partial publication, swallowed errors, and rotation citation pinning.
-**Requirements**: TBD
+**Requirements**: CONC-F2
 **Depends on:** Phase 25.1
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 25.2 to break down)
+**Wave 1**
+
+- [ ] 25.2-01-PLAN.md — Common-quorum publication contract and typed public outcomes
+- [ ] 25.2-02-PLAN.md — Shared candidate classification and exact authority citations
+
+**Wave 2** *(blocked on publication contracts)*
+
+- [ ] 25.2-03-PLAN.md — Protected durable Refounding resume
+
+**Wave 3** *(blocked on classification and durable resume)*
+
+- [ ] 25.2-04-PLAN.md — Live root/channel convergence coordinator and targeted synchronization
+
+**Wave 4** *(blocked on durable resume and live coordination)*
+
+- [ ] 25.2-05-PLAN.md — Atomic staged transitions and complete acceptance matrix
+
+**Wave 5** *(blocked on final implementation acceptance)*
+
+- [ ] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
 
 ### Phase 25.1: Concord Media Epoch-Key Decryption Audit (INSERTED)
 
