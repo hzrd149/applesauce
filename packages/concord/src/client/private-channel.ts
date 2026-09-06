@@ -429,7 +429,8 @@ export class ConcordPrivateChannel {
 
   private async catchUpCurrent(): Promise<void> {
     const current = this.keys.current.pk;
-    for (const event of await syncAuthors(this.syncContext(), [current])) this.onWrap(event);
+    const events = await syncAuthors(this.syncContext(), [current]);
+    await Promise.all(events.map((event) => this.onWrap(event)));
   }
 
   private handleRemoved(): void {

@@ -135,6 +135,32 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
     sub.dispose();
   });
 
+  it("waits for adopted-epoch catch-up routing and propagates routing failures", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
+    const channel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
+    const event = { pubkey: deriveChannelKeys(genesis.material, channel).current.pk } as NostrEvent;
+    const sub = new ConcordPrivateChannel({
+      channelKey: channel,
+      material: () => genesis.material,
+      signer,
+      pubkey,
+      pool: servingPool([event]),
+      eventStore: new EventStore(),
+      store: new RumorStore(),
+      relays: ["wss://fake"],
+      isAuthorized: () => true,
+    });
+    const cause = new Error("routing failed");
+    const route = vi.fn(async () => Promise.reject(cause));
+    (sub as unknown as { onWrap(event: NostrEvent): Promise<void> }).onWrap = route;
+
+    await expect((sub as unknown as { catchUpCurrent(): Promise<void> }).catchUpCurrent()).rejects.toBe(cause);
+    expect(route).toHaveBeenCalledWith(event);
+    sub.dispose();
+  });
+
   it("decrypts each historical attachment with its own imeta key after rekeying", async () => {
     const owner = new PrivateKeySigner(generateSecretKey());
     const ownerPub = await owner.getPublicKey();
