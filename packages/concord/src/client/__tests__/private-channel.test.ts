@@ -140,7 +140,9 @@ describe("ConcordPrivateChannel (DI, served wraps)", () => {
     const pubkey = await signer.getPublicKey();
     const genesis = await createCommunity({ ownerPubkey: pubkey, name: "T", relays: ["wss://fake"] });
     const channel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
-    const event = { pubkey: deriveChannelKeys(genesis.material, channel).current.pk } as NostrEvent;
+    const keys = deriveChannelKeys(genesis.material, channel);
+    const rumor = bindToChannel(channel.id, channel.epoch)(await ChatMessageFactory.create("catch up"));
+    const event = await giftWrap(keys.current.sk, keys.current.convKey, signer)(rumor);
     const sub = new ConcordPrivateChannel({
       channelKey: channel,
       material: () => genesis.material,
