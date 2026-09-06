@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 6
 waived_count: 0
 fixed_count: 0
-total_count: 5
-last_updated: 2026-09-06T20:52:40.267Z
+total_count: 6
+last_updated: 2026-09-06T20:57:55.982Z
 ---
 
 # Broken Windows Ledger
@@ -20,6 +20,7 @@ last_updated: 2026-09-06T20:52:40.267Z
 | 3 | 17 | deviation | .planning/STATE.md |  | Corrected stale 5/5 plan counter after gap-closure plan 17-06 | open |  | 2026-08-20T13:19:03.596Z |  |
 | 4 | 25 | deviation | packages/react/src/hooks/use-observable-state.ts |  | React 18 Strict Mode orphaned a render-phase observable subscription; fixed with a self-closing probe | open |  | 2026-09-03T15:30:13.352Z |  |
 | 5 | 25.4 | deviation | packages/core/src/__tests__/exports.test.ts |  | Updated the core public export snapshot for the new logger controls | open |  | 2026-09-06T20:52:40.267Z |  |
+| 6 | 25.4 | deviation | .planning/STATE.md |  | Repaired stale current-plan state after state.advance-plan could not parse its legacy format | open |  | 2026-09-06T20:57:55.982Z |  |
 
 ````json
 [
@@ -81,6 +82,18 @@ last_updated: 2026-09-06T20:52:40.267Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-06T20:52:40.267Z",
+    "resolved_at": null
+  },
+  {
+    "id": 6,
+    "kind": "deviation",
+    "phase": "25.4",
+    "file": ".planning/STATE.md",
+    "line": null,
+    "description": "Repaired stale current-plan state after state.advance-plan could not parse its legacy format",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-06T20:57:55.982Z",
     "resolved_at": null
   }
 ]
