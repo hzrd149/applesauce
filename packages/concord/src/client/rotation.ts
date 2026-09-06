@@ -51,6 +51,7 @@ export class RotationCoordinator<T> {
   private serial = Promise.resolve();
   private readonly latches = new Map<number, Uint8Array>();
   private readonly fetches = new Map<string, { attempts: number; started: number; running: boolean }>();
+  private readonly exhausted = new Set<string>();
   private disposed = false;
   readonly diagnostics$: Observable<RotationDiagnostic>;
   private readonly diagnostics: Subject<RotationDiagnostic>;
@@ -98,6 +99,7 @@ export class RotationCoordinator<T> {
     if (!this.opts.fetch) return;
     const pin = diagnostic.reason === "citation-missing" || diagnostic.reason === "citation-mismatch" ? diagnostic.reason : "set";
     const id = `${diagnostic.candidateId}:${pin}`;
+    if (this.exhausted.has(id)) return;
     const now = (this.opts.now ?? Date.now)();
     const state = this.fetches.get(id) ?? { attempts: 0, started: now, running: false };
     if (state.running) return;
@@ -112,6 +114,7 @@ export class RotationCoordinator<T> {
         attempt: state.attempts,
       });
       this.fetches.delete(id);
+      this.exhausted.add(id);
       return;
     }
     state.running = true;

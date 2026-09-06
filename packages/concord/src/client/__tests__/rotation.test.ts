@@ -78,6 +78,40 @@ describe("RotationCoordinator", () => {
     release();
   });
 
+  it("exhausts one mismatched citation after three bounded attempts", async () => {
+    const diagnostic = { candidateId: "candidate", status: "parked" as const, reason: "citation-mismatch" as const };
+    const read = vi.fn(async () => ({ kind: "none" as const, diagnostics: [diagnostic] }));
+    const fetch = vi.fn(async () => undefined);
+    const coordinator = new RotationCoordinator<Next>({
+      scopeId: "root",
+      read,
+      keyOf: (next) => next.key,
+      adopt: vi.fn(),
+      remove: vi.fn(),
+      fetch,
+      onFatal: vi.fn(),
+    });
+    const exhausted = firstValueFrom(
+      coordinator.diagnostics$.pipe(
+        take(5),
+        toArray(),
+      ),
+    );
+    coordinator.notify();
+    for (let i = 0; i < 8; i++) {
+      await flush();
+      await coordinator.idle();
+    }
+    const seen = await exhausted;
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(seen.at(-1)).toMatchObject({
+      scopeId: "root",
+      candidateId: "candidate",
+      reason: "reconciliation-exhausted",
+      attempt: 3,
+    });
+  });
+
   it("reports remote defects without failing the coordinator", async () => {
     const diagnostics = [
       { candidateId: "bad", status: "rejected" as const, reason: "malformed" as const },
