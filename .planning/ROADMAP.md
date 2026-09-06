@@ -80,7 +80,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work (completed 2026-09-03)
 - [x] **Phase 25.1: Concord Media Epoch-Key Decryption Audit** - Verify historical media uses epoch-correct key material across rotations (completed 2026-09-04)
 - [x] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks (completed 2026-09-06)
-- [ ] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data
+- [x] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data (completed 2026-09-06)
 - [ ] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
 
@@ -342,7 +342,7 @@ Plans:
 **Goal:** Strengthen Concord's invite-bundle rule tables and projections so field types and optional-field carry-forward are enforced structurally, and corrupt self-authored invite data fails safely.
 **Requirements**: CONC-F1
 **Depends on:** Phase 25.2
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 

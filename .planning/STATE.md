@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 25.3
-current_phase_name: Concord Invite-Bundle Rule-Table Hardening
+current_phase: 25.4
+current_phase_name: Replace the debug Dependency
 status: planning
 stopped_at: Completed 25.3-03-PLAN.md
-last_updated: "2026-09-06T20:36:07.998Z"
+last_updated: "2026-09-06T20:37:35.349Z"
 last_activity: 2026-09-06
-last_activity_desc: Phase 25.2 complete, transitioned to Phase 25.3
+last_activity_desc: Phase 25.3 complete, transitioned to Phase 25.4
 progress:
   total_phases: 15
   completed_phases: 13
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 ## Current Position
 
-Phase: 25.3 — Concord Invite-Bundle Rule-Table Hardening
+Phase: 25.4 — Replace the debug Dependency
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-06 — Phase 25.2 complete, transitioned to Phase 25.3
+Last activity: 2026-09-06 — Phase 25.3 complete, transitioned to Phase 25.4
 
 Progress: [██████████] 72/72 plans ([██████████] 100%)
 
