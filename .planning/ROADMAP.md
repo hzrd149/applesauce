@@ -81,7 +81,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 25.1: Concord Media Epoch-Key Decryption Audit** - Verify historical media uses epoch-correct key material across rotations (completed 2026-09-04)
 - [x] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks (completed 2026-09-06)
 - [x] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data (completed 2026-09-06)
-- [ ] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite
+- [x] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite (completed 2026-09-06)
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
 
 ## Phase Details
@@ -331,7 +331,7 @@ Plans:
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
 **Requirements**: DEBUG-01
 **Depends on:** Phase 25.3
-**Plans:** 5/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
