@@ -514,7 +514,10 @@ export class ConcordCommunity {
         adopt: (next) => this.adoptRefounding(next),
         remove: () => this.handleRemoved(),
         fetch: async () => {
-          const events = await syncAuthors(this.syncContext(), [this.keys.nextBaseRekey.key.pk]);
+          const events = await syncAuthors(
+            { ...this.syncContext(), relays: mergeRelaySets(this.relays()) },
+            [this.keys.nextBaseRekey.key.pk],
+          );
           await Promise.all(events.map((event) => this.onWrap(event)));
         },
         onFatal: (cause) => this.failRotation(cause),

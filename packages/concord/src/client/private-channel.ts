@@ -14,6 +14,7 @@ import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
 import type { ISigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
 
 import { logger } from "../logger.js";
 import { StreamSigners, connectedRelays$ } from "./auth.js";
@@ -186,7 +187,7 @@ export class ConcordPrivateChannel {
         remove: () => this.handleRemoved(),
         fetch: async () => {
           const events = await syncAuthors(
-            this.syncContext(),
+            { ...this.syncContext(), relays: mergeRelaySets(this.opts.relays) },
             this.keys.nextRekey.map((entry) => entry.key.pk),
           );
           await Promise.all(events.map((event) => this.onWrap(event)));
@@ -286,7 +287,7 @@ export class ConcordPrivateChannel {
   /** Feed a wrap into the channel directly (an optimistic echo of a rekey the
    *  community just published, so the rotator adopts without a relay round-trip). */
   ingest(event: NostrEvent): void {
-    this.onWrap(event);
+    void this.onWrap(event).catch((cause) => this.failRotation(cause));
   }
 
   // ---- routing ------------------------------------------------------------
