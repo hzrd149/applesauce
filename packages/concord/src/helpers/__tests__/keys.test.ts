@@ -58,6 +58,21 @@ describe("rotation authority classification", () => {
       kind: "malformed",
     });
   });
+
+  it("parks missing and mismatched pins until reconciliation is exhausted", () => {
+    expect(classifyRotationAuthority(actor, pin, owner, [], () => true)).toMatchObject({
+      kind: "parked", citation: { kind: "missing" },
+    });
+    const wrongPin: [string, string, string] = [eid, "1", "ff".repeat(32)];
+    expect(classifyRotationAuthority(actor, wrongPin, owner, [exactGrantEdition(eid)], () => true)).toMatchObject({
+      kind: "parked", citation: { kind: "mismatch" },
+    });
+    expect(
+      classifyRotationAuthority(actor, wrongPin, owner, [exactGrantEdition(eid)], () => true, {
+        mismatchExhausted: true,
+      }),
+    ).toEqual({ kind: "rejected", reason: "citation-mismatch" });
+  });
 });
 
 async function genesis(name = "Test") {
@@ -866,6 +881,27 @@ describe("readRekeyScoped vac verification (D-08/D-12)", () => {
     // inherent authority, not a delegated Grant), matching refoundAuthority/
     // vacFor's existing ownership model.
     expect(outcome.kind).toBe("removed");
+  });
+
+  it("returns parked citation metadata without treating it as removal", async () => {
+    const { material } = await genesis();
+    const member = new PrivateKeySigner(generateSecretKey());
+    const memberPub = await member.getPublicKey();
+    const rotator = new PrivateKeySigner(generateSecretKey());
+    const rotatorPub = await rotator.getPublicKey();
+    const keys = deriveConcordKeys(material, []);
+    const plan = await buildRefounding(keys, rotator, {
+      recipients: [rotatorPub], self: rotatorPub, heads: [], channels: [],
+      vac: [grantLocator(hexToBytes(material.community_id), rotatorPub), "9", "11".repeat(32)],
+    });
+    const outcome = await readRekey(
+      keys, decodeRekey(keys, plan.rekeyWraps), () => true, memberPub, member, [], () => true,
+      (() => ({ kind: "parked", citation: { kind: "missing", eid: "aa".repeat(32), version: 9 } })) as never,
+    );
+    expect(outcome.kind).toBe("none");
+    expect((outcome as { diagnostics?: unknown[] }).diagnostics).toMatchObject([
+      { status: "parked", reason: "citation-missing" },
+    ]);
   });
 });
 
