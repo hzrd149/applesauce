@@ -99,7 +99,6 @@
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "@nostrability/schemata": "^0.3.2",
-    "@types/debug": "^4.1.12",
     "@types/hash-sum": "^1.0.2",
     "@types/node": "^22.19.1",
     "ajv": "^8.20.0",

@@ -45,7 +45,6 @@
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
-    "@types/debug": "^4.1.12",
     "applesauce-signers": "^6.2.0",
     "nanoid": "^5.1.5",
     "rimraf": "^6.0.1",
