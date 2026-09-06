@@ -331,7 +331,7 @@ Plans:
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
 **Requirements**: DEBUG-01
 **Depends on:** Phase 25.3
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 
@@ -347,7 +347,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 25.4-05-PLAN.md — Residual manifest cleanup, lockfile regeneration, and workspace proof
+- [x] 25.4-05-PLAN.md — Residual manifest cleanup, lockfile regeneration, and workspace proof
 
 ### Phase 25.3: Concord Invite-Bundle Rule-Table Hardening (INSERTED)
 

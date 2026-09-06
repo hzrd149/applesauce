@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 25.4
 current_phase_name: Replace the debug Dependency
 status: executing
-stopped_at: Completed 25.4-04-PLAN.md
-last_updated: "2026-09-06T21:06:33.707Z"
+stopped_at: Completed 25.4-05-PLAN.md
+last_updated: "2026-09-06T21:17:54.481Z"
 last_activity: 2026-09-06
 last_activity_desc: Completed 25.4-02 Relay logger migration
 progress:
   total_phases: 15
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 80
-  completed_plans: 79
-  percent: 87
+  completed_plans: 80
+  percent: 93
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 25.4 — Replace the debug Dependency
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-09-06 — Completed 25.4-02 Relay logger migration
 
-Progress: [██████████] 72/72 plans ([██████████] 99%)
+Progress: [██████████] 72/72 plans ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -172,6 +172,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.4 P02 | 4min | 2 tasks | 4 files |
 | Phase 25.4 P03 | 4min | 2 tasks | 10 files |
 | Phase 25.4 P04 | 2min | 3 tasks | 10 files |
+| Phase 25.4 P05 | 10min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -401,6 +402,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 25.4-03: Preserve raw callable-spy assertions while using core controls only for real module-level output capture.
 - [Phase ?]: 25.4-03: Restore the exact prior namespace pattern and sink after every module-level logger capture.
 - [Phase ?]: 25.4-04: Co-locate Debugger with existing applesauce-core imports while preserving all runtime logger construction.
+- [Phase ?]: 25.4-05: Define DEBUG-01 at workspace-owned direct/importer production dependencies and preserve unrelated third-party transitive debug records.
+- [Phase ?]: 25.4-05: Treat ambient debug.Debugger annotations as declaration leaks even without explicit imports.
 
 ### Pending Todos
 
@@ -520,8 +523,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T21:06:33.681Z
-Stopped at: Completed 25.4-04-PLAN.md
+Last session: 2026-09-06T21:17:54.455Z
+Stopped at: Completed 25.4-05-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

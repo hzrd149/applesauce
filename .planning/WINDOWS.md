@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 6
+open_count: 8
 waived_count: 0
 fixed_count: 0
-total_count: 6
-last_updated: 2026-09-06T20:57:55.982Z
+total_count: 8
+last_updated: 2026-09-06T21:17:53.659Z
 ---
 
 # Broken Windows Ledger
@@ -21,6 +21,8 @@ last_updated: 2026-09-06T20:57:55.982Z
 | 4 | 25 | deviation | packages/react/src/hooks/use-observable-state.ts |  | React 18 Strict Mode orphaned a render-phase observable subscription; fixed with a self-closing probe | open |  | 2026-09-03T15:30:13.352Z |  |
 | 5 | 25.4 | deviation | packages/core/src/__tests__/exports.test.ts |  | Updated the core public export snapshot for the new logger controls | open |  | 2026-09-06T20:52:40.267Z |  |
 | 6 | 25.4 | deviation | .planning/STATE.md |  | Repaired stale current-plan state after state.advance-plan could not parse its legacy format | open |  | 2026-09-06T20:57:55.982Z |  |
+| 7 | 25.4 | deviation | packages/loaders/src/loaders/sync-loader.ts |  | Residual ambient debug.Debugger annotations migrated to the core Debugger contract | open |  | 2026-09-06T21:17:53.547Z |  |
+| 8 | 25.4 | deviation | pnpm-lock.yaml |  | Lockfile verification scopes DEBUG-01 to workspace direct/importer dependencies while retaining unrelated third-party transitive debug records | open |  | 2026-09-06T21:17:53.659Z |  |
 
 ````json
 [
@@ -94,6 +96,30 @@ last_updated: 2026-09-06T20:57:55.982Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-06T20:57:55.982Z",
+    "resolved_at": null
+  },
+  {
+    "id": 7,
+    "kind": "deviation",
+    "phase": "25.4",
+    "file": "packages/loaders/src/loaders/sync-loader.ts",
+    "line": null,
+    "description": "Residual ambient debug.Debugger annotations migrated to the core Debugger contract",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-06T21:17:53.547Z",
+    "resolved_at": null
+  },
+  {
+    "id": 8,
+    "kind": "deviation",
+    "phase": "25.4",
+    "file": "pnpm-lock.yaml",
+    "line": null,
+    "description": "Lockfile verification scopes DEBUG-01 to workspace direct/importer dependencies while retaining unrelated third-party transitive debug records",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-06T21:17:53.659Z",
     "resolved_at": null
   }
 ]
