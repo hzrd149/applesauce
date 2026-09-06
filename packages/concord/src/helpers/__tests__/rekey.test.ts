@@ -234,8 +234,8 @@ describe("rekey codec", () => {
       ],
     });
     const chunks = [
-      parseRekey(decoded(rumor(2, "2", "7", "ef".repeat(32)), "rotator"))!,
-      parseRekey(decoded(rumor(3, "1", "8", "01".repeat(32)), "rotator"))!,
+      parseRekey(decoded(rumor(2, "2", "7", "ef".repeat(32)), "rotator", 1_007))!,
+      parseRekey(decoded(rumor(3, "1", "8", "01".repeat(32)), "rotator", 1_008))!,
     ];
     const expected = ["chunk-count", "prev-epoch", "vac", "generation"];
     expect(groupRotations(chunks)[0].inconsistencies).toEqual(expected);

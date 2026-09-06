@@ -144,20 +144,33 @@ export interface ParsedRekey {
   vac?: [string, string, string];
 }
 
-/** Parse a decoded rekey stream event into its rotation fields (returns null on malformed). */
-export function parseRekey(d: DecodedEvent): ParsedRekey | null {
+export type RekeyParseReason =
+  | "kind"
+  | "scope"
+  | "new-epoch"
+  | "prev-epoch"
+  | "prev-commit"
+  | "chunk"
+  | "content";
+
+export type ParsedRekeyResult =
+  | { kind: "parsed"; value: ParsedRekey }
+  | { kind: "malformed"; reason: RekeyParseReason; cause?: unknown };
+
+/** Parse a decoded rekey while retaining a bounded, log-safe failure classification. */
+export function parseRekeyResult(d: DecodedEvent): ParsedRekeyResult {
   const r = d.rumor;
-  if (r.kind !== REKEY_KIND) return null;
+  if (r.kind !== REKEY_KIND) return { kind: "malformed", reason: "kind" };
   const get = (name: string) => r.tags.find((t) => t[0] === name);
   const scope = get("scope")?.[1];
   const newEpoch = get("newepoch")?.[1];
   const prevEpoch = get("prevepoch")?.[1];
   const prevCommit = get("prevcommit")?.[1];
   const chunk = get("chunk");
-  if (!scope || !HEX64.test(scope)) return null;
-  if (!newEpoch || !DEC.test(newEpoch)) return null;
-  if (!prevEpoch || !DEC.test(prevEpoch)) return null;
-  if (!prevCommit || !HEX64.test(prevCommit)) return null;
+  if (!scope || !HEX64.test(scope)) return { kind: "malformed", reason: "scope" };
+  if (!newEpoch || !DEC.test(newEpoch)) return { kind: "malformed", reason: "new-epoch" };
+  if (!prevEpoch || !DEC.test(prevEpoch)) return { kind: "malformed", reason: "prev-epoch" };
+  if (!prevCommit || !HEX64.test(prevCommit)) return { kind: "malformed", reason: "prev-commit" };
   const chunkIndex = chunk ? Number(chunk[1]) : 1;
   const chunkCount = chunk ? Number(chunk[2]) : 1;
   if (
@@ -167,7 +180,7 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
     chunkCount < 1 ||
     chunkIndex > chunkCount
   ) {
-    return null;
+    return { kind: "malformed", reason: "chunk" };
   }
   let blobs: RekeyBlob[];
   try {
@@ -175,13 +188,13 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
     blobs = Array.isArray(parsed)
       ? parsed.filter((b) => b && typeof b.locator === "string" && typeof b.wrapped === "string")
       : [];
-  } catch {
-    return null;
+  } catch (cause) {
+    return { kind: "malformed", reason: "content", cause };
   }
   const vacTag = get("vac");
   const vac: [string, string, string] | undefined =
     vacTag && vacTag[1] && vacTag[2] && vacTag[3] ? [vacTag[1], vacTag[2], vacTag[3]] : undefined;
-  return {
+  return { kind: "parsed", value: {
     rotator: d.author,
     scopeIdHex: scope.toLowerCase(),
     newEpoch: BigInt(newEpoch),
@@ -193,7 +206,13 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
     ms: d.ms,
     wrapId: d.wrapId,
     vac,
-  };
+  } };
+}
+
+/** Compatibility parser for callers that only need valid candidates. */
+export function parseRekey(d: DecodedEvent): ParsedRekey | null {
+  const result = parseRekeyResult(d);
+  return result.kind === "parsed" ? result.value : null;
 }
 
 /**
@@ -203,6 +222,8 @@ export function parseRekey(d: DecodedEvent): ParsedRekey | null {
  * `n` chunks are held — a missing chunk is never a removal.
  */
 export interface RekeyRotationSet {
+  /** Stable public identity derived only from the correlation tuple. */
+  candidateId: string;
   rotator: string;
   scopeIdHex: string;
   newEpoch: bigint;
@@ -224,14 +245,23 @@ export interface RekeyRotationSet {
    * instead of trusting whichever chunk arrived first (ROTATE-10/11).
    */
   consistent: boolean;
+  /** Exact absent indexes for a consistent partial set. */
+  missingIndexes: number[];
+  /** Bounded fields that disagree across chunks; safe for diagnostics. */
+  inconsistencies: RekeyInconsistencyReason[];
   complete: boolean;
 }
+
+
+export type RekeyInconsistencyReason = "chunk-count" | "prev-epoch" | "vac" | "generation";
 
 export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
   const byKey = new Map<string, RekeyRotationSet>();
   const chunkCounts = new Map<string, Set<number>>();
   const prevEpochs = new Map<string, Set<bigint>>();
-  for (const p of parsed) {
+  const vacs = new Map<string, Set<string>>();
+  const generations = new Map<string, Set<number>>();
+  for (const p of [...parsed].sort((a, b) => a.wrapId.localeCompare(b.wrapId))) {
     const key = `${p.rotator}:${p.scopeIdHex}:${p.newEpoch}:${p.prevCommit}`;
     let set = byKey.get(key);
     if (!set) {
@@ -239,6 +269,7 @@ export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
         key,
         (set = {
           rotator: p.rotator,
+          candidateId: key,
           scopeIdHex: p.scopeIdHex,
           newEpoch: p.newEpoch,
           prevEpoch: p.prevEpoch,
@@ -247,14 +278,20 @@ export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
           chunks: new Map(),
           vac: p.vac,
           consistent: true,
+          missingIndexes: [],
+          inconsistencies: [],
           complete: false,
         }),
       );
       chunkCounts.set(key, new Set());
       prevEpochs.set(key, new Set());
+      vacs.set(key, new Set());
+      generations.set(key, new Set());
     }
     chunkCounts.get(key)!.add(p.chunkCount);
     prevEpochs.get(key)!.add(p.prevEpoch);
+    vacs.get(key)!.add(JSON.stringify(p.vac ?? null));
+    generations.get(key)!.add(p.ms);
     // Keep every chunk — even one from a disagreeing generation — so the
     // disagreement is detectable below. Silently dropping a disagreeing chunk
     // (the old `if (p.chunkCount === set.chunkCount)` guard) is exactly what let
@@ -262,8 +299,19 @@ export function groupRotations(parsed: ParsedRekey[]): RekeyRotationSet[] {
     set.chunks.set(p.chunkIndex, p);
   }
   for (const [key, set] of byKey) {
-    set.consistent = chunkCounts.get(key)!.size === 1 && prevEpochs.get(key)!.size === 1;
-    set.complete = set.consistent && set.chunks.size >= set.chunkCount;
+    const reasons: RekeyInconsistencyReason[] = [];
+    if (chunkCounts.get(key)!.size !== 1) reasons.push("chunk-count");
+    if (prevEpochs.get(key)!.size !== 1) reasons.push("prev-epoch");
+    if (vacs.get(key)!.size !== 1) reasons.push("vac");
+    if (generations.get(key)!.size !== 1) reasons.push("generation");
+    set.inconsistencies = reasons;
+    set.consistent = reasons.length === 0;
+    set.chunkCount = Math.max(...chunkCounts.get(key)!);
+    set.prevEpoch = [...prevEpochs.get(key)!].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
+    set.missingIndexes = set.consistent
+      ? Array.from({ length: set.chunkCount }, (_, i) => i + 1).filter((i) => !set.chunks.has(i))
+      : [];
+    set.complete = set.consistent && set.missingIndexes.length === 0;
   }
   return [...byKey.values()];
 }
