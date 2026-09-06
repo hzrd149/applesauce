@@ -8,7 +8,7 @@
 // consumers read its `store` with the standard timeline/model API.
 
 import type { Debugger } from "debug";
-import { BehaviorSubject, Observable, Subscription, combineLatest, shareReplay, switchMap } from "rxjs";
+import { BehaviorSubject, Observable, Subject, Subscription, combineLatest, shareReplay, switchMap } from "rxjs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";
 import type { NostrEvent } from "applesauce-core/helpers/event";
@@ -21,7 +21,6 @@ import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import { deriveChannelKeys, readChannelRekey, type ChannelKeys, type PlaneInfo } from "../helpers/keys.js";
 import { EPHEMERAL_GIFT_WRAP_KIND, GIFT_WRAP_KIND, decodeWrapCached } from "../helpers/gift-wrap.js";
 import { checkChatBinding } from "../helpers/chat.js";
-import { isStrictlyLowerKey } from "../helpers/rekey.js";
 import type {
   ChannelKey,
   ConcordPrivateChannelStatus,
@@ -32,6 +31,7 @@ import type {
 import type { ConcordRumorStore } from "./storage.js";
 import { syncAuthors } from "./sync.js";
 import { channelLiveAuthors, syncChannelEpochs, type ChannelSyncContext } from "./channel-sync.js";
+import { RotationCoordinator, type RotationDiagnostic } from "./rotation.js";
 
 /** Options for a {@link ConcordPrivateChannel}, wired by {@link ConcordCommunity}. */
 export interface ConcordPrivateChannelOptions {
@@ -74,11 +74,12 @@ export interface ConcordPrivateChannelOptions {
    *  removed), independent of `isAuthorized`. */
   verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
   /** Called when the channel key rolls forward (a Rekey) so the community persists it. */
-  onKeyChange?: (channelKey: ChannelKey) => void;
+  onKeyChange?: (channelKey: ChannelKey) => void | Promise<void>;
   /** Called when a channel Rekey excludes us from the channel. */
   onRemoved?: (channelId: string) => void;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
   logger?: Debugger;
+  rotationDiagnostics?: Subject<RotationDiagnostic>;
 }
 
 export class ConcordPrivateChannel {
@@ -129,11 +130,7 @@ export class ConcordPrivateChannel {
    *  churn guard (Pitfall 4). */
   private extrasSub: Subscription;
   private liveAuthors = "";
-  private rekeyTimer?: ReturnType<typeof setTimeout>;
-  /** epoch → lowest adopted channel key (D-04 down-only anti-refork latch). A
-   *  strictly lower sibling replaces the entry; an equal-or-higher one is
-   *  ignored — mirrors community.ts's root-scope latch, in-memory only (A3). */
-  private rekeyHandled = new Map<number, Uint8Array>();
+  private rotation!: RotationCoordinator<ChannelKey>;
   private started = false;
   private disposed = false;
 
@@ -175,6 +172,27 @@ export class ConcordPrivateChannel {
       this.channelKey = options.channelKey;
       this.keys = deriveChannelKeys(options.material(), options.channelKey);
       this.epoch$ = new BehaviorSubject<number>(options.channelKey.epoch);
+      this.rotation = new RotationCoordinator({
+        scopeId: options.channelKey.id,
+        diagnostics: options.rotationDiagnostics,
+        read: () => this.readRotation(),
+        keyOf: (next) => hexToBytes(next.key),
+        adopt: async (next) => {
+          this.setChannelKey(next);
+          await this.opts.onKeyChange?.(next);
+          this.openLive();
+          await this.catchUpCurrent();
+        },
+        remove: () => this.handleRemoved(),
+        fetch: async () => {
+          const events = await syncAuthors(
+            this.syncContext(),
+            this.keys.nextRekey.map((entry) => entry.key.pk),
+          );
+          await Promise.all(events.map((event) => this.onWrap(event)));
+        },
+        onFatal: (cause) => this.failRotation(cause),
+      });
 
       // Re-derive reactively on every extras emission (D-08) rather than once
       // from a construction-time snapshot — no first-value-only operator here, so
@@ -228,7 +246,7 @@ export class ConcordPrivateChannel {
     this.liveSub?.unsubscribe();
     this.extrasSub.unsubscribe();
     this.extras.dispose();
-    if (this.rekeyTimer) clearTimeout(this.rekeyTimer);
+    this.rotation.dispose();
     // The store is owned by the community's store factory — not disposed here.
   }
 
@@ -273,13 +291,13 @@ export class ConcordPrivateChannel {
 
   // ---- routing ------------------------------------------------------------
 
-  private onWrap(event: NostrEvent): void {
+  private async onWrap(event: NostrEvent): Promise<void> {
     const info = this.keys.planes.get(event.pubkey);
     if (!info) return;
-    const canonical = (this.opts.eventStore.add(event) as NostrEvent | null) ?? event;
+    const canonical = (await Promise.resolve(this.opts.eventStore.add(event))) ?? event;
     const decoded = decodeWrapCached(canonical, info.convKey);
     if (decoded) {
-      this.route(info, decoded);
+      await this.route(info, decoded);
     } else {
       // Prefer the PLANE's own epoch (rekey planes address `epoch + 1`), falling
       // back to the enclosing channel's known epoch — RESEARCH Pitfall 3, and the
@@ -294,20 +312,17 @@ export class ConcordPrivateChannel {
     }
   }
 
-  private route(info: PlaneInfo, decoded: DecodedEvent): void {
+  private async route(info: PlaneInfo, decoded: DecodedEvent): Promise<void> {
     if (info.type === "channel") {
       // CORD-03 §3: drop any rumor whose channel/epoch binding doesn't match the
       // key that opened it.
       if (!checkChatBinding(decoded.rumor.tags, this.channelId, info.epoch ?? this.channelKey.epoch)) return;
       // `.add` is sync for an in-memory store and a Promise for an async-database-backed one;
       // state derives reactively from `insert$`, so fire-and-forget while surfacing errors.
-      Promise.resolve(this.opts.store.add(decoded.rumor)).catch((err) => {
-        this.log("failed to add rumor to channel store: %s", (err as Error)?.message ?? err);
-        console.error("[applesauce-concord] Failed to add rumor to channel store:", err);
-      });
+      await Promise.resolve(this.opts.store.add(decoded.rumor));
     } else if (info.type === "rekey") {
       this.rekeyEvents.set(decoded.wrapId, decoded);
-      this.scheduleRekeyCheck();
+      this.rotation.notify();
     }
   }
 
@@ -370,21 +385,13 @@ export class ConcordPrivateChannel {
         waitForAuth: authors,
         onAuthRequired: this.signers.onAuthRequired,
       })
-      .subscribe((event) => this.onWrap(event as NostrEvent));
+      .subscribe((event) => void this.onWrap(event as NostrEvent).catch((cause) => this.failRotation(cause)));
     this.log("live subscription open targets=%d", targets.length);
   }
 
   // ---- live channel-rekey adoption ----------------------------------------
 
-  private scheduleRekeyCheck(): void {
-    if (this.rekeyTimer) return;
-    this.rekeyTimer = setTimeout(() => {
-      this.rekeyTimer = undefined;
-      void this.checkRekey();
-    }, 200);
-  }
-
-  private async checkRekey(): Promise<void> {
+  private async readRotation() {
     const outcome = await readChannelRekey(
       this.channelKey,
       [...this.rekeyEvents.values()],
@@ -394,26 +401,14 @@ export class ConcordPrivateChannel {
       this.opts.canRemoveSelf,
       this.opts.verifyVac,
     );
-    if (outcome.kind === "none" || this.disposed) return;
-    if (outcome.kind === "removed") {
-      this.log("channel rekey fold: removed epoch=%d", outcome.epoch);
-      this.handleRemoved();
-      return;
-    }
-    // Down-only latch (D-04): adopt when unlatched, or when the candidate
-    // channel key is STRICTLY lower than the latched one; an equal-or-higher
-    // sibling is already-converged and ignored (never re-fork a settled epoch).
-    const candidate = hexToBytes(outcome.next.key);
-    const latched = this.rekeyHandled.get(outcome.epoch);
-    if (latched && !isStrictlyLowerKey(latched, candidate)) return;
-    this.rekeyHandled.set(outcome.epoch, candidate);
-    this.log("channel rekey fold: adopting epoch=%d", outcome.epoch);
-    // Adopt: roll to the new key, persist, reopen live, and catch up the new
-    // epoch's message history (published between the rekey and now).
-    this.setChannelKey(outcome.next);
-    this.opts.onKeyChange?.(outcome.next);
-    this.openLive();
-    void this.catchUpCurrent();
+    return outcome;
+  }
+
+  private failRotation(cause: unknown): void {
+    if (this.disposed) return;
+    this.error$.next(cause instanceof Error ? cause.message : String(cause));
+    this.phase$.next("error");
+    this.liveSub?.unsubscribe();
   }
 
   private async catchUpCurrent(): Promise<void> {

@@ -13,7 +13,7 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import type { PlaneInfo } from "../helpers/keys.js";
 import { deriveChannelKeys, readChannelRekey } from "../helpers/keys.js";
 import { decodeWrapCached } from "../helpers/gift-wrap.js";
-import { isStrictlyLowerKey } from "../helpers/rekey.js";
+import { shouldAdoptRotation } from "./rotation.js";
 import type { ChannelKey, DecodedEvent, JoinMaterial } from "../types.js";
 import { syncAuthors, type SyncContext } from "./sync.js";
 
@@ -64,7 +64,7 @@ async function syncMessagePlanes(ctx: ChannelSyncContext, channel: ChannelKey): 
     const decoded = decodeWrapCached(ev, info.convKey);
     if (decoded) {
       decodedCount++;
-      ctx.route(info, decoded);
+      await ctx.route(info, decoded);
     } else {
       dropped++;
       ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, channel.epoch);
@@ -112,7 +112,7 @@ async function syncRekeyAndAdvance(
     if (decoded) {
       decodedCount++;
       rekeyEvents.push(decoded);
-      ctx.route(info, decoded); // let the sub-engine retain it for the live check too
+      await ctx.route(info, decoded); // let the sub-engine retain it for the live check too
     } else {
       dropped++;
       ctx.decodeLogger("dropped wrap=%s plane=%s epoch=%d", ev.id.slice(0, 8), info.type, channel.epoch);
@@ -180,7 +180,7 @@ async function reReadHeldChannelEpochs(
 
     const nextEpoch = h.epoch + 1;
     const recordedKey = nextEpoch === channel.epoch ? channel.key : held.find((x) => x.epoch === nextEpoch)?.key;
-    if (recordedKey === undefined || !isStrictlyLowerKey(hexToBytes(recordedKey), hexToBytes(step.next.key))) continue;
+    if (recordedKey === undefined || !shouldAdoptRotation(hexToBytes(recordedKey), hexToBytes(step.next.key))) continue;
 
     // Strictly lower: chain[h.epoch+1..] was built on the abandoned branch —
     // discard it and re-walk forward from the corrected key exactly like the
