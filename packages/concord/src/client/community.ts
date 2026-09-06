@@ -24,7 +24,7 @@ import { EventStore, RumorStore } from "applesauce-core";
 import { finalizeEvent, type EventTemplate, type NostrEvent } from "applesauce-core/helpers/event";
 import { ensureKTag } from "applesauce-core/helpers/factory";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
-import { mergeRelaySets, normalizeRelayUrl } from "applesauce-core/helpers/relays";
+import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { ChatMessageFactory, CommentFactory, ForumThreadFactory, ReactionFactory } from "applesauce-common/factories";
 import { DeleteFactory, type Emoji } from "applesauce-core/factories";
@@ -33,6 +33,14 @@ import type { PublishOptions, RelayAuthHandler, RelayPool } from "applesauce-rel
 
 import { logger } from "../logger.js";
 import { StreamSigners, connectedRelays$ } from "./auth.js";
+import {
+  RefoundingPublicationError,
+  evaluateCommonRelayCoverage,
+  type RefoundingArtifact,
+  type RefoundingArtifactPublication,
+  type RefoundingResult,
+  type RefoundingWarning,
+} from "./refounding.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import {
   addChannelKey,
@@ -1485,7 +1493,7 @@ export class ConcordCommunity {
      * channel key until a separate {@link rotateChannel}.
      */
     channelRekeys?: Array<{ channelId: string; keep: string[] }>;
-  }): Promise<void> {
+  }): Promise<RefoundingResult> {
     const state = this.state$.value;
     if (!refoundAuthority(state)(this.pubkey)) throw new Error("need BAN or ownership to refound");
 
@@ -1535,54 +1543,7 @@ export class ConcordCommunity {
       vac,
     });
 
-    // D-09/D-11/ROTATE-09 (T-08-06): publish acks are the only evidence anyone
-    // else can discover the new epoch, so each root-roll and channel-rekey wrap
-    // must independently clear strict majority of the CONFIGURED relay set
-    // (`protocolRelays.length`, not the number of responses received — a relay
-    // that never answers counts against the denominator) before
-    // compaction/snapshot publish or adoption. A sub-majority wrap aborts the
-    // whole Refounding atomically, mirroring D-01's abort-before-further-publish
-    // shape — no unilateral roll-forward onto an undiscoverable epoch.
-    //
-    // D-06/T-12.3-17/T-12.3-18/T-12.3-09: publish targets now include
-    // transport-only extras (`transportRelays`), but the denominator above and
-    // the ack attribution below remain the normalized, deduplicated protocol set
-    // (`protocolRelays`) alone — an always-acking app-local extra must never be
-    // able to satisfy the discoverability quorum by itself, and it must never be
-    // able to inflate the denominator either. `protocolRelays` is bit-for-bit
-    // identical to the pre-phase raw `this.relays()` length whenever the
-    // configured protocol relay list is already well-formed and duplicate-free;
-    // it fails soft (drops the offending entry) rather than crashing when it is
-    // not (T-12.3-09-01/02). Acks are attributed to the protocol set with the
-    // same normalized-URL tolerance `auth.ts`'s status lookup already
-    // applies, since a relay's ack `from` may or may not come back normalized,
-    // may be absent, or may be malformed — none of which may ever surface as a
-    // parse error in place of the intended majority-abort error (T-12.3-09-03).
-    const majorityThreshold = Math.ceil((protocolRelays.length + 1) / 2);
-    const protocolRelaySet = new Set(protocolRelays);
-    /** Tolerant ack-origin normalization: returns undefined for an absent or
-     *  unparseable `from`, swallowing the parse failure, mirroring the
-     *  established tolerance shape in auth.ts's `lookupRelayStatus`. */
-    const normalizeAckOrigin = (from: string | undefined): string | undefined => {
-      if (!from) return undefined;
-      try {
-        return normalizeRelayUrl(from);
-      } catch {
-        return undefined;
-      }
-    };
-    const requireMajority = async (wrap: NostrEvent, what: string) => {
-      const responses = await this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap));
-      const okCount = responses.filter((r) => {
-        if (r.ok !== true) return false;
-        const origin = normalizeAckOrigin(r.from);
-        return origin !== undefined && protocolRelaySet.has(origin);
-      }).length;
-      if (okCount < majorityThreshold)
-        throw new Error(`refounding aborted: ${what} not confirmed by a majority of relays`);
-    };
-
-    // Rekey blobs (root + channels) gate convergence, so land them first. WR-01:
+    // Rekey blobs (root + channels) gate convergence. WR-01:
     // register the exact keys `buildRefounding` finalized these wraps with —
     // `plan.rekeyKey` for the root-roll and `plan.channelRekeyKeys` for the
     // bundled channel rekeys — rather than relying on `this.keys.nextBaseRekey.key`
@@ -1593,23 +1554,56 @@ export class ConcordCommunity {
     // forward before this line runs, which is exactly when the plan's own key and a
     // freshly recomputed one diverge.
     this.signers.register([plan.rekeyKey]);
-    for (const wrap of plan.rekeyWraps) await requireMajority(wrap, "root roll");
     this.signers.register(plan.channelRekeyKeys);
-    for (const wrap of plan.channelRekeyWraps) await requireMajority(wrap, "channel rekey");
+    this.signers.register([plan.next.control, plan.next.guestbook]);
+
+    const mandatory: Array<{ artifact: RefoundingArtifact; wrap: NostrEvent }> = [
+      ...plan.rekeyWraps.map((wrap) => ({ artifact: { id: wrap.id, kind: "root-rekey" as const }, wrap })),
+      ...plan.channelRekeyWraps.map((wrap) => ({ artifact: { id: wrap.id, kind: "channel-rekey" as const }, wrap })),
+      ...plan.compactionWraps.map((wrap) => ({ artifact: { id: wrap.id, kind: "control-compaction" as const }, wrap })),
+    ];
+    const rotationId = plan.rekeyWraps[0]?.id ?? plan.compactionWraps[0]?.id ?? `epoch-${plan.newEpoch}`;
+    const settled = await Promise.allSettled(
+      mandatory.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
+    );
+    const publications: RefoundingArtifactPublication[] = mandatory.map(({ artifact }, index) => {
+      const result = settled[index];
+      return result.status === "fulfilled"
+        ? { artifact, responses: result.value }
+        : { artifact, responses: [], cause: result.reason };
+    });
+    const coverage = evaluateCommonRelayCoverage(publications, protocolRelays);
+    if (!coverage.accepted) throw new RefoundingPublicationError(rotationId, coverage.evidence);
 
     this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);
 
-    // Only after every gated wrap clears majority: compaction/snapshot + adopt. Both
-    // ride the NEW epoch's control/guestbook addresses (D-16) — register both once
-    // before either loop.
-    this.signers.register([plan.next.control, plan.next.guestbook]);
-    for (const wrap of plan.compactionWraps)
-      this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap)).catch(() => {});
-    for (const wrap of plan.snapshotWraps)
-      this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap)).catch(() => {});
-
     this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
     this.adoptRefounding(plan.next);
+
+    const snapshotArtifacts = plan.snapshotWraps.map((wrap) => ({
+      artifact: { id: wrap.id, kind: "guestbook-snapshot" as const },
+      wrap,
+    }));
+    const snapshotSettled = await Promise.allSettled(
+      snapshotArtifacts.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
+    );
+    const snapshotPublications: RefoundingArtifactPublication[] = snapshotArtifacts.map(({ artifact }, index) => {
+      const result = snapshotSettled[index];
+      return result.status === "fulfilled"
+        ? { artifact, responses: result.value }
+        : { artifact, responses: [], cause: result.reason };
+    });
+    const snapshotCoverage = evaluateCommonRelayCoverage(snapshotPublications, protocolRelays);
+    const warnings: RefoundingWarning[] = snapshotCoverage.accepted
+      ? []
+      : [{
+          kind: "guestbook-snapshot-publication",
+          rotationId,
+          artifactIds: snapshotArtifacts.map(({ artifact }) => artifact.id),
+          evidence: snapshotCoverage.evidence,
+          causes: snapshotCoverage.evidence.flatMap((row) => (row.cause === undefined ? [] : [row.cause])),
+        }];
+    return { rotationId, epoch: plan.newEpoch, warnings, evidence: coverage.evidence, commonRelays: coverage.commonRelays };
   }
 
   // ---- publishing ---------------------------------------------------------

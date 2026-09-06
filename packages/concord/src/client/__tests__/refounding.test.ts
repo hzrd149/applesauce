@@ -6,10 +6,10 @@ import {
   type RefoundingArtifactPublication,
 } from "../refounding.js";
 
-const A = "wss://a.test";
-const B = "wss://b.test";
-const C = "wss://c.test";
-const EXTRA = "wss://extra.test";
+const A = "wss://a.test/";
+const B = "wss://b.test/";
+const C = "wss://c.test/";
+const EXTRA = "wss://extra.test/";
 
 function publication(id: string, accepted: string[]): RefoundingArtifactPublication {
   return {
@@ -62,12 +62,12 @@ describe("evaluateCommonRelayCoverage", () => {
         {
           artifact: { id: "root", kind: "root-rekey" },
           responses: [
-            { ok: true, from: `${A}/` },
+            { ok: true, from: A.slice(0, -1) },
             { ok: true, from: "" },
           ],
         },
       ],
-      [A, `${A}/`, ""],
+      [A, A.slice(0, -1), ""],
     );
 
     expect(coverage.accepted).toBe(true);
