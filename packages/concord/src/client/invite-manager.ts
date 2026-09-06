@@ -7,7 +7,8 @@
 // plaintext content actually changed.
 
 import type { Debugger } from "debug";
-import { BehaviorSubject, Subscription, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
+import { BehaviorSubject, Subject, Subscription, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
+import type { Observable } from "rxjs";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import type { User } from "applesauce-core/casts";
 import { setHiddenContentCache } from "applesauce-core/helpers";
@@ -30,7 +31,9 @@ import {
   liveInviteEntries,
   mergeInvites,
   mergeTombstones,
+  validateInviteListInvite,
 } from "../helpers/invite-list.js";
+import type { InviteListInviteField } from "../helpers/invite-list.js";
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
 import { InviteRevocationPublishError, requireInviteRevocationAck } from "./revocation.js";
 
@@ -51,6 +54,14 @@ export interface ConcordInviteLink {
   /** Unix seconds (D-05), matching the CommunityInvite bundle field. */
   expiresAt?: number;
   revoked: boolean;
+}
+
+export interface InviteListDiagnostic {
+  sourceId: string;
+  entryIndex: number;
+  status: "quarantined";
+  field: InviteListInviteField;
+  reason: "missing" | "invalid";
 }
 
 export interface ConcordInviteManagerOptions {
@@ -100,6 +111,8 @@ export class ConcordInviteManager {
   readonly live$ = new BehaviorSubject<ConcordInviteLink[]>([]);
   readonly revoked$ = new BehaviorSubject<ConcordInviteLink[]>([]);
   readonly dirty$ = new BehaviorSubject<boolean>(false);
+  readonly diagnostics$: Observable<InviteListDiagnostic>;
+  private readonly diagnostics = new Subject<InviteListDiagnostic>();
 
   /** The invite manager's debug logger — `options.logger` when threaded from
    *  {@link ConcordClient}, otherwise the `applesauce:concord:invite` module base
@@ -139,8 +152,10 @@ export class ConcordInviteManager {
   private documentExtras: Record<string, unknown> = {};
   private publishedFingerprint: string | null = canonicalJson({ entries: [], tombstones: [] });
   private readonly autoUnlocked = new Set<string>();
+  private readonly diagnosed = new Set<string>();
 
   constructor(options: ConcordInviteManagerOptions) {
+    this.diagnostics$ = this.diagnostics.asObservable();
     this.log = options.logger ?? logger.extend("invite");
     // Reports a rejected/erroring invite-LINK AUTH on this manager's own logger
     // (D-13's remedy for this scope: no error$ equivalent exists here, and D-10
@@ -201,6 +216,7 @@ export class ConcordInviteManager {
     this.tombstones = [];
     this.documentExtras = {};
     this.publishedFingerprint = canonicalJson({ entries: [], tombstones: [] });
+    this.diagnosed.clear();
     this.emit();
     this.dirty$.next(false);
   }
@@ -211,6 +227,7 @@ export class ConcordInviteManager {
   dispose(): void {
     this.stop();
     this.extras.dispose();
+    this.diagnostics.complete();
   }
 
   async refresh(): Promise<void> {
@@ -346,8 +363,21 @@ export class ConcordInviteManager {
   private reconcile(cast: ConcordInviteList): void {
     const invites = cast.invites;
     if (!invites) return;
-    this.invites = mergeInvites(this.invites, invites);
-    this.tombstones = mergeTombstones(this.tombstones, cast.tombstones ?? []);
+    let nextInvites = this.invites;
+    invites.forEach((raw, entryIndex) => {
+      const result = validateInviteListInvite(raw);
+      if (result.ok) {
+        nextInvites = mergeInvites(nextInvites, [result.value]);
+        return;
+      }
+      const diagnostic = { sourceId: cast.id, entryIndex, status: "quarantined" as const, ...result };
+      const key = `${diagnostic.sourceId}:${entryIndex}:${diagnostic.field}:${diagnostic.reason}`;
+      if (!this.diagnosed.has(key)) {
+        this.diagnosed.add(key);
+        this.diagnostics.next(diagnostic);
+      }
+    });
+    const nextTombstones = mergeTombstones(this.tombstones, cast.tombstones ?? []);
     // Snapshot the document's top-level keys (WIRE-09/D-23), INCLUDING its own `entries`/
     // `tombstones` as of this read — mirroring ConcordClient.watchLists. `save()` always
     // assigns this manager's own merged state AFTER spreading this snapshot, so a stale
@@ -359,6 +389,8 @@ export class ConcordInviteManager {
       entries: mergeInvites([], invites),
       tombstones: mergeTombstones([], cast.tombstones ?? []),
     });
+    this.invites = nextInvites;
+    this.tombstones = nextTombstones;
     this.emit();
   }
 

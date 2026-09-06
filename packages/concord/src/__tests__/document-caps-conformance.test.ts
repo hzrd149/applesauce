@@ -24,7 +24,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
-import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
 import { bytesToHex } from "@noble/hashes/utils.js";
@@ -35,6 +35,7 @@ import { ConcordClient } from "../client/client.js";
 import { memoryStorage, type ConcordStorage } from "../client/storage.js";
 import { COMMUNITY_LIST_KIND, mergeCommunities } from "../helpers/community-list.js";
 import { INVITE_LIST_KIND } from "../helpers/invite-list.js";
+import { buildInviteLink } from "../helpers/invite-bundle.js";
 import { createCommunity } from "../helpers/community.js";
 import { CORD_ROUND_TRIP_SENTENCE } from "./cord-wire-fixtures.js";
 import type { InviteListInvite, JoinMaterial } from "../types.js";
@@ -222,11 +223,13 @@ describe("document round-trip conformance through ConcordClient (WIRE-09/D-23)",
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
 
+    const seededSigner = generateSecretKey();
+    const seededToken = new Uint8Array(16).fill(0xaa);
     const seededInvite: InviteListInvite = {
-      token: "a".repeat(32),
-      signer_sk: bytesToHex(generateSecretKey()),
-      community_id: "seeded-community",
-      url: "https://example.com/invite#seeded",
+      token: bytesToHex(seededToken),
+      signer_sk: bytesToHex(seededSigner),
+      community_id: "cc".repeat(32),
+      url: buildInviteLink("https://example.com", getPublicKey(seededSigner), seededToken, ["wss://fake"]),
       created_at: 1,
     };
     const unknownFields = unknownDocumentFields();
