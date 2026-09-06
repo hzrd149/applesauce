@@ -68,20 +68,37 @@ export function setLoggerSink(nextSink: LoggerSink): void {
   sink = nextSink;
 }
 
-function inspect(value: unknown, seen = new Set<unknown>()): string {
-  if (value instanceof Error) return value.stack ?? value.toString();
-  if (typeof value === "string") return `'${value}'`;
-  if (typeof value === "bigint") return `${value}n`;
-  if (typeof value === "symbol" || typeof value === "function") return String(value);
-  if (value === null || typeof value !== "object") return String(value);
-  if (seen.has(value)) return "[Circular]";
+function safeString(value: unknown, fallback = "[Unformattable]"): string {
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
 
-  seen.add(value);
-  const entries = Array.isArray(value)
-    ? Array.from(value, (item) => inspect(item, seen))
-    : Object.entries(value).map(([key, item]) => `${key}: ${inspect(item, seen)}`);
-  seen.delete(value);
-  return Array.isArray(value) ? `[ ${entries.join(", ")} ]` : `{ ${entries.join(", ")} }`;
+function inspect(value: unknown, seen = new Set<unknown>()): string {
+  try {
+    if (value instanceof Error) return value.stack ?? safeString(value);
+    if (typeof value === "string") return `'${value}'`;
+    if (typeof value === "bigint") return `${value}n`;
+    if (typeof value === "symbol" || typeof value === "function") return safeString(value);
+    if (value === null || typeof value !== "object") return safeString(value);
+    if (seen.has(value)) return "[Circular]";
+
+    seen.add(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const entries = Object.entries(descriptors)
+      .filter(([key, descriptor]) => key !== "length" && descriptor.enumerable)
+      .map(([key, descriptor]) => {
+        const item = "value" in descriptor ? inspect(descriptor.value, seen) : "[Getter]";
+        return Array.isArray(value) ? item : `${key}: ${item}`;
+      });
+    seen.delete(value);
+    return Array.isArray(value) ? `[ ${entries.join(", ")} ]` : `{ ${entries.join(", ")} }`;
+  } catch {
+    seen.delete(value);
+    return "[Uninspectable]";
+  }
 }
 
 function stringifyJson(value: unknown): string {
@@ -102,8 +119,14 @@ function format(args: unknown[]): string {
     if (formatter === "%") return "%";
     if (argumentIndex >= rest.length) return token;
     const value = rest[argumentIndex++];
-    if (formatter === "s") return String(value);
-    if (formatter === "d") return String(Number(value));
+    if (formatter === "s") return safeString(value);
+    if (formatter === "d") {
+      try {
+        return String(Number(value));
+      } catch {
+        return "NaN";
+      }
+    }
     if (formatter === "j") return stringifyJson(value);
     return inspect(value);
   });

@@ -62,6 +62,26 @@ describe("logger", () => {
     expect(calls[1]).toContain(" extra 7");
   });
 
+  it("does not throw while formatting hostile values", () => {
+    const calls: string[] = [];
+    const getter = Object.defineProperty({}, "value", {
+      enumerable: true,
+      get: () => {
+        throw new Error("getter exploded");
+      },
+    });
+    const proxy = new Proxy({}, { ownKeys: () => { throw new Error("proxy exploded"); } });
+    const coercion = { toString: () => { throw new Error("coercion exploded"); } };
+    setLoggerSink((message) => calls.push(message));
+    enableLoggerNamespaces("applesauce");
+
+    expect(() => logger("%s %d %o", coercion, Symbol("x"), getter)).not.toThrow();
+    expect(() => logger(proxy)).not.toThrow();
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain("[Unformattable] NaN { value: [Getter] }");
+    expect(calls[1]).toBe("applesauce [Uninspectable]");
+  });
+
   it("treats hostile percent and newline values as data", () => {
     const calls: string[] = [];
     setLoggerSink((message) => calls.push(message));
