@@ -711,6 +711,60 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
+  it("isolates mixed corruption, recovers on a later valid event, and closes diagnostics on dispose", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const makeEntry = (byte: number) => {
+      const token = new Uint8Array(16).fill(byte);
+      const linkSk = new Uint8Array(32).fill(byte);
+      return {
+        token: bytesToHex(token),
+        signer_sk: bytesToHex(linkSk),
+        community_id: "cd".repeat(32),
+        url: buildInviteLink("https://app.example", getPublicKey(linkSk), token, ["wss://fake"]),
+        created_at: byte,
+      };
+    };
+    const recovered = makeEntry(0x21);
+    const sibling = makeEntry(0x22);
+    const eventFor = async (entries: unknown[], created_at: number) =>
+      signer.signEvent({
+        kind: INVITE_LIST_KIND,
+        tags: [],
+        created_at,
+        content: await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries, tombstones: [] })),
+      });
+    const store = new EventStore();
+    store.add(await eventFor([{ ...recovered, signer_sk: "bad" }, sibling], 1));
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), autoUnlock: true });
+    const diagnostics: Record<string, unknown>[] = [];
+    let completed = false;
+    client.invites.diagnostics$.subscribe({
+      next: (diagnostic) => diagnostics.push(diagnostic as unknown as Record<string, unknown>),
+      complete: () => (completed = true),
+    });
+
+    await client.start();
+    await settle();
+    expect(client.invites.entries$.value.map((invite) => invite.token)).toEqual([sibling.token]);
+    expect(client.invites.live$.value.map((invite) => invite.token)).toEqual([sibling.token]);
+    expect(client.invites.revoked$.value).toEqual([]);
+    expect(Object.keys(diagnostics[0]!).sort()).toEqual(["entryIndex", "field", "reason", "sourceId", "status"]);
+    published.length = 0;
+
+    store.add(await eventFor([recovered, sibling], 2));
+    await settle();
+    expect(client.invites.entries$.value.map((invite) => invite.token).sort()).toEqual(
+      [recovered.token, sibling.token].sort(),
+    );
+    expect(client.invites.dirty$.value).toBe(false);
+    expect(inviteListPublishes(published)).toEqual([]);
+
+    client.invites.dispose();
+    expect(completed).toBe(true);
+  });
+
   it("client.invites.revoke tombstones the bundle, registry, and invite list", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool, published } = fakePool();
