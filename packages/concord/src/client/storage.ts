@@ -1,8 +1,12 @@
 // Pluggable persistence + media upload for ConcordClient.
 
 import type { AsyncRumorStore, RumorStore } from "applesauce-core";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+import type { ISigner } from "applesauce-signers";
 
 import type { MediaAttachment } from "../helpers/imeta.js";
+import type { PendingRefoundingRecord } from "./refounding.js";
 
 /** Progress for a batch of attachments sent with a chat message. */
 export interface ConcordUploadProgress {
@@ -61,6 +65,86 @@ export function defaultStorage(): ConcordStorage {
     setItem: async (k, v) => void ls.setItem(k, v),
     removeItem: async (k) => void ls.removeItem(k),
   };
+}
+
+const BYTE_MARKER = "$concordBytes";
+
+function encodePending(record: PendingRefoundingRecord): string {
+  return JSON.stringify(record, (_key, value) =>
+    value instanceof Uint8Array ? { [BYTE_MARKER]: bytesToHex(value) } : value,
+  );
+}
+
+function decodePending(value: string): unknown {
+  return JSON.parse(value, (_key, item) => {
+    if (
+      item &&
+      typeof item === "object" &&
+      Object.keys(item).length === 1 &&
+      typeof item[BYTE_MARKER] === "string" &&
+      /^[0-9a-f]*$/i.test(item[BYTE_MARKER]) &&
+      item[BYTE_MARKER].length % 2 === 0
+    ) {
+      return Uint8Array.from(item[BYTE_MARKER].match(/.{2}/g)?.map((byte: string) => Number.parseInt(byte, 16)) ?? []);
+    }
+    return item;
+  });
+}
+
+function isPendingRecord(value: unknown, communityId: string): value is PendingRefoundingRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Partial<PendingRefoundingRecord>;
+  return (
+    record.version === 1 &&
+    record.communityId === communityId &&
+    Number.isSafeInteger(record.priorEpoch) &&
+    typeof record.rotationId === "string" &&
+    ["prepared", "mandatory-confirmed", "adopted", "snapshot-attempted"].includes(record.stage ?? "") &&
+    !!record.plan &&
+    record.plan.newEpoch === record.priorEpoch! + 1 &&
+    record.plan.next?.material?.community_id === communityId &&
+    record.plan.next?.material?.root_epoch === record.plan.newEpoch &&
+    record.plan.rekeyWraps?.[0]?.id === record.rotationId &&
+    Array.isArray(record.mandatoryEvidence) &&
+    Array.isArray(record.commonRelays) &&
+    Array.isArray(record.warnings)
+  );
+}
+
+/** Authenticated, self-encrypted durable storage for one pending Refounding. */
+export class PendingRefoundingStore {
+  readonly key: string;
+
+  constructor(
+    private readonly storage: ConcordStorage,
+    private readonly signer: ISigner,
+    private readonly pubkey: string,
+    private readonly communityId: string,
+    key?: string,
+  ) {
+    this.key = key ?? `concord:pending-refounding:v1:${bytesToHex(sha256(utf8ToBytes(`${pubkey}:${communityId}`)))}`;
+  }
+
+  async load(): Promise<PendingRefoundingRecord | null> {
+    const ciphertext = await this.storage.getItem(this.key);
+    if (ciphertext === null) return null;
+    if (!this.signer.nip44) throw new Error("pending refounding protection requires NIP-44");
+    const plaintext = await this.signer.nip44.decrypt(this.pubkey, ciphertext);
+    const record = decodePending(plaintext);
+    if (!isPendingRecord(record, this.communityId)) throw new Error("invalid pending refounding record for community");
+    return record;
+  }
+
+  async save(record: PendingRefoundingRecord): Promise<void> {
+    if (!isPendingRecord(record, this.communityId)) throw new Error("invalid pending refounding record for community");
+    if (!this.signer.nip44) throw new Error("pending refounding protection requires NIP-44");
+    const ciphertext = await this.signer.nip44.encrypt(this.pubkey, encodePending(record));
+    await this.storage.setItem(this.key, ciphertext);
+  }
+
+  remove(): Promise<void> {
+    return this.storage.removeItem(this.key);
+  }
 }
 
 /**

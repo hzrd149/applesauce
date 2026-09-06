@@ -40,6 +40,7 @@ import {
   type RefoundingArtifactPublication,
   type RefoundingResult,
   type RefoundingWarning,
+  type PendingRefoundingRecord,
 } from "./refounding.js";
 import { ExtraRelays, type ExtraRelaysOption } from "../helpers/relays.js";
 import {
@@ -89,7 +90,15 @@ import {
 import { planeStoreKey, syncAuthors, syncEpochs, type SyncContext } from "./sync.js";
 import { ConcordCommunityAdmin, type CreateChannelOptions } from "./admin.js";
 import { ConcordPrivateChannel } from "./private-channel.js";
-import type { ConcordRumorStore, ConcordStoreFactory, ConcordUploader, ConcordUploadProgress } from "./storage.js";
+import {
+  PendingRefoundingStore,
+  defaultStorage,
+  type ConcordRumorStore,
+  type ConcordStorage,
+  type ConcordStoreFactory,
+  type ConcordUploader,
+  type ConcordUploadProgress,
+} from "./storage.js";
 import type { ConcordInviteLink, CreateInviteOptions } from "./invite-manager.js";
 import { InviteRevocationPublishError, requireInviteRevocationAck } from "./revocation.js";
 
@@ -135,9 +144,11 @@ export interface ConcordCommunityOptions {
   extraRelays?: ExtraRelaysOption;
   /** Per-plane store factory (persistent cache). Defaults to in-memory stores. */
   storeFactory?: ConcordStoreFactory;
+  /** Durable storage for protected in-flight Refounding operations. */
+  storage?: ConcordStorage;
   /** Called whenever `material` changes (a fresh private-channel key, a Refounding)
    *  so the manager can persist it and refresh the Community List. */
-  onMaterialChange?: (material: JoinMaterial) => void;
+  onMaterialChange?: (material: JoinMaterial) => void | Promise<void>;
   /** Called when a Refounding excludes us (CORD-06): the manager tombstones the
    *  membership and drops the community. */
   onRemoved?: (communityId: string) => void;
@@ -310,6 +321,7 @@ export class ConcordCommunity {
   private readonly uploader?: ConcordCommunityOptions["uploader"];
   private readonly defaultRelays: string[];
   private readonly storeFactory: ConcordStoreFactory;
+  private readonly pendingRefounding: PendingRefoundingStore;
   private readonly onMaterialChange?: (material: JoinMaterial) => void;
   private readonly onRemoved?: (communityId: string) => void;
   private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
@@ -372,6 +384,12 @@ export class ConcordCommunity {
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
     this.storeFactory = options.storeFactory ?? (() => new RumorStore());
+    this.pendingRefounding = new PendingRefoundingStore(
+      options.storage ?? defaultStorage(),
+      this.signer,
+      this.pubkey,
+      options.material.community_id,
+    );
     this.onMaterialChange = options.onMaterialChange;
     this.onRemoved = options.onRemoved;
     this.onInviteCreated = options.onInviteCreated;
@@ -983,14 +1001,14 @@ export class ConcordCommunity {
     if (latched && !isStrictlyLowerKey(latched, candidate)) return;
     this.rekeyHandled.set(outcome.epoch, candidate);
     this.foldLog("rekey fold: adopting epoch=%d", outcome.epoch);
-    this.adoptRefounding(outcome.next);
+    await this.adoptRefounding(outcome.next);
   }
 
   /** Follow a Refounding forward: swap in the rolled-forward key state, reopen the
    *  live subscription at the new epoch's addresses, and re-walk each private
    *  channel — a Refounding may bundle a channel Rekey sealed under the prior root
    *  (CORD-06 §3) and the channel-rekey address keys on the (now-changed) root. */
-  private adoptRefounding(next: ConcordKeys): void {
+  private async adoptRefounding(next: ConcordKeys): Promise<void> {
     this.keys = next;
     this.trimStaleGuestbookStores();
     // Rebind the fold to the new epoch's refounder so foldMembers honors the new
@@ -998,7 +1016,7 @@ export class ConcordCommunity {
     this.rewireState();
     this.openLive();
     this.epoch$.next(this.keys.material.root_epoch);
-    this.onMaterialChange?.(this.keys.material);
+    await this.onMaterialChange?.(this.keys.material);
     for (const engine of this.privateChannels.values()) void engine.refreshForCommunityEpoch();
     // The root just rolled, so every live invite bundle now carries a stale
     // community_root. Ask the client to re-post them behind their unchanged URLs
@@ -1506,6 +1524,14 @@ export class ConcordCommunity {
         throw new Error(`cannot exclude ${target} — you do not outrank them`);
     }
 
+    const stored = await this.pendingRefounding.load();
+    if (
+      stored &&
+      stored.priorEpoch !== this.material.root_epoch &&
+      stored.plan.next.material.root_epoch !== this.material.root_epoch
+    )
+      throw new Error("pending refounding epoch does not match current material");
+
     const excluded = new Set(opts.exclude ?? []);
     const recipients = [...new Set([this.pubkey, ...opts.keep])].filter((pk) => !excluded.has(pk));
     // D-06: `protocolRelays` stays the protocol/counting set — the majority
@@ -1533,15 +1559,35 @@ export class ConcordCommunity {
     // CORD-04/D-08: cite our own Grant (undefined for the owner) so a receiver
     // can vac-verify this Refounding (and any bundled channel rekeys) against
     // its folded Roster.
-    const vac = await this.admin.vacFor(this.pubkey);
-    const plan = await buildRefounding(this.keys, this.signer, {
-      recipients,
-      self: this.pubkey,
-      heads: this.controlHeadsWithSeals(),
-      channels: state.channels,
-      channelRekeys,
-      vac,
-    });
+    let pending: PendingRefoundingRecord;
+    if (stored) {
+      pending = stored;
+    } else {
+      const priorEpoch = this.material.root_epoch;
+      const vac = await this.admin.vacFor(this.pubkey);
+      const plan = await buildRefounding(this.keys, this.signer, {
+        recipients,
+        self: this.pubkey,
+        heads: this.controlHeadsWithSeals(),
+        channels: state.channels,
+        channelRekeys,
+        vac,
+      });
+      const rotationId = plan.rekeyWraps[0]?.id ?? plan.compactionWraps[0]?.id ?? `epoch-${plan.newEpoch}`;
+      pending = {
+        version: 1,
+        communityId: this.communityId,
+        priorEpoch,
+        rotationId,
+        stage: "prepared",
+        plan,
+        mandatoryEvidence: [],
+        commonRelays: [],
+        warnings: [],
+      };
+      await this.pendingRefounding.save(pending);
+    }
+    const plan = pending.plan;
 
     // Rekey blobs (root + channels) gate convergence. WR-01:
     // register the exact keys `buildRefounding` finalized these wraps with —
@@ -1562,48 +1608,79 @@ export class ConcordCommunity {
       ...plan.channelRekeyWraps.map((wrap) => ({ artifact: { id: wrap.id, kind: "channel-rekey" as const }, wrap })),
       ...plan.compactionWraps.map((wrap) => ({ artifact: { id: wrap.id, kind: "control-compaction" as const }, wrap })),
     ];
-    const rotationId = plan.rekeyWraps[0]?.id ?? plan.compactionWraps[0]?.id ?? `epoch-${plan.newEpoch}`;
-    const settled = await Promise.allSettled(
-      mandatory.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
-    );
-    const publications: RefoundingArtifactPublication[] = mandatory.map(({ artifact }, index) => {
-      const result = settled[index];
-      return result.status === "fulfilled"
-        ? { artifact, responses: result.value }
-        : { artifact, responses: [], cause: result.reason };
-    });
-    const coverage = evaluateCommonRelayCoverage(publications, protocolRelays);
-    if (!coverage.accepted) throw new RefoundingPublicationError(rotationId, coverage.evidence);
+    const rotationId = pending.rotationId;
+    if (pending.stage === "prepared") {
+      const settled = await Promise.allSettled(
+        mandatory.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
+      );
+      const publications: RefoundingArtifactPublication[] = mandatory.map(({ artifact }, index) => {
+        const result = settled[index];
+        return result.status === "fulfilled"
+          ? { artifact, responses: result.value }
+          : { artifact, responses: [], cause: result.reason };
+      });
+      const coverage = evaluateCommonRelayCoverage(publications, protocolRelays);
+      if (!coverage.accepted) throw new RefoundingPublicationError(rotationId, coverage.evidence);
+      pending = {
+        ...pending,
+        stage: "mandatory-confirmed",
+        mandatoryEvidence: coverage.evidence,
+        commonRelays: coverage.commonRelays,
+      };
+      await this.pendingRefounding.save(pending);
+    }
 
     this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);
 
-    this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
-    this.adoptRefounding(plan.next);
+    if (pending.stage === "mandatory-confirmed") {
+      if (
+        this.material.root_epoch !== plan.newEpoch ||
+        this.material.community_root !== plan.next.material.community_root
+      ) {
+        this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
+        await this.adoptRefounding(plan.next);
+      }
+      pending = { ...pending, stage: "adopted" };
+      await this.pendingRefounding.save(pending);
+    }
 
     const snapshotArtifacts = plan.snapshotWraps.map((wrap) => ({
       artifact: { id: wrap.id, kind: "guestbook-snapshot" as const },
       wrap,
     }));
-    const snapshotSettled = await Promise.allSettled(
-      snapshotArtifacts.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
-    );
-    const snapshotPublications: RefoundingArtifactPublication[] = snapshotArtifacts.map(({ artifact }, index) => {
-      const result = snapshotSettled[index];
-      return result.status === "fulfilled"
-        ? { artifact, responses: result.value }
-        : { artifact, responses: [], cause: result.reason };
-    });
-    const snapshotCoverage = evaluateCommonRelayCoverage(snapshotPublications, protocolRelays);
-    const warnings: RefoundingWarning[] = snapshotCoverage.accepted
-      ? []
-      : [{
-          kind: "guestbook-snapshot-publication",
-          rotationId,
-          artifactIds: snapshotArtifacts.map(({ artifact }) => artifact.id),
-          evidence: snapshotCoverage.evidence,
-          causes: snapshotCoverage.evidence.flatMap((row) => row.causes),
-        }];
-    return { rotationId, epoch: plan.newEpoch, warnings, evidence: coverage.evidence, commonRelays: coverage.commonRelays };
+    if (pending.stage === "adopted") {
+      const snapshotSettled = await Promise.allSettled(
+        snapshotArtifacts.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
+      );
+      const snapshotPublications: RefoundingArtifactPublication[] = snapshotArtifacts.map(({ artifact }, index) => {
+        const result = snapshotSettled[index];
+        return result.status === "fulfilled"
+          ? { artifact, responses: result.value }
+          : { artifact, responses: [], cause: result.reason };
+      });
+      const snapshotCoverage = evaluateCommonRelayCoverage(snapshotPublications, protocolRelays);
+      const warnings: RefoundingWarning[] = snapshotCoverage.accepted
+        ? []
+        : [
+            {
+              kind: "guestbook-snapshot-publication",
+              rotationId,
+              artifactIds: snapshotArtifacts.map(({ artifact }) => artifact.id),
+              evidence: snapshotCoverage.evidence,
+              causes: snapshotCoverage.evidence.flatMap((row) => row.causes),
+            },
+          ];
+      pending = { ...pending, stage: "snapshot-attempted", warnings };
+      await this.pendingRefounding.save(pending);
+    }
+    await this.pendingRefounding.remove();
+    return {
+      rotationId,
+      epoch: plan.newEpoch,
+      warnings: pending.warnings,
+      evidence: pending.mandatoryEvidence,
+      commonRelays: pending.commonRelays,
+    };
   }
 
   // ---- publishing ---------------------------------------------------------

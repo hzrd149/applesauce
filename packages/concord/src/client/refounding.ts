@@ -1,5 +1,6 @@
 import { mergeRelaySets, normalizeRelayUrl } from "applesauce-core/helpers/relays";
 import type { PublishResponse } from "applesauce-relay";
+import type { RefoundingPlan } from "../helpers/keys.js";
 
 export type RefoundingArtifactKind = "root-rekey" | "channel-rekey" | "control-compaction" | "guestbook-snapshot";
 
@@ -54,6 +55,21 @@ export interface RefoundingResult {
   commonRelays: string[];
 }
 
+export type PendingRefoundingStage = "prepared" | "mandatory-confirmed" | "adopted" | "snapshot-attempted";
+
+/** Complete, signed Refounding operation persisted between process lifetimes. */
+export interface PendingRefoundingRecord {
+  version: 1;
+  communityId: string;
+  priorEpoch: number;
+  rotationId: string;
+  stage: PendingRefoundingStage;
+  plan: RefoundingPlan;
+  mandatoryEvidence: RefoundingArtifactEvidence[];
+  commonRelays: string[];
+  warnings: RefoundingWarning[];
+}
+
 function normalizeOrigin(from: string | undefined): string | undefined {
   if (!from) return undefined;
   try {
@@ -81,7 +97,14 @@ export function evaluateCommonRelayCoverage(
       const response = responseByRelay.get(relay);
       return {
         relay,
-        status: cause !== undefined ? "publish-failed" : response?.ok === true ? "accepted" : response ? "rejected" : "missing",
+        status:
+          cause !== undefined
+            ? "publish-failed"
+            : response?.ok === true
+              ? "accepted"
+              : response
+                ? "rejected"
+                : "missing",
       };
     });
     const causes = [
@@ -96,7 +119,13 @@ export function evaluateCommonRelayCoverage(
     };
   });
   const commonRelays = protocolRelays.filter((relay) => evidence.every((row) => row.acceptedRelays.includes(relay)));
-  return { accepted: publications.length > 0 && commonRelays.length >= required, protocolRelays, required, commonRelays, evidence };
+  return {
+    accepted: publications.length > 0 && commonRelays.length >= required,
+    protocolRelays,
+    required,
+    commonRelays,
+    evidence,
+  };
 }
 
 export class RefoundingPublicationError extends AggregateError {

@@ -864,6 +864,7 @@ export class ConcordClient {
       uploader: this.uploader,
       relays: this.defaultRelays,
       extraRelays: this.extraRelaysOption,
+      storage: this.storage,
       storeFactory: this.storeFactory
         ? (_cid, planeKey) => this.storeFactory!(material.community_id, planeKey)
         : undefined,

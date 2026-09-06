@@ -121,7 +121,7 @@ describe("PendingRefoundingStore", () => {
       version: 1 as const,
       communityId: "community-a",
       priorEpoch: 3,
-      rotationId: "rotation-id",
+      rotationId: "root-wrap",
       stage: "prepared" as const,
       plan: {
         rekeyWraps: [{ id: "root-wrap", content: "signed-secret" }],
@@ -151,7 +151,26 @@ describe("PendingRefoundingStore", () => {
     const storage = memoryStorage();
     const first = new PendingRefoundingStore(storage, signer, pubkey, "community-a");
     const second = new PendingRefoundingStore(storage, signer, pubkey, "community-b", first.key);
-    await first.save({ version: 1, communityId: "community-a", priorEpoch: 1 } as never);
+    await first.save({
+      version: 1,
+      communityId: "community-a",
+      priorEpoch: 1,
+      rotationId: "root-wrap",
+      stage: "prepared",
+      plan: {
+        rekeyWraps: [{ id: "root-wrap" }],
+        channelRekeyWraps: [],
+        compactionWraps: [],
+        snapshotWraps: [],
+        next: { material: { community_id: "community-a", root_epoch: 2 } },
+        newEpoch: 2,
+        rekeyKey: {},
+        channelRekeyKeys: [],
+      },
+      mandatoryEvidence: [],
+      commonRelays: [],
+      warnings: [],
+    } as never);
     await expect(second.load()).rejects.toThrow("community");
   });
 });
