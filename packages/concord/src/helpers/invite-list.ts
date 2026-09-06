@@ -23,6 +23,7 @@ import {
   type NostrEvent,
 } from "applesauce-core/helpers";
 import { getPublicKey } from "applesauce-core/helpers/keys";
+import { isHexKey } from "applesauce-core/helpers/string";
 
 import type { InviteListInvite, InviteListTombstone } from "../types.js";
 import { INVITE_BUNDLE_KIND, parseInviteLink } from "./invite-bundle.js";
@@ -110,6 +111,76 @@ export interface ParsedInviteList {
   entries: InviteListInvite[];
   tombstones: InviteListTombstone[];
   [k: string]: unknown;
+}
+
+export type InviteListInviteField =
+  | "token"
+  | "signer_sk"
+  | "community_id"
+  | "url"
+  | "label"
+  | "channels"
+  | "created_at"
+  | "expires_at";
+
+export type InviteListInviteValidation =
+  | { ok: true; value: InviteListInvite }
+  | { ok: false; field: InviteListInviteField; reason: "missing" | "invalid" };
+
+const TOKEN_HEX = /^[0-9a-f]{32}$/i;
+
+/** Validate one persisted entry and rebuild only its declared trusted fields. */
+export function validateInviteListInvite(raw: unknown): InviteListInviteValidation {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, field: "token", reason: "missing" };
+  }
+  const value = raw as Record<string, unknown>;
+  const required: Array<[InviteListInviteField, (candidate: unknown) => boolean]> = [
+    ["token", (candidate) => typeof candidate === "string" && TOKEN_HEX.test(candidate)],
+    ["signer_sk", (candidate) => typeof candidate === "string" && isHexKey(candidate)],
+    ["community_id", (candidate) => typeof candidate === "string" && isHexKey(candidate)],
+    [
+      "url",
+      (candidate) => {
+        if (typeof candidate !== "string") return false;
+        try {
+          parseInviteLink(candidate);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    ],
+    ["created_at", (candidate) => typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0],
+  ];
+  for (const [field, accepts] of required) {
+    if (value[field] === undefined) return { ok: false, field, reason: "missing" };
+    if (!accepts(value[field])) return { ok: false, field, reason: "invalid" };
+  }
+  if (value.label !== undefined && typeof value.label !== "string") {
+    return { ok: false, field: "label", reason: "invalid" };
+  }
+  if (value.channels !== undefined && (!Array.isArray(value.channels) || !value.channels.every(isHexKey))) {
+    return { ok: false, field: "channels", reason: "invalid" };
+  }
+  if (
+    value.expires_at !== undefined &&
+    (typeof value.expires_at !== "number" || !Number.isSafeInteger(value.expires_at) || value.expires_at < 0)
+  ) {
+    return { ok: false, field: "expires_at", reason: "invalid" };
+  }
+
+  const result: InviteListInvite = {
+    token: value.token as string,
+    signer_sk: value.signer_sk as string,
+    community_id: value.community_id as string,
+    url: value.url as string,
+    created_at: value.created_at as number,
+  };
+  if (value.label !== undefined) result.label = value.label as string;
+  if (value.channels !== undefined) result.channels = value.channels as string[];
+  if (value.expires_at !== undefined) result.expires_at = value.expires_at as number;
+  return { ok: true, value: result };
 }
 
 /**
