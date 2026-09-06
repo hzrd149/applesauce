@@ -113,15 +113,18 @@ export interface ParsedInviteList {
   [k: string]: unknown;
 }
 
-export type InviteListInviteField =
-  | "token"
-  | "signer_sk"
-  | "community_id"
-  | "url"
-  | "label"
-  | "channels"
-  | "created_at"
-  | "expires_at";
+export const INVITE_LIST_INVITE_FIELDS = [
+  "token",
+  "signer_sk",
+  "community_id",
+  "url",
+  "label",
+  "channels",
+  "created_at",
+  "expires_at",
+] as const satisfies readonly (keyof InviteListInvite)[];
+
+export type InviteListInviteField = (typeof INVITE_LIST_INVITE_FIELDS)[number];
 
 export type InviteListInviteValidation =
   | { ok: true; value: InviteListInvite }
