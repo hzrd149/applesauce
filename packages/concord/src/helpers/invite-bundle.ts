@@ -23,7 +23,7 @@ import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 import { isHexKey } from "applesauce-core/helpers/string";
 import type { AddressPointer, KnownEvent, NostrEvent } from "applesauce-core/helpers";
 import { communityId, inviteBundleKey } from "./crypto.js";
-import type { BlobPointer, InviteBundle, JoinMaterial } from "../types.js";
+import type { BlobPointer, HeldKeyEntry, InviteBundle, JoinMaterial } from "../types.js";
 
 /** Concord invite bundle kind (CORD-05 §1). */
 export const INVITE_BUNDLE_KIND = 33301;
@@ -334,8 +334,6 @@ export type BundleFieldRule =
  * `HeldRootEntry` alias that was never type-connected to either real
  * position).
  */
-export type ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: BundleFieldRule };
-
 // Derived subject aliases (CR4-01): each is an INDEXED-ACCESS PATH rooted at
 // `InviteBundle`, never an object literal declared in this file. A
 // hand-written shape cannot be substituted for a path — the path IS the real
@@ -344,6 +342,28 @@ type BundleChannel = InviteBundle["channels"][number];
 type BundleChannelHeldEntry = NonNullable<BundleChannel["held"]>[number];
 type BundleHeldRootEntry = NonNullable<InviteBundle["held_roots"]>[number];
 type BundleIcon = NonNullable<InviteBundle["icon"]>;
+
+type RuleKind<Kind extends BundleFieldRule["kind"]> = Extract<BundleFieldRule, { kind: Kind }>;
+type RuleForPresent<Value> = Value extends string
+  ? RuleKind<"hex-key" | "bounded-text">
+  : Value extends number
+    ? RuleKind<"safe-integer">
+    : Value extends InviteBundle["channels"]
+      ? RuleKind<"channel-list">
+      : Value extends HeldKeyEntry[]
+        ? RuleKind<"held-list">
+        : Value extends string[]
+          ? RuleKind<"relay-list">
+          : Value extends BlobPointer
+            ? RuleKind<"blob-pointer">
+            : never;
+
+/** Selects a rule family from the field's present value type, then applies
+ * optional-key omission as a separate constraint. */
+export type RuleFor<Value> = RuleForPresent<Exclude<Value, undefined>> &
+  (undefined extends Value ? { onAbsent: "omit" } : unknown);
+
+export type ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: RuleFor<T[K]> };
 
 /**
  * Resolves to the literal `true` only when `Table`'s key set and `Shape`'s
@@ -368,7 +388,7 @@ type RuleTableKeysExactly<Table, Shape> =
  * carries no index signature, so `keyof` here is a finite, closed union — the
  * property that makes this exhaustiveness check possible at all.
  */
-export const INVITE_BUNDLE_FIELD_RULES: ExhaustiveBundleRules<InviteBundle> = {
+export const INVITE_BUNDLE_FIELD_RULES = {
   community_id: { kind: "hex-key", onInvalid: "reject", onAbsent: "reject" },
   // owner/owner_salt are the OUTLIERS this task corrects: every other key-shaped
   // field here already goes through isHexKey, but these two only ever passed a
@@ -424,12 +444,12 @@ export const INVITE_BUNDLE_FIELD_RULES: ExhaustiveBundleRules<InviteBundle> = {
   // Bounds LENGTH only (via the blob table below); which URL schemes/hosts an
   // app may render remains a blob-surface policy question, still deferred.
   icon: { kind: "blob-pointer", onInvalid: "drop", onAbsent: "omit" },
-};
+} satisfies ExhaustiveBundleRules<InviteBundle>;
 
 /** The per-`channels[]`-entry table — a mapped type over every key of the
  *  real element type of `InviteBundle["channels"]` (`BundleChannel`, an
  *  indexed-access path — CR4-01). */
-export const CHANNEL_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleChannel> = {
+export const CHANNEL_KEY_FIELD_RULES = {
   // id/key both reach hexToBytes in deriveChannelKeys (keys.ts) and are minted
   // from 32 random bytes by addChannelKey — a malformed entry is dropped (this
   // channel excluded), never rejecting every OTHER legitimate grant.
@@ -445,7 +465,7 @@ export const CHANNEL_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleChannel> = {
   // A bad `held` array invalidates the ENTRY (channel-list's own per-entry drop
   // policy then excludes this channel) — the existing per-entry policy.
   held: { kind: "held-list", countCap: INVITE_BUNDLE_MAX_HELD_CHANNEL_KEYS, onInvalid: "reject", onAbsent: "omit" },
-};
+} satisfies ExhaustiveBundleRules<BundleChannel>;
 
 /** The shared held-key-entry table (a channel's `held`, or a bundle's
  *  `held_roots`) — its subject is `BundleHeldRootEntry`, the real
@@ -454,26 +474,26 @@ export const CHANNEL_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleChannel> = {
  *  element type at that other position) — {@link RULE_TABLE_SUBJECT_PROOF}
  *  independently pins that the two share an identical key set, so one table
  *  can validly annotate both positions (CR4-01). */
-export const HELD_KEY_FIELD_RULES: ExhaustiveBundleRules<BundleHeldRootEntry> = {
+export const HELD_KEY_FIELD_RULES = {
   epoch: { kind: "safe-integer", onInvalid: "reject", onAbsent: "reject" },
   key: { kind: "hex-key", onInvalid: "reject", onAbsent: "reject" },
   // The hop no prior round inspected at all. Drop (not reject) on invalid,
   // mirroring the top-level `refounder` field: it is attribution-only, and an
   // over-length value here does not need to sink the whole entry.
   refounder: { kind: "hex-key", onInvalid: "drop", onAbsent: "omit" },
-};
+} satisfies ExhaustiveBundleRules<BundleHeldRootEntry>;
 
 /** The `icon` blob-pointer table — a mapped type over every key of
  *  `BundleIcon`, the real `InviteBundle["icon"]` type (an indexed-access
  *  path — CR4-01). All four sub-fields are length-only (`bounded-text`); a
  *  bad one drops the whole `icon` (via {@link INVITE_BUNDLE_FIELD_RULES}'s
  *  own `icon` rule), never the containing bundle. */
-export const BLOB_POINTER_FIELD_RULES: ExhaustiveBundleRules<BundleIcon> = {
+export const BLOB_POINTER_FIELD_RULES = {
   url: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   key: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   nonce: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
   hash: { kind: "bounded-text", max: INVITE_BUNDLE_MAX_TEXT_LENGTH, onInvalid: "reject", onAbsent: "reject" },
-};
+} satisfies ExhaustiveBundleRules<BundleIcon>;
 
 /**
  * Compile-time proof (CR4-01) that all five positions of `InviteBundle` are

@@ -466,17 +466,17 @@ it("binds the held-key refounder rule to its declared string value family", () =
 
   expect(source).toContain("type RuleFor<Value>");
   expect(source).toContain("[K in keyof Required<T>]: RuleFor<T[K]>");
-  expect(source).toMatch(/HELD_KEY_FIELD_RULES\s*=\s*\{[^}]*refounder:\s*\{\s*kind:\s*"hex-key"/);
+  expect(source).toMatch(/HELD_KEY_FIELD_RULES\s*=\s*\{.*?refounder:\s*\{\s*kind:\s*"hex-key"/);
 });
 
-it("every exported *_FIELD_RULES table in invite-bundle.ts is annotated ExhaustiveBundleRules<> over a subject derived from InviteBundle", () => {
+it("every exported *_FIELD_RULES table in invite-bundle.ts satisfies ExhaustiveBundleRules<> over a subject derived from InviteBundle", () => {
   const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
   const source = readFileSync(sourcePath, "utf8");
   // Collapse all whitespace runs to single spaces so prettier's line-wrapping
   // cannot break the match.
   const collapsed = source.replace(/\s+/g, " ");
 
-  const tableRegex = /export const (\w+_FIELD_RULES): ([^=]+?) = /g;
+  const tableRegex = /export const (\w+_FIELD_RULES)\s*=\s*\{.*?\}\s+satisfies\s+([^;]+);/g;
   const discovered: { name: string; subject: string }[] = [];
   let match: RegExpExecArray | null;
   while ((match = tableRegex.exec(collapsed))) {
@@ -484,7 +484,7 @@ it("every exported *_FIELD_RULES table in invite-bundle.ts is annotated Exhausti
     const annotation = match[2]!.trim();
     expect(
       annotation.startsWith("ExhaustiveBundleRules<"),
-      `${name} must be annotated ExhaustiveBundleRules<...> over a subject derived from InviteBundle (CR4-01) — found "${annotation}"`,
+      `${name} must satisfy ExhaustiveBundleRules<...> over a subject derived from InviteBundle (CR4-01) — found "${annotation}"`,
     ).toBe(true);
     const subject = annotation.slice(annotation.indexOf("<") + 1, annotation.lastIndexOf(">")).trim();
     discovered.push({ name, subject });
