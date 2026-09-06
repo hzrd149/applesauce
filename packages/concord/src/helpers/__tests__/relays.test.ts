@@ -1,7 +1,13 @@
-import debugFactory from "debug";
 import { format } from "node:util";
 import { BehaviorSubject, Subject, throwError } from "rxjs";
 import { describe, expect, it, onTestFinished } from "vitest";
+import {
+  disableLoggerNamespaces,
+  enableLoggerNamespaces,
+  getLoggerNamespaces,
+  getLoggerSink,
+  setLoggerSink,
+} from "applesauce-core";
 
 import { ExtraRelays, sameRelaySet, toRelaysObservable } from "../relays.js";
 
@@ -232,27 +238,26 @@ describe("ExtraRelays", () => {
 
 // ── Gap closure (WR-05, 12.3-13): the merge diagnostic must distinguish a
 // genuine parse failure from a normalization collapse. `merge()`'s log call
-// goes through the real `debug` package via a module-level logger (never
-// injected), so these tests capture it at the `debug` package's own level:
-// enable the concrete namespace, override the shared `debug.log` sink for the
+// goes through the real core logger via a module-level logger (never
+// injected), so these tests capture it at the core logger's own level:
+// enable the concrete namespace, override the shared sink for the
 // duration of the test, and render captured calls with `util.format` (the
 // same convention `client.test.ts`'s `spyLogger()` + `format()` pair uses).
 describe("ExtraRelays.merge diagnostic — normalization collapse vs genuinely unparseable (WR-05, 12.3-13)", () => {
   const NAMESPACE = "applesauce:concord:extra-relays";
 
   function captureDebugOutput(): { calls: unknown[][]; restore: () => void } {
-    const wasEnabled = debugFactory.enabled(NAMESPACE);
-    debugFactory.enable(NAMESPACE);
-    const originalLog = debugFactory.log;
+    const originalNamespaces = getLoggerNamespaces();
+    const originalSink = getLoggerSink();
     const calls: unknown[][] = [];
-    debugFactory.log = (...args: unknown[]) => {
-      calls.push(args);
-    };
+    enableLoggerNamespaces(NAMESPACE);
+    setLoggerSink((message) => calls.push([message]));
     return {
       calls,
       restore: () => {
-        debugFactory.log = originalLog;
-        if (!wasEnabled) debugFactory.disable();
+        setLoggerSink(originalSink);
+        if (originalNamespaces) enableLoggerNamespaces(originalNamespaces);
+        else disableLoggerNamespaces();
       },
     };
   }

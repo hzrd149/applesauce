@@ -12,7 +12,7 @@ import { EventStore, RumorStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers/time";
 import "applesauce-common/casts";
 import type { PublishResponse, Relay, RelayPool } from "applesauce-relay";
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import { finalizeEvent, getEventHash, type NostrEvent } from "applesauce-core/helpers/event";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { base64urlnopad } from "@scure/base";

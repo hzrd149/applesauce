@@ -18,7 +18,7 @@
 import { format } from "node:util";
 import { describe, expect, it } from "vitest";
 import { BehaviorSubject, EMPTY, NEVER, Subject, from } from "rxjs";
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EventStore } from "applesauce-core";
@@ -75,7 +75,7 @@ function spyLogger(): { log: Debugger; calls: unknown[][] } {
   return { log, calls };
 }
 
-/** Render a captured call the way `debug` would format it on output. This
+/** Render a captured call the way the logger formats it on output. This
  *  codebase's new log lines only use `%s`/`%d`, both of which `util.format`
  *  substitutes identically to `debug`'s own formatter, so assertions read the
  *  same message a developer with `DEBUG=applesauce:concord:*` would see. */
