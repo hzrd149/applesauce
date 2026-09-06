@@ -365,6 +365,18 @@ export type RuleFor<Value> = RuleForPresent<Exclude<Value, undefined>> &
 
 export type ExhaustiveBundleRules<T> = { [K in keyof Required<T>]: RuleFor<T[K]> };
 
+type AssertNever<Value extends never> = Value;
+
+/** Compiler-negative probes: each tuple member must remain `never`. If a
+ * value family or optional absence policy broadens, the package build fails. */
+export type BundleRuleMismatchAssertions = [
+  AssertNever<Extract<RuleFor<string>, { kind: "safe-integer" }>>,
+  AssertNever<Extract<RuleFor<number>, { kind: "bounded-text" }>>,
+  AssertNever<Extract<RuleFor<InviteBundle["channels"]>, { kind: "relay-list" }>>,
+  AssertNever<Extract<RuleFor<BlobPointer>, { kind: "hex-key" }>>,
+  AssertNever<Extract<RuleFor<string | undefined>, { onAbsent: "reject" }>>,
+];
+
 /**
  * Resolves to the literal `true` only when `Table`'s key set and `Shape`'s
  * key set are EXACTLY equal in both directions. When `Table` is missing a key

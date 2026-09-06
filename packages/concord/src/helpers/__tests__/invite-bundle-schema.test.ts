@@ -479,30 +479,27 @@ it("pins negative compiler assertions for every rule value family and optional a
 
 it("preserves omission for every omit-disposition field at every table depth", () => {
   const bundle = baselineBundle();
-  const result = validateInviteBundle({
-    ...bundle,
-    held_roots: [{ epoch: 0, key: "44".repeat(32) }],
-    channels: [{ id: "11".repeat(32), key: "22".repeat(32), epoch: 2, name: "mods" }],
-    icon: undefined,
-    refounder: undefined,
-    label: undefined,
-    creator_npub: undefined,
-    expires_at: undefined,
-  });
-
-  expect(result).toBeDefined();
-  const probes: Array<[Record<string, unknown> | undefined, Record<string, BundleFieldRule>]> = [
-    [result as unknown as Record<string, unknown>, INVITE_BUNDLE_FIELD_RULES],
-    [result?.channels[0] as unknown as Record<string, unknown>, CHANNEL_KEY_FIELD_RULES],
-    [result?.held_roots?.[0] as unknown as Record<string, unknown>, HELD_KEY_FIELD_RULES],
-  ];
   let checked = 0;
-  for (const [value, rules] of probes) {
-    for (const [field, rule] of Object.entries(rules)) {
-      if (rule.onAbsent !== "omit") continue;
-      expect(Object.prototype.hasOwnProperty.call(value, field)).toBe(false);
-      checked++;
-    }
+
+  for (const [field, rule] of Object.entries(INVITE_BUNDLE_FIELD_RULES)) {
+    if (rule.onAbsent !== "omit") continue;
+    const result = validateInviteBundle({ ...bundle, [field]: undefined });
+    expect(Object.prototype.hasOwnProperty.call(result, field)).toBe(false);
+    checked++;
+  }
+  for (const [field, rule] of Object.entries(CHANNEL_KEY_FIELD_RULES)) {
+    if (rule.onAbsent !== "omit") continue;
+    const channel = { ...bundle.channels[0], [field]: undefined };
+    const result = validateInviteBundle({ ...bundle, channels: [channel] } as unknown as InviteBundle);
+    expect(Object.prototype.hasOwnProperty.call(result?.channels[0], field)).toBe(false);
+    checked++;
+  }
+  for (const [field, rule] of Object.entries(HELD_KEY_FIELD_RULES)) {
+    if (rule.onAbsent !== "omit") continue;
+    const held = { ...bundle.held_roots![0], [field]: undefined };
+    const result = validateInviteBundle({ ...bundle, held_roots: [held] } as unknown as InviteBundle);
+    expect(Object.prototype.hasOwnProperty.call(result?.held_roots?.[0], field)).toBe(false);
+    checked++;
   }
   expect(checked).toBeGreaterThan(0);
 });
