@@ -76,6 +76,9 @@ export interface ConcordPrivateChannelOptions {
   verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
   /** Called when the channel key rolls forward (a Rekey) so the community persists it. */
   onKeyChange?: (channelKey: ChannelKey) => void | Promise<void>;
+  /** Internal two-phase parent boundary: persist first, then return the
+   * synchronous parent-state commit that accompanies the channel commit. */
+  prepareKeyChange?: (channelKey: ChannelKey) => Promise<() => void>;
   /** Called when a channel Rekey excludes us from the channel. */
   onRemoved?: (channelId: string) => void;
   /** A custom debug logger (defaults to the "applesauce:concord" namespace). */
@@ -179,8 +182,7 @@ export class ConcordPrivateChannel {
         read: () => this.readRotation(),
         keyOf: (next) => hexToBytes(next.key),
         adopt: async (next) => {
-          this.setChannelKey(next);
-          await this.opts.onKeyChange?.(next);
+          await this.adoptChannelKey(next);
           this.openLive();
           await this.catchUpCurrent();
         },
@@ -265,8 +267,8 @@ export class ConcordPrivateChannel {
       }
       if (result.tipKey) {
         const rolled = result.tipKey.epoch !== this.channelKey.epoch;
-        this.setChannelKey(result.tipKey);
-        if (rolled) this.opts.onKeyChange?.(result.tipKey);
+        if (rolled) await this.adoptChannelKey(result.tipKey);
+        else this.setChannelKey(result.tipKey);
         this.openLive();
       }
       this.phase$.next("live");
@@ -280,6 +282,19 @@ export class ConcordPrivateChannel {
 
   private setChannelKey(next: ChannelKey): void {
     this.channelKey = next;
+    this.keys = deriveChannelKeys(this.opts.material(), next);
+    this.epoch$.next(next.epoch);
+  }
+
+  private async adoptChannelKey(next: ChannelKey): Promise<void> {
+    const commitParent = this.opts.prepareKeyChange
+      ? await this.opts.prepareKeyChange(next)
+      : (await this.opts.onKeyChange?.(next), undefined);
+    // No public channel signal is emitted before the persistence barrier. The
+    // parent commit is synchronous, then the channel epoch is published from a
+    // key set derived against that same committed parent material.
+    this.channelKey = next;
+    commitParent?.();
     this.keys = deriveChannelKeys(this.opts.material(), next);
     this.epoch$.next(next.epoch);
   }

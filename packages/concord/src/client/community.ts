@@ -921,7 +921,7 @@ export class ConcordCommunity {
       // D-08/D-12: vac-verify against the CURRENT folded state (rebuilt fresh
       // per call, mirroring admin.hasPerm's freshness) for MANAGE_CHANNELS.
       verifyVac: (rotator, vac) => vacVerifier(this.state$.value, PERM.MANAGE_CHANNELS)(rotator, vac),
-      onKeyChange: (ck) => this.persistChannelKey(ck),
+      prepareKeyChange: (ck) => this.prepareChannelKeyChange(ck),
       onRemoved: (id) => this.onPrivateChannelRemoved(id),
     });
     this.privateChannels.set(channelKey.id, engine);
@@ -930,10 +930,20 @@ export class ConcordCommunity {
 
   /** Persist a rolled-forward channel key into `material.channels` (a channel Rekey). */
   private async persistChannelKey(channelKey: ChannelKey): Promise<void> {
+    const commit = await this.prepareChannelKeyChange(channelKey);
+    commit();
+  }
+
+  /** Persist a proposed channel key without exposing it, then return the
+   * synchronous commit used by the child engine's transition barrier. */
+  private async prepareChannelKeyChange(channelKey: ChannelKey): Promise<() => void> {
     const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
-    this.keys = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
-    await this.onMaterialChange?.(this.keys.material);
-    this.materialChanged$.next();
+    const next = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+    await this.onMaterialChange?.(next.material);
+    return () => {
+      this.keys = next;
+      this.materialChanged$.next();
+    };
   }
 
   /** A channel Rekey excluded us: drop the sub-engine and our now-stale key (so we
