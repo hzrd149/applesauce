@@ -877,8 +877,16 @@ export class ConcordClient {
         // the list we publish always carry what the engine actually holds. `refreshCommunity`
         // bypasses the epoch-keyed `freshest` merge, so a same-epoch change (a minted channel key)
         // can't lose the canonical-bytes tiebreak against the snapshot it replaces.
-        this.list = refreshCommunity(changed)(this.list, this.tombstones).communities;
-        await this.saveMirror();
+        const staged = refreshCommunity(changed)(this.list, this.tombstones).communities;
+        // Root/channel convergence uses this callback as its persistence
+        // barrier. Persist the proposed document before replacing the settled
+        // in-memory list, and deliberately let storage failures reach the
+        // affected rotation lifecycle.
+        await this.storage.setItem(
+          this.pubkey,
+          JSON.stringify({ ...this.documentExtras, entries: staged, tombstones: this.tombstones }),
+        );
+        this.list = staged;
         // A sync-time change (epoch catch-up). Never publishes on its own — it flags the list
         // dirty; the opt-in debounced auto-save flushes it, or the app publishes manually.
         this.markCommunityListDirty();

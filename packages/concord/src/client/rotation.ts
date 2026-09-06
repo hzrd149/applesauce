@@ -91,8 +91,10 @@ export class RotationCoordinator<T> {
     const candidate = this.opts.keyOf(outcome.next);
     const latched = this.latches.get(outcome.epoch);
     if (!shouldAdoptRotation(latched, candidate)) return;
-    this.latches.set(outcome.epoch, candidate);
     await this.opts.adopt(outcome.next);
+    // A failed transition did not settle the candidate. Keep the prior latch so
+    // the exact same lower sibling remains retryable after local recovery.
+    this.latches.set(outcome.epoch, candidate);
   }
 
   private reconcile(diagnostic: RekeyCandidateDiagnostic): void {

@@ -1007,6 +1007,10 @@ export class ConcordCommunity {
    *  channel — a Refounding may bundle a channel Rekey sealed under the prior root
    *  (CORD-06 §3) and the channel-rekey address keys on the (now-changed) root. */
   private async adoptRefounding(next: ConcordKeys): Promise<void> {
+    // Persistence is the commit barrier: until the complete candidate material
+    // is durable, every public subject and every live/store binding continues to
+    // describe the previously settled root.
+    await this.onMaterialChange?.(next.material);
     this.keys = next;
     this.trimStaleGuestbookStores();
     // Rebind the fold to the new epoch's refounder so foldMembers honors the new
@@ -1014,7 +1018,6 @@ export class ConcordCommunity {
     this.rewireState();
     this.openLive();
     this.epoch$.next(this.keys.material.root_epoch);
-    await this.onMaterialChange?.(this.keys.material);
     for (const engine of this.privateChannels.values()) void engine.refreshForCommunityEpoch();
     // The root just rolled, so every live invite bundle now carries a stale
     // community_root. Ask the client to re-post them behind their unchanged URLs
