@@ -1601,7 +1601,7 @@ export class ConcordCommunity {
           rotationId,
           artifactIds: snapshotArtifacts.map(({ artifact }) => artifact.id),
           evidence: snapshotCoverage.evidence,
-          causes: snapshotCoverage.evidence.flatMap((row) => (row.cause === undefined ? [] : [row.cause])),
+          causes: snapshotCoverage.evidence.flatMap((row) => row.causes),
         }];
     return { rotationId, epoch: plan.newEpoch, warnings, evidence: coverage.evidence, commonRelays: coverage.commonRelays };
   }

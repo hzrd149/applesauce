@@ -985,7 +985,9 @@ describe("ConcordCommunity (DI, no network)", () => {
     responses = okResponses(threshold - 1);
     calls.length = 0;
     await expect(community.refound({ keep: [pubkey] })).rejects.toThrow(/majority/);
-    expect(calls.length).toBe(1); // only the gated root-roll wrap was attempted
+    // The complete mandatory matrix (root roll + Control compaction) is attempted
+    // before coverage is evaluated, preserving evidence for every artifact.
+    expect(calls.length).toBeGreaterThan(1);
     expect(community.material.root_epoch).toBe(priorEpoch);
     expect(community.material.community_root).toBe(priorRoot);
     expect(refoundedCount).toBe(0);
@@ -2809,7 +2811,7 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       { ok: true, from: REFOUND_EXTRA },
     ];
 
-    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+    await expect(community.refound({ keep: [pubkey] })).resolves.toMatchObject({ warnings: [] });
 
     community.dispose();
   });
@@ -2927,7 +2929,7 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
     // set has 1 relay (threshold ⌈2/2⌉=1, reachable by this single ack).
     responses = [{ ok: true, from: DUP_RELAY }];
 
-    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+    await expect(community.refound({ keep: [pubkey] })).resolves.toMatchObject({ warnings: [] });
 
     community.dispose();
   });
@@ -2962,7 +2964,7 @@ describe("ConcordCommunity extras (transport-only relay merge) — reactivity, c
       { ok: true, from: REFOUND_PROTOCOL_B },
     ];
 
-    await expect(community.refound({ keep: [pubkey] })).resolves.toBeUndefined();
+    await expect(community.refound({ keep: [pubkey] })).resolves.toMatchObject({ warnings: [] });
 
     community.dispose();
   });

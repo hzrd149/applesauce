@@ -27,7 +27,7 @@ export interface RefoundingArtifactEvidence {
   artifact: RefoundingArtifact;
   acceptedRelays: string[];
   relays: RefoundingRelayEvidence[];
-  cause?: unknown;
+  causes: unknown[];
 }
 
 export interface RefoundingCoverage {
@@ -84,11 +84,15 @@ export function evaluateCommonRelayCoverage(
         status: cause !== undefined ? "publish-failed" : response?.ok === true ? "accepted" : response ? "rejected" : "missing",
       };
     });
+    const causes = [
+      ...(cause === undefined ? [] : [cause]),
+      ...responses.flatMap((response) => (response.error === undefined ? [] : [response.error])),
+    ];
     return {
       artifact,
       acceptedRelays: relays.filter(({ status }) => status === "accepted").map(({ relay }) => relay),
       relays,
-      ...(cause !== undefined ? { cause } : {}),
+      causes,
     };
   });
   const commonRelays = protocolRelays.filter((relay) => evidence.every((row) => row.acceptedRelays.includes(relay)));
@@ -103,12 +107,12 @@ export class RefoundingPublicationError extends AggregateError {
     public readonly rotationId: string,
     public readonly evidence: RefoundingArtifactEvidence[],
   ) {
-    const causes = evidence.flatMap((row) => (row.cause === undefined ? [] : [row.cause]));
-    super(causes, `refounding publication failed for rotation ${rotationId}`);
+    const causes = evidence.flatMap((row) => row.causes);
+    super(causes, `refounding publication failed: common relay majority missing for rotation ${rotationId}`);
     this.name = "RefoundingPublicationError";
     this.causes = causes;
     this.failedArtifactIds = evidence
-      .filter((row) => row.cause !== undefined || row.relays.some(({ status }) => status !== "accepted"))
+      .filter((row) => row.causes.length > 0 || row.relays.some(({ status }) => status !== "accepted"))
       .map((row) => row.artifact.id);
   }
 }
