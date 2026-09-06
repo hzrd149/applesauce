@@ -186,6 +186,43 @@ describe("ConcordCommunity (DI, no network)", () => {
     community.dispose();
   });
 
+  it("serializes concurrent private-channel material commits", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays: ["wss://fake"] });
+    const first = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
+    const second = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1 };
+    genesis.material.channels = [first, second];
+    const barriers: Array<() => void> = [];
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool: fakePool(),
+      eventStore: new EventStore(),
+      relays: ["wss://fake"],
+      onMaterialChange: () => new Promise<void>((resolve) => barriers.push(resolve)),
+    });
+    const prepare = (key: typeof first) =>
+      (community as unknown as { prepareChannelKeyChange(key: typeof first): Promise<() => void> }).prepareChannelKeyChange(key);
+    const firstNext = { ...first, key: bytesToHex(generateSecretKey()), epoch: 2 };
+    const secondNext = { ...second, key: bytesToHex(generateSecretKey()), epoch: 2 };
+
+    const firstPending = prepare(firstNext);
+    const secondPending = prepare(secondNext);
+    await vi.waitFor(() => expect(barriers).toHaveLength(1));
+    barriers.shift()!();
+    const firstCommit = await firstPending;
+    firstCommit();
+    await vi.waitFor(() => expect(barriers).toHaveLength(1));
+    barriers.shift()!();
+    const secondCommit = await secondPending;
+    secondCommit();
+
+    expect(community.material.channels).toEqual(expect.arrayContaining([firstNext, secondNext]));
+    community.dispose();
+  });
+
   it("decrypts each historical attachment with its own imeta key after refounding", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();

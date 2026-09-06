@@ -321,7 +321,7 @@ export class ConcordCommunity {
   private readonly defaultRelays: string[];
   private readonly storeFactory: ConcordStoreFactory;
   private readonly pendingRefounding: PendingRefoundingStore;
-  private readonly onMaterialChange?: (material: JoinMaterial) => void;
+  private readonly onMaterialChange?: (material: JoinMaterial) => void | Promise<void>;
   private readonly onRemoved?: (communityId: string) => void;
   private readonly onInviteCreated?: (invite: ConcordInviteLink) => void | Promise<void>;
   private readonly onInviteRevoked?: (invite: ConcordInviteLink) => void | Promise<void>;
@@ -358,6 +358,8 @@ export class ConcordCommunity {
   private readonly rotationDiagnostics = new Subject<RotationDiagnostic>();
   readonly rotationDiagnostics$ = this.rotationDiagnostics.asObservable();
   private rotation!: RotationCoordinator<ConcordKeys>;
+  /** One commit lane for root and private-channel key transitions. */
+  private materialTransitionTail: Promise<void> = Promise.resolve();
   private started = false;
   private disposed = false;
 
@@ -936,13 +938,31 @@ export class ConcordCommunity {
   /** Persist a proposed channel key without exposing it, then return the
    * synchronous commit used by the child engine's transition barrier. */
   private async prepareChannelKeyChange(channelKey: ChannelKey): Promise<() => void> {
-    const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
-    const next = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
-    await this.onMaterialChange?.(next.material);
-    return () => {
-      this.keys = next;
-      this.materialChanged$.next();
-    };
+    const release = await this.acquireMaterialTransition();
+    try {
+      const channels = this.material.channels.map((c) => (c.id === channelKey.id ? channelKey : c));
+      const next = deriveConcordKeys({ ...this.material, channels }, this.state$.value.channels, this.keys);
+      await this.onMaterialChange?.(next.material);
+      return () => {
+        try {
+          this.keys = next;
+          this.materialChanged$.next();
+        } finally {
+          release();
+        }
+      };
+    } catch (cause) {
+      release();
+      throw cause;
+    }
+  }
+
+  private async acquireMaterialTransition(): Promise<() => void> {
+    const previous = this.materialTransitionTail;
+    let release!: () => void;
+    this.materialTransitionTail = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    return release;
   }
 
   /** A channel Rekey excluded us: drop the sub-engine and our now-stale key (so we
@@ -1019,8 +1039,19 @@ export class ConcordCommunity {
     // Persistence is the commit barrier: until the complete candidate material
     // is durable, every public subject and every live/store binding continues to
     // describe the previously settled root.
-    await this.onMaterialChange?.(next.material);
-    this.keys = next;
+    const release = await this.acquireMaterialTransition();
+    try {
+      const channels = new Map(next.material.channels.map((channel) => [channel.id, channel]));
+      for (const current of this.material.channels) {
+        const candidate = channels.get(current.id);
+        if (!candidate || current.epoch > candidate.epoch) channels.set(current.id, current);
+      }
+      next = deriveConcordKeys({ ...next.material, channels: [...channels.values()] }, this.state$.value.channels, this.keys);
+      await this.onMaterialChange?.(next.material);
+      this.keys = next;
+    } finally {
+      release();
+    }
     this.trimStaleGuestbookStores();
     // Rebind the fold to the new epoch's refounder so foldMembers honors the new
     // epoch's guestbook snapshot (kind 3312) and the full memberlist carries over.
