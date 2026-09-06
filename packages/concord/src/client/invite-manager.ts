@@ -370,7 +370,13 @@ export class ConcordInviteManager {
         nextInvites = mergeInvites(nextInvites, [result.value]);
         return;
       }
-      const diagnostic = { sourceId: cast.id, entryIndex, status: "quarantined" as const, ...result };
+      const diagnostic: InviteListDiagnostic = {
+        sourceId: cast.id,
+        entryIndex,
+        status: "quarantined",
+        field: result.field,
+        reason: result.reason,
+      };
       const key = `${diagnostic.sourceId}:${entryIndex}:${diagnostic.field}:${diagnostic.reason}`;
       if (!this.diagnosed.has(key)) {
         this.diagnosed.add(key);
