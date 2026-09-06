@@ -1,6 +1,4 @@
-import { logger } from "applesauce-core";
-import { EventSigner } from "applesauce-core";
-import type { Debugger } from "debug";
+import { EventSigner, logger, type Debugger } from "applesauce-core";
 import { verifyEvent } from "applesauce-core/helpers/event";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { filter, from, mergeMap, Observable, repeat, retry, share, Subscription, tap } from "rxjs";
