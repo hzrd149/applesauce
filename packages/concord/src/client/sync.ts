@@ -16,7 +16,7 @@
 // `createSyncLoader` for the per-plane full sync so NIP-77 negentropy is used
 // when a relay supports it and paginated backward REQ otherwise.
 
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import { firstValueFrom, toArray } from "rxjs";
 import { createSyncLoader, type SyncAuthHandler } from "applesauce-loaders/loaders";
 import { hexToBytes } from "@noble/hashes/utils.js";

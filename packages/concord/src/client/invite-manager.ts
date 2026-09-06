@@ -6,7 +6,7 @@
 // merge remote copies, expose rich app-facing records, and publish only when the
 // plaintext content actually changed.
 
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import { BehaviorSubject, Subject, Subscription, firstValueFrom, map, of, switchMap, timeout, toArray } from "rxjs";
 import type { Observable } from "rxjs";
 import { EventStore, mapEventsToStore } from "applesauce-core";

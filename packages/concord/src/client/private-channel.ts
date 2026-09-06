@@ -7,7 +7,7 @@
 // follow channel Rekeys — scoped to a single channel. It carries no fold logic:
 // consumers read its `store` with the standard timeline/model API.
 
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import { BehaviorSubject, Observable, Subject, Subscription, combineLatest, shareReplay, switchMap } from "rxjs";
 import { hexToBytes } from "@noble/hashes/utils.js";
 import type { EventStore } from "applesauce-core";

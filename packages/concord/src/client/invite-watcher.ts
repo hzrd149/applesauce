@@ -6,7 +6,7 @@
 // fetch/live-subscribe gift wraps, optionally decrypt them, and keep local
 // dismissal state so apps can hide invites without deleting relay data.
 
-import type { Debugger } from "debug";
+import type { Debugger } from "applesauce-core";
 import {
   BehaviorSubject,
   Observable,
