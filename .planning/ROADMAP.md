@@ -464,7 +464,7 @@ Plans:
 | 25.1 Concord Media Epoch-Key Decryption Audit | v7.0.0 | 0/TBD | Not started | - |
 | 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 7/7 | Complete | 2026-09-06 |
 | 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 3/3 | Complete | 2026-09-06 |
-| 25.4 Replace the `debug` Dependency | v7.0.0 | 0/TBD | Not started | - |
+| 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
 | 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
 
 **Totals:** 19 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 15 phases (Phases 16–26, including 25.1–25.4); release coordination remains last.

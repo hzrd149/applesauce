@@ -5,10 +5,10 @@ milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
 status: planning
-stopped_at: Completed 25.4-05-PLAN.md
-last_updated: "2026-09-06T21:23:45.050Z"
+stopped_at: Phase 25.4 re-verified after code-review fixes
+last_updated: "2026-09-06T21:50:53.000Z"
 last_activity: 2026-09-06
-last_activity_desc: Phase 25.4 complete, transitioned to Phase 26
+last_activity_desc: Phase 25.4 re-verified after code-review fixes; Phase 26 ready to plan
 progress:
   total_phases: 15
   completed_phases: 14
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 25.4 — Replace the `debug` Dependency
+**Current focus:** Phase 26 — Release Coordination — v7.0.0
 
 ## Current Position
 
 Phase: 26 — Release Coordination — v7.0.0
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-06 — Phase 25.4 complete, transitioned to Phase 26
+Last activity: 2026-09-06 — Phase 25.4 re-verified after code-review fixes; Phase 26 ready to plan
 
 Progress: [██████████] 72/72 plans ([██████████] 100%)
 
