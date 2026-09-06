@@ -1621,13 +1621,10 @@ export class ConcordCommunity {
       });
       const coverage = evaluateCommonRelayCoverage(publications, protocolRelays);
       if (!coverage.accepted) throw new RefoundingPublicationError(rotationId, coverage.evidence);
-      pending = {
-        ...pending,
-        stage: "mandatory-confirmed",
+      pending = await this.pendingRefounding.updateStage(pending, "mandatory-confirmed", {
         mandatoryEvidence: coverage.evidence,
         commonRelays: coverage.commonRelays,
-      };
-      await this.pendingRefounding.save(pending);
+      });
     }
 
     this.publishLog("refounding publish targets=%d protocol=%d", transportRelays.length, protocolRelays.length);
@@ -1640,8 +1637,7 @@ export class ConcordCommunity {
         this.rekeyHandled.set(plan.newEpoch, hexToBytes(plan.next.material.community_root));
         await this.adoptRefounding(plan.next);
       }
-      pending = { ...pending, stage: "adopted" };
-      await this.pendingRefounding.save(pending);
+      pending = await this.pendingRefounding.updateStage(pending, "adopted");
     }
 
     const snapshotArtifacts = plan.snapshotWraps.map((wrap) => ({
@@ -1649,6 +1645,9 @@ export class ConcordCommunity {
       wrap,
     }));
     if (pending.stage === "adopted") {
+      // Record intent before the best-effort network call. A crash after publish
+      // must not replay a snapshot whose success is not correctness-critical.
+      pending = await this.pendingRefounding.updateStage(pending, "snapshot-attempted");
       const snapshotSettled = await Promise.allSettled(
         snapshotArtifacts.map(({ wrap }) => this.pool.publish(transportRelays, wrap, this.streamPublishOptions(wrap))),
       );
@@ -1670,7 +1669,7 @@ export class ConcordCommunity {
               causes: snapshotCoverage.evidence.flatMap((row) => row.causes),
             },
           ];
-      pending = { ...pending, stage: "snapshot-attempted", warnings };
+      pending = { ...pending, warnings };
       await this.pendingRefounding.save(pending);
     }
     await this.pendingRefounding.remove();

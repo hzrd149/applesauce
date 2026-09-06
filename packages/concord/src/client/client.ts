@@ -872,13 +872,13 @@ export class ConcordClient {
       // exception) has a handler — see ConcordCommunityOptions.userOnAuthRequired.
       userOnAuthRequired: this.userOnAuthRequired,
       logger: this.log.extend("community").extend(material.community_id.slice(0, 8)),
-      onMaterialChange: (changed) => {
+      onMaterialChange: async (changed) => {
         // Fold the engine's new snapshot into the document in place, so the mirror we persist and
         // the list we publish always carry what the engine actually holds. `refreshCommunity`
         // bypasses the epoch-keyed `freshest` merge, so a same-epoch change (a minted channel key)
         // can't lose the canonical-bytes tiebreak against the snapshot it replaces.
         this.list = refreshCommunity(changed)(this.list, this.tombstones).communities;
-        void this.saveMirror();
+        await this.saveMirror();
         // A sync-time change (epoch catch-up). Never publishes on its own — it flags the list
         // dirty; the opt-in debounced auto-save flushes it, or the app publishes manually.
         this.markCommunityListDirty();

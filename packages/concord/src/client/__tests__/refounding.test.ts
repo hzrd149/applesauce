@@ -180,13 +180,24 @@ describe("PendingRefoundingStore", () => {
     const storage = memoryStorage();
     const pending = new PendingRefoundingStore(storage, signer, pubkey, "community-a");
     const record = {
-      version: 1, communityId: "community-a", priorEpoch: 1, rotationId: "root-wrap", stage: "prepared",
+      version: 1,
+      communityId: "community-a",
+      priorEpoch: 1,
+      rotationId: "root-wrap",
+      stage: "prepared",
       plan: {
-        rekeyWraps: [{ id: "root-wrap" }], channelRekeyWraps: [], compactionWraps: [], snapshotWraps: [],
-        next: { material: { community_id: "community-a", root_epoch: 2 } }, newEpoch: 2,
-        rekeyKey: {}, channelRekeyKeys: [],
+        rekeyWraps: [{ id: "root-wrap" }],
+        channelRekeyWraps: [],
+        compactionWraps: [],
+        snapshotWraps: [],
+        next: { material: { community_id: "community-a", root_epoch: 2 } },
+        newEpoch: 2,
+        rekeyKey: {},
+        channelRekeyKeys: [],
       },
-      mandatoryEvidence: [], commonRelays: [], warnings: [],
+      mandatoryEvidence: [],
+      commonRelays: [],
+      warnings: [],
     } as never;
     await pending.save(record);
     await pending.updateStage(record, "mandatory-confirmed");

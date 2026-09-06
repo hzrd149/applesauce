@@ -6,7 +6,7 @@ import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import type { ISigner } from "applesauce-signers";
 
 import type { MediaAttachment } from "../helpers/imeta.js";
-import type { PendingRefoundingRecord } from "./refounding.js";
+import type { PendingRefoundingRecord, PendingRefoundingStage } from "./refounding.js";
 
 /** Progress for a batch of attachments sent with a chat message. */
 export interface ConcordUploadProgress {
@@ -140,6 +140,16 @@ export class PendingRefoundingStore {
     if (!this.signer.nip44) throw new Error("pending refounding protection requires NIP-44");
     const ciphertext = await this.signer.nip44.encrypt(this.pubkey, encodePending(record));
     await this.storage.setItem(this.key, ciphertext);
+  }
+
+  async updateStage(
+    record: PendingRefoundingRecord,
+    stage: PendingRefoundingStage,
+    updates: Partial<Pick<PendingRefoundingRecord, "mandatoryEvidence" | "commonRelays" | "warnings">> = {},
+  ): Promise<PendingRefoundingRecord> {
+    const next = { ...record, ...updates, stage };
+    await this.save(next);
+    return next;
   }
 
   remove(): Promise<void> {
