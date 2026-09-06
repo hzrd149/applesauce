@@ -340,13 +340,15 @@ Plans:
 ### Phase 25.3: Concord Invite-Bundle Rule-Table Hardening (INSERTED)
 
 **Goal:** Strengthen Concord's invite-bundle rule tables and projections so field types and optional-field carry-forward are enforced structurally, and corrupt self-authored invite data fails safely.
-**Requirements**: TBD
+**Requirements**: CONC-F1
 **Depends on:** Phase 25.2
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 25.3 to break down)
+- [ ] 25.3-01-PLAN.md — Structurally bind all bundle rule tables to field types, optionality, and closed projection
+- [ ] 25.3-02-PLAN.md — Add closed persisted-entry validation while preserving the open Invite List document
+- [ ] 25.3-03-PLAN.md — Quarantine corrupt entries with typed diagnostics, prior-state retention, and explicit-write recovery
 
 ### Phase 25.2: Concord Rotation Robustness Residuals (INSERTED)
 
