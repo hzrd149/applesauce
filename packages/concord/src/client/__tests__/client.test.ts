@@ -666,6 +666,51 @@ describe("ConcordClient community list (DI, no network)", () => {
     client.stop();
   });
 
+  it("quarantines a corrupt persisted replacement without erasing the prior invite or republishing", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const token = newInviteToken();
+    const linkSk = generateSecretKey();
+    const entry = {
+      token: bytesToHex(token),
+      signer_sk: bytesToHex(linkSk),
+      community_id: "ab".repeat(32),
+      url: buildInviteLink("https://app.example", getPublicKey(linkSk), token, ["wss://fake"]),
+      created_at: 1,
+    };
+    const eventFor = async (entries: unknown[], created_at: number) =>
+      signer.signEvent({
+        kind: INVITE_LIST_KIND,
+        tags: [],
+        created_at,
+        content: await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries, tombstones: [] })),
+      });
+    const store = new EventStore();
+    store.add(await eventFor([entry], 1));
+    const { pool, published } = fakePool();
+    const client = new ConcordClient({ signer, pool, eventStore: store, storage: memoryStorage(), autoUnlock: true });
+    const diagnostics: unknown[] = [];
+    client.invites.diagnostics$.subscribe((diagnostic) => diagnostics.push(diagnostic));
+
+    await client.start();
+    await settle();
+    expect(client.invites.entries$.value.map((invite) => invite.token)).toEqual([entry.token]);
+    published.length = 0;
+
+    store.add(await eventFor([{ ...entry, signer_sk: "not-a-secret" }], 2));
+    await settle();
+
+    expect(client.invites.entries$.value[0]?.signerSk).toBe(entry.signer_sk);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({ status: "quarantined", field: "signer_sk", reason: "invalid" }),
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain(entry.token);
+    expect(JSON.stringify(diagnostics)).not.toContain("not-a-secret");
+    expect(client.invites.dirty$.value).toBe(false);
+    expect(inviteListPublishes(published)).toEqual([]);
+    client.stop();
+  });
+
   it("client.invites.revoke tombstones the bundle, registry, and invite list", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool, published } = fakePool();
