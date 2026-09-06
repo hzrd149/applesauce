@@ -173,4 +173,29 @@ describe("PendingRefoundingStore", () => {
     } as never);
     await expect(second.load()).rejects.toThrow("community");
   });
+
+  it("durably records each completion stage before cleanup", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const storage = memoryStorage();
+    const pending = new PendingRefoundingStore(storage, signer, pubkey, "community-a");
+    const record = {
+      version: 1, communityId: "community-a", priorEpoch: 1, rotationId: "root-wrap", stage: "prepared",
+      plan: {
+        rekeyWraps: [{ id: "root-wrap" }], channelRekeyWraps: [], compactionWraps: [], snapshotWraps: [],
+        next: { material: { community_id: "community-a", root_epoch: 2 } }, newEpoch: 2,
+        rekeyKey: {}, channelRekeyKeys: [],
+      },
+      mandatoryEvidence: [], commonRelays: [], warnings: [],
+    } as never;
+    await pending.save(record);
+    await pending.updateStage(record, "mandatory-confirmed");
+    expect((await pending.load())?.stage).toBe("mandatory-confirmed");
+    await pending.updateStage((await pending.load())!, "adopted");
+    expect((await pending.load())?.stage).toBe("adopted");
+    await pending.updateStage((await pending.load())!, "snapshot-attempted");
+    expect((await pending.load())?.stage).toBe("snapshot-attempted");
+    await pending.remove();
+    expect(await pending.load()).toBeNull();
+  });
 });
