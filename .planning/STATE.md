@@ -4,17 +4,17 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 25.2
 current_phase_name: Concord Rotation Robustness Residuals
-status: planning
-stopped_at: Phase 25.2 context gathered
-last_updated: "2026-09-06T17:43:28.499Z"
+status: executing
+stopped_at: Completed 25.2-07-PLAN.md
+last_updated: "2026-09-06T19:42:40.707Z"
 last_activity: 2026-09-04
 last_activity_desc: Phase 25.1 complete, transitioned to Phase 25.2
 progress:
   total_phases: 15
-  completed_phases: 11
-  total_plans: 65
-  completed_plans: 65
-  percent: 73
+  completed_phases: 12
+  total_plans: 72
+  completed_plans: 72
+  percent: 80
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 25.2 — Concord Rotation Robustness Residuals
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-04 — Phase 25.1 complete, transitioned to Phase 25.2
+Plan: 7 of 7 in current phase
+Status: Phase execution complete; ready for verification
+Last activity: 2026-09-06 — Completed 25.2-07 Refounding recovery integration coverage
 
-Progress: [████████████████████] 62/62 plans ([██████████] 100%)
+Progress: [██████████] 72/72 plans (100%)
 
 ## Performance Metrics
 
@@ -164,6 +164,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.1 P01 | 3min | 3 tasks | 5 files |
 | Phase 25.1 P02 | 4min | 2 tasks | 2 files |
 | Phase 25.1 P03 | 4min | 1 tasks | 2 files |
+| Phase 25.2 P07 | 8min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -381,6 +382,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Native AES-GCM wrong-key rejection is the non-vacuous oracle for both community and private-channel rotation paths.
 - [Phase ?]: Attachment AES-GCM nonces must be exactly 16 bytes encoded as 32 hexadecimal characters before encryption metadata is exposed.
 - [Phase ?]: Malformed nonce lengths reuse the existing value-free InvalidMediaAttachmentEncryptionError while retaining the attachment and raw imeta.
+- [Phase ?]: 25.2-07: Inspect protected Refounding lifecycle state only through PendingRefoundingStore while exercising recovery through the public refound() request path.
+- [Phase ?]: 25.2-07: Arm persistence and snapshot failure injection only after fixture seeding so each oracle isolates its intended lifecycle boundary.
 
 ### Pending Todos
 
@@ -500,9 +503,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T17:43:27.928Z
-Stopped at: Phase 25.2 context gathered
-Resume file: .planning/phases/25.2-concord-rotation-robustness-residuals/25.2-CONTEXT.md
+Last session: 2026-09-06T19:42:40.679Z
+Stopped at: Completed 25.2-07-PLAN.md
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

@@ -79,7 +79,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions (completed 2026-09-02)
 - [x] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work (completed 2026-09-03)
 - [x] **Phase 25.1: Concord Media Epoch-Key Decryption Audit** - Verify historical media uses epoch-correct key material across rotations (completed 2026-09-04)
-- [ ] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks
+- [x] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks (completed 2026-09-06)
 - [ ] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data
 - [ ] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite
 - [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
@@ -353,31 +353,31 @@ Plans:
 **Goal:** Resolve Concord's remaining rotation robustness risks around multi-chunk relay coverage, live convergence, partial publication, swallowed errors, and rotation citation pinning.
 **Requirements**: CONC-F2
 **Depends on:** Phase 25.1
-**Plans:** 7 plans
+**Plans:** 7/7 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 25.2-01-PLAN.md — Common-quorum publication contract and typed public outcomes
-- [ ] 25.2-02-PLAN.md — Shared candidate classification and exact authority citations
+- [x] 25.2-01-PLAN.md — Common-quorum publication contract and typed public outcomes
+- [x] 25.2-02-PLAN.md — Shared candidate classification and exact authority citations
 
 **Wave 2** *(blocked on publication contracts)*
 
-- [ ] 25.2-03-PLAN.md — Protected durable Refounding resume
+- [x] 25.2-03-PLAN.md — Protected durable Refounding resume
 
 **Wave 3** *(blocked on classification and durable resume)*
 
-- [ ] 25.2-04-PLAN.md — Live root/channel convergence coordinator and targeted synchronization
+- [x] 25.2-04-PLAN.md — Live root/channel convergence coordinator and targeted synchronization
 
 **Wave 4** *(blocked on durable resume and live coordination)*
 
-- [ ] 25.2-05-PLAN.md — Atomic staged transitions and complete acceptance matrix
+- [x] 25.2-05-PLAN.md — Atomic staged transitions and complete acceptance matrix
 
 **Wave 5** *(blocked on final implementation acceptance)*
 
-- [ ] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
-- [ ] 25.2-07-PLAN.md — Crash-safe Refounding resume and cleanup-boundary integration coverage
+- [x] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
+- [x] 25.2-07-PLAN.md — Crash-safe Refounding resume and cleanup-boundary integration coverage
 
 ### Phase 25.1: Concord Media Epoch-Key Decryption Audit (INSERTED)
 
@@ -448,7 +448,7 @@ Plans:
 | 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
 | 25.1 Concord Media Epoch-Key Decryption Audit | v7.0.0 | 0/TBD | Not started | - |
-| 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 0/TBD | Not started | - |
+| 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 7/7 | Complete | 2026-09-06 |
 | 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 0/TBD | Not started | - |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 0/TBD | Not started | - |
 | 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
