@@ -450,6 +450,25 @@ it("an unknown attacker key injected at every nested position is absent from the
   expect(JSON.stringify(result)).not.toContain(ATTACKER_KEY);
 });
 
+it("preserves an absent held-key optional while closing the nested projection", () => {
+  const bundle = baselineBundle();
+  const held = { epoch: 0, key: "44".repeat(32), injected: "must-not-survive" };
+  const result = validateInviteBundle({ ...bundle, held_roots: [held] } as unknown as InviteBundle);
+
+  expect(result?.held_roots).toHaveLength(1);
+  expect(Object.prototype.hasOwnProperty.call(result?.held_roots?.[0], "refounder")).toBe(false);
+  expect(Object.prototype.hasOwnProperty.call(result?.held_roots?.[0], "injected")).toBe(false);
+});
+
+it("binds the held-key refounder rule to its declared string value family", () => {
+  const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
+  const source = readFileSync(sourcePath, "utf8").replace(/\s+/g, " ");
+
+  expect(source).toContain("type RuleFor<Value>");
+  expect(source).toContain("[K in keyof Required<T>]: RuleFor<T[K]>");
+  expect(source).toMatch(/HELD_KEY_FIELD_RULES\s*=\s*\{[^}]*refounder:\s*\{\s*kind:\s*"hex-key"/);
+});
+
 it("every exported *_FIELD_RULES table in invite-bundle.ts is annotated ExhaustiveBundleRules<> over a subject derived from InviteBundle", () => {
   const sourcePath = fileURLToPath(new URL("../invite-bundle.ts", import.meta.url));
   const source = readFileSync(sourcePath, "utf8");
