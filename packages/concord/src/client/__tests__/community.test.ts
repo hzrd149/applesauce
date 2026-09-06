@@ -1147,6 +1147,114 @@ describe("ConcordCommunity (DI, no network)", () => {
     second.dispose();
   });
 
+  it("retains mandatory-confirmed Refounding state when adoption persistence fails", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = ["wss://a", "wss://b", "wss://c"];
+    const storage = memoryStorage();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    (pool as unknown as { publish: unknown }).publish = async (targets: string[], event: NostrEvent) => {
+      published.push(structuredClone(event));
+      return okAll(targets);
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const cause = new Error("material persistence failed");
+    let rejectPersistence = false;
+    const first = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      storage,
+      eventStore: new EventStore(),
+      relays,
+      onMaterialChange: () => (rejectPersistence ? Promise.reject(cause) : undefined),
+    });
+    await first.start();
+    for (const rumor of genesis.controlRumors)
+      await first.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await first.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    published.length = 0;
+    rejectPersistence = true;
+    await expect(first.refound({ keep: [pubkey] })).rejects.toBe(cause);
+    const pendingStore = new PendingRefoundingStore(storage, signer, pubkey, genesis.material.community_id);
+    const retained = await pendingStore.load();
+    expect(retained?.stage).toBe("mandatory-confirmed");
+    expect(first.material.root_epoch).toBe(genesis.material.root_epoch);
+    expect(retained?.plan.snapshotWraps.some((event) => published.some(({ id }) => id === event.id))).toBe(false);
+    first.dispose();
+
+    const second = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      storage,
+      eventStore: new EventStore(),
+      relays,
+    });
+    const resumed = await second.refound({ keep: [] });
+    expect(resumed.rotationId).toBe(retained?.rotationId);
+    expect(second.material.root_epoch).toBe(genesis.material.root_epoch + 1);
+    expect(await pendingStore.load()).toBeNull();
+    second.dispose();
+  });
+
+  it("cleans pending Refounding state after one failed best-effort snapshot attempt", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const relays = ["wss://a", "wss://b", "wss://c"];
+    const storage = memoryStorage();
+    const pool = fakePool();
+    const published: NostrEvent[] = [];
+    let adopted = false;
+    let observeAdoption = false;
+    let snapshotIds = new Set<string>();
+    (pool as unknown as { publish: unknown }).publish = async (targets: string[], event: NostrEvent) => {
+      published.push(structuredClone(event));
+      if (adopted) throw new Error("snapshot transport failed");
+      return okAll(targets);
+    };
+    const genesis = await createCommunity({ ownerPubkey: pubkey, name: "Test", relays });
+    const community = new ConcordCommunity({
+      material: genesis.material,
+      signer,
+      pubkey,
+      pool,
+      storage,
+      eventStore: new EventStore(),
+      relays,
+      onMaterialChange: async () => {
+        if (!observeAdoption) return;
+        const pending = await new PendingRefoundingStore(storage, signer, pubkey, genesis.material.community_id).load();
+        snapshotIds = new Set(pending?.plan.snapshotWraps.map(({ id }) => id));
+        adopted = true;
+      },
+    });
+    await community.start();
+    for (const rumor of genesis.controlRumors)
+      await community.publishToPlane({ plane: "control" }, rumor, { plaintext: true });
+    for (const rumor of genesis.guestbookRumors) await community.publishToPlane({ plane: "guestbook" }, rumor, {});
+    await settle();
+
+    published.length = 0;
+    observeAdoption = true;
+    const result = await community.refound({ keep: [pubkey] });
+    const pendingStore = new PendingRefoundingStore(storage, signer, pubkey, genesis.material.community_id);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ kind: "guestbook-snapshot-publication", rotationId: result.rotationId }),
+    ]);
+    expect(result.warnings[0].causes).toEqual([expect.any(Error)]);
+    expect(community.material.root_epoch).toBe(genesis.material.root_epoch + 1);
+    expect(snapshotIds.size).toBeGreaterThan(0);
+    expect(published.filter(({ id }) => snapshotIds.has(id))).toHaveLength(snapshotIds.size);
+    expect(await pendingStore.load()).toBeNull();
+    community.dispose();
+  });
+
   it("honors the NEW epoch's guestbook snapshot after a Refounding, not the prior epoch's", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
