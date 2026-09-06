@@ -13,14 +13,14 @@ import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
 // D-16 oracle: this file drives a real Relay against the mock WebSocket server with real timers
-// (Phase 13's D-20 convention) and captures the real `debug`-package output the `:auth` namespace
+// (Phase 13's D-20 convention) and captures the real logger output the `:auth` namespace
 // emits — never a change detector against the source's own strings. Every expectation below is
 // derived from the NIP-42 exchange the test itself scripts, or from a decision recorded in
 // 14-CONTEXT.md, per this plan's prohibitions.
 //
 // The setup mirrors relay.test.ts's own conventions verbatim (WS mock server + real Relay +
 // fetchInformationDocument stub + afterEach cleanup) rather than inventing a second one, and reuses
-// the 14-03 debug-capture harness (withDebugCapture/messagesOf) rather than writing a second capture
+// the 14-03 capture harness (withDebugCapture/messagesOf) rather than writing a second capture
 // mechanism.
 
 let server: WS;
@@ -322,8 +322,8 @@ describe("auth lifecycle logging (14-06)", () => {
   });
 
   // CR-01: the T-14-01/D-09 oracle above only exercised "x".repeat(...), which bounds length but says
-  // nothing about `debug`'s own printf-style %-replacement pass or a raw newline in the value -- exactly
-  // why neither vector was caught. These two prove both against real captured `debug` output from a live
+  // nothing about the logger's own printf-style %-replacement pass or a raw newline in the value -- exactly
+  // why neither vector was caught. These two prove both against real captured output from a live
   // Relay, not just against the formatter in isolation (helpers/__tests__/auth-log.test.ts covers that).
 
   it("CR-01: a challenge containing debug format specifiers survives verbatim in the captured trace", async () => {
@@ -343,8 +343,8 @@ describe("auth lifecycle logging (14-06)", () => {
       const challengeLine = captured.find((l) => l.includes("auth challenge"));
 
       expect(challengeLine).toBeDefined();
-      // Verified against the real debug@4.4.3 in this workspace: an unneutralized challenge collapses
-      // %o/%O into the literal string "undefined" (real createDebug.formatters entries consuming a
+      // An unneutralized challenge can collapse %o/%O into the literal string "undefined" when the
+      // formatter consumes a
       // non-existent argument), silently destroying the value an operator is reading the line to see.
       expect(challengeLine).toContain(hostileChallenge);
       expect(challengeLine).not.toContain("undefined");

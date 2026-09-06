@@ -1,4 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
+import { enableLoggerNamespaces, getLoggerNamespaces, getLoggerSink, setLoggerSink } from "applesauce-core";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { defer, finalize, firstValueFrom, mergeMap, NEVER, of, Subject, throwError, timer } from "rxjs";
 import { filter, repeat, retry, take } from "rxjs/operators";
@@ -3636,7 +3637,7 @@ describe("message$", () => {
 });
 
 describe(":auth sub-namespace (14-04)", () => {
-  // Every test runs inside withDebugCapture so the global debug enable-state and output sink
+  // Every test runs inside withDebugCapture so the global logger enable-state and output sink
   // are restored even if an assertion throws — a test that passes alone but not in the full
   // file is the leaked-enable-state signature this convention prevents (RESEARCH Pitfall 4).
 
@@ -3651,6 +3652,29 @@ describe(":auth sub-namespace (14-04)", () => {
 
       expect(lines().some((l) => l.includes("challenge-broad-glob"))).toBe(true);
     });
+  });
+
+  it("DEBUG-01: capture restores prior namespace patterns and sink after a rejected body", async () => {
+    const originalPatterns = getLoggerNamespaces();
+    const originalSink = getLoggerSink();
+    const priorSink = vi.fn();
+
+    enableLoggerNamespaces("preexisting:*");
+    setLoggerSink(priorSink);
+
+    try {
+      await expect(
+        withDebugCapture("applesauce:Relay:*", async () => {
+          throw new Error("capture body failed");
+        }),
+      ).rejects.toThrow("capture body failed");
+
+      expect(getLoggerNamespaces()).toBe("preexisting:*");
+      expect(getLoggerSink()).toBe(priorSink);
+    } finally {
+      enableLoggerNamespaces(originalPatterns);
+      setLoggerSink(originalSink);
+    }
   });
 
   it("D-13: the per-relay glob no longer sweeps up that relay's auth lines (the cost of auth-first ordering)", async () => {
