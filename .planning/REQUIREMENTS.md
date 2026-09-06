@@ -95,7 +95,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### Observability
 
-- [ ] **DEBUG-01**: Replace the `debug` dependency (999.17) while preserving the workspace's used callable logger, namespace extension/matching, printf output, capture harnesses, and public logger type surface
+- [x] **DEBUG-01**: Replace the `debug` dependency (999.17) while preserving the workspace's used callable logger, namespace extension/matching, printf output, capture harnesses, and public logger type surface
 
 ## Future Requirements
 
@@ -180,7 +180,7 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | ECO-01 | Phase 16 | Complete |
 | ECO-02 | Phase 25 | Complete |
 | ECO-03 | Phase 25 | Complete |
-| DEBUG-01 | Phase 25.4 | Pending |
+| DEBUG-01 | Phase 25.4 | Complete |
 
 **Coverage:**
 

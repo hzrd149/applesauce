@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25.4
 current_phase_name: Replace the debug Dependency
 status: executing
-stopped_at: Completed 25.3-03-PLAN.md
-last_updated: "2026-09-06T20:44:40.133Z"
+stopped_at: Completed 25.4-01-PLAN.md
+last_updated: "2026-09-06T20:52:41.201Z"
 last_activity: 2026-09-06
 last_activity_desc: Phase 25.3 complete, transitioned to Phase 25.4
 progress:
   total_phases: 15
   completed_phases: 13
   total_plans: 80
-  completed_plans: 75
+  completed_plans: 76
   percent: 87
 ---
 
@@ -33,7 +33,7 @@ Plan: Not started
 Status: Ready to execute
 Last activity: 2026-09-06 — Phase 25.3 complete, transitioned to Phase 25.4
 
-Progress: [██████████] 72/72 plans ([██████████] 100%)
+Progress: [██████████] 72/72 plans ([██████████] 95%)
 
 ## Performance Metrics
 
@@ -168,6 +168,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.3 P01 | 9min | 2 tasks | 2 files |
 | Phase 25.3 P02 | 7min | 2 tasks | 2 files |
 | Phase 25.3 P03 | 9min | 2 tasks | 3 files |
+| Phase 25.4 P01 | 6min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -390,6 +391,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 25.3-01: Select invite rule families from the present field value type and constrain optional omission separately.
 - [Phase ?]: 25.3-02: Keep the Invite List document open while validating and rebuilding each trusted entry from an allowlist.
 - [Phase ?]: 25.3-03: Keep corrupt Invite List quarantine read-only and emit only source/index plus closed field/reason/status diagnostics.
+- [Phase ?]: Keep logger namespace state global and evaluate enabled dynamically so existing loggers respond to late controls.
+- [Phase ?]: Format only the first logger argument as a template so substituted percent and newline values remain data.
 
 ### Pending Todos
 
@@ -509,8 +512,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T20:36:07.973Z
-Stopped at: Completed 25.3-03-PLAN.md
+Last session: 2026-09-06T20:52:41.174Z
+Stopped at: Completed 25.4-01-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

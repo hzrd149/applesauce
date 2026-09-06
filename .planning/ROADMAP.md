@@ -331,13 +331,13 @@ Plans:
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
 **Requirements**: DEBUG-01
 **Depends on:** Phase 25.3
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 25.4-01-PLAN.md — Core logger compatibility tracer and external dependency removal
+- [x] 25.4-01-PLAN.md — Core logger compatibility tracer and external dependency removal
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
