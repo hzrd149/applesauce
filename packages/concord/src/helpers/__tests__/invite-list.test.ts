@@ -14,7 +14,9 @@ import {
   mergeTombstones,
   parseInviteList,
   unlockInviteList,
+  validateInviteListInvite,
 } from "../invite-list.js";
+import { buildInviteLink } from "../invite-bundle.js";
 import { InviteListFactory } from "../../factories/invite-list.js";
 import type { InviteListInvite } from "../../types.js";
 import { CORD_ROUND_TRIP_SENTENCE } from "../../__tests__/cord-wire-fixtures.js";
@@ -57,6 +59,34 @@ describe("invite-list CRDT", () => {
     tombstones = mergeTombstones(tombstones, [{ token: "x", community_id: "c" }]);
     tombstones = mergeTombstones(tombstones, [{ token: "y", community_id: "c" }]);
     expect(tombstones.map((t) => t.token)).toEqual(["x", "y"]);
+  });
+});
+
+describe("invite-list entry validation", () => {
+  const validEntry = (): InviteListInvite => ({
+    token: "11".repeat(16),
+    signer_sk: "22".repeat(32),
+    community_id: "33".repeat(32),
+    url: buildInviteLink("https://example.com", "44".repeat(32), new Uint8Array(16).fill(0x11), [
+      "wss://relay.example.com",
+    ]),
+    created_at: 1_000,
+  });
+
+  it("returns a fresh closed projection while preserving absent optionals", () => {
+    const raw = { ...validEntry(), injected: "drop-me" };
+    const result = validateInviteListInvite(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).not.toBe(raw);
+    expect(Object.prototype.hasOwnProperty.call(result.value, "injected")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result.value, "label")).toBe(false);
+  });
+
+  it("returns a typed secret-free failure for malformed signer material", () => {
+    const result = validateInviteListInvite({ ...validEntry(), signer_sk: "not-a-secret-key" });
+    expect(result).toEqual({ ok: false, field: "signer_sk", reason: "invalid" });
+    expect(JSON.stringify(result)).not.toContain("not-a-secret-key");
   });
 });
 
