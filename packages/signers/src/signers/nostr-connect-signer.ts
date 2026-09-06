@@ -1,9 +1,8 @@
-import { logger } from "applesauce-core";
+import { logger, type Debugger } from "applesauce-core";
 import { getHiddenContent, isHexKey, unixNow } from "applesauce-core/helpers";
 import { bytesToHex, EventTemplate, hexToBytes, NostrEvent, kinds, verifyEvent } from "applesauce-core/helpers/event";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import { Deferred, createDefer } from "applesauce-core/promise";
-import type { Debugger } from "debug";
 import {
   ISigner,
   NostrConnectionMethodsOptions,

@@ -53,9 +53,7 @@
   "dependencies": {
     "@noble/secp256k1": "^3.1.0",
     "@scure/base": "^2.2.0",
-    "@types/debug": "^4.1.12",
     "applesauce-core": "^6.2.0",
-    "debug": "^4.4.0",
     "nanoid": "^5.0.9",
     "rxjs": "^7.8.2"
   },

@@ -1,4 +1,4 @@
-import { logger } from "applesauce-core";
+import { logger, type Debugger } from "applesauce-core";
 import {
   EncryptionMethods,
   getEncryptedContentEncryptionMethods,
@@ -9,7 +9,6 @@ import {
 } from "applesauce-core/helpers";
 import { bytesToHex, EventTemplate, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
-import type { Debugger } from "debug";
 import { nanoid } from "nanoid";
 import { filter, from, repeat, retry, Subscription } from "rxjs";
 import { isNIP04 } from "../helpers/encryption.js";

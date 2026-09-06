@@ -1,6 +1,6 @@
 /// <reference types="@types/dom-serial" />
 import { Point } from "@noble/secp256k1";
-import { logger } from "applesauce-core";
+import { logger, type Debugger } from "applesauce-core";
 import {
   bytesToHex,
   EventTemplate,
@@ -10,7 +10,6 @@ import {
   verifyEvent,
 } from "applesauce-core/helpers/event";
 import { createDefer, Deferred } from "applesauce-core/promise";
-import type { Debugger } from "debug";
 import { ISigner } from "../interop.js";
 
 type Callback = () => void;
