@@ -5,15 +5,15 @@ milestone_name: relay-method-layering
 current_phase: 25.4
 current_phase_name: Replace the debug Dependency
 status: executing
-stopped_at: Completed 25.4-02-PLAN.md
-last_updated: "2026-09-06T20:57:31.055Z"
+stopped_at: Completed 25.4-03-PLAN.md
+last_updated: "2026-09-06T21:03:16.491Z"
 last_activity: 2026-09-06
-last_activity_desc: Phase 25.3 complete, transitioned to Phase 25.4
+last_activity_desc: Completed 25.4-02 Relay logger migration
 progress:
   total_phases: 15
   completed_phases: 13
   total_plans: 80
-  completed_plans: 77
+  completed_plans: 78
   percent: 87
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 25.4 — Replace the debug Dependency
-Plan: 2 of 5
-Status: Executing
+Plan: 3 of 5
+Status: Ready to execute
 Last activity: 2026-09-06 — Completed 25.4-02 Relay logger migration
 
-Progress: [██████████] 72/72 plans ([██████████] 96%)
+Progress: [██████████] 72/72 plans ([██████████] 98%)
 
 ## Performance Metrics
 
@@ -170,6 +170,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.3 P03 | 9min | 2 tasks | 3 files |
 | Phase 25.4 P01 | 6min | 2 tasks | 4 files |
 | Phase 25.4 P02 | 4min | 2 tasks | 4 files |
+| Phase 25.4 P03 | 4min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -396,6 +397,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Format only the first logger argument as a template so substituted percent and newline values remain data.
 - [Phase ?]: 25.4-02: Restore exact prior logger namespace patterns and sink after every Relay capture, including rejected callback paths.
 - [Phase ?]: 25.4-02: Preserve Relay's rendered-call capture API while collecting already-rendered core sink messages.
+- [Phase ?]: 25.4-03: Preserve raw callable-spy assertions while using core controls only for real module-level output capture.
+- [Phase ?]: 25.4-03: Restore the exact prior namespace pattern and sink after every module-level logger capture.
 
 ### Pending Todos
 
@@ -515,8 +518,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T20:57:31.029Z
-Stopped at: Completed 25.4-02-PLAN.md
+Last session: 2026-09-06T21:03:16.465Z
+Stopped at: Completed 25.4-03-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

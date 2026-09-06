@@ -331,7 +331,7 @@ Plans:
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
 **Requirements**: DEBUG-01
 **Depends on:** Phase 25.3
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 
@@ -342,7 +342,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 25.4-02-PLAN.md — Relay real-output capture and auth logging migration
-- [ ] 25.4-03-PLAN.md — Concord public logger types and capture migration
+- [x] 25.4-03-PLAN.md — Concord public logger types and capture migration
 - [ ] 25.4-04-PLAN.md — Signers, wallet, and wallet-connect declaration migration
 
 **Wave 3** *(blocked on Wave 2 completion)*
