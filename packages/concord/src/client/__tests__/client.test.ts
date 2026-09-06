@@ -186,6 +186,48 @@ async function decryptInviteList(signer: PrivateKeySigner, event: NostrEvent) {
 }
 
 describe("ConcordClient community list (DI, no network)", () => {
+  it("serializes concurrent community material persistence from the latest list", async () => {
+    const signer = new PrivateKeySigner(generateSecretKey());
+    const pubkey = await signer.getPublicKey();
+    const first = (await createCommunity({ ownerPubkey: pubkey, name: "First", relays: ["wss://fake"] })).material;
+    const second = (await createCommunity({ ownerPubkey: pubkey, name: "Second", relays: ["wss://fake"] })).material;
+    const storage = memoryStorage();
+    const writes: string[] = [];
+    const barriers: Array<() => void> = [];
+    vi.spyOn(storage, "setItem").mockImplementation(async (_key, value) => {
+      writes.push(value);
+      await new Promise<void>((resolve) => barriers.push(resolve));
+    });
+    const client = new ConcordClient({ signer, pool: fakePool().pool, storage });
+    const entries = [first, second].map((material, added_at) => ({
+      community_id: material.community_id,
+      seed: material,
+      current: material,
+      added_at,
+    }));
+    (client as unknown as { list: CommunityListCommunity[] }).list = entries;
+    const persist = (changed: JoinMaterial) =>
+      (client as unknown as { persistMaterialChange(changed: JoinMaterial): Promise<void> }).persistMaterialChange(changed);
+    const firstNext = { ...first, root_epoch: first.root_epoch + 1 };
+    const secondNext = { ...second, root_epoch: second.root_epoch + 1 };
+
+    const firstPending = persist(firstNext);
+    const secondPending = persist(secondNext);
+    await vi.waitFor(() => expect(barriers).toHaveLength(1));
+    barriers.shift()!();
+    await firstPending;
+    await vi.waitFor(() => expect(barriers).toHaveLength(1));
+    barriers.shift()!();
+    await secondPending;
+
+    const durable = JSON.parse(writes.at(-1)!) as { entries: CommunityListCommunity[] };
+    expect(durable.entries.map((entry) => entry.current.root_epoch)).toEqual([
+      firstNext.root_epoch,
+      secondNext.root_epoch,
+    ]);
+    client.dispose();
+  });
+
   it("unregister invite requires publishRequired and never falls back to optimistic publish", async () => {
     const owner = "11".repeat(32);
     const link = "22".repeat(32);

@@ -311,6 +311,8 @@ export class ConcordClient {
    *  copy with a save rebuilt from the local mirror. */
   private signalListHydrated?: () => void;
   private listHydration = new Promise<void>((resolve) => (this.signalListHydrated = resolve));
+  /** Serializes material refreshes so each persistence snapshot starts from the latest committed list. */
+  private communityListMutationTail: Promise<void> = Promise.resolve();
   /** True when the in-memory community list has diverged from the copy we last saved to nostr —
    *  an epoch caught up during sync, or a refounding removal. UI can subscribe to show an
    *  "unpublished changes" indicator, and the opt-in auto-save debounces off it. Set by
@@ -871,25 +873,7 @@ export class ConcordClient {
       // exception) has a handler — see ConcordCommunityOptions.userOnAuthRequired.
       userOnAuthRequired: this.userOnAuthRequired,
       logger: this.log.extend("community").extend(material.community_id.slice(0, 8)),
-      onMaterialChange: async (changed) => {
-        // Fold the engine's new snapshot into the document in place, so the mirror we persist and
-        // the list we publish always carry what the engine actually holds. `refreshCommunity`
-        // bypasses the epoch-keyed `freshest` merge, so a same-epoch change (a minted channel key)
-        // can't lose the canonical-bytes tiebreak against the snapshot it replaces.
-        const staged = refreshCommunity(changed)(this.list, this.tombstones).communities;
-        // Root/channel convergence uses this callback as its persistence
-        // barrier. Persist the proposed document before replacing the settled
-        // in-memory list, and deliberately let storage failures reach the
-        // affected rotation lifecycle.
-        await this.storage.setItem(
-          this.pubkey,
-          JSON.stringify({ ...this.documentExtras, entries: staged, tombstones: this.tombstones }),
-        );
-        this.list = staged;
-        // A sync-time change (epoch catch-up). Never publishes on its own — it flags the list
-        // dirty; the opt-in debounced auto-save flushes it, or the app publishes manually.
-        this.markCommunityListDirty();
-      },
+      onMaterialChange: (changed) => this.persistMaterialChange(changed),
       onRemoved: (removed) => this.handleRemoved(removed),
       onInviteCreated: (invite) => this.invites.record(invite),
       onInviteRevoked: (invite) => this.invites.tombstone(invite),
@@ -903,6 +887,20 @@ export class ConcordClient {
     void community.start();
     this.emitCommunities();
     return community;
+  }
+
+  private persistMaterialChange(changed: JoinMaterial): Promise<void> {
+    const transaction = this.communityListMutationTail.then(async () => {
+      const staged = refreshCommunity(changed)(this.list, this.tombstones).communities;
+      await this.storage.setItem(
+        this.pubkey,
+        JSON.stringify({ ...this.documentExtras, entries: staged, tombstones: this.tombstones }),
+      );
+      this.list = staged;
+      this.markCommunityListDirty();
+    });
+    this.communityListMutationTail = transaction.catch(() => undefined);
+    return transaction;
   }
 
   private removeCommunity(cid: string): void {
