@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 Phase: 26 — Release Coordination — v7.0.0
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-06 — Phase 25.4 re-verified after code-review fixes; Phase 26 ready to plan
+Last activity: 2026-09-07 — Completed quick task 260907-g46: Remove deprecated RelayPool.ignoreOffline flag
 
 Progress: [██████████] 72/72 plans ([██████████] 100%)
 
@@ -440,6 +440,7 @@ None yet.
 | 260804-hmw | Gate verifiedSymbol/EncryptedContentSymbol on source.id === dest.id in copySymbolsToDuplicateEvent (WR-01) | 2026-08-04 | 200d9a85, 4efd074f, 55546e6b | [260804-hmw-gate-verifiedsymbol-and-encryptedcontent](./quick/260804-hmw-gate-verifiedsymbol-and-encryptedcontent/) |
 | 260804-hmw-b | Remove unused EventFactory.kind() method (WR-04) | 2026-08-04 | e829d0a3 | inline (no plan dir) |
 | 260805-ds0 | Clamp setTimeout delays to the 32-bit max in ExpirationManager and WalletConnect.waitForPaid (resolves backlog 999.10) | 2026-08-05 | 187930b9, 3f6f4bd3, 1b6b2976, 594bf1de | [260805-ds0-clamp-expirationmanager-settimeout-delay](./quick/260805-ds0-clamp-expirationmanager-settimeout-delay/) |
+| 260907-g46 | Remove deprecated RelayPool.ignoreOffline flag | 2026-09-07 | 6131d0f0, 43a02481 | [260907-g46-remove-deprecated-relaypool-ignoreofflin](./quick/260907-g46-remove-deprecated-relaypool-ignoreofflin/) |
 
 ### Roadmap Evolution
 
