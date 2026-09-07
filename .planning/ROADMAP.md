@@ -471,6 +471,16 @@ Plans:
 
 ## Backlog
 
+### Phase 999.1: Correctly Handle Delete Event `e` Tags for Replaceable Event Versions (BACKLOG)
+
+**Goal:** Correctly apply delete-event `e` tags when they reference versions of replaceable events.
+**Source:** [ngit issue](https://gitworkshop.dev/hzrd149.com/applesauce/issues/nevent1qqs0a76lfxteytscg4yrdul6a748vvjynmakdaaw69unt9gf3xdfzuq5erla7?unread=fefb5f4997922e1&gitworkshop-reload=2c022d8#fefb5f4997922e1)
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with $gsd-review-backlog when ready)
+
 ## v7 release coordination
 
 **Recorded 2026-08-19.** The relay re-layering cluster below is breaking, so it ships as **applesauce v7.0.0**. Everything is on 6.x today (`applesauce-relay` 6.2.1, most of the suite 6.2.0, `applesauce-react`/`applesauce-sqlite` 6.0.0).
