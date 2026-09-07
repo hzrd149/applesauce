@@ -1,5 +1,5 @@
 import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
-import { addSeenRelay } from "applesauce-core/helpers";
+import { addSeenRelay } from "applesauce-core/helpers/relays";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { ensureHttpURL, normalizeURL } from "applesauce-core/helpers/url";
