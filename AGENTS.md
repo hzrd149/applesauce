@@ -145,6 +145,47 @@ Before completing documentation work:
 3. Ensure navigation is updated in VitePress config
 4. Confirm no duplicate or orphaned files remain
 
+# Writing JSDoc Comments
+
+Everything exported from a package (`packages/*/src`) gets a JSDoc comment — functions, classes, public methods, types, and the fields of options/interface types.
+
+**Prefer a single-line comment.** This is the dominant style in the repo (~1800 single-line vs ~400 block comments), and it keeps the API skimmable:
+
+```ts
+/** Removes an event from the store and updates subscriptions */
+remove(event: string | E): boolean {}
+
+/** A method that takes address pointers and returns an observable of events */
+export type AddressPointersLoader = (pointers: LoadableAddressPointer[]) => Observable<NostrEvent>;
+```
+
+**Keep descriptions to two sentences max.** State what the thing does and what it is for; drop rationale, spec background, and per-branch behavior. Design rationale belongs in an inline comment at the relevant line, not the JSDoc block.
+
+**Start with a third-person verb** (`Returns`, `Creates`, `Gets`, `Adds`, `Checks`, `Parses`) for functions and methods, and with a noun phrase (`A method that...`, `The event kind...`, `Options for...`) for types and fields. No trailing period on single-line comments.
+
+**Expand to a block comment only when a tag is needed:**
+
+- `@param name Description` — no dash between the name and description, and only when the name alone isn't self-explanatory
+- `@returns` — only when the return value isn't obvious from the description
+- `@throws` — always document what makes a function throw
+- `@deprecated use X instead` — always name the replacement
+- `@see <url>` — link the NIP, spec section, or reference implementation the code follows
+- `@note` — for a caveat that isn't part of the description
+- `@example` — reserve for APIs whose shape isn't obvious from the signature (pipelines, prototype extension)
+
+```ts
+/**
+ * Merges two event pointers and keeps all relays
+ * @throws if the ids are different
+ */
+export function mergeEventPointers(a: EventPointer, b: EventPointer): EventPointer {}
+
+/** @deprecated Use PrivateKeySigner instead */
+export class SimpleSigner extends PrivateKeySigner {}
+```
+
+Don't document internal (non-exported) helpers unless the behavior is surprising, and never restate the type signature in prose.
+
 # Writing Changesets
 
 Each changeset file in `.changeset/` MUST describe exactly **one** change, and the body MUST be a **single sentence of markdown**. No bullet lists, no code blocks, no multiple paragraphs, no examples — just the sentence.
