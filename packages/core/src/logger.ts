@@ -18,12 +18,11 @@ export interface LogRecord {
 export type LoggerSink = (message: string, record: LogRecord) => void;
 
 function initialNamespaces(): string {
-  try {
-    const processValue = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    if (processValue?.env?.DEBUG) return processValue.env.DEBUG;
-  } catch {
-    // Some browser shims expose globals through throwing accessors.
-  }
+  const process = processLike();
+  if (process?.env?.DEBUG) return process.env.DEBUG;
+
+  // Node exposes an experimental `localStorage` global that warns when touched, so only read it outside of Node
+  if (process?.versions?.node) return "";
 
   try {
     return globalThis.localStorage?.getItem("debug") ?? "";
