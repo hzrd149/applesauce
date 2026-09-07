@@ -1,21 +1,29 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  disableLoggerColors,
   disableLoggerNamespaces,
+  enableLoggerColors,
   enableLoggerNamespaces,
   getLoggerNamespaces,
   getLoggerSink,
+  isLoggerColorsEnabled,
   isLoggerNamespaceEnabled,
   logger,
   setLoggerSink,
 } from "../logger.js";
+import type { LogRecord } from "../logger.js";
 
 const originalNamespaces = getLoggerNamespaces();
 const originalSink = getLoggerSink();
+const originalColors = isLoggerColorsEnabled();
 
 afterEach(() => {
   enableLoggerNamespaces(originalNamespaces);
   setLoggerSink(originalSink);
+  if (originalColors) enableLoggerColors();
+  else disableLoggerColors();
+  vi.restoreAllMocks();
 });
 
 describe("logger", () => {
@@ -91,5 +99,49 @@ describe("logger", () => {
 
     expect(calls).toEqual(["applesauce challenge=%s%n\\r\\nforged extra\\u2028forged\\u2029line"]);
     expect(calls[0].split(/\r?\n/)).toHaveLength(1);
+  });
+
+  it("passes a structured record alongside the flat message", () => {
+    const records: LogRecord[] = [];
+    setLoggerSink((_message, record) => records.push(record));
+    enableLoggerNamespaces("applesauce");
+
+    logger("hello %s", "world");
+
+    expect(records).toHaveLength(1);
+    expect(records[0].namespace).toBe("applesauce");
+    expect(records[0].message).toBe("hello world");
+    expect(records[0].diff).toBeGreaterThanOrEqual(0);
+  });
+
+  it("colors the namespace and diff on the default sink", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    setLoggerSink(originalSink);
+    enableLoggerNamespaces("applesauce");
+    enableLoggerColors();
+
+    logger("colored");
+
+    const output = String(debugSpy.mock.calls[0][0]);
+    expect(output).toContain("\u001B[");
+    expect(output).toContain("applesauce");
+    expect(output).toMatch(/\+\d+(ms|s|m|h|d)/);
+  });
+
+  it("gives each namespace a stable color and falls back to plain output", () => {
+    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {});
+    setLoggerSink(originalSink);
+    enableLoggerNamespaces("applesauce:*");
+    enableLoggerColors();
+
+    const child = logger.extend("relay");
+    child("one");
+    child("two");
+    const [first, second] = debugSpy.mock.calls.map((call) => String(call[0]).match(/\u001B\[[^m]+m/)?.[0]);
+    expect(first).toBe(second);
+
+    disableLoggerColors();
+    logger.extend("relay")("three");
+    expect(String(debugSpy.mock.calls[2][0])).not.toContain("\u001B[");
   });
 });
