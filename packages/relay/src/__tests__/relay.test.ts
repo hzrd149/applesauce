@@ -2,7 +2,7 @@ import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { enableLoggerNamespaces, getLoggerNamespaces, getLoggerSink, setLoggerSink } from "applesauce-core";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { defer, finalize, firstValueFrom, mergeMap, NEVER, of, Subject, throwError, timer } from "rxjs";
-import { filter, repeat, retry, take } from "rxjs/operators";
+import { filter, repeat } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
