@@ -51,6 +51,11 @@ export class RelayPool {
   /** A signal when a relay is removed */
   remove$ = new Subject<Relay>();
 
+  /** A signal when a relay is added */
+  added$ = this.add$.asObservable();
+  /** A signal when a relay is removed */
+  removed$ = this.remove$.asObservable();
+
   constructor(public options?: RelayOptions) {
     // Initialize status$ observable
     this.status$ = this.relays$.pipe(
