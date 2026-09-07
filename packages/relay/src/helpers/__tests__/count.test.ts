@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateHllCardinality, mergeHllRegisters, parseRelayCountResponse, RelayCountResponseError } from "../nip45.js";
+import { estimateHllCardinality, mergeHllRegisters, parseRelayCountResponse, RelayCountResponseError } from "../count.js";
 
 const sketch = (values: number[]) => values.map((value) => value.toString(16).padStart(2, "0")).join("");
 

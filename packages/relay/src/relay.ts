@@ -55,8 +55,8 @@ import {
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
+import { parseRelayCountResponse, RelayCountResponseError } from "./helpers/count.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
-import { parseRelayCountResponse, RelayCountResponseError } from "./nip45.js";
 import {
   authRequiredSignal,
   AuthPhaseGate,

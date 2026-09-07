@@ -21,7 +21,7 @@ import {
   RelayEventVerdictError,
   SyncDirection,
 } from "../relay.js";
-import { RelayCountResponseError } from "../nip45.js";
+import { RelayCountResponseError } from "../helpers/count.js";
 import { RelayInformation } from "../types";
 import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";

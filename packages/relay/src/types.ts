@@ -221,7 +221,10 @@ export type RelaySubscriptionOptions = RelayAuthOptions & {
 /** The response type when subscribing to a relay */
 export type RelaySubscriptionResponse = NostrEvent | "EOSE";
 
-/** The response type when counting events on a relay */
+/**
+ * The response type when counting events on a relay. `hll` carries the relay's 256-register HyperLogLog
+ * sketch as a 512-character hex string, and unknown keys are preserved for future NIP-45 fields.
+ */
 export type RelayCountResponse = Record<string, unknown> & { count: number; approximate?: boolean; hll?: string };
 
 /** The settled value or failure reported by one normalized relay source. */
