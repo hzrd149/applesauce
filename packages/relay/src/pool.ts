@@ -4,9 +4,7 @@ import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/r
 import { normalizeURL } from "applesauce-core/helpers/url";
 import {
   BehaviorSubject,
-  combineLatest,
   distinctUntilChanged,
-  filter,
   isObservable,
   map,
   merge,
@@ -17,7 +15,6 @@ import {
   startWith,
   Subject,
   switchMap,
-  take,
 } from "rxjs";
 import { RelayGroup } from "./group.js";
 import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
@@ -39,12 +36,6 @@ export class RelayPool {
 
   /** Observable of relay status for all relays in the pool */
   status$: Observable<Record<string, RelayStatus>>;
-
-  /**
-   * Whether to ignore relays that are ready=false
-   * @deprecated use {@link ignoreUnhealthyRelays} in group() or request() input
-   */
-  ignoreOffline = false;
 
   /** A signal when a relay is added */
   add$ = new Subject<Relay>();
@@ -98,32 +89,10 @@ export class RelayPool {
   }
 
   /** Create a group of relays */
-  group(relays: PoolRelayInput, ignoreOffline = this.ignoreOffline): RelayGroup {
-    let input: Relay[] | Observable<Relay[]> = Array.isArray(relays)
+  group(relays: PoolRelayInput): RelayGroup {
+    const input: Relay[] | Observable<Relay[]> = Array.isArray(relays)
       ? relays.map((url) => this.relay(url))
       : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
-
-    if (ignoreOffline) {
-      // Convert input to an observable so it can react to relays becoming ready.
-      // Each relay is included once `ready$` first emits true, and stays included
-      // afterwards (subsequent ready=false changes are ignored since the request
-      // or subscription will have already started).
-      const input$ = Array.isArray(input) ? of(input) : input;
-      input = input$.pipe(
-        switchMap((relays) => {
-          if (relays.length === 0) return of([] as Relay[]);
-          const signals = relays.map((relay) =>
-            relay.ready$.pipe(
-              filter((ready) => ready),
-              take(1),
-              map(() => relay),
-              startWith(null as Relay | null),
-            ),
-          );
-          return combineLatest(signals).pipe(map((arr) => arr.filter((r): r is Relay => r !== null)));
-        }),
-      );
-    }
 
     return new RelayGroup(input);
   }
@@ -231,8 +200,7 @@ export class RelayPool {
     id?: string,
     opts?: Parameters<RelayGroup["count"]>[2],
   ): ReturnType<RelayGroup["count"]> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).count(filters, id, opts);
+    return this.group(relays).count(filters, id, opts);
   }
 
   /** Negentropy sync events with the relays and an event store */
@@ -245,7 +213,6 @@ export class RelayPool {
     // future option added there reaches the pool surface automatically.
     opts?: Parameters<RelayGroup["sync"]>[3],
   ): ReturnType<RelayGroup["sync"]> {
-    // Never filter out offline relays in manual methods
-    return this.group(relays, false).sync(store, filter, direction, opts);
+    return this.group(relays).sync(store, filter, direction, opts);
   }
 }
