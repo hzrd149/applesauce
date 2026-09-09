@@ -96,6 +96,13 @@ findings changed the plan and are marked **[research]** below.
 
 - [x] **DEBUG-01**: Replace the `debug` dependency (999.17) while preserving the workspace's used callable logger, namespace extension/matching, printf output, capture harnesses, and public logger type surface
 
+### Repository Extraction Cleanup
+
+- [ ] **D-01**: Phase 25.5's cleanup boundary is the checked-out repository; removal of Concord references from reachable Git history is deferred to Phase 26's squash merge
+- [ ] **D-05**: Remaining workspace manifests and `pnpm-lock.yaml` contain no Concord package integration or dependency surface
+- [ ] **D-08**: Tracked content, filenames, hidden files, documentation, examples, and release records contain no active Concord trace in the final checkout
+- [ ] **D-09**: A frozen-lockfile install, focused wallet-lock and falsy application-data regressions, full workspace/docs/examples release gate, and generated-residue cleanup complete without changing `pnpm-lock.yaml` or the pre-install non-generated repository status
+
 ## Future Requirements
 
 Tracked, not in this roadmap.
@@ -178,14 +185,18 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | ECO-02 | Phase 25 | Complete |
 | ECO-03 | Phase 25 | Complete |
 | DEBUG-01 | Phase 25.4 | Complete |
+| D-01 | Phase 25.5 | Pending |
+| D-05 | Phase 25.5 | Pending |
+| D-08 | Phase 25.5 | Pending |
+| D-09 | Phase 25.5 | Pending |
 
 **Coverage:**
 
-- v1 requirements: 47 total
-- Mapped to phases: 47
+- v1 requirements: 51 total
+- Mapped to phases: 51
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-19*
-*Last updated: 2026-08-19 after initial definition*
-*Traceability populated: 2026-08-19 during roadmap creation — 46/46 v1 requirements mapped across 11 phases (16–26), 0 orphans.*
+*Last updated: 2026-09-09 for Phase 25.5 gap closure*
+*Traceability populated: 2026-09-09 — 51/51 v1 requirements mapped across Phases 16–26, 0 orphans.*

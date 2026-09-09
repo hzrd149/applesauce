@@ -310,24 +310,22 @@ Plans:
 - [x] 25-02-PLAN.md — Complete hook/provider lifecycle suite and React 18/19 CI matrix
 - [x] 25-03-PLAN.md — Worker-relay v2 migration with UI/runtime contract preservation
 
-**Goal:** The checked-out repository contains no active or historical trace of the retired community package while the remaining workspace and folded Phase 05.1 fixes stay correct.
-**Requirements**: TBD
+### Phase 25.5: Repository Extraction Cleanup (INSERTED)
+
+**Goal:** The checked-out repository contains no active Concord package trace while the remaining workspace and folded Phase 05.1 fixes stay correct; removal from reachable Git history is deferred to Phase 26's squash merge.
+**Requirements**: D-01, D-05, D-08, D-09
 **Depends on:** Phase 25
-**Plans:** 1/3 plans executed
+**Plans:** 1/2 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [x] 25.5-01-PLAN.md — Preserve review fixes and remove active package integrations
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 25.5-02-PLAN.md — Delete package-only history and surgically scrub shared records
-
-**Wave 3** *(blocked on Waves 1–2 completion)*
-
 - [x] 25.5-03-PLAN.md — Validate the remaining workspace and complete repository bookkeeping
+
+**Wave 2** *(gap closure; blocked on Wave 1 completion)*
+
+- [ ] 25.5-04-PLAN.md — Re-run the release proof from a captured baseline and close checkout-only residue gaps
 
 ### Phase 25.4: Replace the debug Dependency (INSERTED)
 
@@ -409,6 +407,7 @@ Plans:
 ### Phase 26: Release Coordination — v7.0.0
 
 **Requirements**: REL-01, REL-03, REL-04
+**Scope note:** The squash merge for this release removes Concord code history from the published branch; Phase 25.5 intentionally validates only the checked-out repository.
 **Success Criteria** (what must be TRUE):
 
   1. A `changeset status --verbose --since=master` dry run shows all thirteen remaining publishable packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
