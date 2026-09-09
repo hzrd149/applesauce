@@ -327,7 +327,7 @@ Plans:
 
 **Wave 3** *(blocked on Waves 1–2 completion)*
 
-- [ ] 25.5-03-PLAN.md — Run full workspace gates and self-erase all final residue
+- [x] 25.5-03-PLAN.md — Validate the remaining workspace and complete repository bookkeeping
 
 ### Phase 25.4: Replace the debug Dependency (INSERTED)
 
