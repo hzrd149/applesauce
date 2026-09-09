@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 26
-current_phase_name: Release Coordination — v7.0.0
+current_phase: 25.5
+current_phase_name: Remove Concord package and all active repository integrations
 status: planning
-stopped_at: Phase 25.4 re-verified after code-review fixes
-last_updated: "2026-09-06T21:50:53.000Z"
-last_activity: 2026-09-06
-last_activity_desc: Phase 25.4 re-verified after code-review fixes; Phase 26 ready to plan
+stopped_at: Phase 25.5 context gathered
+last_updated: "2026-09-09T14:53:38.784Z"
+last_activity: 2026-09-07
+last_activity_desc: "Completed quick task 260907-g46: Remove deprecated RelayPool.ignoreOffline flag"
 progress:
-  total_phases: 15
+  total_phases: 16
   completed_phases: 14
   total_plans: 80
   completed_plans: 80
-  percent: 93
+  percent: 88
 ---
 
 # Project State
@@ -24,11 +24,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 26 — Release Coordination — v7.0.0
+**Current focus:** Phase 25.5 — Remove Concord package and all active repository integrations
 
 ## Current Position
 
-Phase: 26 — Release Coordination — v7.0.0
+Phase: 25.5 — Remove Concord package and all active repository integrations
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-09-07 — Completed quick task 260907-g46: Remove deprecated RelayPool.ignoreOffline flag
@@ -450,6 +450,8 @@ None yet.
 - Phase 12.2 inserted after Phase 12: Promoted from backlog 999.1: Concord sync debug logging
 - Phase 12.3 inserted after Phase 12: Promoted from backlog 999.6: Transport-only extra relays in applesauce-concord
 - v7.0.0 roadmap created 2026-08-19: 11 phases (16–26, continuing from v1.2's Phase 15) derived from the 46 v1 requirements (LAYER/EVT/REQ/AUTHF/COUNT/SYNC/GROUP/FIX/RESID/REL/ECO). Sequencing: 999.23 (Phase 16, LAYER) gates every other phase; 999.24 (Phase 18, EVENT) before 999.25 (Phase 22, REQ); 999.27 (Phase 19, COUNT high-level) before 999.21 (Phase 23, COUNT isolation); 999.20 (Phase 21, GROUP) before 999.25 (Phase 22, REQ). Two dependencies came from architecture research rather than the original backlog, not previously recorded in ROADMAP.md: Phase 24 (SYNC/999.28) needs both Phase 18 and Phase 22 to land first, since `Relay.sync()` calls `event()`/`req()` directly at relay.ts:1677/:1689, bypassing their high-level siblings; and AUTHF-05 (the applesauce-loaders duck-typed `RELAY_AUTH_ERROR_NAMES` gap) is mapped into Phase 20 (AUTH) rather than its own phase, so any new terminal auth error class is recognized by the loader in the same change that introduces it. GROUP-03 (one shared per-relay-outcome representation) is mapped to Phase 21, where it is first defined; Phase 23 consumes it rather than inventing a second shape. Ecosystem riders split: ECO-01 (TypeScript 7) folded into Phase 16 since both are zero-behavior-risk foundation work; ECO-02/ECO-03 merged into one Phase 25 since both are independent single-requirement riders with no other natural neighbor. Release (REL-01..04) is its own final Phase 26, depending on all 10 prior phases, per the explicit instruction that it needs a real per-package changeset checklist and a `changeset status --verbose --since=master` dry run, not a closeout formality.
+- Phase 25.5 inserted after Phase 25: Remove Concord package and all active repository integrations (URGENT)
+- Phase 26 edited: release scope now excludes Concord and depends on Phase 25.5 removal
 
 ## Deferred Items
 
@@ -524,9 +526,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-06T21:17:54.455Z
-Stopped at: Completed 25.4-05-PLAN.md
-Resume file: None
+Last session: 2026-09-09T14:53:38.759Z
+Stopped at: Phase 25.5 context gathered
+Resume file: .planning/phases/25.5-remove-concord-package-and-all-active-repository-integration/25.5-CONTEXT.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
