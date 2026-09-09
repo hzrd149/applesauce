@@ -98,10 +98,10 @@ findings changed the plan and are marked **[research]** below.
 
 ### Repository Extraction Cleanup
 
-- [ ] **D-01**: Phase 25.5's cleanup boundary is the checked-out repository; removal of Concord references from reachable Git history is deferred to Phase 26's squash merge
-- [ ] **D-05**: Remaining workspace manifests and `pnpm-lock.yaml` contain no Concord package integration or dependency surface
-- [ ] **D-08**: Tracked content, filenames, hidden files, documentation, examples, and release records contain no active Concord trace in the final checkout
-- [ ] **D-09**: A frozen-lockfile install, focused wallet-lock and falsy application-data regressions, full workspace/docs/examples release gate, and generated-residue cleanup complete without changing `pnpm-lock.yaml` or the pre-install non-generated repository status
+- [x] **D-01**: Phase 25.5's cleanup boundary is the checked-out repository; removal of Concord references from reachable Git history is deferred to Phase 26's squash merge
+- [x] **D-05**: Remaining workspace manifests and `pnpm-lock.yaml` contain no Concord package integration or dependency surface
+- [x] **D-08**: Tracked content, filenames, hidden files, documentation, examples, and release records contain no active Concord trace in the final checkout
+- [x] **D-09**: A frozen-lockfile install, focused wallet-lock and falsy application-data regressions, full workspace/docs/examples release gate, and generated-residue cleanup complete without changing `pnpm-lock.yaml` or the pre-install non-generated repository status
 
 ## Future Requirements
 
@@ -114,7 +114,6 @@ Tracked, not in this roadmap.
 ### Group
 
 - **GROUP-F1**: Superseded by Phase 24 — `RelayGroup.sync()` emits explicit `relay-failed` values alongside `SyncMessage`, and raw Group/Pool negentropy methods were removed in favor of `pool.relay(url).negentropy(...)`.
-
 
 - **CONC-F1**: Invite-bundle rule-table hardening (999.9) — guardrail only, zero live defects across all 26 rules
 - **CONC-F2**: Phase 8 rotation-robustness residuals (999.7) — check first whether 12.3's majority-ack gate already overtook WR-01
@@ -185,10 +184,10 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | ECO-02 | Phase 25 | Complete |
 | ECO-03 | Phase 25 | Complete |
 | DEBUG-01 | Phase 25.4 | Complete |
-| D-01 | Phase 25.5 | Pending |
-| D-05 | Phase 25.5 | Pending |
-| D-08 | Phase 25.5 | Pending |
-| D-09 | Phase 25.5 | Pending |
+| D-01 | Phase 25.5 | Complete |
+| D-05 | Phase 25.5 | Complete |
+| D-08 | Phase 25.5 | Complete |
+| D-09 | Phase 25.5 | Complete |
 
 **Coverage:**
 
