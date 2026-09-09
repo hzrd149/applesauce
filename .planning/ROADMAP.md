@@ -332,13 +332,13 @@ Plans:
 **Goal:** The checked-out repository contains no active or historical trace of the retired community package while the remaining workspace and folded Phase 05.1 fixes stay correct.
 **Requirements**: TBD
 **Depends on:** Phase 25
-**Plans:** 0/3 plans executed
+**Plans:** 1/3 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 25.5-01-PLAN.md — Preserve review fixes and remove active package integrations
+- [x] 25.5-01-PLAN.md — Preserve review fixes and remove active package integrations
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
