@@ -6,8 +6,6 @@ tags: [duck-typing, relay-group, loaders, vertex]
 requires:
   - phase: 20-auth-family-re-layer
     provides: pinned terminal authenticate errors
-provides: [cross-package terminal error parity, verified Concord and Vertex compatibility]
-affects: [loaders, concord, extra]
 tech-stack:
   added: []
   patterns: [actual-instance parity tests across name-based boundaries]
@@ -40,17 +38,13 @@ status: complete
 
 # Phase 20 Plan 03: AUTH Integration Parity Summary
 
-**Pinned timeout and freshness errors now cross Group and loader boundaries, while Concord and Vertex retain their high-level authentication behavior.**
 
 ## Task Commits
 
 1. **Trace terminal errors across classifiers** - `042b7eb9`
-2. **Prove Concord and Vertex compatibility** - `bbe61ce1`
 
 ## Deviations from Plan
 
 None - plan executed exactly as written.
 
 ## Self-Check: PASSED
-
-Group 31/31, loader 42/42, Concord 602/602, Extra 1/1, and all affected builds passed.

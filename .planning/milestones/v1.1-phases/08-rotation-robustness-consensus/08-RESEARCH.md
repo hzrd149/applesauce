@@ -1,7 +1,6 @@
 # Phase 8: Rotation Robustness & Consensus - Research
 
 **Researched:** 2026-07-19
-**Domain:** Concord protocol (CORD-06) rekey/Refounding convergence, authority citation, and publish-confirmation gating in `packages/concord/src`
 **Confidence:** HIGH (all code positions read directly this session; CORD-06 fetched verbatim from upstream via `curl`)
 
 ## Summary
@@ -31,16 +30,12 @@ A second genuinely hard finding, surfaced by tracing the crypto rather than assu
 
 ## Project Constraints (from CLAUDE.md)
 
-- **Concord is unreleased — no changesets required** for any change in this phase (per user's standing memory note; `packages/concord` has never shipped, so breaking internal shape changes carry no migration burden).
 - **No drop shadows / no cards** — irrelevant to this phase (no UI work).
 - **No `.form-control` DaisyUI class** — irrelevant to this phase (no UI work).
-- **Status-observable style** (user memory): granular single-value `$` fields + a derived composite `status$`, mirroring the `Relay` class. `ConcordCommunity`/`ConcordPrivateChannel` already follow this (`phase$`, `epoch$`, `error$`, `connected$`, `authenticated$`, `status$` combining them) — no new observable surface is anticipated for this phase's fixes, but if the planner adds one (e.g., surfacing "removed pending confirmation" or a fork-detected signal), follow the existing granular-field pattern rather than a single opaque status blob.
 - **"Discuss: explain before ruling"** (user memory) — not applicable to research; this phase's spec rulings (D-01/D-02) were already made in `/gsd-discuss-phase` with the mechanics explained there.
-- **PROJECT.md v1.1 constraints** (binding on this phase): smallest-change-that-makes-the-spec-sentence-true; the fail-closed standard (four canonical defect shapes — guard defaults to permit, hand-rolled literal drops an optional field, existing helper bypassed, `catch`/`continue` degrades where spec says MUST); every fix carries a regression test asserting against an **independently-derived** spec value, never against implementation output; default `EventStore` consumers see no behavior change (irrelevant here — this phase touches only `applesauce-concord`).
 
 ## Standard Stack
 
-No new external packages are introduced by this phase. All work is internal restructuring of existing `packages/concord/src` modules plus test additions in `packages/concord/src/helpers/__tests__/` and `packages/concord/src/client/__tests__/`.
 
 ### Reused internal primitives (no version concerns — same package)
 
@@ -55,7 +50,6 @@ No new external packages are introduced by this phase. All work is internal rest
 
 ## Package Legitimacy Audit
 
-**Not applicable** — this phase installs no new packages. No `npm view`/`package-legitimacy check` gate is required; every module touched already exists in `packages/concord/src`.
 
 ## Architecture Patterns
 
@@ -133,7 +127,6 @@ No new external packages are introduced by this phase. All work is internal rest
 No new files/folders — every fix lands inside the existing module boundaries:
 
 ```
-packages/concord/src/
 ├── helpers/
 │   ├── keys.ts          # readRekeyScoped restructure (D-03/D-05/D-06), buildRefounding abort (D-01), vac verify predicate
 │   ├── rekey.ts          # groupRotations n-disagreement guard (D-02), prevepoch guard (ROTATE-11), ParsedRekey.vac field
@@ -449,36 +442,22 @@ export function buildChain(material: JoinMaterial): JoinMaterial[] {
 
 ## Environment Availability
 
-Skipped — this phase has no external dependencies beyond the existing `packages/relay`/`packages/concord` code already present in the monorepo. No new tools, services, or runtimes are introduced.
 
 ## Validation Architecture
 
 ### Test Framework
 | Property | Value |
 |----------|-------|
-| Framework | Vitest (`packages/concord/package.json`: `"test": "vitest run --passWithNoTests"`) |
 | Config file | Workspace root `vitest` config (monorepo-wide); no per-package override found |
-| Quick run command | `pnpm --filter applesauce-concord test` |
 | Full suite command | `pnpm run build && pnpm exec vitest run` (root `pnpm test` script: `turbo build --filter='./packages/*' && vitest run`) |
 
 ### Phase Requirements → Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| ROTATE-05 | Decrypt failure at own locator ≠ removal; retried on re-read | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend existing `keys.test.ts` |
-| ROTATE-06 | Racing rotations converge down-only; settled epoch never re-forks | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend; needs new latch-specific assertions |
-| ROTATE-07 | Winner computed among ALL authorized+complete+continuity candidates | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend; needs the opaque-fork scenario (Open Question 1 resolved first) |
-| ROTATE-08 | `vac` cited, receiver verifies against folded Roster, fail-closed | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` / `keys.test.ts` | ❌ Wave 0 — no existing `vac`-on-rekey test |
-| ROTATE-09 | Compaction/snapshot publish gated on majority-confirmed root roll | unit/integration | `pnpm --filter applesauce-concord test -- community.test.ts` | ❌ Wave 0 — existing `refound` tests don't mock partial relay failure |
-| ROTATE-10 | Chunk sets correlate on `(rotator,scope,newepoch,prevcommit)`; `n`-disagreement marks inconsistent | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` | ✅ extend existing `rekey.test.ts` (`groupRotations` tests already present) |
-| ROTATE-11 | `prevepoch` identity validated across chunks | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` | ✅ extend alongside ROTATE-10 |
-| ROTATE-12 | Historical epoch material does not inherit tip `refounder` | unit | `pnpm --filter applesauce-concord test -- sync.test.ts` (create if absent) | ❌ Wave 0 — no `client/__tests__/sync.test.ts` found for `buildChain` directly (only exercised indirectly via `community.test.ts`) |
-| ROTATE-13 | Unfoldable compaction head aborts before any publish | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ❌ Wave 0 — no existing test constructs an unfoldable head scenario |
 | TEST-01 (standing) | Every derivation/fold this phase touches has a hand-derived oracle | unit | (covered by the above) | Partial — `rekey.test.ts`/`keys.test.ts` already establish the pattern; extend, don't replace |
 
 ### Sampling Rate
-- **Per task commit:** `pnpm --filter applesauce-concord test -- <changed-test-file>`
-- **Per wave merge:** `pnpm --filter applesauce-concord test`
 - **Phase gate:** `pnpm run build && pnpm exec vitest run` (full monorepo) green before `/gsd-verify-work`
 
 ### Wave 0 Gaps
@@ -515,13 +494,10 @@ Skipped — this phase has no external dependencies beyond the existing `package
 ## Sources
 
 ### Primary (HIGH confidence)
-- Upstream CORD-06 spec, fetched verbatim via `curl https://raw.githubusercontent.com/concord-protocol/concord/main/06.md` this session (2026-07-19) — §1 (rekey blob wire shape), §2 (receiving/removal rule, locator derivation, continuity check), §3 (Refounding, authority/`vac`, failure/races/convergence). All quotes in this document and in CONTEXT.md's canonical_refs are confirmed verbatim against this fetch.
-- Direct reads of `packages/concord/src/helpers/keys.ts`, `helpers/rekey.ts`, `operations/rekey.ts`, `operations/guestbook.ts`, `client/sync.ts`, `client/channel-sync.ts`, `client/community.ts`, `client/private-channel.ts`, `client/admin.ts`, `helpers/permissions.ts`, `helpers/crypto.ts`, `helpers/guestbook.ts`, `types.ts` — all line numbers in this document read directly this session (2026-07-19), not inherited from the audit or CONTEXT.md.
 - `packages/relay/src/types.ts`, `group.ts`, `relay.ts`, `pool.ts` — `PublishResponse` shape and the `"Timeout"` `ok:false` case, confirmed by direct grep + read.
 - Existing test files read directly: `helpers/__tests__/keys.test.ts`, `helpers/__tests__/rekey.test.ts`, `helpers/__tests__/channel-rekey.test.ts`.
 
 ### Secondary (MEDIUM confidence)
-- `.planning/concord-audit.md` — H09, M01-M04, S03, L01, L08, and the unresolved conflict #1, cross-checked against the direct code reads above (all confirmed still accurate at current line positions except where the file/line drift is noted in the Confirmed Current Line Positions table).
 
 ### Tertiary (LOW confidence)
 - None — every claim in this document is either directly read from source this session or explicitly tagged `[ASSUMED]` in the Assumptions Log above.

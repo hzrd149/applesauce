@@ -10,7 +10,6 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 
 **Requirements:** ROTATE-01, ROTATE-02, ROTATE-04, AUTH-01, AUTH-02, plus TEST-01 (standing).
 
-**Load-bearing fact that reshapes this phase:** Phase 5/5.1's core cache fix (memoized symbol writes are now non-enumerable) **already resolved H01 at the source.** `rollForward`/`rollForwardChannel` now spread clean material because the memos are dropped by spread; concord already routes every memo through `getOrComputeCachedValue` (no `Reflect.set`). So **ROTATE-01/02 are a test-coverage obligation at the derivation level, not a source change.** The remaining source work is H02 (ROTATE-04, memberlist) and H03 (AUTH-01/02, authority).
 
 **In scope:** the memberlist epoch-scoping fix (H02), the two authority guards (H03), and the spec-derived rotation/memberlist tests (TEST-01 for this phase).
 
@@ -30,7 +29,6 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 ### AUTH-02 — send-path outrank (H03, `refound()`)
 
 - **D-05: Add a per-target `BAN` outrank loop to `refound()`, mirroring `rotateChannel`.** (`community.ts:885-888`) After the `refoundAuthority` check and before building/publishing anything, loop over `opts.exclude`; throw `cannot exclude ${target} — you do not outrank them` on the first target where `!this.canDo(PERM.BAN, this.standingOf(target).position)`.
-- **D-06: Throw and abort the whole Refounding on failure — atomic, no partial rotation, no publishes.** A Refounding is heavier than a channel rekey; a partial one is worse than none. Consistent with `rotateChannel` and the already-shipped `concord-channel-rekey-outrank` changeset. Rejected: silently dropping un-outranked targets and proceeding.
 
 ### AUTH-01 — receive-path outrank (H03, `readRekey`)
 
@@ -41,7 +39,6 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 ### ROTATE-01 / ROTATE-02 / TEST-01 — spec-derived tests
 
 - **D-10: ROTATE-01/02 are test-only at the derivation level** (the cache fix resolved the source; the per-epoch *store* change is captured under D-02). Add hand-derived spec assertions — computed from the CORD-02 §4 / §5 formula in `crypto.ts`, never by calling the implementation under test — for the new epoch's **control, guestbook, and rekey** addresses (Phase 5 covered only control at `keys.test.ts:191` and the channel plane at `channel-rekey.test.ts:92`) and for the post-Refounding **memberlist** (a removed member is absent even given a prior-epoch Join/observation).
-- **D-11: Add a concord-level anti-regression spread guard.** Extend the existing `keys.test.ts:191` pattern to guestbook + rekey: seed the memo on `material`, `rollForward`, and assert the rolled-forward object derives the NEW epoch's address — the exact 4-line probe that caught H01. Cheap insurance at the concord layer, independent of the core cache helper's own Phase 5/5.1 tests; H01 self-heals on restart so it can regress silently otherwise.
 
 ### Claude's Discretion
 - Exactly which planes feed the current-epoch `observed` set (guestbook only vs. guestbook + control + current-epoch chat) — resolve during research against the full plane-routing code; the requirement is "current-epoch activity counts, prior-epoch does not."
@@ -56,27 +53,15 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Authoritative protocol spec (verify fixes against this, not only the audit paraphrase)
-- Upstream Concord spec — `https://github.com/concord-protocol/concord` (raw: `https://raw.githubusercontent.com/concord-protocol/concord/main/<NN>.md`). For this phase: **CORD-02 §4/§5** (`02.md` — epoch rotation rotates the plane `pk`; "the Guestbook rides the epoch"; snapshot seeds present-members-only; "observation only counts forward"), **CORD-06 §2/§3** (`06.md` — rekey wire, "the Rotator must strictly outrank every removed target … in both"), **CORD-04 §2/§3** (`04.md` — owner supreme/unremovable, rank comparison). `examples.md` for wire fixtures. *(User directed during discussion 2026-07-16: check the upstream spec, not just the audit — the audit is a faithful prior but paraphrases.)*
 
 ### Milestone authority
-- `.planning/concord-audit.md` — CONCORD-H01 (memo-survives-spread, root cause; note the "verified correct" register wrongly cleared `rollForwardChannel`), H02 (memberlist folds across all epochs), H03 (root Refounding honors an under-ranked rotator). Carries file:line, violated spec sentence, symptom, and fix per finding.
 - `.planning/REQUIREMENTS.md` — ROTATE-01, ROTATE-02, ROTATE-04, AUTH-01, AUTH-02, TEST-01 (and the standing TEST-01 closure rule — does NOT close at this phase).
 - `.planning/ROADMAP.md` — Phase 6 detail (lines 136-149): goal, success criteria 1-5, the TEST-01-standing criterion.
 - `.planning/PROJECT.md` — v1.1 constraints: cache-fix-lands-first sequencing; the spec-derived-test verification standard (assert against independently-derived spec values, never implementation output).
 
 ### Primary source files (current line numbers — verified this session)
-- `packages/concord/src/helpers/guestbook.ts` — `foldMembers` (`:49-116`); the observed re-admit at `:109-112` (`!c` branch is the H02 leak); snapshot seeding gated to the refounder at `:89`.
-- `packages/concord/src/models/community.ts` — `ConcordCommunityStateModel`; `observed` merged across control + guestbook + all channel stores at `:37-42`; fold wired at `:44-58`.
-- `packages/concord/src/client/sync.ts` — `planeStoreKey` (`:252-256`, keys community planes by `info.type` → epoch collapse); `buildChain` (`:235-250`, distinct per-epoch materials); `syncEpochs` (`:202-228`, the epoch walk).
-- `packages/concord/src/client/community.ts` — `refound()` (`:1055-1106`, needs the outrank loop); `rotateChannel()` (`:878-904`, the pattern to mirror at `:885-888`); `storeFor`/`this.stores` (`:199,:379-388`); `rewireState` (`:393-411`, selects `"guestbook"` + all-stores observed); store disposal (`:355`).
-- `packages/concord/src/helpers/keys.ts` — `readRekeyScoped` (`:468-512`, the `:506` default-permit short-circuit); `ScopedHeld.canRemoveSelf` (`:454`) + its misleading docstring (`:447-454`); `readRekey` root caller (`~:397-427`); `readChannelRekey` (`~:642-673`, supplies `canRemoveSelf` — the correct precedent); `rollForward` (`:265-273`); `deriveConcordKeys` (`:179-186`).
-- `packages/concord/src/helpers/permissions.ts` — `resolveStanding` (`:38-59`), `canActOn` (`:61-66`), `refoundAuthority` (`:75-80`, bare BAN bit check, no rank).
 
 ### Existing tests (extend / add alongside)
-- `packages/concord/src/helpers/__tests__/keys.test.ts` — `:191` control address spec-derived (H01(a), CORD-02 §4); `:216+` memoization suite. Extend to guestbook + rekey addresses (D-10/D-11); add a root-path outrank-removal test (currently untested).
-- `packages/concord/src/helpers/__tests__/channel-rekey.test.ts` — `:92` channel plane spec-derived; `:206`/`:227` channel outrank-on-removal (the precedent; no root-path equivalent exists yet).
-- `packages/concord/src/helpers/__tests__/guestbook.test.ts` — snapshot honoring; **no observed-re-admission-across-refounding test** (the H02 gap — add one).
-- `packages/concord/src/client/__tests__/community.test.ts` — refound tests at `:347/:451/:515`; none cover excluding a higher-ranked member (AUTH-02) or observed re-admission (ROTATE-04).
 </canonical_refs>
 
 <code_context>
@@ -92,7 +77,6 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 ### Established Patterns
 - **The recurring defect class is "a guard that defaults to permit"** — AUTH-01's `!held.canRemoveSelf ||` is a textbook instance; the fix is to make the guard fail closed.
 - **The channel path is correct; the root path is not** — for both H03 halves (send and receive) the fix is to bring the root path up to the channel path's shape, which already exists.
-- **Spec-derived tests only** (milestone standard) — expected addresses/memberlists are computed by hand from the CORD formula (via `crypto.ts` primitives), never by calling `rollForward`/`deriveConcordKeys`/`foldMembers`.
 
 ### Integration Points
 - `planeStoreKey` (`sync.ts`) → `storeFor` (`community.ts:379`) → `rewireState` (`community.ts:393`): the epoch-keying change threads through all three — the store key gains an epoch, `rewireState` must select the current-epoch guestbook and current-epoch observed set, and the retention trim (D-03) disposes stores whose epoch left `held_roots`.
@@ -112,7 +96,6 @@ A Refounding stops being a cryptographic no-op in-session: it rotates every plan
 
 - **`vac` citation on rotations** (a just-demoted admin's rotation honored by a lagging client) — ROTATE-08, Phase 8. The Phase 6 outrank guards evaluate against the current folded roster only.
 - **Channel keying / private-channel derivation** (H07/H08) — Phase 7. If community-plane epoch-keying touches channel routing, keep the channel-epoch work minimal and defer the substantive channel fixes to Phase 7.
-- **A grep/lint contract failing CI on a new undocumented enumerable symbol-write** (carried from Phase 5.1's deferred list) — reconsider milestone-wide if the convention drifts; the D-11 concord-level guard is the Phase 6 slice of this concern.
 - **Rotation robustness** (racing rotations, transient-signer retry, partial chunk sets) — ROTATE-05..13, Phase 8.
 
 None of the above are new capabilities — discussion stayed within the phase's fixed boundary.

@@ -71,12 +71,10 @@ Rotation behaves correctly under real-world adversity — **racing Refoundings**
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Authoritative protocol spec (verify fixes against this, not only the audit paraphrase)
-- Upstream Concord spec — `https://github.com/concord-protocol/concord` (raw: `https://raw.githubusercontent.com/concord-protocol/concord/main/06.md`). For this phase, **CORD-06** governs the rekey wire + convergence:
   - **§2** — the removal rule: *"Only once you hold **all `n` chunks** and none contains your locator have you been removed. A missing chunk is never a removal — the client refetches until the set is complete before concluding anything."* (grounds D-06/D-07/D-02).
   - **§3** — convergence: *"the lexicographically lowest new key wins, every client computes the same winner"*; *"a held epoch re-converges solely to a strictly lower sibling, so a flaky fetch that returns only the higher sibling can never re-fork a settled epoch"*; winner chosen *"among authorized candidates at the same continuity point"*; *"a rotation cites the Grant it acts under like any authority action (CORD-04's `vac`)"*; *"only after confirmed publication of the root roll"*; *"If the Refounder cannot reliably fold all Control events, the Refounding must be aborted."* (grounds D-03/D-04/D-08/D-09/D-01). **§3 is deliberately SILENT on the excluded-from-winner case** — D-03 resolves that ambiguity spec-strict. Chunks correlate by *"the Rotator ... at one `newepoch` and `prevcommit`"* — `chunkCount` is NOT a correlation field (grounds D-02). *(Standing user direction from Phase 6/7: trust upstream over the audit paraphrase.)*
 
 ### Milestone authority
-- `.planning/concord-audit.md` — the 2026-07-15 conformance audit. This phase: **H09** (ROTATE-05, `keys.ts:477-489` transient-decrypt-as-removal), **M01** (ROTATE-06, no same-epoch down-only heal — `keys.ts:463`, `community.ts:670-671,1107-1108`, `sync.ts:208,216`), **M02** (ROTATE-07, winner computed only among rotations that included us — `keys.ts:472-492`), **M03** (ROTATE-08, no `vac` citation — `operations/rekey.ts:27-34`, `helpers/rekey.ts:139-184`, `keys.ts:464`), **M04** (ROTATE-09, publish without confirmation — `community.ts:1098-1108`), **S03** (ROTATE-10, chunkCount not correlated — `helpers/rekey.ts`), **L08** (ROTATE-11, prevepoch unvalidated — `helpers/rekey.ts:207,213-217`), **L01** (ROTATE-12, historical refounder inherited — `sync.ts:239-247`), and the **unresolved conflict #1** (ROTATE-13, compaction silent-skip — `keys.ts:345-352` / `community.ts:1046-1056`). *Line numbers predate Phase 7's edits — verify current positions (e.g. `controlHeadsWithSeals` is now `community.ts:1177`, the compaction loop `keys.ts:376-382`, `readRekeyScoped` decrypt/removal `keys.ts:~500-525`).*
 - `.planning/REQUIREMENTS.md` — ROTATE-05..13 (ROTATE-10 & ROTATE-13 were "blocked on ruling" — now ruled, D-02/D-01), TEST-01 (standing, does NOT close here).
 - `.planning/ROADMAP.md` — Phase 8 detail (~`:197-212`): goal, success criteria 1-6 (criterion 6 = TEST-01 standing, naming continuity math / `lowerKeyWins` tie-break / complete-set gate), and the two-ruling first-task note.
 - `.planning/PROJECT.md` — v1.1 constraints: smallest-change-that-makes-the-spec-sentence-true; the fail-closed standard (the four canonical defect shapes, incl. "a `catch`/`continue` that degrades where the spec says MUST"); spec-derived-test verification standard (assert against independently-derived spec values, never implementation output); default `EventStore` consumers see no behavior change.
@@ -84,14 +82,8 @@ Rotation behaves correctly under real-world adversity — **racing Refoundings**
 - `.planning/phases/07-private-channel-keying/07-CONTEXT.md` — the immediately-prior rotation work (channel rekey / `rollForwardChannel`); the "trust upstream verbatim" precedent and the spec-derived-probe pattern.
 
 ### Primary source files (positions verified this session, 2026-07-19)
-- `packages/concord/src/helpers/keys.ts` — `readRekeyScoped` (`:486-527`: the authorized+complete+continuity `groupRotations().filter(...)`, the `findBlob`/decrypt/`lowerKeyWins` winner loop, and the `catch { treat as absent }` → `removed = true` path — D-03/D-05/D-06); `buildRefounding` compaction loop (`:376-382`, D-01); the root-roll construction (`:344-365`).
-- `packages/concord/src/helpers/rekey.ts` — `groupRotations` correlation key + the `if (p.chunkCount === set.chunkCount)` drop (`:204-225`, D-02); `prevEpoch` field (`:207`, ROTATE-11); `checkContinuity` (continuity math for TEST-01).
-- `packages/concord/src/operations/rekey.ts` — the rekey operation (`:27-34`), where the `vac` citation is added (D-08).
-- `packages/concord/src/client/sync.ts` — `syncEpoch`/`syncEpochs` (`:195-245`): the `"known"`/`"adopt"`/`"removed"` transition handling and the never-re-read gap (D-04); `buildChain` refounder spread (`:239-247`, ROTATE-12).
-- `packages/concord/src/client/community.ts` — `refound` (`:1189-1246`: outrank loop, `buildRefounding` call, the `.catch(()=>{})` publishes, `rekeyHandled.add`, `adoptRefounding` — D-09); `controlHeadsWithSeals` (`:1177-1187`, D-01 input); `rekeyHandled` (~`:670`, D-04).
 
 ### Existing tests (extend / add alongside — spec-derived only, TEST-01)
-- `packages/concord/src/helpers/__tests__/` — the rekey/rotation suites (e.g. `channel-rekey.test.ts` spec-derived channel-plane probe at `:92`; `keys.test.ts` control-address probe at `:191`). Add hand-derived oracles for: the continuity math, the `lowerKeyWins` / lowest-key tie-break (D-03), the complete-set gate + the `n`-disagreement consistency guard (D-02), the transient-decrypt-≠-removal case (D-06), the down-only re-heal + anti-refork latch (D-04), the abort-on-unfoldable-head (D-01), and the `vac`-verification reject (D-08) — each expected value computed by hand from CORD-06 §2/§3, never by calling the implementation under test.
 </canonical_refs>
 
 <code_context>
@@ -134,7 +126,6 @@ Rotation behaves correctly under real-world adversity — **racing Refoundings**
 - Persisted anti-refork latch (survives client restart) — only if research shows a settled epoch's latch must outlive the in-memory engine; otherwise in-memory suffices.
 
 ### Reviewed Todos (not folded)
-- **`05.1-review-followups.md`** ("Phase 05.1 code-review follow-ups") — reviewed, **not folded**. It collects `applesauce-core`/`applesauce-common` gift-wrap and cache-symbol follow-ups (CR-01 author-spoofing verify, WR-01 replaceable symbol copy, WR-04 EventFactory.kind, etc.), unrelated to concord rotation. Matched only on generic keywords; stays deferred to its own cleanup.
 </deferred>
 
 ---

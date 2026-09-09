@@ -12,7 +12,6 @@ provides:
   - "packages/core/src/helpers/__tests__/cache.test.ts — the D-13 two-sided convention test, enforcing the taxonomy as a binding regression guard instead of advisory prose"
   - "A binding automated assertion for ROADMAP Success Criterion 1 (memo dropped by spread, copy recomputes from new fields)"
   - "A binding automated assertion for ROADMAP Success Criterion 3 (plaintext correct off a signed event that passed real pipe spreads)"
-affects: [05-03, 05-04, 05-05, concord-rotation-work]
 
 # Tech tracking
 tech-stack:
@@ -29,7 +28,6 @@ key-files:
 
 key-decisions:
   - "Used the already-existing core-native FakeUser fixture (packages/core/src/__tests__/fixtures.ts) instead of hand-rolling a signer from nostr-tools primitives as the plan's read_first suggested — it already implements EventSigner + EncryptedContentSigner with no applesauce-common dependency, and is the established convention across ~20 other core test files"
-  - "Modeled the memo-drop fixture on concord's real material shape ({ community_root, root_epoch }) per the plan's guidance, using a locally-declared Symbol(\"test-memo\") rather than a production symbol"
   - "Used kinds.Mutelist for the carry-forward half (nip04-routed hidden tags), matching the plan's recommendation and the sibling hidden-tags.test.ts convention"
 
 requirements-completed: [CACHE-01, CACHE-03]
@@ -88,7 +86,6 @@ _Note: this is a worktree-mode execution — STATE.md/ROADMAP.md updates are def
 
 ## Decisions Made
 - Reused the core package's own `FakeUser` fixture (`packages/core/src/__tests__/fixtures.ts`) rather than hand-rolling a signer from raw `nostr-tools` primitives as the plan's `read_first` section suggested. The plan's research had missed this file (it assumed "core has no FakeUser"), but it exists at the package level (not `helpers/__tests__/`), already implements both `EventSigner` and `EncryptedContentSigner` using core-native `generateSecretKey`/`getPublicKey`/`finalizeEvent`, has zero dependency on `applesauce-common`, and is already the established convention across ~20 other core test files (`operations/__tests__/tags.test.ts`, `operations/__tests__/encrypted-content.test.ts`, etc.). Using it satisfies the plan's actual constraint (no `applesauce-common` import) more idiomatically than a hand-rolled inline signer would.
-- Modeled the memo-drop test fixture on concord's real `material` shape (`{ community_root, root_epoch }`) per the plan's explicit guidance, to keep the test legible as the regression guard for the real-world CONCORD-H01 bug rather than an abstract example.
 - Used `kinds.Mutelist` for the carry-forward half, matching both the plan's recommendation and the sibling `hidden-tags.test.ts`'s convention for a nip04-routed hidden-tags kind.
 
 ## Deviations from Plan
@@ -107,7 +104,6 @@ None - no external service configuration required.
 
 - ROADMAP Success Criteria 1 and 3 now have binding automated assertions instead of relying on the 05-01 taxonomy prose alone.
 - The D-13 enforcement contract is live: a future cleanup migrating `EncryptedContentSymbol`'s carry-forward write sites (`operations/tags.ts:87`, `helpers/encrypted-content.ts:117`, `common/operations/gift-wrap.ts:121`) onto `setCachedValue` will turn the carry-forward suite red immediately.
-- Sibling plans in this phase (05-03 comment sweep, 05-04 concord spec-derived tests, 05-05 non-vacuity probes) can build on this test file and cite it rather than re-deriving the same proof.
 - No production code was modified in this plan — only a new test file was added.
 
 ---

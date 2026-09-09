@@ -1,8 +1,6 @@
 ---
 phase: 07-private-channel-keying
 plan: 01
-subsystem: concord
-tags: [concord, nostr, key-derivation, foldControl, spec-conformance, security-fix]
 
 # Dependency graph
 requires:
@@ -12,7 +10,6 @@ provides:
   - material.channels as the SOLE source of channel key material (ChannelMetadata.key/.epoch removed)
   - Total (never-fallthrough) channelSecret/channelKeyFor/voiceKeysFor/deriveKeys returning null for a keyless private channel
   - hasChannelKey(material, channelId) shared affordance in helpers/community.ts
-  - channelKeyMemo null-signalling + deriveConcordKeys skip-loop (no keys.channels entry, no channelEpochs entry, no plane for a keyless private channel)
   - channelEpochs sourced from the held key's own epoch, never the edition's
   - foldControl channel loop rewritten: explicit typed field pick (name/private/deleted/voice/custom), never key/epoch from edition JSON
   - Sticky channel-deletion terminality with heads pinned to the deleting edition, surviving a compaction + fresh-joiner fold
@@ -29,16 +26,8 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/types.ts
-    - packages/concord/src/helpers/community.ts
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/helpers/control.ts
-    - packages/concord/src/helpers/__tests__/keys.test.ts
-    - packages/concord/src/helpers/__tests__/control.test.ts
-    - apps/examples/src/examples/concord/admin-management.tsx
 
 key-decisions:
-  - "ChannelMetadata.key/.epoch removed entirely (breaking, concord unreleased) rather than kept-but-unused — forecloses the H06/H07/H08 footgun class outright"
   - "channelSecret/channelKeyFor/voiceKeysFor/deriveKeys all return null (never throw, never fall through) for a keyless private channel — a routine, expected state during a whole-community fold pass"
   - "Multiple simultaneous authorized deleted:true editions for one channel id tiebreak on lowest rumorId, mirroring headCandidates' existing convention"
   - "channelKeyMemo's null result is itself memoized via cache.has (not truthiness) so a cached 'no key' verdict isn't recomputed every call"
@@ -55,7 +44,6 @@ coverage:
     requirement: "CHAN-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#keyless private channel metadata derives no key, no channelEpochs entry, no plane (CHAN-01)"
         status: pass
     human_judgment: false
   - id: D2
@@ -63,10 +51,8 @@ coverage:
     requirement: "TEST-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#public channel derives channel_pk from community_root at root_epoch"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#keyed private channel derives channel_pk from its own key at its own epoch"
         status: pass
     human_judgment: false
   - id: D3
@@ -74,7 +60,6 @@ coverage:
     requirement: "CHAN-03"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#channelEpochs records the held key's epoch, not the edition epoch (CHAN-03)"
         status: pass
     human_judgment: false
   - id: D4
@@ -82,7 +67,6 @@ coverage:
     requirement: "CHAN-04"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#foldControl picks edition fields explicitly and never derives key material from edition JSON (CHAN-04)"
         status: pass
     human_judgment: false
   - id: D5
@@ -90,7 +74,6 @@ coverage:
     requirement: "CHAN-07"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#a deleted channel stays deleted across a compaction + fresh-joiner fold (CHAN-07)"
         status: pass
     human_judgment: false
   - id: D6
@@ -98,7 +81,6 @@ coverage:
     requirement: "ROTATE-03"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/channel-rekey.test.ts#rollForwardChannel's plane address matches the CORD-03 §1 private formula over the new key/epoch"
         status: pass
     human_judgment: false
 
@@ -121,10 +103,8 @@ status: complete
 
 ## Accomplishments
 
-- Deleted `ChannelMetadata.key`/`.epoch` from `types.ts` (breaking, concord unreleased) — the single-source-of-truth spine for the H06/H07/H08 defect class.
 - `channelSecret`/`channelKeyFor`/`voiceKeysFor`/`deriveKeys` in `community.ts` became total over the private branch, returning `null` for a keyless private channel instead of falling through to the `community_root`-derived public address.
 - Added `hasChannelKey(material, channelId)` — the shared "do I hold a key for this?" affordance replacing hand-rolled `material.channels.find(...)` lookups, consumed by Plans 02/03.
-- `channelKeyMemo` (keys.ts) reworked to key its memo signature off `material.channels`' held entry (not the removed `ChannelMetadata` fields) and to null-signal correctly; `deriveConcordKeys`'s channel loop skips keyless private channels entirely (no `keys.channels` entry, no `channelEpochs` entry, no plane) and records `channelEpochs` from the held key's own epoch.
 - Rewrote `foldControl`'s channel loop (`control.ts`) to pick `name`/`private`/`deleted`/`voice`/`custom` explicitly with type validation, drop the edition-JSON key merge entirely, and enforce sticky channel-deletion: any authorized `deleted:true` candidate permanently drops the channel AND pins `heads` to that deleting edition (not the ordinary version-chain head), so a later compaction cannot republish a resurrection attempt.
 - Added four hand-derived spec-derived tests to `keys.test.ts` (CHAN-01 keyless-derives-nothing, both CORD-03 §1 branches, CHAN-03 held-epoch) and two fold-level tests to `control.test.ts` (CHAN-04 explicit field pick + malformed-input resilience, CHAN-07 delete→resurrect→compact→fresh-joiner-fold round trip).
 - Confirmed `channel-rekey.test.ts`'s existing ROTATE-03 spec-derived probe still passes unchanged post-refactor.
@@ -141,13 +121,6 @@ Auto-fixed downstream call site (Rule 3 — blocking build error caused directly
 
 ## Files Created/Modified
 
-- `packages/concord/src/types.ts` - Removed `ChannelMetadata.key`/`.epoch`; `ChannelKey` (the `material.channels` entry) unchanged.
-- `packages/concord/src/helpers/community.ts` - `channelSecret`/`channelKeyFor`/`voiceKeysFor` return `null` for a keyless private channel; `deriveKeys` gains a skip-on-null guard; added exported `hasChannelKey`.
-- `packages/concord/src/helpers/keys.ts` - `channelKeyMemo` null-signals and sources its cache-key from `material.channels`; `deriveConcordKeys`'s channel loop skips keyless private channels and records `channelEpochs` from the held entry.
-- `packages/concord/src/helpers/control.ts` - `foldControl`'s channel loop rewritten: authorized-candidate scan for sticky deletion (pins `heads`), explicit typed field pick for the surviving candidate, no edition-JSON key merge.
-- `packages/concord/src/helpers/__tests__/keys.test.ts` - Four new spec-derived cases (CHAN-01/CHAN-03/TEST-01).
-- `packages/concord/src/helpers/__tests__/control.test.ts` - Two new fold-level cases (CHAN-04/CHAN-07), including the compaction + fresh-joiner-fold simulation.
-- `apps/examples/src/examples/concord/admin-management.tsx` - Dropped a stale `channel.epoch` display read that no longer type-checks (display-only, not load-bearing).
 
 ## Decisions Made
 
@@ -160,9 +133,7 @@ Auto-fixed downstream call site (Rule 3 — blocking build error caused directly
 
 **1. [Rule 3 - Blocking] Fixed a downstream compile error caused by removing `ChannelMetadata.epoch`**
 - **Found during:** Post-Task-1 verification (`pnpm run build`)
-- **Issue:** `apps/examples/src/examples/concord/admin-management.tsx:758` read `channel.epoch ?? community.material.root_epoch` to display a channel's epoch badge — this field no longer exists on `ChannelMetadata` after Task 1's removal, breaking the example app's `tsc -b` build.
 - **Fix:** Dropped the epoch badge display entirely (display-only, not load-bearing; the per-channel epoch is client-local key state not exposed on `ChannelMetadata` post-refactor, and reconstructing it would need new plumbing out of this plan's scope).
-- **Files modified:** `apps/examples/src/examples/concord/admin-management.tsx`
 - **Verification:** `pnpm --filter applesauce-examples exec tsc -b --force` clean; full monorepo `pnpm run build` green (18/18 tasks).
 - **Committed in:** `f4ec1c84`
 
@@ -183,7 +154,6 @@ None - no external service configuration required.
 
 - `hasChannelKey` is exported and ready for Plans 02/03 to consume (CHAN-06's `accessible` view enrichment, CHAN-02's `sendMessage` guard).
 - `channelKeyFor`/`voiceKeysFor`/`channelSecret` are now `T | null` throughout — any new call site added in 02/03 must handle the null case (never re-add a fallthrough).
-- Full package (`applesauce-concord`, 208 tests) and full monorepo (`vitest run`, 2083 tests) both green; full monorepo `pnpm run build` (18/18) green.
 - No `!` non-null assertions were added around the nullable-ripple functions (`channelSecret`/`channelKeyFor`/`voiceKeysFor`) — confirmed by diff grep.
 
 ---

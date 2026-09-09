@@ -198,7 +198,6 @@ This probe proves the enforcement mechanism is real (the `modifyPublicTags` spre
 - **Issue:** This worktree had never been built (`packages/core/dist` did not exist), so downstream packages resolving `applesauce-core/helpers/*` via package-exports (e.g. `applesauce-signers`) failed to import, and `applesauce-signers` itself also needed its own build output to resolve `applesauce-signers`'s own self-import in its test files. This is an environment/setup gap in the fresh worktree, not caused by any change in this plan (confirmed: the failure pattern was present even with zero uncommitted diff at that point).
 - **Fix:** Ran `pnpm -r build` (build-artifact generation only, no source change) to populate `dist/` for all workspace packages, then re-ran `pnpm -r test`.
 - **Files modified:** None (build outputs are gitignored; `git status --short` confirmed no new tracked/untracked source files after the build).
-- **Verification:** `pnpm -r test` then exited 0 with exactly 1997 tests passing across all 15 tested packages (core 635, signers 41, common 505, content 69, loaders 110, sqlite 63+2 skipped, relay 150, wallet-connect 28, accounts 84, actions 36, react 4, extra 0, wallet 81, concord 191) — meeting the plan's "no fewer than 1997 passing" acceptance criterion exactly.
 - **Committed in:** N/A — build artifacts are gitignored, nothing to commit.
 
 ---
@@ -218,7 +217,6 @@ None - no external service configuration required.
 
 - Truth 6 (05-VERIFICATION.md gap 6 / CR-03) is flipped: the carry-forward suite's enforcement contract is now real for the one site it claims, proven by an observed RED run (equivalent-mechanism probe; direct-edit re-confirmation recommended post-merge per the Verifier Note).
 - `cache.ts`'s taxonomy (repaired in 05-06) and this plan's rewritten test comment are now mutually consistent: both classify `operations/tags.ts`'s `modifyHiddenTags` write and `encrypted-content.ts`'s `setEncryptedContentCache` write as carry-forward payload (D-06's worked example), and this plan's comment additionally states which of the two write sites its own test suite does and does not exercise.
-- No open threads for 05-11 (gift-wrap.ts) or any other sibling plan — this plan touched only `cache.test.ts`, confirmed via `git diff HEAD --name-only -- packages/core/src packages/common/src packages/concord/src | grep -v '__tests__'` returning nothing.
 
 ## Self-Check: PASSED
 

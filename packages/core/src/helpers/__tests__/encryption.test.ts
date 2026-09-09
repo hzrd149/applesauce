@@ -30,7 +30,6 @@ describe("nip44 plaintext ceiling", () => {
   const conversationKey = nip44.getConversationKey(key, pubkey);
 
   // CORD-02 Appendix B states implementations "MUST enforce the cap at every layer" against
-  // a 65,535-byte plaintext ceiling -- the sentence applesauce-concord's D-07 overrides. That
   // premise moved upstream: NIP-44 itself now specifies max_plaintext_size = 4294967295, with
   // the old 65536 figure demoted to a mere extended_prefix_threshold (nostr-tools' internal
   // names are maxPlaintextSize/extendedPrefixThreshold). 65,535 is NOT the current NIP-44 spec
@@ -39,10 +38,8 @@ describe("nip44 plaintext ceiling", () => {
   // (D-25's correction to D-11's supporting claim that 2.24.0 was the first release carrying
   // the fix); this repo's locked target range is ^2.24, unchanged by that correction.
   //
-  // This test lives in packages/core, not packages/concord: concord declares no direct
   // nostr-tools dependency and reaches nip44 only through this module's re-export
   // (../encryption.ts), so this module is where the lifted ceiling is runtime-determining for
-  // every PrivateKeySigner-based concord consumer.
   it("round-trips a plaintext over the old 65,535-byte ceiling", () => {
     const plaintext = "a".repeat(70_000);
     const byteLength = new TextEncoder().encode(plaintext).length;

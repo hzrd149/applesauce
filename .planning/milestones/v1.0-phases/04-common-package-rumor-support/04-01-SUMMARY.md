@@ -103,7 +103,6 @@ status: complete
 - `getReactionEmoji` genericized to `<E extends StoreEvent = NostrEvent>` (it reads both `.content` and `.tags`)
 - `getContentWarning` genericized to `<E extends { tags: string[][] } = NostrEvent>`
 - Orphaned `EventTemplate` imports removed from `threading.ts` and `hashtag.ts` after the union collapsed into a single generic parameter
-- COMMON-02 audited and documented empty: no `applesauce-common` cast, model, or factory references a rumor; concord's `ConcordDirectInvite` and actions' `wrapped-messages.ts` both bypass common casts entirely (confirmed by grep)
 - Full `applesauce-common` test suite (500 tests, 62 files) and the full-workspace `pnpm run build` both green, with zero diff in any of the four `exports.test.ts` inline snapshots
 
 ## Task Commits
@@ -139,7 +138,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - This is the final plan of the final milestone phase (04-common-package-rumor-support); COMMON-01/02/03 are all satisfied
-- `applesauce-common`'s four genericized helpers are ready for any downstream rumor-typed consumer (e.g. a future `applesauce-concord` NIP-10/NIP-36 rumor use case) with zero further common-package changes required
 - No blockers; milestone v1.0 (event-store-supports-rumors) is functionally complete pending `/gsd-verify-work` and milestone closeout
 
 ---

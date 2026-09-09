@@ -17,7 +17,6 @@ affects: [14-04, 14-05, 14-06, 14-07]
 tech-stack:
   added: []
   patterns:
-    - "debug-package output capture: enable a concrete namespace, override the shared sink, collect calls, restore in a finally — reused verbatim from packages/concord/src/helpers/__tests__/relays.test.ts, now generalized with a namespace parameter"
     - "duck-typed auth-error-name set (RELAY_AUTH_ERROR_NAMES) local to group.ts, mirroring sync-loader.ts's precedent — match on err.name string, never instanceof, never import the error classes across the loaders/relay boundary"
 
 key-files:
@@ -63,7 +62,6 @@ status: complete
 
 # Phase 14 Plan 03: Debug-Capture Harness + RelayGroup Dropped-Relay Diagnostics Summary
 
-**Lifted the concord-proven `debug`-output capture harness into `applesauce-relay`'s test suite and reworded `RelayGroup.sync`'s existing dropped-relay log line so an operator can tell an auth-caused drop from a network-caused drop by reading captured output alone.**
 
 ## Performance
 
@@ -94,7 +92,6 @@ status: complete
 
 See `key-decisions` in frontmatter. In summary:
 - `withDebugCapture` is a plain `export function` (not `async function`) returning a `Promise`, to satisfy the plan's literal acceptance grep while keeping restore-in-`finally` semantics.
-- `debug`/`@types/debug` added as `applesauce-relay` devDependencies — Rule 3 auto-fix, not a new-package install. `debug` was already resolved in the workspace lockfile (declared by `applesauce-core`, `applesauce-concord`) but not hoisted into `packages/relay`'s own resolution scope under pnpm's strict `node_modules`; the new test-support module's direct `import debugFactory from "debug"` failed to resolve at runtime until declared. This exactly mirrors the documented Phase 12.2-01 precedent for `applesauce-concord` (STATE.md: "debug/@types/debug added as concord's own direct dependencies — RESEARCH-verified correction to a transitive assumption"). No new package entered the lockfile; `pnpm install --filter applesauce-relay` resolved purely from already-audited existing lockfile entries.
 - `RELAY_AUTH_ERROR_NAMES` is a local `const` in `group.ts`, not an import from `relay.ts` or a shared module — per the plan's explicit instruction to duck-type on `.name` and not import the error classes into a new place, mirroring `sync-loader.ts`'s identical precedent for the identical reason (a rename of the pinned `.name` values must be updated at each duck-typing site independently).
 
 ## Deviations from Plan

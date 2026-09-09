@@ -39,7 +39,6 @@ status: complete
 
 # Phase 20 Plan 04: AUTH Contract Publication Summary
 
-**The fixed AUTH family is documented, provenance-correct, release-described, and green across Relay, loaders, Concord, Extra, types, and docs.**
 
 ## Performance
 
@@ -56,7 +55,6 @@ status: complete
 
 - Relay: 345 tests, type fixture, build
 - Loaders: 128 tests, build
-- Concord: 602 tests, build
 - Extra: 1 test, build
 - VitePress: production build
 - Static routing, classifier parity, and exact one-sentence changeset audit

@@ -55,9 +55,7 @@ This seed will surface during `/gsd-new-milestone` when the milestone scope matc
 
 **Unknown** — run `/gsd-capture --seed --enrich SEED-006` to estimate effort.
 
-## Reference Model — `packages/concord/src/client/` (closest analog)
 
-Concord is a stronger precedent here than the NIP-60 wallet cited in [[SEED-005]],
 because it is already a multi-class client stack operating **over gift-wrapped
 content** — it has `helpers/gift-wrap.ts` and `operations/gift-wrap.ts` of its own.
 It is in-repo proof that this shape works for this problem:
@@ -124,7 +122,6 @@ same back-compat-typo pattern noted for legacy DMs in [[SEED-005]])
    layers stay distinct.
 2. **Where does it live?** Same open question as [[SEED-005]] — primitives are spread
    across `packages/common`, `packages/actions` and `packages/core`, while both
-   reference models (`concord`, `wallet`) own their own package.
 3. **What does "handles media" mean concretely?** Upload-on-send via blossom,
    decrypt-and-resolve on receive, caching, or all three. This is the part with no
    existing wiring, so it needs the most definition.

@@ -1,7 +1,6 @@
 ---
 phase: 12-document-caps-conformance
 plan: 07
-subsystem: applesauce-concord
 tags: [wire-format, community-list, invite-list, round-trip, D-12]
 dependency-graph:
   requires: ["12-03", "12-05"]
@@ -15,18 +14,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/community-list.ts
-    - packages/concord/src/helpers/invite-list.ts
-    - packages/concord/src/operations/community-list.ts
-    - packages/concord/src/operations/invite-list.ts
-    - packages/concord/src/casts/community-list.ts
-    - packages/concord/src/casts/invite-list.ts
-    - packages/concord/src/casts/__tests__/community-list.test.ts
-    - packages/concord/src/casts/__tests__/invite-list.test.ts
-    - packages/concord/src/client/client.ts
-    - packages/concord/src/client/__tests__/extra-relays.test.ts
-    - packages/concord/src/helpers/__tests__/community-list.test.ts
-    - packages/concord/src/helpers/__tests__/invite-list.test.ts
 decisions:
   - "Task 2 also re-pointed two additional test files not in the plan's declared files_modified list — casts/__tests__/community-list.test.ts and casts/__tests__/invite-list.test.ts — because their `.unlock(signer)` assertions compare against the renamed field shape and the compiler could not flag them (Rule 3: blocking issue, required for a green suite)."
   - "Applied D-01/D-12's open-root fix identically to both documents: index signature declared exactly as types.ts already declares it on the four per-entry types (CommunityListCommunity, CommunityTombstone, InviteListInvite, InviteListTombstone), so the package expresses 'open object' one way, not two."
@@ -46,7 +33,6 @@ Made `ParsedCommunityList` and `ParsedInviteList` carry the wire document's own 
 
 ## What Changed
 
-**Task 1 — Open both document roots** (`packages/concord/src/helpers/community-list.ts`,
 `invite-list.ts`): `ParsedCommunityList`/`ParsedInviteList` renamed their array field to `entries`
 (matching the wire key, dropping the old in-memory alias) and gained `[k: string]: unknown`, the
 same idiom `types.ts` already uses on `CommunityListCommunity`, `CommunityTombstone`,
@@ -107,8 +93,6 @@ pre-existing `unlockCommunityList`/`unlockInviteList` tests had their field read
 
 ## Verification
 
-- `npx tsc --noEmit -p packages/concord/tsconfig.json` — exits 0.
-- `pnpm --filter applesauce-concord test` — 53 files, 533 tests, all green.
 - `pnpm exec turbo build --filter='./packages/*'` — 14/14 tasks succeed.
 - `git diff --name-only` does not list `factories/community-list.ts`, `factories/invite-list.ts`,
   or `operations/__tests__/community-list.test.ts` — confirms the array-in/array-out operation
@@ -128,21 +112,12 @@ pre-existing `unlockCommunityList`/`unlockInviteList` tests had their field read
   an error, so these two files were not in the Task 1 `tsc` error list the plan expected Task 2 to
   work from.
 - **Fix:** Re-pointed both `.resolves.toEqual(...)` expectations to `{ entries: ..., tombstones: [] }`.
-- **Files modified:** `packages/concord/src/casts/__tests__/community-list.test.ts`,
-  `packages/concord/src/casts/__tests__/invite-list.test.ts`
 - **Commit:** 6a4199a5
 
 No other deviations — the rest of the plan executed as written.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/helpers/community-list.ts
-- FOUND: packages/concord/src/helpers/invite-list.ts
-- FOUND: packages/concord/src/operations/community-list.ts
-- FOUND: packages/concord/src/operations/invite-list.ts
-- FOUND: packages/concord/src/casts/community-list.ts
-- FOUND: packages/concord/src/casts/invite-list.ts
-- FOUND: packages/concord/src/client/client.ts
 - FOUND: commit 80aa984f (Task 1)
 - FOUND: commit 6a4199a5 (Task 2)
 - FOUND: commit fb7859da (Task 3)

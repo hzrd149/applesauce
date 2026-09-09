@@ -2,12 +2,10 @@
 phase: 11-messaging-wire-conformance
 plan: 01
 subsystem: testing
-tags: [concord, cord-protocol, wire-conformance, vitest, fixtures]
 
 # Dependency graph
 requires: []
 provides:
-  - "packages/concord/src/__tests__/cord-wire-fixtures.ts — the single vendored import source for every WIRE-02/03/04/05 assertion in plans 11-05 and 11-06"
   - "substituteFixtureTags/missingFixtureTags/tagValues pure helpers for binding fixture placeholders and comparing tag sets order-independently"
 affects: [11-05-plan, 11-06-plan]
 
@@ -18,13 +16,10 @@ tech-stack:
 
 key-files:
   created:
-    - packages/concord/src/__tests__/cord-wire-fixtures.ts
-    - packages/concord/src/__tests__/cord-wire-fixtures.test.ts
   modified: []
 
 key-decisions:
   - "Cited branch main (not master) per RESEARCH.md's GitHub-API-verified default branch, correcting CONTEXT.md's canonical-refs section"
-  - "Fixture module is dependency-free (no vitest import, no concord source import) so it stays importable from any test file without cycles"
   - "missingFixtureTags compares tag arrays by length + per-index value equality, not reference identity, and is deliberately order- and extras-tolerant since bindToChannel appends binding tags after the factory's own tags"
 
 patterns-established:
@@ -38,7 +33,6 @@ coverage:
     requirement: "WIRE-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#vendored fixture shape > $section carries a resolvable citation and non-empty tags"
         status: pass
     human_judgment: false
   - id: D2
@@ -46,7 +40,6 @@ coverage:
     requirement: "WIRE-04"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#substituteFixtureTags > throws naming the unresolved token when a placeholder has no binding"
         status: pass
     human_judgment: false
   - id: D3
@@ -54,7 +47,6 @@ coverage:
     requirement: "WIRE-03"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#missingFixtureTags > returns empty when actual contains every expected tag in a different order with extras interleaved"
         status: pass
     human_judgment: false
   - id: D4
@@ -62,7 +54,6 @@ coverage:
     requirement: "WIRE-05"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#tagValues > returns every value for a repeated tag name in encounter order"
         status: pass
     human_judgment: false
 
@@ -98,8 +89,6 @@ Each task was committed atomically:
 **Plan metadata:** pending (docs: complete plan)
 
 ## Files Created/Modified
-- `packages/concord/src/__tests__/cord-wire-fixtures.ts` - vendored `examples.md` transcription (5 examples, 2 prose rules) + 3 pure helpers
-- `packages/concord/src/__tests__/cord-wire-fixtures.test.ts` - 13 tests proving the helpers non-vacuous
 
 ## Decisions Made
 - Cited branch `main` (RESEARCH.md's GitHub-API-verified default branch), not `master` as CONTEXT.md's canonical-refs section states
@@ -108,7 +97,6 @@ Each task was committed atomically:
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. One self-correction during Task 2 authoring: the test file's initial import path (`../cord-wire-fixtures.js`) was wrong for a same-directory module and was corrected to `./cord-wire-fixtures.js` before the task was verified or committed (caught by the first `pnpm --filter applesauce-concord test cord-wire-fixtures` run, which failed on "Cannot find module"; not a deviation from plan content, a same-task typo fix).
 
 ## Issues Encountered
 None.
@@ -119,7 +107,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-The vendored fixture module and its three helpers are ready for plans 11-05 and 11-06 to import directly. No downstream test may hardcode its own copy of a tag set — `cord-wire-fixtures.ts` is now the single source. `pnpm --filter applesauce-concord test` is green at 484/484 (471 pre-existing + 13 new).
 
 ---
 *Phase: 11-messaging-wire-conformance*
@@ -127,7 +114,5 @@ The vendored fixture module and its three helpers are ready for plans 11-05 and 
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/__tests__/cord-wire-fixtures.ts
-- FOUND: packages/concord/src/__tests__/cord-wire-fixtures.test.ts
 - FOUND: 328f0bda
 - FOUND: 94f2f2f8

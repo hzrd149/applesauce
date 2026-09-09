@@ -7,7 +7,6 @@
 ## Phase Boundary
 
 Six requirements — WIRE-01, WIRE-02, WIRE-03, WIRE-04, WIRE-05, WIRE-11 — covering the
-tag shapes `applesauce-concord` **emits** for reactions, threaded replies, and deletes;
 two **receive-side** gaps (kind 23313 voice presence dropped at the funnel; the wrap's
 ephemeral `p`-tag key discarded at generation); and the removal of the `voice` channel
 flag the spec abolishes.
@@ -59,14 +58,12 @@ flag the spec abolishes.
   enumerated-patch shape this project has repeatedly rejected).
 
 - **D-02:** **No upstream factory changes are required.** All three factories already
-  handle a full event/rumor correctly; concord's only defect is passing an identity
   instead. A plan that edits `packages/common` or `packages/core` factories for these
   three requirements has misread the problem. Verified:
 
   | Factory | Path | Why passing the rumor is sufficient |
   |---|---|---|
   | `DeleteFactory.fromEvents` | `packages/core/src/operations/delete.ts:13` | `isEvent(event)` branch calls `ensureKTag(tags, event.kind)`. The bare-string else-branch is what drops `k`. |
-  | `ReactionFactory.create` | `packages/common/src/operations/reaction.ts:23` | `ReactionParent = NostrEvent \| Rumor \| { id; pubkey; kind }`. concord passes the third form with `kind` hardcoded. |
   | `CommentFactory.create` | `packages/common/src/operations/comment.ts:29` | The `"tags" in parent` branch calls `createCommentTagsForEvent(parent)` — this *is* the verbatim-root-inheritance path. |
 
 - **D-03:** The `setParent` else-branch **throws** on a comment-kind pointer:
@@ -80,8 +77,6 @@ flag the spec abolishes.
 
 - **D-04:** **Delete the drop; route 23313 into the plane store like any other rumor.**
   Two symmetric sites, both go:
-  - `packages/concord/src/client/community.ts:682`
-  - `packages/concord/src/client/private-channel.ts:316`
 
   Consumers read it via the already-public raw store — `channelStore(channelId)`
   (`client/community.ts:607`) with `.timeline([{ kinds: [23313] }])`. This matches the
@@ -140,7 +135,6 @@ flag the spec abolishes.
 ### Milestone conventions carried forward
 
 - **D-09:** **No changeset** — carried forward from Phase 12.3's D-15 and confirmed
-  here. concord is unreleased; a changeset for a package with no consumers is noise.
 
   **This is a deliberate override of ROADMAP.md Phase 11 success criterion 1**, which
   reads "breaking change; changeset + migration note included". `verify-phase` must
@@ -149,10 +143,8 @@ flag the spec abolishes.
   anticipate when it named only `voice` as this phase's breaking change.
 
 - **D-10:** **Fixtures are vendored.** Transcribe the relevant `examples.md` tag sets
-  into a checked-in fixture file under `packages/concord/src/__tests__/`. Tests assert
   against that file; a reviewer can diff the file against the spec. This is what makes
   TEST-01's anti-self-assertion rule auditable — the CORD specs live in an external
-  repo (`github.com/concord-protocol/concord`, branch `master`) with no local copy, so
   without a vendored file "asserted against the spec" is unverifiable.
 
   Every fixture entry must carry its CORD section citation. Note L11: existing comments
@@ -166,14 +158,12 @@ flag the spec abolishes.
 ### Claude's Discretion
 
 - **How `ephemeralSk` reaches an app-level caller.** D-07 makes the key *suppliable* at
-  `buildWrap`, but concord calls `wrapSeal`/`giftWrap` internally through
   `helpers/keys.ts:41` and `publishToPlane`. Whether the option is threaded all the way
   out to a public method, exposed only at the operation layer, or surfaced some third
   way is **open for research and planning** — it was not decided in discussion.
 - Whether `Rumor` or a narrower structural type is the right parameter type for D-01's
   three signatures.
 - Fixture file name, location within `__tests__/`, and internal structure.
-- Test file organization — extending existing concord suites vs. a new wire-conformance
   suite.
 
 </decisions>
@@ -188,7 +178,6 @@ flag the spec abolishes.
 - `.planning/REQUIREMENTS.md` — WIRE-01…WIRE-05, WIRE-11 at lines 75-79, 85; the
   Phase 11/12 split in the traceability table at lines 160-171; the TEST-01 standing
   rationale at line 184 (Phases 11/12 bind to fixtures, not formulas)
-- `.planning/concord-audit.md` — findings **M13** (line 169, voice flag), **M14**
   (170, presence dropped), **M15** (171, hardcoded reaction kind), **M16** (172,
   reply root inheritance), **L03** (192, delete `k` tag), **L10** (199, ephemeral key)
 - `.planning/ROADMAP.md` §"Phase 11: Messaging Wire Conformance" — the six success
@@ -196,7 +185,6 @@ flag the spec abolishes.
 
 ### External specs (no local copy — vendor per D-10)
 
-- `github.com/concord-protocol/concord` branch `master` — CORD-01 §Deletions
   (giftwrap delete by `p` tag), CORD-03 §3 (threaded replies), CORD-07 §1 (every
   channel is callable — no per-channel voice flag), CORD-07 §4 (voice presence)
 - `examples.md` in that repo — the fixture source of record for every wire shape this
@@ -204,8 +192,6 @@ flag the spec abolishes.
 
 ### Prior phase context
 
-- `.planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-CONTEXT.md`
-  — **D-15** (no changesets, concord unreleased), **D-16** (debug logging convention)
 - `.planning/codebase/EVENT_KIND_PATTERNS.md`, `.planning/codebase/TESTING.md`
 
 </canonical_refs>
@@ -217,15 +203,6 @@ flag the spec abolishes.
 
 | Req | Site | Current state |
 |---|---|---|
-| WIRE-01 | `packages/concord/src/types.ts:120-121` | `voice?: boolean` — write-only, read by nothing in `src/` |
-| WIRE-01 | `packages/concord/src/client/admin.ts:55-56, 188` | `CreateChannelOptions.voice`; `if (options.voice) content.voice = true` |
-| WIRE-01 | `packages/concord/src/helpers/control.ts:311` | fold line preserving `voice` |
-| WIRE-02 | `packages/concord/src/client/community.ts:682` | `if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;` |
-| WIRE-02 | `packages/concord/src/client/private-channel.ts:316` | same drop, symmetric site |
-| WIRE-03 | `packages/concord/src/client/community.ts:1104-1111` | `kind: kinds.ChatMessage` hardcoded into `ReactionFactory.create` |
-| WIRE-04 | `packages/concord/src/client/community.ts:1096-1102` | pointer hand-built with `kind: kinds.ForumThread` |
-| WIRE-05 | `packages/concord/src/client/community.ts:1121-1126` | `DeleteFactory.fromEvents([targetId])` — bare string |
-| WIRE-11 | `packages/concord/src/operations/gift-wrap.ts:67` | `getPublicKey(generateSecretKey())` — secret discarded |
 
 ### Reusable assets
 
@@ -245,15 +222,12 @@ flag the spec abolishes.
   signature changes must not disturb it.
 - **`route()` is the single receive funnel** shared by sync and the live subscription
   — which is why one deleted line in each of two files is the whole of WIRE-02.
-- **Spec-derived assertion (TEST-01, standing).** All 189 concord tests passed while 9
   HIGH bugs were live because every test compared the implementation against itself.
   No test in this phase may assert against a snapshot of our own output.
 
 ### Integration points
 
-- `packages/concord/src/client/community.ts` — the four messaging methods plus the
   funnel; the highest-churn file in the phase
-- `packages/concord/src/operations/gift-wrap.ts` → `helpers/keys.ts:41` → publish path
   — the thread D-07's open plumbing question runs along
 
 </code_context>
@@ -262,7 +236,6 @@ flag the spec abolishes.
 ## Specific Ideas
 
 - The user resolved the ROADMAP-vs-D-15 changeset conflict in favor of D-15 immediately
-  and without hedging — treat "concord is unreleased, so breaking changes are cheap and
   changesets are noise" as a settled project-wide stance, not a per-phase call.
 - Preference confirmed again for **making the wrong path unrepresentable** over widening
   a union or adding a fallback branch (D-01's rejection of the union option,

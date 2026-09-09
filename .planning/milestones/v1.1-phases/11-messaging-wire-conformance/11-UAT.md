@@ -27,9 +27,7 @@ resolution: |
   Also verified NOT stale: `sendMessage`'s `replyTo` is genuinely `{id, author}` (:1045), so the
   reply example was left unchanged — a blanket replace would have introduced a new defect.
   Swept all of apps/ for the same call shapes: only community.md was affected; no example app
-  uses these methods. Fixed apps/docs/concord/community.md:95-100,109. Suite green (495 passed).
 
-Detail: `apps/docs/concord/community.md:95,97,106` still document
 `react(channelId, {id, author}, ...)`, `replyToThread(channelId, {id, author}, ...)` and
 `deleteMessage(channelId, messageId)`. Plan 11-04 changed all three to take a full `Rumor`.
 No plan in this phase claimed this file in `files_modified`, so it is a scope decision rather
@@ -50,9 +48,6 @@ resolution: |
   (exclude ephemeral kinds 20000-29999 from the observed fold, rather than special-casing 23313).
 
 Detail: WIRE-02 removed the kind-23313 early-return from the receive funnel, which is exactly
-what the criterion asked for. But `ConcordObservedAuthorsModel`
-(`packages/concord/src/models/observed.ts:9`) reads `store.timeline([{}])` — all kinds,
-unfiltered — and `foldMembers`'s re-entry branch (`packages/concord/src/helpers/guestbook.ts:123-126`)
 re-adds an author when `lastMs > c.ms`. A voice-presence beacon newer than a member's departure
 therefore re-adds them to `members$`. This was structurally impossible before, because presence
 never reached the store. It is untested in either direction: no test proves the resurrection,
@@ -79,7 +74,6 @@ narrowed control-store observation because "narrowing observation is fail-safe (
 the memberlist, never resurrect a removed member)". That reasoning was never applied to presence.
 
 Suggested structural fix (not applied — scope decision): exclude ephemeral kinds (20000-29999,
-which covers 23313 and any future presence-like kind) from `ConcordObservedAuthorsModel`'s fold
 rather than special-casing 23313. Observation should mean durable authorship.
 
 ## Summary

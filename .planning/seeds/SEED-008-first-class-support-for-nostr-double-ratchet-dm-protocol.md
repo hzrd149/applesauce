@@ -81,19 +81,16 @@ source. Treat as a starting point for the investigation, not as findings.
 `NIP-EE` / `MLS` across `*.ts`, `*.md` and `*.json` returns **nothing**. This is
 greenfield.
 
-**But there is a strong in-house crypto precedent — concord.** `packages/concord`
 already implements epoch-based group rekeying with a full HKDF key-schedule, built
 directly on `@noble/curves` ^2.2.0, `@noble/hashes` ^2.2.0 and `@scure/base` ^2.2.0
 with **no external crypto framework**:
 
-- `helpers/crypto.ts` — `concordHkdf`, `GroupKey`, `groupKey`, `channelGroupKey`,
   `controlGroupKey`, `guestbookGroupKey`, `channelRekeyGroupKey`, `baseRekeyGroupKey`,
   `voiceGroupKey`/`voiceMediaKey`/`voiceSenderKey`, `epochKeyCommitment`, plus locator
   derivations
 - `helpers/rekey.ts` — `REKEY_KIND` (3303), `RekeyScope`, `encodeWrappedKey` /
   `decodeWrappedKey`, chunked rekey blobs (`REKEY_BLOBS_PER_EVENT` = 120)
 
-Note concord's voice path already derives **sender keys** (`voiceSenderKey`) — the same
 primitive nostr-double-ratchet uses for groups. So the house has relevant expertise and
 a demonstrated appetite for owning this layer.
 
@@ -103,7 +100,6 @@ Three options, materially different in cost and risk:
 
 1. **Wrap the upstream package** behind an applesauce-owned interface — fastest, but
    inherits pre-stable churn and an external dependency in a published package.
-2. **Implement the protocol natively** in applesauce style on `@noble/*`, as concord
    does — highest cost, no external churn, consistent with existing house patterns, and
    the only option that keeps the crypto reviewable in-repo.
 3. **Defer** until upstream stabilises or a NIP is assigned — cheapest, and defensible

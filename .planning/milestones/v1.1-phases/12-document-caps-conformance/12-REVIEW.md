@@ -6,9 +6,6 @@ round: 2 (gap wave — plans 12-10 / 12-11 only; round 1 preserved in git at 53d
 diff_base: 48debd59
 files_reviewed: 3
 files_reviewed_list:
-  - packages/concord/src/helpers/control.ts
-  - packages/concord/src/helpers/__tests__/control.test.ts
-  - packages/concord/src/client/__tests__/community.test.ts
 findings:
   critical: 0
   warning: 6
@@ -61,7 +58,6 @@ and `58ebb95e`/`bfd3e8a9` (12-11, downstream reachability tests).
    was adopted" from "v2's `prev` dangled and v1 was folded instead". Test L (**WR-01**) asserts a
    strictly narrower property than its comment claims.
 
-**Verification performed:** all 554 concord tests pass; `tsc --noEmit -p packages/concord` clean;
 six standalone `tsc --strict` probes of the mapped-type machinery; a Node repro of the
 `Object.fromEntries` / `Object.assign` prototype interaction.
 
@@ -77,7 +73,6 @@ this file.
 
 ### WR-01: A hostile edition can shadow `Object.prototype` members on every folded channel; Test L asserts a narrower property than it claims
 
-**File:** `packages/concord/src/helpers/control.ts:274-302`, `packages/concord/src/helpers/__tests__/control.test.ts:1145-1162`
 
 **Issue:** `passThrough` admits *every* own key that is neither stripped nor declared — including
 `__proto__`, `constructor`, `toString`, `hasOwnProperty`. `Object.fromEntries` creates them as own
@@ -101,7 +96,6 @@ public API, and `admin.ts:232` re-serializes the folded object back onto the wir
 also survives a delete/compaction round trip.
 
 **Not a regression** (the pre-12-10 rest-spread behaved identically) and **no in-repo consumer is
-affected** — `grep -rn "Object.assign" packages/concord/src` is empty, and no `Object.assign`/merge
 over a `ChannelMetadata` exists anywhere in `packages/*/src` or `apps/*/src`. The concern is
 external consumers, plus the false sense of closure Test L's comment creates.
 
@@ -126,7 +120,6 @@ expect(Object.getPrototypeOf(Object.assign({}, folded!))).toBe(Object.prototype)
 
 ### WR-02: A `"strip"` classification is a silent no-op for any field `ChannelMetadata` also declares — the two tables have opposite precedence at type level and at runtime
 
-**File:** `packages/concord/src/helpers/control.ts:229-246`, `274-302`
 
 **Issue:** `ChannelKeyFoldDisposition` permits `"strip" | "metadata-field"` for any `ChannelKey`
 field that is also a declared `ChannelMetadata` member. Verified with `tsc --strict`: classifying
@@ -163,11 +156,9 @@ for (const field of CHANNEL_KEY_STRIPPED_FIELDS)
 
 ### WR-03: The three rule tables are exported, mutable, package-public module state — the validation can be disarmed process-wide at runtime
 
-**File:** `packages/concord/src/helpers/control.ts:213-255`
 
 **Issue:** `CHANNEL_METADATA_FOLD_RULES`, `CHANNEL_KEY_FOLD_DISPOSITION` and
 `CHANNEL_KEY_STRIPPED_FIELDS` are `export const`, which freezes the *binding*, not the contents.
-`packages/concord/src/helpers/index.ts:11` (`export * from "./control.js"`) plus the
 `./helpers` / `./helpers/*` subpath exports in `package.json` make all three package-public API. The
 `readonly string[]` annotation on the strip set is erased at runtime.
 
@@ -193,7 +184,6 @@ export const CHANNEL_KEY_STRIPPED_FIELDS: readonly string[] = Object.freeze(
 
 ### WR-04: `DeclaredKeysOf`'s documented rationale is verifiably false, and names the wrong type as the beneficiary
 
-**File:** `packages/concord/src/helpers/control.ts:139-152` (and the summary claim at `:127-137`)
 
 **Issue:** The doc block asserts that keying the rule table directly over
 `keyof Required<ChannelMetadata>` "degenerates into an unenforcing index signature that compiles and
@@ -236,7 +226,6 @@ condition, and that without it every `ChannelKey` field becomes classifiable as 
 
 ### WR-05: The two new downstream tests' "premise confirmation" assertion cannot detect the failure it exists to detect
 
-**File:** `packages/concord/src/client/__tests__/community.test.ts:1786-1791`, `1893-1897`
 
 **Issue:** Both new CR-01 tests build a v2 edition by hand and chain it with
 `computeEditionHash({ vsk, eid, version: 1, content: JSON.stringify({ name, private: false }) })`,
@@ -282,7 +271,6 @@ expect(foldedHostile!.name).toBe(hostileV2Name);
 
 ### WR-06: The central claim of 12-10 — "adding a field fails the build" — has no automated coverage, because both test files are excluded from typechecking
 
-**File:** `packages/concord/tsconfig.json` (`exclude: ["src/**/*.test.ts", "src/**/__tests__/**/*"]`), `packages/concord/src/helpers/__tests__/control.test.ts:1103-1143`
 
 **Issue:** The entire justification for 12-10 is a *compile-time* guarantee, and nothing exercises
 it. Both changed test files are excluded from `tsc`, so no `@ts-expect-error` fixture proving
@@ -308,7 +296,6 @@ but a claim that must survive future edits and is checked by no gate will drift.
 
 ### IN-01: The `!c.deleted` gates the new tests were written to protect are now provably unreachable-false
 
-**File:** `packages/concord/src/client/__tests__/community.test.ts:1755-1764` (comment), `packages/concord/src/client/community.ts:757`, `807`, `830`
 
 The CHAN-07 sticky scan `continue`s before the fold loop for any entity with an authorized
 `deleted === true` candidate, over the *same* `authorized` list and the *same* non-null-object
@@ -320,7 +307,6 @@ as the new test's comment frames it. Not a defect, and the decision not to tight
 
 ### IN-02: `admin.ts`'s channel doc block still documents the removed denylist-then-spread fold
 
-**File:** `packages/concord/src/client/admin.ts:204-226`
 
 Outside the reviewed file set, but invalidated by the in-scope change. The block explains
 `deleteChannel`'s spread in terms of "the channel fold's denylist-then-spread (D-13/D-14)" and "the
@@ -330,12 +316,10 @@ property" — a mechanism `e2fba1b8` deleted. The conclusion is still true (now 
 
 ### IN-03: An `optional` guard miss erases the field from `deleteChannel`'s re-serialized tombstone
 
-**File:** `packages/concord/src/helpers/control.ts:294-299`, `packages/concord/src/client/admin.ts:231-232`
 
 A malformed `custom` written by a newer client is dropped by the fold, and `deleteChannel` spreads
 the *folded* object, so the tombstone edition this client publishes no longer carries it — a narrow
 CORD-02 §6 round-trip loss. Bounded: `deleteChannel` is the only path that re-serializes a folded
-`ChannelMetadata` back into an edition (`grep -rn "VSK.CHANNEL" packages/concord/src` shows only
 `createChannel` and `deleteChannel` publishing channel editions), and the channel is terminal at
 that point. Consistent with the locked D-04/D-15 read-side precedent; recorded only, no action
 proposed.

@@ -2,7 +2,6 @@
 phase: 09-authority-permission-fold-correctness
 plan: 01
 subsystem: auth
-tags: [concord, fold, grant, coordinate-binding, permissions, tdd]
 
 # Dependency graph
 requires:
@@ -23,8 +22,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/control.ts
-    - packages/concord/src/helpers/__tests__/control.test.ts
 
 key-decisions:
   - "cidBytes hoisted to a single declaration above the roles/grants fixpoint loop (was duplicated later at the banlist section); the later declaration deleted, not left as a second copy"
@@ -43,7 +40,6 @@ coverage:
     requirement: AUTH-03
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#folds a Grant only at its derived coordinate, delivery-order independent (AUTH-03)"
         status: pass
     human_judgment: false
   - id: D2
@@ -51,13 +47,10 @@ coverage:
     requirement: AUTH-04
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#skips a Grant whose role_ids is not an array, without throwing, even when owner-signed (AUTH-04)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#skips a Grant whose role_ids contains a non-string entry, without throwing (AUTH-04)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#treats an empty role_ids as a valid revoke, not malformed (AUTH-04/D-08)"
         status: pass
     human_judgment: false
   - id: D3
@@ -65,13 +58,10 @@ coverage:
     requirement: AUTH-07
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#rejects a junior member's revoke of a senior member's Grant (AUTH-07)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#still allows a self-targeting Grant despite failing the (non-exempt) target-rank check (AUTH-07)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#still allows granting a role to a roleless (never-granted) target (AUTH-07)"
         status: pass
     human_judgment: false
 
@@ -112,8 +102,6 @@ Each task followed RED → GREEN TDD:
    - `9b9b4acc` feat(09-01): AUTH-07 gate non-self Grants on strictly outranking the target
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/control.ts` — imported `grantLocator`; hoisted the single `cidBytes` declaration above the Grant fold loop; added the AUTH-03 coordinate gate, AUTH-04 unconditional shape guard, and AUTH-07 target-rank AND-clause to the Grant loop (`:174-212`).
-- `packages/concord/src/helpers/__tests__/control.test.ts` — added 6 new spec-derived tests (1 AUTH-03, 3 AUTH-04, 3 AUTH-07 including self-target and roleless-target regression guards); fixed one pre-existing test that relied on the old ignored-coordinate behavior.
 
 ## Decisions Made
 - `cidBytes` hoisted to one declaration above the fixpoint loop rather than computed twice (RESEARCH Pitfall 1) — the later `:293` declaration was deleted, not duplicated.
@@ -129,7 +117,6 @@ Each task followed RED → GREEN TDD:
 - **Found during:** Task 1 (AUTH-03 coordinate gate)
 - **Issue:** `"keeps a deleted role visible in state but strips its authority"` (control.test.ts) constructed its Grant edition at `eid: roleId` rather than `grantLocator(community_id, member)`. Once AUTH-03 enforces coordinate binding, this Grant is correctly dropped as forged, breaking the test's unrelated assertion about deleted-role authority stripping.
 - **Fix:** Changed the test's Grant `eid` to `grantLocator(hexToBytes(genesis.material.community_id), grant.member)`.
-- **Files modified:** `packages/concord/src/helpers/__tests__/control.test.ts`
 - **Verification:** Full `control.test.ts` suite green (240/240) after the fix.
 - **Committed in:** `1103e268` (Task 1 GREEN commit)
 
@@ -155,7 +142,6 @@ Each new guard was proven load-bearing by reverting it and observing the associa
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- All three Grant-fold authority holes (AUTH-03/04/07) closed with spec-derived, non-vacuous tests; `applesauce-concord` 240/240 tests green, package builds clean (`tsc`).
 - Ready for the next plan in phase 09 (AUTH-06 Role fold `position` guard, D-14 banlist rank+owner-exemption, AUTH-08 guestbook vac gate, AUTH-05 client-side kick/ban pre-publish guards, per 09-PATTERNS.md).
 
 ---

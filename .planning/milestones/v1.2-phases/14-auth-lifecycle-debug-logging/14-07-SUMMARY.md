@@ -39,7 +39,6 @@ key-decisions:
   - "No downstream code changed: auth()'s tap already writes whichever response event() returns into authentications$/authenticationResponse$ verbatim, RelayGroup's aggregation collects each relay's already-shaped response, and errorToPublishResponse already sets the same field for genuinely thrown errors — all three confirmed by reading, not by editing"
   - "A pre-existing relay.test.ts assertion (`should error if no OK received within 10s`) deep-equal-asserted the old error-less timeout shape; updated to assert the new shape plus `error instanceof Error`, as a direct Rule-1 consequence of this plan's own change (same pattern as 14-01's precedent)"
   - "relay-operation-scoped-auth-callbacks.md was edited in place (not superseded) per D-01 — applesauce-relay is still unreleased (6.2.1, re-verified before editing), so the entry never shipped and correcting its wording is the right operation"
-  - "No changeset created for applesauce-loaders: 14-02's D-18 hoist changed only derivation timing/count in an unexercised-path scenario, not the emitted log text, so there is no user-visible behavior to describe. No changeset created for applesauce-concord: it remains unreleased for this whole auth surface"
 
 requirements-completed: [ALOG-01]
 
@@ -122,7 +121,6 @@ See `key-decisions` in frontmatter. In summary:
 - The `error` field is set at exactly one construction site (`event()`'s timeout branch); every other `PublishResponse` construction in `event()`, `group.ts`'s rejection map, and the shared `errorToPublishResponse` were left alone or confirmed to already agree.
 - No message-string comparison was introduced anywhere as a way of recognizing the manufactured timeout — the discriminator is purely structural, per the plan's explicit prohibition.
 - `relay-operation-scoped-auth-callbacks.md` was edited, not superseded, because D-01's premise (unreleased `applesauce-relay`, still `6.2.1`) held at the time of editing.
-- `applesauce-loaders` and `applesauce-concord` were deliberately given no new changeset — the reasoning (D-18 hoist is derivation-timing-only; concord is wholly unreleased) is recorded rather than left implicit.
 
 ## Deviations from Plan
 
@@ -161,10 +159,8 @@ None beyond the one auto-fixed deviation above.
 - `pnpm --filter applesauce-relay build` exits 0.
 - `pnpm --filter applesauce-relay test` — 286/286 passed (10 files), run three times consecutively for stability (all three green, including `D-15: publish's timeout is suspended across the auth phase` — the known pre-existing flake documented in `deferred-items.md` did not reproduce in any of the three runs).
 - `pnpm --filter applesauce-loaders build` exits 0; `pnpm --filter applesauce-loaders test` — 126/126 passed (non-regression check).
-- `pnpm --filter applesauce-concord build` exits 0 (after building `applesauce-common` first in this fresh worktree); `pnpm --filter applesauce-concord test` — 559/559 passed (non-regression check).
 - `pnpm vitest run packages/relay/src/__tests__/auth-lifecycle-logging.test.ts` (14-06's oracle file) was **not runnable from this worktree** — 14-06 is a concurrent sibling-worktree agent and its file has not yet merged into this branch's history. This verification is deferred to the orchestrator's post-merge check; nothing in this plan's tasks added a new `authLog`/`config.log` emission (Task 1 explicitly avoided adding a log line on the timeout branch, per the plan's prohibition, and `grep -c "this.authLog(" packages/relay/src/relay.ts` stayed at 9, unchanged from 14-04's count), so no perturbation to 14-06's captured-line inventory is expected.
 - Acceptance-criteria greps: `awk '/^  event\(/,/^  \/\*\* Send an AUTH message/' packages/relay/src/relay.ts | grep -c "error:"` → 1; `grep -c '=== "Timeout"' packages/relay/src/relay.ts` → 0; `grep -c 'message === ' packages/relay/src/relay.ts` → 0; `git diff packages/relay/src/group.ts` → empty; `grep -c "this.authLog(" packages/relay/src/relay.ts` → 9 (unchanged).
-- Changeset inspection (Task 3, all 4 files): each has valid frontmatter naming `applesauce-relay` with `minor` or `patch`; each body is exactly one non-empty paragraph with no line starting with `-`/`*` (the frontmatter `---` delimiters are not body content) and no triple-backtick fence; `relay-publish-timeout-marks-itself.md` and `relay-auth-lifecycle-debug-logging.md` both declare `patch`; no new `applesauce-loaders` or `applesauce-concord` changeset was created (`grep -rlc "applesauce-concord" .changeset/` only matches the pre-existing `.changeset/config.json`); `packages/relay/package.json` version confirmed `6.2.1` immediately before editing.
 
 ## Phase Closeout Item (recorded per plan's `<verification>` section, not implemented here)
 

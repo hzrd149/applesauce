@@ -1,7 +1,6 @@
 ---
 phase: 08-rotation-robustness-consensus
 plan: 02
-subsystem: concord
 tags: [rekey, rotation, consensus, chunked-events, vitest]
 
 # Dependency graph
@@ -21,8 +20,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/rekey.ts
-    - packages/concord/src/helpers/__tests__/rekey.test.ts
 
 key-decisions:
   - "Correlation key left unchanged (rotator:scopeIdHex:newEpoch:prevCommit) per D-02 — chunkCount is NOT added to the key; disagreement is caught by a separate consistency flag instead"
@@ -39,7 +36,6 @@ coverage:
     requirement: "ROTATE-10"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/rekey.test.ts#groupRotations marks a bucket inconsistent when chunks disagree on chunkCount (n)"
         status: pass
     human_judgment: false
   - id: D2
@@ -47,14 +43,12 @@ coverage:
     requirement: "ROTATE-11"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/rekey.test.ts#groupRotations marks a bucket inconsistent when chunks disagree on prevEpoch"
         status: pass
     human_judgment: false
   - id: D3
     description: "Correlation key unchanged (D-02): a fully-agreeing bucket (matching n and prevEpoch across every chunk) still reaches consistent=true, complete=true"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/rekey.test.ts#groupRotations: matching n and prevEpoch across all chunks yields a consistent, complete set (positive control)"
         status: pass
     human_judgment: false
 
@@ -91,8 +85,6 @@ Each task was committed atomically:
 **Plan metadata:** (pending — this commit)
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/rekey.ts` - `RekeyRotationSet.consistent` field; `groupRotations` multiset agreement guard over `chunkCount` and `prevEpoch`
-- `packages/concord/src/helpers/__tests__/rekey.test.ts` - n-disagreement, prevEpoch-disagreement, and positive-control tests for `groupRotations`
 
 ## Decisions Made
 - Correlation key stays exactly `${rotator}:${scopeIdHex}:${newEpoch}:${prevCommit}` — no `chunkCount` added, matching D-02 and upstream, and matching the plan's explicit rejection of the audit's "add chunkCount to the key" alternative fix
@@ -111,7 +103,6 @@ None.
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- `readRekeyScoped` (packages/concord/src/helpers/keys.ts) already filters on `set.complete` at its per-rotation loop (`if (!set.complete) continue;`), so no caller changes were required — the fix is fully contained to `groupRotations`'s completion gate
 - Downstream `checkContinuity` still reads `prevEpoch`/`prevCommit` from the SET's first-arriving values (used only after `consistent` has already gated `complete`), so an inconsistent set's internally-disagreeing `prevEpoch` never reaches continuity checking in practice
 - Ready for the next plan in Phase 08's wave sequence
 
@@ -121,8 +112,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/helpers/rekey.ts
-- FOUND: packages/concord/src/helpers/__tests__/rekey.test.ts
 - FOUND: .planning/phases/08-rotation-robustness-consensus/08-02-SUMMARY.md
 - FOUND commit: 8a3b536b
 - FOUND commit: e9387672

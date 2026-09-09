@@ -25,7 +25,6 @@ key-files:
   modified: [packages/core/src/casts/cast.ts, packages/core/src/observable/cast-stream.ts]
 
 key-decisions:
-  - "Used the sig-gated CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent form (RESEARCH Pattern 2), not the naive exact-T conditional, since the latter was empirically proven (in RESEARCH) to over-tighten concord's real ConcordDirectInvite narrowed-kind rumor cast call site"
   - "cast-stream.ts imports EventCast from ../casts/event.js (not re-exported by cast.js) and performCast from ../casts/cast.js, since cast.ts only imports EventCast locally rather than re-exporting it"
   - "Task 1 (cast.ts) and Task 2 (cast-stream.ts) edits were both applied to the working tree before running the build gate, since cast.ts alone does not compile without cast-stream.ts's companion change (the strict public castEvent rejects the loose StoreEvent cast-stream.ts passes it); the two tasks were then split into separate commits per the plan's file scoping, each git-clean and independently inspectable"
 
@@ -40,7 +39,6 @@ coverage:
         ref: "pnpm --filter applesauce-core build (tsc type-check of cast.ts's new signatures)"
         status: pass
       - kind: unit
-        ref: "pnpm --filter applesauce-concord test (124/124 — ConcordDirectInvite's real castEvent(rumor, ...) call sites unaffected)"
         status: pass
     human_judgment: false
   - id: D2
@@ -63,7 +61,6 @@ status: complete
 
 # Phase 3 Plan 2: Sig-gated castEvent typing (WR-01) Summary
 
-**Split `castEvent` into a sig-gated public entry point (`CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent`) and an internal loose `performCast`, restoring the compile-time signature guard Phase 2's generic widening had dropped, without over-tightening concord's real narrowed-kind rumor cast.**
 
 ## Performance
 
@@ -77,8 +74,6 @@ status: complete
 - `packages/core/src/casts/cast.ts` now exports `CastEventInput<T extends StoreEvent>` (sig-gated conditional type), an `@internal performCast` (the unchanged loose runtime-guarded factory, renamed from the pre-change `castEvent`), and a new public `castEvent` whose `event` parameter is `C extends EventCast<infer T> ? CastEventInput<T> : never` and which delegates to `performCast`.
 - `packages/core/src/observable/cast-stream.ts`'s `castEventStream`/`castTimelineStream` now call `performCast` (imported from `../casts/cast.js`) instead of the strict public `castEvent`, keeping their exported operator signatures (`OperatorFunction<StoreEvent | undefined, C | undefined>` / `OperatorFunction<StoreEvent[], C[]>`) unchanged.
 - WR-01 (Phase 2 carry-forward) is settled: a signed-only cast (whose `T` requires `sig`) now rejects an unsigned rumor at compile time, while a rumor/sig-less cast still accepts a loose `StoreEvent`.
-- Full workspace `pnpm -r build` is clean (exit 0) across `applesauce-core`, `applesauce-concord`, `applesauce-common`, `applesauce-wallet`, `applesauce-react`, `apps/examples`.
-- `pnpm --filter applesauce-concord test` — 124/124 tests pass across all 38 test files, confirming `ConcordDirectInvite`'s real `castEvent(rumor, ConcordDirectInvite, store)` call site is unaffected (the RESEARCH Pitfall 1 over-tightening guard).
 - Added `.changeset/sig-gated-cast-event-input.md` (`applesauce-core`: minor, single-sentence body per CLAUDE.md).
 
 ## Task Commits
@@ -96,7 +91,6 @@ _Note: Both tasks' code edits were made to the working tree together before runn
 - `.changeset/sig-gated-cast-event-input.md` - New minor changeset for `applesauce-core`
 
 ## Decisions Made
-- Used the sig-gated `CastEventInput<T>` form exactly as specified in RESEARCH Pattern 2 / PATTERNS.md — not the naive exact-`T` conditional, which RESEARCH empirically proved breaks concord's `ConcordDirectInvite` narrowed-kind rumor cast.
 - `cast-stream.ts` imports `EventCast` from `../casts/event.js` (not from `../casts/cast.js`, since `cast.ts` only imports `EventCast` locally and does not re-export it) and `performCast` from `../casts/cast.js`.
 - Applied both tasks' file edits to the working tree together before the first build/test run (since the split is only compilable as a pair), then committed each task's files separately to preserve the plan's intended atomic-per-task git history.
 - Left the `exports.test.ts` inline snapshot mismatch (caused by the new `performCast` export) unresolved in this plan, per explicit orchestrator instruction that the final exports-snapshot regeneration is plan 03-03's job.

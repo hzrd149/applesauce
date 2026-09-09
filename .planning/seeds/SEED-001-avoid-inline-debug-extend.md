@@ -2,7 +2,6 @@
 id: SEED-001
 status: resolved
 planted: 2026-07-22
-planted_during: v1.1 / Phase 12.2 — concord-sync-debug-logging
 resolved: 2026-08-08
 resolved_in: phase-14
 trigger_when: when relevant
@@ -19,7 +18,6 @@ especially inside a per-item loop — pays that cost on every single log call, a
 it scatters namespace strings as duplicated string literals rather than naming
 them once.
 
-This surfaced concretely during Phase 12.2: the concord sync instrumentation
 initially called `ctx.logger.extend("decode")(...)` inside per-wrap drop loops,
 and `this.log.extend("sync").extend("decode")(...)` at the two live `onWrap`
 sites. It was fixed mid-phase by deriving once and storing —
@@ -41,7 +39,6 @@ over the loaders, or a lint-rule/convention hardening effort.
 
 **Unknown** — run `/gsd-capture --seed --enrich SEED-001` to estimate effort.
 
-Rough shape: the concord occurrences are already resolved. The remaining work is
 a sweep of `packages/loaders/` plus, optionally, a lint rule to prevent
 regressions.
 
@@ -94,15 +91,10 @@ Candidate offenders — per-call or inline-at-call-site derivation:
   of confirming no relay-side sweep was needed, D-20).** `this.log = this.log.extend(relay.url)`
   is a constructor-time derive-and-reassign, run once per `RelayManagement`
   construction — the same shape as `relay.ts`'s own `this.log` derivation.
-- `packages/concord/src/client/client.ts:260,409` — out of this phase's scope
-  (`packages/concord/` is Phase 15 territory); left as recorded during 12.2,
   not re-audited here.
 
 Resolved during Phase 12.2 (reference implementation of the fix):
 
-- `packages/concord/src/client/sync.ts` — `SyncContext.decodeLogger`
-- `packages/concord/src/client/community.ts`,
-  `packages/concord/src/client/private-channel.ts` — `private readonly decodeLog`
 - commit `2f43cf45` — `refactor(12.2-02): derive :sync:decode loggers once, never per-wrap .extend()`
 
 ## Notes

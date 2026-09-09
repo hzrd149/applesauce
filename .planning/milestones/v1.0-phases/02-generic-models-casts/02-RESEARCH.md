@@ -33,7 +33,6 @@ None — discussion stayed within phase scope. (Rumor store wiring → Phase 3; 
 
 Phase 1 left two explicit seams for this phase to close: (1) the model framework (`EventModels` and its four base models `EventModel`/`ReplaceableModel`/`TimelineModel`/`FiltersModel`) is entirely `NostrEvent`-hardcoded and is the reason `IEventStore<E>`/`IAsyncEventStore<E>` currently drop `E` on `timeline()`/`event()`/`replaceable()`/`filters()` (the D-02/WR-02 seam); and (2) the cast infrastructure is half-genericized — `EventCast<T extends StoreEvent = NostrEvent>` was already made generic in a prior commit (`82c8839c`), but `CastRefEventStore`, `CastConstructor`, `castEvent`, `castEventStream`, and `castTimelineStream` are still bare/`NostrEvent`-typed. Both problems have the exact same shape as Phase 1's work and the exact same fix pattern: add `<E extends StoreEvent = NostrEvent>` to each type, replace `NostrEvent` with `E` in signatures, and bridge any still-`NostrEvent`-only helper call (e.g. `insertEventIntoDescendingList`, `getReplaceableAddressForEvent`, `getEventPointerForEvent`, `getAddressPointerForEvent`) with a localized `as unknown as NostrEvent` cast, mirroring `casts/event.ts`'s existing `signedView` getter.
 
-The highest-risk part of this phase is not the 5 model functions themselves (their bodies barely change) but **threading `E` through the type graph that connects them**: `IEventSubscriptions<E>` → `IEventModelMixin` → `ModelEventStore<E, TStore>` → `Model<T, E, TStore>` → `ModelConstructor<T, Args, E, TStore>` → `EventModels<E, TStore>` → `EventStore<E>`/`AsyncEventStore<E>` (which already exist and already implement `IEventStore<E>`/`IAsyncEventStore<E>`) → `CastRefEventStore<E>` (which is built from `IEventSubscriptions<E> & EventModels<E> & IEventStoreStreams<E>`). Every one of these types is consumed *unparameterized* (bare, default-resolving) by roughly 50 files across `applesauce-common`, `applesauce-wallet`, `applesauce-concord`, `applesauce-react`, and `applesauce-actions` — none of which pass a second type argument to `Model<T, ...>` today. That means the new `E` parameter can safely be inserted with a `NostrEvent` default in the second position (`Model<T, E extends StoreEvent = NostrEvent, TStore = ...>`) without touching any downstream file — echoing Phase 1's zero-downstream-edit outcome — **provided** the full workspace build is run afterward (Phase 1's WR-02/deferred-items lesson: bare generic instantiation at a contextually-typed call site can silently infer the class's *constraint* instead of its *default*).
 
 A second notable risk is `EventModels`'s module-augmentation pattern: six files (`packages/common/src/models/{comments,reactions,thread,blossom,mutes}.ts` and `packages/actions/src/action-runner.ts`) use `declare module "applesauce-core/event-store" { interface EventModels { ... } }` to add prototype methods with **zero type parameters** in the augmenting interface, even though `EventModels` is already a one-type-param generic class today. This currently compiles (verified: `pnpm --filter applesauce-common build` succeeds). Adding a second type parameter to `EventModels` must not break this cross-module declaration-merging pattern — this must be verified with the full workspace build, not just `applesauce-core`.
 
@@ -49,7 +48,6 @@ Three internal RxJS operators (`claimEvents`, `claimLatest`, `watchEventUpdates`
 | Store subscription interface (`IEventSubscriptions<E>`) | API / Backend | — | Defines the contract the model layer must satisfy; pure interface, no I/O |
 | Cast infrastructure (`EventCast<E>`, `castEvent`, `CastRefEventStore<E>`) | API / Backend | — | Wraps raw store events in typed convenience classes; consumed by both Node and browser contexts (no DOM dependency), so it is a shared-core capability, not client-tier |
 | RxJS operators (`claimEvents`, `claimLatest`, `watchEventUpdates`) | API / Backend | — | Internal plumbing for the model layer's claim/lifecycle tracking; not exposed as a separate capability but must be updated in lockstep |
-| Downstream consumers (`applesauce-common`/`wallet`/`concord`/`react`/`actions`) | Browser / Client (React hooks) + API / Backend (models/casts) | — | Out of phase scope, but every one of these packages consumes the types touched here bare/unparameterized — this phase must not require edits there |
 
 ## Standard Stack
 
@@ -57,7 +55,6 @@ No new libraries. This phase is a type-level refactor of existing `applesauce-co
 
 | Library | Version | Purpose | Why Standard |
 |---------|---------|---------|--------------|
-| typescript | (workspace-pinned, `tsc` via `packages/core/package.json` `build` script) | Type-checking/build | Already the project's build tool; verified `pnpm --filter applesauce-core build` runs clean on current `main`/`concord` HEAD |
 | rxjs | (workspace-pinned) | Observable primitives underlying `Model`, `EventModels.model()`, cast streams | Already the reactive backbone of every model/cast file touched in this phase |
 | vitest | (workspace-pinned) | Test runner (`pnpm --filter applesauce-core test`) | Existing suite (592 tests as of Phase 1 completion) must stay green unmodified |
 
@@ -92,7 +89,6 @@ Exact current signatures (CORE-06 targets), all in `packages/core/src/`:
 | `ReplaceableModel(pointer)` | `models/base.ts:123-173` | `function ReplaceableModel(pointer): Model<NostrEvent \| undefined, IEventStore \| IAsyncEventStore>` | Uses `getReplaceableIdentifier` (already CORE-04 generic) and `claimLatest(store)`. |
 | `TimelineModel(filters, includeOldVersion?)` | `models/base.ts:176-269` | `function TimelineModel(...): Model<NostrEvent[], IEventStore \| IAsyncEventStore>` | Uses `getEventUID`, `isReplaceable`, `matchFilters` (all already CORE-04 generic) plus `insertEventIntoDescendingList` (re-exported from `nostr-tools/utils`, **NOT genericized** — needs the same bridge-cast treatment Phase 1 Plan 03 applied in `event-memory.ts`) and `claimEvents(store)`. |
 | `FiltersModel(filters, onlyNew?)` | `models/base.ts:272-289` | `function FiltersModel(...): Model<NostrEvent, IEventStore \| IAsyncEventStore>` | Uses `matchFilters` (already generic) and `getByFiltersFromStores`. Simplest of the four — no claim tracking. |
-| `Model<T, TStore>` | `event-store/interface.ts:154-156` | `type Model<T, TStore extends IEventStore \| IAsyncEventStore = IEventStore \| IAsyncEventStore> = (events: ModelEventStore<TStore>) => Observable<T>` | **Zero downstream 2-arg usages found** — every one of the ~50 `Model<T>` call sites across `applesauce-common`/`wallet`/`concord`/`react` passes only `T`. Insert `E` as the **second** parameter (`Model<T, E extends StoreEvent = NostrEvent, TStore = IEventStore<E> \| IAsyncEventStore<E>>`) so all existing 1-arg call sites keep resolving to the `NostrEvent` default untouched. |
 | `ModelConstructor<T, Args, TStore>` | `event-store/interface.ts:159-165` | `type ModelConstructor<T, Args, TStore = IEventStore> = ((...args: Args) => Model<T, TStore>) & { getKey?: ... }` | Same insertion strategy as `Model` — add `E` before `TStore`, default `NostrEvent`. Internal call sites within `event-models.ts` (`model<T, Args>(constructor: ModelConstructor<T, Args, TStore>, ...)`) are inside the same package and can be updated in the same commit. |
 | `ModelEventStore<TStore>` | `event-store/interface.ts:150` | `type ModelEventStore<TStore> = IEventStoreStreams & IEventSubscriptions & IEventModelMixin<TStore> & IMissingEventLoader & TStore` | Every member interface here needs `<E>` threaded: `IEventStoreStreams<E> & IEventSubscriptions<E> & IEventModelMixin<TStore> & IMissingEventLoader<E> & TStore` (where `TStore` itself is now `IEventStore<E> \| IAsyncEventStore<E>`). |
 | `IEventSubscriptions` | `event-store/interface.ts:112-131` | `interface IEventSubscriptions<E extends StoreEvent = NostrEvent>` — **already has the type param declared** (added in Phase 1 Plan 02) but every method body still returns `NostrEvent`/hardcoded types (`event()`, `replaceable()` x2 overloads, `addressable()`, `filters()`, `timeline()`) — the type param is *declared but dead* until this phase's `EventModels` implements it properly. This is exactly WR-02. | Replace every `NostrEvent`/`NostrEvent[]` return in this interface's methods with `E`/`E[]` (the `profile`/`contacts`/`mailboxes` methods stay untyped over `E`, they return `ProfileContent`/`ProfilePointer[]`/mailbox shapes unrelated to the store event type). |
@@ -184,7 +180,6 @@ Waves 1-2 and Wave 4's file (`casts/cast.ts`/`cast-stream.ts`) touch disjoint fi
               └───────────────────────┬───────────────────────┘
                                       │ .pipe(castEventStream/castTimelineStream)
                                       ▼
-              downstream: applesauce-common/wallet/concord/react
               (out of scope — must keep compiling bare/unparameterized)
 ```
 
@@ -255,7 +250,6 @@ private get signedView(): NostrEvent {
 **What goes wrong:** A bare `new EventMemory()` (or analogously, a bare reference to `CastRefEventStore`/`Model<T>` at certain contextually-typed call sites) can have TypeScript infer the class's generic *constraint* (`StoreEvent`) rather than its *default* (`NostrEvent`), silently breaking type compatibility in a way that only shows up in a specific package's build, not `applesauce-core`'s own build.
 **Why it happens:** Documented in `.planning/phases/01-generic-store-foundation/deferred-items.md` item #1 — contextual typing at certain call-site shapes resolves generics differently than a direct type annotation would.
 **How to avoid:** Run the FULL workspace build (`pnpm -r build`), not just `applesauce-core`, as the final phase-gate check — per CONTEXT.md's explicit instruction under `<specifics>`.
-**Warning signs:** A downstream package (`applesauce-common`, `applesauce-relay`, `applesauce-react`, `applesauce-wallet`, `applesauce-concord`, `applesauce-actions`) failing to build with "types are incompatible" errors mentioning `StoreEvent` where `NostrEvent` was expected, even though `applesauce-core` itself builds clean.
 
 ### Pitfall 4: `IEventSubscriptions<E>`'s type parameter is already declared but dead — easy to assume it's a no-op change
 **What goes wrong:** Because `IEventSubscriptions<E extends StoreEvent = NostrEvent>` already exists syntactically (added in Phase 1 Plan 02), it's tempting to assume the interface is "already generic" and skip auditing its method bodies. In reality every method signature inside it still hardcodes `NostrEvent`/`ProfileContent`/etc. rather than using `E`.
@@ -336,7 +330,6 @@ Skipped in detail — this phase has no new external dependencies. Confirmed pre
 |------------|------------|-----------|---------|----------|
 | Node.js | `tsc`/`vitest` execution | ✓ | v26.4.0 | — |
 | pnpm | Workspace build/test orchestration | ✓ | 11.10.0 | — |
-| `pnpm --filter applesauce-core build` | Verification | ✓ (currently green on `concord` branch HEAD) | — | — |
 | `pnpm --filter applesauce-core test` | Verification | ✓ (592 tests passing per Phase 1 summaries) | — | — |
 | `pnpm -r build` (full workspace) | Phase-gate verification (per CONTEXT.md) | Not yet re-run post-Phase-1-completion; must be run as part of this phase's final verification | — | — |
 
@@ -395,9 +388,7 @@ None applicable — this phase has no network-facing surface, no user-supplied d
 - `packages/core/src/casts/cast.ts`, `casts/event.ts`, `observable/cast-stream.ts`, `casts/pubkey.ts` (read in full) — exact current cast-infrastructure state, including the already-generic `EventCast<T>`
 - `.planning/rumor-store-migration.md` — the project's own master migration design doc, explicitly names every symbol in CORE-06/CORE-07 and their target shape
 - `.planning/phases/01-generic-store-foundation/{01-01,01-02,01-03,01-04}-SUMMARY.md`, `01-PATTERNS.md`, `deferred-items.md` — Phase 1's proven patterns, decisions, and the exact WR-02/D-02 seam this phase must close
-- `pnpm --filter applesauce-core build` — run directly, confirmed green on current `concord` HEAD (baseline before this phase's changes)
 - `pnpm --filter applesauce-common build` — run directly, confirmed green, proving the 0-type-param `EventModels` module augmentation currently compiles (the exact pattern flagged as Pitfall 2)
-- Exhaustive `grep -rn "Model<"` across `packages/{common,wallet,concord,react,actions}/src` — confirmed zero 2-arg `Model<T, TStore>` usages, informing the safe-insertion-position recommendation
 
 ### Secondary (MEDIUM confidence)
 - `apps/docs/core/casting.md` — VitePress documentation describing the intended public casting API surface (`castEvent`, `castEventStream`, `castTimelineStream`, `EventCast`); useful for confirming public-API expectations but not authoritative on internal type signatures
@@ -413,4 +404,3 @@ None applicable — this phase has no network-facing surface, no user-supplied d
 - Pitfalls: HIGH — Pitfalls 1 and 3 are drawn directly from Phase 1's own documented deferred-items/lessons-learned; Pitfall 2 (module-augmentation arity) is a genuinely new, untested risk for this phase and is flagged as MEDIUM-confidence risk (see Assumptions Log A2) with a concrete mitigation (build immediately after Wave 3, before Wave 4)
 
 **Research date:** 2026-07-08
-**Valid until:** No fixed expiry — this is an internal-codebase research artifact tied to the current state of `packages/core/src` on the `concord` branch; valid until Phase 2 begins execution (re-verify signatures if significant time passes or other branches merge first)

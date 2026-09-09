@@ -94,7 +94,6 @@ A fifth correction: CONTEXT.md's D-05 states "roughly nine literals to keep in s
 |------------|-------------|----------------|-----------|
 | Auth-required detection (per operation) | `applesauce-relay` / `Relay` (API tier — library core) | — | Each of `req`/`count`/`event`/`negentropy` parses its own wire message; detection must live where the wire message is received |
 | Auth handler invocation + wait + retry | `applesauce-relay` / `Relay` (shared operator) | — | D-04: one shared operator owns this so behavior is a property of the operator, not four independent implementations |
-| Auth callback execution (signing/authenticating) | Consumer application code | `applesauce-concord` (Phase 15) | `onAuthRequired` is a caller-supplied callback; `applesauce-relay` never signs or decides auth policy itself (Out of Scope: no relay-internal dedupe/signer-prompt suppression) |
 | Fan-out to multiple relays | `RelayPool`/`RelayGroup` (API tier) | — | Pool/Group forward options to each `Relay` unchanged and aggregate responses; no auth logic of their own beyond RAUTH-05's "each relay/each operation independent" |
 | Bulk sync orchestration (multi-relay, dedup, pagination) | `applesauce-loaders` / `SyncLoader` (API tier, loader layer) | — | Structurally decoupled from `applesauce-relay` (D-06); threads options through without owning auth semantics |
 | Informational auth status for UI | `Relay.authRequiredForRead$`/`authRequiredForPublish$` (API tier, observable) | Consumer UI/status watchers | Survives unchanged as an observable; only its use as a pre-block gate is removed (RAUTH-09) |
@@ -448,7 +447,6 @@ Skipped — this phase has no external tool/service/runtime dependencies beyond 
 
 - **Per task commit:** `pnpm vitest run packages/relay/src/__tests__/relay.test.ts` (or the specific file touched)
 - **Per wave merge:** `pnpm --filter applesauce-relay test` and, once loaders changes land, `pnpm --filter applesauce-loaders test`
-- **Phase gate:** Both full suites green before `/gsd-verify-work`; per REQUIREMENTS.md's Verification Standard, `pnpm --filter applesauce-concord test` is not required until Phase 15 lands, but running it as a smoke check is cheap and catches any accidental behavior change in the flags Concord's `relay-auth.ts`/`invite-watcher.ts`/`community.ts` still read (`authRequiredForRead`/`authRequiredForPublish` on `RelayStatus`, confirmed still consumed by `packages/concord/src/client/relay-auth.ts:110,206`, `invite-watcher.ts:258,428,435`).
 
 ### Wave 0 Gaps
 
@@ -462,7 +460,6 @@ None — `relay.test.ts`, `pool.test.ts`, `group.test.ts`, and `sync-loader.test
 |---------------|---------|-------------------|
 | V2 Authentication | Yes — this phase's entire subject is NIP-42 authentication flow control | This phase does not change *how* authentication is cryptographically performed (signing/verifying kind 22242 events is unchanged, still delegated to the caller's `AuthSigner`/`onAuthRequired` callback); it changes *when and how often* the client attempts and waits for it. No new crypto surface is introduced. |
 | V3 Session Management | Marginal | `authentications$`/`authenticatedPubkeys$` (per-connection, per-pubkey auth state) are read-only inputs to this phase's logic, unchanged in shape. `resetState()`'s clear-on-disconnect behavior (unchanged by this phase) is the existing session-reset boundary. |
-| V4 Access Control | No | This phase does not decide *who* may authenticate or *what* an authenticated pubkey may do — that remains entirely relay-side and (for Concord) Phase 15's scope. |
 | V5 Input Validation | Marginal | `AuthRequirement` (`boolean \| string \| string[]`) and the wire-parsed `reason`/`challenge` strings are already validated/typed at their existing boundaries (`parseClosedError`, `AUTH` message handler); no new untrusted-input surface is introduced by adding `onAuthRequired`/`authTimeout`/`authRetries` as options. |
 | V6 Cryptography | No | No cryptographic operation is added, changed, or removed by this phase. |
 

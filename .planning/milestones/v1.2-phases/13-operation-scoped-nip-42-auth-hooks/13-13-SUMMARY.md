@@ -153,7 +153,6 @@ None - no external service configuration required.
 
 - WR-03 and WR-04 are closed structurally in `sync-loader.ts` — the handler-less bypass is unrepresentable (non-optional type, unconditional construction) rather than merely handled, and no auth-phase timer can outlive its phase or the relay stream that armed it.
 - No blockers. This plan's file scope (`packages/loaders/src/loaders/sync-loader.ts` and its test file) does not overlap with any other open gap-closure plan in this round.
-- Phase 15's Concord engines, the eventual consumer of `SyncLoader`'s auth surface (per 13-03's readiness note), now inherit a suspension guarantee that holds even for a handler-less caller and a timer lifecycle with no leak paths.
 
 ---
 *Phase: 13-operation-scoped-nip-42-auth-hooks*

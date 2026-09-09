@@ -1,7 +1,6 @@
 ---
 phase: 10-invite-lifecycle-event-time-consistency
 plan: 04
-subsystem: concord
 tags: [invite-lifecycle, best-effort-batch, error-handling, refounding]
 
 # Dependency graph
@@ -21,8 +20,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
   - "The per-link try wraps the entire build/sign/store/publish body (not just buildInviteBundle), since InviteBundleFactory.create/finalizeEvent could also throw per RESEARCH Assumption A2"
@@ -40,10 +37,8 @@ coverage:
     requirement: "INVITE-03"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#refreshInviteBundles skips a link that can't rebuild and still refreshes the rest (INVITE-03/D-11)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#refreshes live invite bundles behind their URL after a Refounding (CORD-05 §2)"
         status: pass
     human_judgment: false
 
@@ -79,13 +74,10 @@ Each task was committed atomically:
 **Plan metadata:** (pending — this commit)
 
 ## Files Created/Modified
-- `packages/concord/src/client/community.ts` - `refreshInviteBundles`'s loop body now wraps build/sign/store/publish in try/catch; a throwing link is `console.warn`'d and skipped via `continue` (implicit, end of loop body) rather than aborting the `for` loop
-- `packages/concord/src/client/__tests__/community.test.ts` - New `it` exercising a 2-link batch (one whose channel was left, one still rebuildable) asserting the call resolves and only the rebuildable link's bundle republishes
 
 ## Decisions Made
 - The `try` covers the whole per-link body (build → sign → store → publish), not just `buildInviteBundle`, per the plan's explicit RESEARCH Assumption A2 callout that `InviteBundleFactory.create`/`finalizeEvent` could also throw
 - Reused the loop's pre-existing `console.warn` best-effort idiom (no new error class/channel)
-- Chose `community.leaveChannel(secret)` as the test's failure trigger over hand-constructing a malformed `ConcordInviteLink`, since it's the real voluntary-leave scenario the function's docstring is written against and exercises the actual `buildInviteBundle` throw path at `helpers/invite-bundle.ts:178`
 
 ## Deviations from Plan
 

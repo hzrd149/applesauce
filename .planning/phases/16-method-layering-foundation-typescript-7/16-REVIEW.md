@@ -15,8 +15,6 @@ files_reviewed_list:
   - packages/actions/tsconfig.json
   - packages/common/package.json
   - packages/common/tsconfig.json
-  - packages/concord/package.json
-  - packages/concord/tsconfig.json
   - packages/content/package.json
   - packages/content/tsconfig.json
   - packages/core/package.json

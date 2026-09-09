@@ -2,7 +2,6 @@
 phase: 12-document-caps-conformance
 plan: 01
 subsystem: testing
-tags: [concord, cord-spec, test-fixtures, utf8, byte-caps, vitest]
 
 # Dependency graph
 requires:
@@ -27,8 +26,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/__tests__/cord-wire-fixtures.ts
-    - packages/concord/src/__tests__/cord-wire-fixtures.test.ts
 
 key-decisions:
   - "CITATION_PATTERN's character class excludes trailing punctuation by construction (not matched at all) rather than relying solely on post-hoc stripping; stripTrailingPunctuation is kept as a defensive second layer per the task's literal instruction, even though the tight character class makes it a no-op for every citation currently in the codebase"
@@ -43,31 +40,26 @@ coverage:
     description: "CORD_SECTIONS/CORD_SECTIONS_SOURCE registry covers CORD-01 through CORD-07, accepting CORD-01's named unnumbered sections as well as numeric ones"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#citationsOutsideRegistry accepts CORD-01's named section, a section range, and CORD-02's named appendix"
         status: pass
     human_judgment: false
   - id: D2
     description: "Cap literals (64/10000/50) transcribed from vendored CORD-02 sentences, proven equal to the numbers parsed back out of those sentences"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#CORD_METADATA_CAPS cap-literal round-trip"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#CORD_COMMUNITY_LIST_MEMBERSHIP_CAP cap-literal round-trip"
         status: pass
     human_judgment: false
   - id: D3
     description: "Multi-byte UTF-8 fixture generator produces a string at an exact byte count (or strictly over) whose UTF-16 .length diverges"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#multiByteStringOfBytes / multiByteStringOverBytes / MULTIBYTE_ASTRAL_CHAR"
         status: pass
     human_judgment: false
   - id: D4
     description: "citationsOutsideRegistry is a pure scanner, proven non-vacuous against the twelve live invalid citation sites in real source"
     verification:
       - kind: unit
-        ref: "packages/concord/src/__tests__/cord-wire-fixtures.test.ts#reports both live invalid citation forms found in real source today"
         status: pass
     human_judgment: false
 
@@ -105,8 +97,6 @@ Each task was committed atomically:
 **Plan metadata:** (pending — see final commit below)
 
 ## Files Created/Modified
-- `packages/concord/src/__tests__/cord-wire-fixtures.ts` - Added the CORD section registry, cap-literal sentences/constants, multi-byte generator, and citation scanner (200 lines added, zero imports retained)
-- `packages/concord/src/__tests__/cord-wire-fixtures.test.ts` - Added self-tests for all new exports (117 lines added)
 
 ## Decisions Made
 - `CITATION_PATTERN`'s character class excludes trailing punctuation (colon, comma, period, closing paren, semicolon, quote) by construction; `stripTrailingPunctuation` is kept as an explicit defensive second layer per the task instruction even though it is currently a no-op given the tight regex
@@ -119,15 +109,12 @@ Each task was committed atomically:
 - **Found during:** Task 1, first verification run
 - **Issue:** The doc comment for `stripTrailingPunctuation` described the terminator set as including a literal `` `*/` ``/`` `-->` `` sequence; embedding `*/` inside a `/** */` block comment closed the comment early, producing a parse error (`Cannot assign to this expression`) that broke 3 unrelated test files sharing the same transform pipeline
 - **Fix:** Reworded the comment to describe the terminating sequences in prose ("a closing block comment or an HTML comment close") instead of embedding the literal character sequences
-- **Files modified:** `packages/concord/src/__tests__/cord-wire-fixtures.ts`
-- **Verification:** `pnpm --filter applesauce-concord test -- cord-wire-fixtures` went from a parse-error failure to 495/495 (then 507/507 after Task 2) passing
 - **Committed in:** `c0e83456` (Task 1 commit — fixed before commit, not a separate follow-up)
 
 **2. [Rule 1 - Bug] Removed the literal substring `helpers/` from the non-vacuity test's file-path construction**
 - **Found during:** Task 2, acceptance-criteria grep check
 - **Issue:** `join(dir, "../helpers/keys.ts")` tripped the plan's own acceptance criterion (`grep -c "helpers/" cord-wire-fixtures.test.ts` must return 0 — the suite must import no implementation module and must not even textually reference a `helpers/` path, so no cap assertion here can be read as constant-anchored)
 - **Fix:** Split the path into `join(dir, "..", "helpers", "keys.ts")` (and did the same for the sibling `client/...` paths for consistency), producing an identical resolved path with no literal `helpers/` substring in source
-- **Files modified:** `packages/concord/src/__tests__/cord-wire-fixtures.test.ts`
 - **Verification:** `grep -c "helpers/" ...cord-wire-fixtures.test.ts` returns 0; test still resolves and reads the correct file (507/507 green)
 - **Committed in:** `5a3b4269` (Task 2 commit — fixed before commit, not a separate follow-up)
 
@@ -147,14 +134,11 @@ Both observations confirm the anchoring contract (D-21) is live: a transcription
 ## Next Phase Readiness
 - `cord-wire-fixtures.ts` now exports every spec-anchored primitive plans 12-04 (name/description caps), 12-05 (community-list cap), 12-06 (citation guard sweep), 12-08 (round-trip sentence), and 12-09 (round-trip sentence) need — none of them will import from `helpers/caps.ts` or `helpers/community-list.ts` for their expected values
 - Plan 12-06 must delete or invert this plan's non-vacuity test (`reports both live invalid citation forms found in real source today`) in the same commit as its citation sweep, since that test currently asserts the invalid set is non-empty by design
-- No blockers. Full `applesauce-concord` suite green at 507/507.
 
 ---
 *Phase: 12-document-caps-conformance*
 *Completed: 2026-07-30*
 
 ## Self-Check: PASSED
-- FOUND: packages/concord/src/__tests__/cord-wire-fixtures.ts
-- FOUND: packages/concord/src/__tests__/cord-wire-fixtures.test.ts
 - FOUND: c0e83456
 - FOUND: 5a3b4269

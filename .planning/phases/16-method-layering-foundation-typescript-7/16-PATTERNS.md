@@ -80,7 +80,6 @@ package.json
 apps/agent-skills/package.json
 apps/examples/package.json
 apps/llms/package.json
-packages/{accounts,actions,common,concord,content,core,extra,loaders,react,relay,signers,sqlite,wallet-connect,wallet}/package.json
 ```
 
 Change only each direct `typescript` range to `^7.0.2`. This intentionally normalizes the current `^5.7.3`, `^5.8.3`, `^5.9.3`, and `~5.6.3` variants. Keep the TS7 CLI dependency in `apps/llms`; its programmatic API exception is additive and separately named.
@@ -113,7 +112,6 @@ The installed compiler version must report 7.0.2-compatible output. Do not add a
 Remove only `"downlevelIteration": true,` from these 14 files:
 
 ```text
-packages/{accounts,actions,common,concord,content,core,extra,loaders,react,relay,signers,sqlite,wallet-connect,wallet}/tsconfig.json
 ```
 
 Preserve `target: ES2022`, NodeNext module settings, strictness, declaration output, include, and test exclusions. With ES2022 targets, removing the obsolete downlevel option is configuration cleanup and must not prompt source rewrites.

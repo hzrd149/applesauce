@@ -7,7 +7,6 @@
 ## Phase Boundary
 
 Six requirements — WIRE-06, WIRE-07, WIRE-08, WIRE-09, WIRE-10, WIRE-12 — covering how
-`applesauce-concord` **serializes and re-parses documents**: channel editions, community
 metadata, and the two self-encrypted lists (Community List 13302, Invite List 13303).
 Not derivations, not tag shapes — those closed in Phases 5–11.
 
@@ -92,7 +91,6 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
 
 ### Removal of every serialized-byte cap (folded scope)
 
-- **D-07:** **Remove all serialized-byte caps in `packages/concord`.** Specifically:
   `LIST_MAX_BYTES` and its gate at `client/client.ts:1168`; `INVITE_LIST_MAX_BYTES` and
   its gate at `client/invite-manager.ts:276`; `COMMUNITY_LIST_MAX_ENTRY_BYTES` and the
   `recordJoin` throw at `client/client.ts:808`; and `INVITE_BUNDLE_MAX_TOTAL_BYTES` at
@@ -108,7 +106,6 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
   `extended_prefix_threshold`, the point where the length prefix switches from a 2-byte
   u16 to a 6-byte (`[0x00,0x00]` + u32) form, and the NIP ships test vectors at
   65535/65536/65537 exercising that boundary. CORD-02 derives its whole 50-membership
-  rationale from a 65,535 ceiling that no longer exists. Per **D-01**, concord should not
   be the thing inventing a ceiling upstream has lifted.
 
 - **D-08:** **Keep the diagnostic, drop the refusal.** `saveCommunityList` still measures
@@ -134,7 +131,6 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
 
 - **D-11:** **Bump `nostr-tools` to `^2.24` in this phase** (promoted from backlog 999.8).
   `packages/core`, `packages/common`, and `packages/relay` pin `~2.19`/`^2.19`;
-  `packages/concord` declares no direct dependency and inherits it. Installed 2.19.4 has
   `maxPlaintextSize = 65535` and throws below the new limit, so D-07 is not fully realized
   until this lands. Confirmed: 2.22.0 still caps at 65535; **2.24.0** is the first release
   with `maxPlaintextSize = 4294967295` and `extendedPrefixThreshold = 65536`. Latest is
@@ -233,7 +229,6 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
   section *exists*, not that a citation is *right*. `CORD-06 §94` → `CORD-06 §1` would pass
   while remaining wrong. It closes the line-number-mistaken-for-section class specifically.
 
-- **D-17:** **Registry lives in `packages/concord/src/__tests__/cord-wire-fixtures.ts`, and
   each of the 12 replacements is chosen by reading the actual CORD text at that call site**
   — not by picking an in-range number or matching a section title. The fixture file is
   already the vendored spec transcription with repo/branch provenance (Phase 11 D-10), so a
@@ -266,7 +261,6 @@ Not derivations, not tag shapes — those closed in Phases 5–11.
 ### Milestone conventions carried forward
 
 - **D-19:** **No changeset.** Carried forward from Phase 12.3's D-15 and Phase 11's D-09;
-  concord is unreleased. Covers D-12's breaking change to the two exported `Parsed*` types
   and D-07's removal of five exported constants.
 
 - **D-20:** Namespaced `debug` logging convention (Phase 12.2 D-16): derive the `Debugger`
@@ -316,10 +310,8 @@ orchestrator rulings on questions the research left open.
   `client/*.ts` (grep-confirmed), so the exercised publish path is `client/client.ts`'s
   `saveCommunityList` (line ~1207) and `client/invite-manager.ts`'s `save()` (line ~281),
   both hand-rolling `JSON.stringify({entries, tombstones})` from reduced in-memory arrays.
-  `concord-audit.md`'s L07 already names these sites — D-12's prose under-enumerated them.
   Not new scope. A round-trip test driven through the factory layer alone would pass while
   the shipped client stayed lossy, so the WIRE-09 regression test must drive
-  `ConcordClient` end-to-end.
 
 - **D-24:** The community-metadata fold is already correct — prove it, do not fix it.
   D-13 item 2 characterises `editMetadata`'s `current` as coming from a narrow fold, but
@@ -363,7 +355,6 @@ orchestrator rulings on questions the research left open.
 - `.planning/REQUIREMENTS.md` — WIRE-06…WIRE-10 and WIRE-12 at lines 80-86; the
   Phase 12 traceability rows at lines 166-171; the TEST-01 standing rationale at lines
   179-184 (TEST-01 closes only when this phase passes)
-- `.planning/concord-audit.md` — findings **M12** (line 168, 50-membership cap),
   **M17** (173, channel name cap), **L02** (191, `deleteChannel` custom), **L07** (196,
   top-level unknowns), **L09** (198, community name/description caps), **L11** (200,
   bad citations). Line numbers in the audit's *site* column have drifted; re-locate by
@@ -373,7 +364,6 @@ orchestrator rulings on questions the research left open.
 
 ### External specs (repo has no local copy; files are `01.md`…`07.md`, NOT `CORD-02.md`)
 
-- `github.com/concord-protocol/concord` branch **`main`**
   - `02.md` §6 Metadata — the 64B/10000B caps; the `custom` round-trip MUST; "Top-level
     fields outside `custom` are reserved for the protocol"; `custom` also permitted on
     `ChannelMetadata`
@@ -392,7 +382,6 @@ orchestrator rulings on questions the research left open.
 - `.planning/phases/11-messaging-wire-conformance/11-CONTEXT.md` — **D-09** (ROADMAP
   override precedent), **D-10** (vendored fixtures), **D-11** (debug convention); its
   Deferred Ideas already name L02 and L11 as this phase's work
-- `.planning/phases/12.3-transport-only-extra-relays-in-applesauce-concord/12.3-CONTEXT.md`
   — D-15 (no changesets)
 - `.planning/codebase/TESTING.md`, `.planning/codebase/EVENT_KIND_PATTERNS.md`
 
@@ -424,7 +413,6 @@ orchestrator rulings on questions the research left open.
   the pattern
 - `communityListByteSize` / `communityListEntryByteSize` — measurement helpers, distinct
   from the caps D-07 removes; D-08's retained diagnostic still needs a size measurement
-- `packages/concord/src/__tests__/cord-wire-fixtures.ts` — the vendored transcription
   D-17 extends, with `CORD_EXAMPLES_SOURCE` / `CORD_EXAMPLES_CAVEAT` already in place
 - `TextEncoder().encode(x).length` — the established byte-length idiom, used in 8 places
 
@@ -435,7 +423,6 @@ orchestrator rulings on questions the research left open.
 - **Derived-not-copied constants carry a rationale comment**
   (`community-list.ts:196-205`). That convention applies to *our* invented bounds; the
   64/10000/50 values are spec literals and must be transcribed, not derived (D-21).
-- **Spec-derived assertion (TEST-01, standing).** All 189 concord tests passed while 9 HIGH
   bugs were live because every test compared the implementation against itself.
 
 ### Integration points
@@ -445,7 +432,6 @@ orchestrator rulings on questions the research left open.
 - `operations/community-list.ts` + `operations/invite-list.ts` — near-identical mirrors;
   D-12 changes both identically
 - `packages/core`, `packages/common`, `packages/relay` `package.json` — D-11's bump; the
-  only files outside `packages/concord` this phase touches
 
 </code_context>
 
@@ -485,7 +471,6 @@ orchestrator rulings on questions the research left open.
 
 - **A CORD-02-vs-NIP-44 divergence report upstream.** CORD-02 §8 and Appendix B both
   reason from a 65,535 NIP-44 ceiling that no longer exists. Worth reporting to the
-  concord-protocol repo; out of scope for an SDK phase.
 
 - **A time-windowed `voicePresence$`** — inherited from Phase 11's deferred list, unrelated
   to this phase.

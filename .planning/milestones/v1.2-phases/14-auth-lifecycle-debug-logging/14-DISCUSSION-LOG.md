@@ -75,7 +75,6 @@ compatibility and not breaking the API, however the goal is to NOT use them inte
 
 Reflected back and unchallenged: the two `take(1)` log subscriptions at `relay.ts:546`/`:554` are the
 package's last internal readers and are removed; every write and the `status$` composition stay; the
-read/publish bucket survives only as a compatibility adapter at the flag write. Concord's four
 readers are CAUTH-03's.
 
 ---
@@ -220,7 +219,6 @@ criterion 3.
 
 ## Deferred Ideas
 
-- Concord's four remaining reads of `authRequiredForRead$`/`authRequiredForPublish$` — Phase 15
   (CAUTH-03).
 - A lint rule enforcing the logger convention, and its grep-test and written-invariant substitutes —
   all declined; available as a follow-up.

@@ -31,7 +31,6 @@ created: 2026-07-09
 | T-03-02 | Tampering | disabling verification via `new RumorStore({ verifyEvent: undefined })` | low | mitigate | Constructor type is `Omit<EventStoreOptions<Rumor>, "verifyEvent">` — cannot be passed at construction (compile error). NOTE: the inherited public `verifyEvent` setter can still reassign at runtime (documented in the corrected JSDoc); the constructor path — the one this threat scopes — is closed. | closed |
 | T-03-03 | Spoofing / Info Disclosure | `RumorStore` treated as an authorization boundary (it is not) | low | accept | Documented accepted design (migration doc): the local verifier checks hash integrity only; authorization is verified upstream. Recorded so downstream consumers don't over-trust store membership. | closed |
 | T-03-04 | Tampering / DoS (crash) | signed-only cast reading `.sig` on an unsigned rumor (`TypeError`) | medium | mitigate | `CastEventInput<T>` pins the input to `NostrEvent` for any cast whose `T` requires `sig`, so `castEvent(rumor, SignedOnlyCast)` fails to compile; `@ts-expect-error` probe proves it. | closed |
-| T-03-05 | Tampering | sig-gate over-tightening real narrowed-kind rumor casts, forcing callers to `as any` and re-open the gap | medium | mitigate | Sig-gated form leaves `kind`/other fields loose; `applesauce-concord test` (124/124 green) proves `ConcordDirectInvite extends EventCast<DirectInviteRumor>` compiles without weakening. | closed |
 | T-03-06 | Info Disclosure | `performCast` leaking into public API surface | low | accept | Accepted convention (matches existing `CAST_REF_SYMBOL`/`CASTS_SYMBOL` leakage); `@internal` JSDoc marks it. Narrowing `casts/index.ts` re-exports is out of scope. | closed |
 | T-03-07 | Tampering | RUMOR-06 test masking the invariance gap by using bare `EventStore` instead of a real `RumorStore` | low | mitigate | The new case constructs a genuine `RumorStore` + documented bridge cast; acceptance grep asserts both present (verifier confirmed). | closed |
 | T-03-08 | Tampering | sig-gate silently regressing with no test catching it | low | mitigate | `@ts-expect-error` probe fails the build the moment the guard stops rejecting a rumor for a signed-only cast. | closed |
@@ -56,7 +55,6 @@ created: 2026-07-09
 
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
-| 2026-07-09 | 9 | 9 | 0 | autonomous orchestrator (ASVS L1 short-circuit — register authored at plan time, threats_open 0; mitigations independently confirmed by the phase verifier's full builds/tests + concord's 124 tests + the `@ts-expect-error` probe, and by the code review) |
 
 ---
 

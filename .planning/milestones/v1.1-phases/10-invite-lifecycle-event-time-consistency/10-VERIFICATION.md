@@ -13,11 +13,8 @@ overrides:
 gaps:
   - truth: "(TEST-01, standing, ROADMAP SC #6) Every derivation this phase touches has a hand-derived spec-value test — the ROADMAP explicitly names the `inviteBundleKey` derivation as one of the things this criterion covers for Phase 10"
     status: overridden
-    reason: "No test anywhere in packages/concord exercises inviteBundleKey(token) against an independently hand-computed key. The only coverage is round-trip tests (roundtrip.test.ts:105, planes.test.ts:95) that call encryptBundle/decryptBundle — both of which call inviteBundleKey internally — so a wrong derivation formula would still pass as long as both sides used the same (wrong) value. This does not meet D-13's 'never by calling the implementation under test' bar."
     artifacts:
-      - path: "packages/concord/src/helpers/crypto.ts"
         issue: "inviteBundleKey (line ~199) has zero hand-derived-value test coverage; crypto.test.ts covers groupKey/editionHash/epochKeyCommitment/communityId but not inviteBundleKey"
-      - path: "packages/concord/src/helpers/__tests__/invite-bundle.test.ts"
         issue: "Net-new file from 10-01/10-06 covers validateInviteBundle, decodeFragment, getInviteBundleVsk, expires_at round-trip, and the getInviteBundleLocator coordinate — but never asserts an inviteBundleKey output against an independently-derived expected value"
     missing:
       - "A test that independently computes the expected inviteBundleKey(token) output from CORD-05's key-derivation formula (not by calling inviteBundleKey itself) and asserts encodeFragment/decodeFragment or encryptBundle/decryptBundle actually use that exact key"
@@ -50,17 +47,6 @@ gaps:
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/concord/src/helpers/invite-bundle.ts` | Array-shape guard, strict fragment-version check, absent-vs-malformed `vsk` | ✓ VERIFIED | All three present, wired, tested |
-| `packages/concord/src/helpers/__tests__/invite-bundle.test.ts` | Net-new spec-derived test file | ✓ VERIFIED | 200 lines, 11+ tests across 5 `describe` blocks (validateInviteBundle, decodeFragment, vsk, expires_at, coordinate), all pass |
-| `packages/concord/src/helpers/stream.ts` | Exported `parseMs`; `rumorMs`/`hasMalformedMs` consume it | ✓ VERIFIED | `parseMs` at line 29, both consumers call it (lines 37, 46) |
-| `packages/concord/src/helpers/__tests__/stream.test.ts` | Net-new spec-derived test file | ✓ VERIFIED | Present, canonical `ms` table + decomposition/reorder cases pass |
-| `packages/concord/src/operations/channel.ts` | `includeMs` imports `splitTime`, overrides `created_at` | ✓ VERIFIED | Line 14 import, lines 30-34 single-read override |
-| `packages/concord/src/operations/guestbook.ts` | `includeSnapshotChunk` takes `{created_at, ms}` pair, no internal `Date.now()` | ✓ VERIFIED | Confirmed at lines 44-61; `grep Date.now` in file returns nothing |
-| `packages/concord/src/factories/guestbook.ts` | `buildSnapshotFactories` reads `splitTime` once | ✓ VERIFIED | Line 115, threaded to every chunk (line 116) |
-| `packages/concord/src/client/community.ts` | Per-link try/catch skip-and-continue in `refreshInviteBundles` | ✓ VERIFIED | Lines 1136-1155 |
-| `packages/concord/src/client/client.ts` | `newestAtCoordinate` collapse helper; `"#d": [""]` filter scope; collapse-then-tombstone `joinByLink` | ✓ VERIFIED | Lines 89-95, 441, 451-452 |
-| `packages/concord/src/casts/direct-invite.ts` | `expired()` uses seconds clock, not `Date.now()` | ✓ VERIFIED | Line 70 `expired(now = unixNow())` |
-| `packages/concord/UPSTREAM-NOTES.md` | New entry documenting §1/§4 `expires_at` unit contradiction | ✓ VERIFIED | Lines 19-33, cites both §1 "unix ms" text and §4/§8 magnitude argument, records the seconds reading implemented |
 
 ### Key Link Verification
 
@@ -71,7 +57,6 @@ gaps:
 | `parseMs` | `rumorMs` / `hasMalformedMs` | direct function calls | ✓ WIRED | `stream.ts:37,46` — both consumers, no second parser exists (grep confirms) |
 | `splitTime` | `includeMs` | single call inside `EventOperation` closure | ✓ WIRED | `channel.ts:31` |
 | `splitTime` | `buildSnapshotFactories` → `SnapshotFactory.create`/`chunk()` → `includeSnapshotChunk` | pair threaded through 3 call layers | ✓ WIRED | `factories/guestbook.ts:74,91,115-116`; `operations/guestbook.ts:49,54,58` |
-| `unixNow()` | `joinFromBundle` expiry check / `ConcordDirectInvite.expired()` | seconds-to-seconds comparison | ✓ WIRED | `client.ts:478` `unixNow() > bundle.expires_at`; `direct-invite.ts:70-72` |
 
 ### Requirements Coverage
 
@@ -96,13 +81,9 @@ None. Scanned all 18 files touched by this phase's 6 plans (`invite-bundle.ts` +
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| All 7 phase-touched test files | `npx vitest run <7 files>` (from `packages/concord`) | 94/94 tests passed | ✓ PASS |
-| Full `applesauce-concord` suite (regression) | `npx vitest run` | 47 files, 286/286 passed | ✓ PASS |
 | TypeScript build | `npx tsc --noEmit` | Clean, no errors | ✓ PASS |
-| No `Date.now`/ms wording regressions | `grep -rin "unix ms\|unix-ms\|milliseconds" packages/concord/src \| grep -v __tests__` | No output | ✓ PASS |
 | `rekey.ts`/`helpers/rekey.ts` untouched (explicit prohibition, all 6 plans) | `git log --since=2026-07-21 -- operations/rekey.ts helpers/rekey.ts` | No commits | ✓ PASS |
 
-This matches the note provided with the verification task: full workspace suite green, concord 286/286, tsc clean, independently re-confirmed by direct execution rather than trusting the SUMMARY claim.
 
 ### Human Verification Required
 
@@ -126,7 +107,6 @@ overrides:
     accepted_at: "<ISO timestamp>"
 ```
 
-**Resolution (2026-07-21, hzrd149):** Override accepted. `inviteBundleKey` was confirmed untouched by every Phase 10 plan (10-RESEARCH V6; no phase-10 commit modifies its definition `concordHkdf(token, "concord/invite-key", ZERO_32)`), so the standing TEST-01 obligation — scoped to "derivations this phase touches" — does not attach to it here. The ROADMAP SC#6 by-name mention predates the RESEARCH scoping. `inviteBundleKey` remains a standing TEST-01 candidate for any future phase that modifies it. Frontmatter `overrides` block records the acceptance; phase status is `passed`.
 
 Separately (resolved, was informational): `.planning/REQUIREMENTS.md` line 152's status-table note for INVITE-01 previously read "In Progress" — stale documentation from before 10-05 landed. Fixed in commit `26fe4002` (now reads "Complete", consistent with the `[x]` checkbox at line 61 and the code/tests confirming INVITE-01 is fully closed).
 

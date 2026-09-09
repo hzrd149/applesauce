@@ -20,7 +20,6 @@ overrides_applied: 0
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | A transient signer/decrypt error while reading a rekey blob is retried and never interpreted as removal (no permanent eviction on a bunker blip) | ✓ VERIFIED | `readRekeyScoped` (`packages/concord/src/helpers/keys.ts:558-602`) tracks a caught decrypt at our own locator via `decryptThrew`, and `if (decryptThrew) return { kind: "none" }` runs BEFORE the no-blob removal loop — this is the exact CR-01 fix (commit `920676ee`). Regression test `keys.test.ts#"a transient decrypt failure defers even when a competing no-blob removal set exists (ROTATE-05, D-06)"` passes in isolation and in the full suite. |
 | 2 | Two rotations racing to the same epoch converge down-only to a single lower-keyed sibling, the winner is computed among all authorized+continuity-checked candidates (not only ones we received), and a converged community can never re-fork | ✓ VERIFIED | `isStrictlyLowerKey` (`helpers/rekey.ts:314`) is the single down-only comparator, used identically by the live latch (`community.ts:797`, `private-channel.ts:292`) and the sync-walk cascade (`sync.ts:288`, `channel-sync.ts:134`). `readRekeyScoped` computes the winner among ALL authorized/complete/continuity-checked candidates and defers (`none`) when a decryptable winner coexists with an opaque (no-blob or decrypt-threw) competitor (D-10) rather than blindly adopting. `sync.test.ts`/`channel-sync.test.ts` 3-epoch cascade oracles pass. |
 | 3 | A rotation cites the Grant it acts under (`vac`), a receiver verifies it against its folded Roster before honoring it, and compaction/snapshot wraps publish only after the root roll's publication is confirmed | ✓ VERIFIED | `RekeyRotation.vac` threads through `includeRekeyChunk`/`buildRekeyRumors`/`buildRefounding`/`buildChannelRekey` (`operations/rekey.ts`, `helpers/keys.ts`); `vacVerifier` (`helpers/permissions.ts:98`) is wired at all four receive call sites (`sync.ts:201`, `channel-sync.ts:93` via ctx, `community.ts:785`, `community.ts:707`/`private-channel.ts:231,280`). `refound()`'s `requireMajority` (`community.ts:1276-1286`) gates each root-roll/channel-rekey wrap on `⌈(n+1)/2⌉` of `relays.length` before compaction/snapshot publish (`community.ts:1289-1290`) and `adoptRefounding` (`community.ts:1292-1293`). |
 | 4 | Rotation chunk sets correlate on `chunkCount` and `prevepoch` identity is validated across a rotation's chunks, so a resumed rotation's stale generation cannot complete a set or forge continuity | ✓ VERIFIED | `groupRotations` (`helpers/rekey.ts:216-266`) tracks per-bucket `chunkCounts`/`prevEpochs` sets and sets `consistent = chunkCounts.size===1 && prevEpochs.size===1`; `complete = consistent && chunks.size >= chunkCount`. Correlation key intentionally left unchanged (D-02, matches upstream CORD-06). `rekey.test.ts` n-disagreement and prevEpoch-disagreement oracles pass. |
@@ -51,15 +50,6 @@ No orphaned requirements: all 9 declared requirement IDs (ROTATE-05..13) are cla
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `packages/concord/src/client/sync.ts` | syncEpoch re-reads known epochs; syncEpochs down-only cascade; buildChain per-epoch refounder | ✓ VERIFIED | Present, substantive, wired (353 lines) |
-| `packages/concord/src/client/channel-sync.ts` | Backward re-read over channel.held | ✓ VERIFIED | Present, substantive, wired (185 lines) |
-| `packages/concord/src/client/community.ts` | rekeyHandled Map latch; majority gate in refound() | ✓ VERIFIED | Present, substantive, wired (1359 lines) |
-| `packages/concord/src/client/private-channel.ts` | rekeyHandled Map latch (channel scope) | ✓ VERIFIED | Present, substantive, wired (313 lines) |
-| `packages/concord/src/helpers/rekey.ts` | isStrictlyLowerKey; groupRotations consistency flag | ✓ VERIFIED | Present, substantive, wired (321 lines) |
-| `packages/concord/src/helpers/keys.ts` | readRekeyScoped decrypt/opaque partition + decryptThrew guard; buildRefounding abort | ✓ VERIFIED | Present, substantive, wired (786 lines) |
-| `packages/concord/src/helpers/permissions.ts` | vacVerifier | ✓ VERIFIED | Present, substantive, wired (111 lines) |
-| `packages/concord/src/operations/rekey.ts` | includeRekeyChunk vac param | ✓ VERIFIED | Present, substantive, wired (39 lines) |
-| `packages/concord/src/types.ts` | held_roots[].refounder optional field | ✓ VERIFIED | Present, wired into sync.ts and guestbook.ts |
 
 ### Key Link Verification
 
@@ -78,7 +68,6 @@ No orphaned requirements: all 9 declared requirement IDs (ROTATE-05..13) are cla
 | Behavior | Command | Result | Status |
 |---|---|---|---|
 | CR-01 regression test (decrypt-throw beside no-blob set defers, never removes) | `vitest run keys.test.ts -t "a transient decrypt failure defers even when a competing no-blob removal set exists"` | 1 passed | ✓ PASS |
-| Full concord package suite | `vitest run packages/concord` | 233/233 passed, 45 files | ✓ PASS |
 | Phase-touched test files (sync/channel-sync/channel-rekey) | `vitest run sync.test.ts channel-sync.test.ts channel-rekey.test.ts` | 13/13 passed | ✓ PASS |
 | Phase-touched test files (community/rekey/keys) | `vitest run community.test.ts rekey.test.ts keys.test.ts` | 62/62 passed | ✓ PASS |
 
@@ -90,7 +79,6 @@ None. Scanned all 9 files modified across the phase's plans (`sync.ts`, `channel
 
 | ID | Severity | Status | Verification |
 |---|---|---|---|
-| CR-01 | Critical | ✓ RESOLVED | Confirmed fixed in `packages/concord/src/helpers/keys.ts` (`decryptThrew` guard, lines 559/581/602), commit `920676ee`. Regression test passes; full suite 233/233 green. |
 | WR-01 | Warning | Open (advisory) | Multi-chunk rotation can pass per-wrap majority yet leave no single relay holding a complete rotation (`community.ts:1276-1286`). Not fixed in this phase — per task instructions, advisory/non-blocking. |
 | WR-02 | Warning | Open (advisory) | Live `checkRekey` path structurally cannot down-heal an already-adopted epoch (`community.ts:792-800`, `private-channel.ts:287-300`) — confirmed by re-reading the code: `readRekeyScoped` only ever considers `newEpoch === heldEpoch+1`, so once epoch N is adopted, the down-heal branch for N is dead on the live path. This does not invalidate ROADMAP truth #2 or the 08-01 must-have, which are scoped specifically to "a later full sync" (the `syncEpochs` walk cascade) — that cascade path IS live and tested. Advisory/non-blocking per task instructions. |
 | WR-03 | Warning | Open (advisory) | `refound` publishes/gates wraps before confirming completeness, scattering partial rotations on abort. Advisory/non-blocking per task instructions. |

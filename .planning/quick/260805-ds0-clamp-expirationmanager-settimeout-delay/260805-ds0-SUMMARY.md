@@ -152,26 +152,20 @@ Full suites re-run independently: `pnpm vitest run packages/core packages/wallet
 ## Follow-up — both CLOSED 2026-08-05
 
 Shipped via PR [#89](https://github.com/hzrd149/applesauce/pull/89) (merged to `master` as
-`5ca390ec`), then merged into `concord` as `cdecf338`. Both items deferred at execution
 time because `master` carries no `.planning/` tree are now done:
 
 **1. Backlog Phase 999.10 — RESOLVED.** Marked resolved in `.planning/ROADMAP.md` on
-`concord`, with the shipped D1/D2/D3 breakdown, the verification numbers, and the
 vitest-filter open item closed out.
 
 **2. STATE.md row — WRITTEN.** `260805-ds0` added to the "Quick Tasks Completed" table and
 the `Last activity` line updated.
 
 **Merge note:** `packages/core/src/event-store/expiration-manager.ts` auto-merged without
-conflict despite `concord` having genericized the class over `E extends StoreEvent`.
 Verified by hand rather than trusted: the generic signature, `scheduleNextCheck()`, the
 clamp, and the D2 else-branch are all present and correct in the merged file, with no
 unclamped `setTimeout` left. `expiration-manager.test.ts` + `wait-for-paid.test.ts` pass on
-`concord` (17 tests).
 
-**Pre-existing failures on `concord`, unrelated to this work:** three
 `packages/wallet-connect/src/helpers/__tests__/` tests (`request`, `notification`,
-`response` — all "parses and memoizes … non-enumerably") fail on `concord`. Confirmed
 failing at `8c97f50b`, *before* this merge, and the merge touches none of those files.
 
 ## Next Phase Readiness

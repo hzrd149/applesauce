@@ -62,7 +62,6 @@ single-value `$` fields, with composite status derived from them rather than sto
 Follow that here rather than inventing a single monolithic `state$`.
 
 **Manager analog:** `packages/accounts/src/manager.ts` → `export class AccountManager`.
-Other `*Manager` precedents: `ConcordInviteManager`, and `DeleteManager` /
 `ExpirationManager` / `AsyncDeleteManager` in `packages/core/src/event-store/`.
 
 ## Breadcrumbs — what already exists for legacy DMs

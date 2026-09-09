@@ -7,7 +7,6 @@ requires:
   - phase: 18-event-family-re-layer
     provides: one-attempt EVENT transport invariants
 provides: [fixed EVENT and AUTH public routes, private raw exchange, compile-time selector guard]
-affects: [relay, loaders, concord, extra]
 tech-stack:
   added: []
   patterns: [private verb-discriminated raw exchange, compile-only API regression fixture]

@@ -30,7 +30,6 @@
 
 **Analog 1 — exported cap constant convention:** `helpers/control.ts:24-28`
 ```typescript
-/** Concord control-plane edition kind (CORD-04). */
 export const CONTROL_KIND = 3308;
 
 /** A Community folds only the 100 lowest `role_id`s, ignoring the rest (CORD-04 §2). */
@@ -252,7 +251,6 @@ async deleteRole(roleId: string): Promise<void> {
 
 **`recordJoin`'s existing asymmetric ceiling — the direct analog for the new 50-membership cap, `client/client.ts:799-815`:**
 ```typescript
-private recordJoin(material: JoinMaterial): ConcordCommunity {
   const addedAt = Date.now();
   const prospective: CommunityListCommunity = {
     community_id: material.community_id,
@@ -359,10 +357,8 @@ const document = JSON.stringify({ ...doc, entries: next.communities, tombstones:
 
 ### 6 files, 12 citation sites (D-16/D-17)
 
-**Registry file to extend:** `packages/concord/src/__tests__/cord-wire-fixtures.ts`. Its existing structure (already read in full):
 ```typescript
 export const CORD_EXAMPLES_SOURCE = {
-  repo: "github.com/concord-protocol/concord",
   branch: "main",
   file: "examples.md",
 };
@@ -382,7 +378,6 @@ The guard test itself (Vitest, per RESEARCH.md's discretion resolution) greps `s
 
 **Direct replacement sites — quote current (invalid) text before editing, e.g. `client/private-channel.ts:233`:**
 ```typescript
-//  root (CORD-06 §94). Called by {@link ConcordCommunity} on adopt. */
 ```
 → `CORD-06 §3`. Full 12-site table with old→new mapping is in RESEARCH.md's "Code Examples" section (already verified against live spec) — reuse it verbatim rather than re-deriving.
 
@@ -445,6 +440,5 @@ throw new Error(`${subject} exceeds ${maxBytes}-byte cap (${actualBytes} bytes)`
 
 ## Metadata
 
-**Analog search scope:** `packages/concord/src/{helpers,client,operations,types.ts,__tests__}`, plus `packages/{core,common,relay}/package.json`
 **Files scanned:** 13 source files fully or by targeted range read; 3 package.json referenced by name only (trivial config edits)
 **Pattern extraction date:** 2026-07-30

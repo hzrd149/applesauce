@@ -8,16 +8,12 @@
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
 |---|---|---|---|---|
-| `MissingChannelKeyError` (new, in `client/community.ts`) | error class | request-response (thrown from `sendMessage`) | `packages/relay/src/management.ts:94` `RelayManagementError` | role-match (only `extends Error` convention in repo family; no base class in `packages/concord`) |
-| `ChannelView` (new type, `client/community.ts` near `channels$`) | model / enriched view | event-driven (client-local flag on emitted stream) | `packages/concord/src/client/community.ts:511` composite `status$` via `combineLatest({...})`, and `packages/relay/src/relay.ts:511` `Relay.status$` | exact (same package's own composite-observable convention) |
 | Five TEST-02 Accordian tests + channel-deletion-terminality test | test | CRUD / spec-derived assertion | `helpers/__tests__/keys.test.ts:216-260` (rollForward spec-derived probe) and `helpers/__tests__/channel-rekey.test.ts:92-118` (channel-plane spec-derived probe) | exact |
-| `materialChanged$` reactivity plumbing | event-driven / pub-sub | Subject-driven re-emission | `packages/concord/src/client/community.ts:232-249` (`slice()` helper + `dissolved$`/`channels$` pattern) and `packages/relay/src/relay.ts:411-417` (`combineLatest([...]).pipe(distinctUntilChanged())`) | exact |
 
 ## Pattern Assignments
 
 ### `MissingChannelKeyError` (error class)
 
-**Analog:** `packages/relay/src/management.ts:94` — `RelayManagementError` (closest existing exported custom error class in the monorepo family; confirmed via research that **no** `extends Error` class exists anywhere in `packages/concord/src` today — every throw site there is a bare `new Error(...)`, e.g. `client/community.ts:767,778,922,923,929,949,1057,1058,1111,1119`).
 
 **Pattern to copy** — minimal subclass, no shared base, name mirrored in `.name`:
 ```typescript
@@ -41,7 +37,6 @@ export class MissingChannelKeyError extends Error {
 }
 ```
 
-**Instanceof-catch convention** — consumers `instanceof`-catch to distinguish from the generic `planeKeyFor` "unknown channel" throw (`keys.ts:209`), matching the general pattern of typed errors used for consumer-facing branching rather than generic `Error`. No existing `instanceof MyError` catch site was found in `packages/concord` (first custom error in the package) — this establishes the convention, it does not extend one.
 
 **Export path:** co-located with `sendMessage` in `client/community.ts` (matches this package's convention of defining error-adjacent logic next to its throw site — confirmed by RESEARCH.md §5), then re-exported from the package's public `index.ts` alongside other client exports.
 
@@ -49,7 +44,6 @@ export class MissingChannelKeyError extends Error {
 
 ### `ChannelView` (enriched view type carrying `accessible: boolean`)
 
-**Analog 1 — composite/derived observable within `ConcordCommunity` itself:** `packages/concord/src/client/community.ts:255-258` (composite `status$` combining multiple granular `$` fields):
 ```typescript
 this.connected$ = this.relayAuth.connected$(this.relays());
 this.authenticated$ = this.relayAuth.authenticated$(this.relays(), () => this.currentAuthors());
@@ -128,7 +122,6 @@ it("rollForwardChannel's plane address matches the CORD-03 §1 private formula o
 
 **Key conventions to replicate exactly, per D-11/D-12 and RESEARCH.md's Common Pitfalls:**
 1. Comment stating which spec section/formula backs the expected value (e.g. "CORD-03 §1").
-2. Comment stating the expected value is computed ONLY from `crypto.ts` primitives (`channelGroupKey`/`controlGroupKey`), never via `channelKeyFor`/`deriveConcordKeys`/`rollForwardChannel` — explicitly named as non-self-referential.
 3. An explicit "ARM THE MEMO" step where the pre-refactor object's memo is populated before the roll-forward/mutation, so a regression would be caught rather than the test passing vacuously.
 4. Keyless-private assertion (D-11's sharpest case) must assert `channelKeyFor(...)` / `channelSecret(...)` returns `null`/nothing — **never** assert equality against the independently-derived public address (that equality IS the H07 bug being tested against).
 
@@ -168,11 +161,9 @@ Each of the four mutation sites gains one call to `this.materialChanged$.next()`
 ## Shared Patterns
 
 ### `combineLatest` composite-observable convention (applies to `channels$` AND `materialChanged$`)
-**Source:** `packages/concord/src/client/community.ts:255-258` (`status$`) and `packages/relay/src/relay.ts:411-417` (`authenticated$`/`authenticatedAs$`)
 **Apply to:** the redefined `channels$` (CHAN-06) — combine the existing `state$`-derived slice with the new `materialChanged$` Subject, always terminating in `distinctUntilChanged()` with a content comparator when the emitted value is a derived array/object rather than a stable reference (mirrors `members$`'s `sameSet` comparator at `client/community.ts:248-250`).
 
 ### Custom error class convention (applies to `MissingChannelKeyError`)
-**Source:** `packages/relay/src/management.ts:94` (`RelayManagementError`) — only existing `extends Error` convention in the monorepo family; `packages/concord/src` has none prior to this phase.
 **Apply to:** `MissingChannelKeyError` — `extends Error`, sets `this.name`, carries one typed field (`channelId`), thrown from `sendMessage` before the generic `planeKeyFor` "unknown channel" backstop (`keys.ts:209`) is ever reached.
 
 ### Spec-derived, non-self-referential test convention (applies to all TEST-02/TEST-01/ROTATE-03 tests)
@@ -181,10 +172,7 @@ Each of the four mutation sites gains one call to `this.materialChanged$.next()`
 
 ## No Analog Found
 
-None — all four new-artifact categories had a strong (exact or role-match) analog either within `packages/concord/src` itself or in the adjacent `packages/relay/src` package within the same monorepo family. The existing modify sites (`community.ts`, `control.ts`, `keys.ts`, `types.ts`) are direct edits to code already fully cited by file:line in `07-CONTEXT.md`'s `<canonical_refs>` and needed no separate analog search.
 
 ## Metadata
 
-**Analog search scope:** `packages/concord/src/client/community.ts`, `packages/concord/src/helpers/__tests__/*.test.ts`, `packages/relay/src/relay.ts`, `packages/relay/src/management.ts`
-**Files scanned:** 6 (2 concord source, 2 concord test, 2 relay source), plus grep sweep of `packages/concord/src` for `extends Error` / `export class.*Error` (zero matches, confirming no in-package base error class)
 **Pattern extraction date:** 2026-07-17

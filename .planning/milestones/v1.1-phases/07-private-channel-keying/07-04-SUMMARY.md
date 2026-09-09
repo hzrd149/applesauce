@@ -2,7 +2,6 @@
 phase: 07-private-channel-keying
 plan: 04
 subsystem: auth
-tags: [concord, channel-keying, typed-errors, chan-02]
 
 # Dependency graph
 requires:
@@ -21,8 +20,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
   - "Prepended this.requireChannelKey(channelId) as the literal first statement in each of the five methods, mirroring sendMessage/sendEvent verbatim rather than re-plumbing them through a shared factory body"
@@ -37,7 +34,6 @@ coverage:
     requirement: "CHAN-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#every channel-plane write path (react/editMessage/deleteMessage/sendThread/replyToThread) throws MissingChannelKeyError for a keyless private channel, not unknown channel (CHAN-02 / WR-01)"
         status: pass
     human_judgment: false
 
@@ -63,7 +59,6 @@ status: complete
 - All five previously-unguarded channel-plane write methods (`sendThread`, `replyToThread`, `react`, `editMessage`, `deleteMessage`) now call `this.requireChannelKey(channelId)` as their first statement, mirroring the proven `sendMessage`/`sendEvent` guard exactly
 - `requireChannelKey`, `MissingChannelKeyError`, and `planeKeyFor`'s generic `unknown channel` backstop are all byte-unchanged — no new symbols introduced
 - New regression test drives all five methods against a known-but-keyless private channel and asserts each throws `instanceof MissingChannelKeyError` with the exact message and matching `channelId`, and explicitly that the message is not the generic `"unknown channel"`
-- Full `applesauce-concord` suite green: 212/212 (211 baseline + 1 new test)
 
 ## Task Commits
 
@@ -75,8 +70,6 @@ Each task was committed atomically:
 **Plan metadata:** (final commit pending)
 
 ## Files Created/Modified
-- `packages/concord/src/client/community.ts` - Added `this.requireChannelKey(channelId);` as the first statement of `sendThread`, `replyToThread`, `react`, `editMessage`, `deleteMessage`
-- `packages/concord/src/client/__tests__/community.test.ts` - Added a regression test exercising all five methods against a known-but-keyless private channel
 
 ## Decisions Made
 - Prepended `this.requireChannelKey(channelId)` directly per-method (minimal, mirrors the proven `sendMessage`/`sendEvent` pattern) rather than re-plumbing the five methods' distinct factory bodies through a shared helper — matches the plan's explicit preference
@@ -97,7 +90,6 @@ None - no external service configuration required.
 
 - ROADMAP Success Criterion 2 / CHAN-02 fully closed: every channel-plane write entry point (all 7) now surfaces the distinct, `instanceof`-catchable `MissingChannelKeyError` for a keyless private channel
 - No open gaps remain from 07-VERIFICATION.md / 07-REVIEW.md WR-01 for this phase
-- `packages/concord` is unreleased — no changeset required (per project CLAUDE.md / MEMORY.md)
 
 ---
 *Phase: 07-private-channel-keying*
@@ -105,8 +97,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/client/community.ts
-- FOUND: packages/concord/src/client/__tests__/community.test.ts
 - FOUND: .planning/phases/07-private-channel-keying/07-04-SUMMARY.md
 - FOUND commit: 01b5c420
 - FOUND commit: 129e141d

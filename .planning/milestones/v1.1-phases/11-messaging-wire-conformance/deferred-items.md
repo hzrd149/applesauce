@@ -27,11 +27,9 @@ is not assignable to type 'CacheRequest'` (`StoredEvent` missing `sig`, required
 `Promise<NostrEvent[]>`, and `StoredEvent` (from `applesauce-core`) omits `sig`. Predates
 this plan — `git log` on each file's most recent commits shows unrelated work (Noble/Scure
 dependency upgrade, relay-connection hang fix, nut-wallet unlock bug fix), none of which
-mention `concord`, `admin-management`, or `voice`.
 
 **Effect on 11-02's acceptance criteria:** Task 2's stated criterion "`pnpm build`
 (unfiltered) exits 0" cannot be met without fixing these 9 unrelated files. Verified this
-plan's own edit (`apps/examples/src/examples/concord/admin-management.tsx`) introduces no
 new errors: it does not appear anywhere in the `tsc -b` error output, with or without
 `--force` cache bypass. `pnpm test` (the root script, `turbo build --filter='./packages/*'
 && vitest run`) is unaffected and fully green (269/270 test files, 2359/2361 tests — 1

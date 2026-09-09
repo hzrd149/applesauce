@@ -67,7 +67,6 @@ User selected all four open decisions.
 | Convert at wire only | Keep ms internally + Date.now() comparison, convert to seconds only when writing the Invite List event. | |
 
 **User's choice:** Seconds end-to-end.
-**Notes:** Ruling taken by reading CORD-05 §4 this session — example `1722400000` is seconds by magnitude (§4 never annotates the unit). No back-compat cost (concord unreleased). "Convert at wire only" was rejected because it preserves exactly the seconds/ms boundary this milestone is eliminating.
 
 ---
 

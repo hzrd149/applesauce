@@ -2,7 +2,6 @@
 phase: 10-invite-lifecycle-event-time-consistency
 plan: 05
 subsystem: auth
-tags: [nostr, concord, invite-bundle, nip-01, event-collapse, vitest]
 
 # Dependency graph
 requires:
@@ -22,8 +21,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/client.ts
-    - packages/concord/src/client/__tests__/client.test.ts
 
 key-decisions:
   - "newestAtCoordinate is a plain module-local function in client.ts (not exported, not a shared helper) — replicates event-store.ts:264-267's tie-break verbatim per the plan's explicit no-different-tie-break prohibition"
@@ -41,7 +38,6 @@ coverage:
     requirement: "INVITE-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/client.test.ts#ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02/D-03) > rejects when a fresher tombstone coexists with a stale live bundle from a lagging relay"
         status: pass
     human_judgment: false
   - id: D2
@@ -49,10 +45,8 @@ coverage:
     requirement: "INVITE-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/client.test.ts#ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02/D-03) > scopes the pool.request filter to the empty d tag"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/client.test.ts#ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02/D-03) > ignores a newer decoy event carrying a non-empty d tag (D-02)"
         status: pass
     human_judgment: false
 
@@ -88,8 +82,6 @@ Each task was committed atomically:
 **Plan metadata:** (pending — final docs commit below)
 
 ## Files Created/Modified
-- `packages/concord/src/client/client.ts` - Added `newestAtCoordinate`; rewrote `joinByLink`'s request filter (`"#d": [""]`) and collapse-then-tombstone logic
-- `packages/concord/src/client/__tests__/client.test.ts` - Added the INVITE-01 lagging-relay/D-02 test block plus `filteringAsyncServingPool`, a stricter tag-honoring pool stand-in
 
 ## Decisions Made
 - `newestAtCoordinate` stays module-local and unexported — it's join-flow-specific (pre-store) and replicates an existing rule rather than generalizing a new shared utility
@@ -112,7 +104,6 @@ None - no external service configuration required.
 
 - INVITE-01 is now fully satisfied (10-01 closed D-04's vsk fail-closed sub-part; this plan closes D-01/D-02/D-03's collapse-then-tombstone rewrite) — STATE.md's prior caveat about INVITE-01 spanning two plans is resolved
 - `joinFromBundle`'s `expires_at` check was deliberately left as-is per the plan's explicit scope note; 10-06 converts it atomically with the other unit sites (D-05)
-- Full `applesauce-concord` package test suite green (282/282) and `tsc --noEmit` clean after this plan's changes
 
 ---
 *Phase: 10-invite-lifecycle-event-time-consistency*
@@ -120,8 +111,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/client/client.ts
-- FOUND: packages/concord/src/client/__tests__/client.test.ts
 - FOUND: .planning/phases/10-invite-lifecycle-event-time-consistency/10-05-SUMMARY.md
 - FOUND commit: 48b3e10a
 - FOUND commit: ca37f186

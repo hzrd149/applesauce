@@ -19,17 +19,11 @@ created: 2026-07-21
 |----------|-------|
 | **Framework** | Vitest (workspace-standard) |
 | **Config file** | none per-package (inherits workspace root config) |
-| **Quick run command** | `pnpm --filter applesauce-concord vitest run <path>` |
-| **Full suite command** | `pnpm --filter applesauce-concord test` |
-| **Estimated runtime** | ~single-digit seconds per file; full concord suite < ~60s |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `pnpm --filter applesauce-concord vitest run <touched-test-file>`
-- **After every plan wave:** Run `pnpm --filter applesauce-concord test`
-- **Before `/gsd-verify-work`:** Full concord suite must be green
 - **Max feedback latency:** ~10 seconds (single test file)
 
 ---

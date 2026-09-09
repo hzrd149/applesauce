@@ -18,10 +18,7 @@ WIRE-02 removed the kind-23313 early-return from the receive funnel, which is ex
 phase criterion asked for. The side effect is that voice-presence beacons now land in
 `channel:*` stores, and those stores are the community fold's *observed activity* input.
 
-`ConcordObservedAuthorsModel` (`packages/concord/src/models/observed.ts:9`) reads
 `store.timeline([{}])` — all kinds, unfiltered. `rewireState` passes every `channel:*` store as
-the observed set (`packages/concord/src/client/community.ts:640`). `foldMembers`' re-entry branch
-(`packages/concord/src/helpers/guestbook.ts:123-126`) re-adds an author whenever
 `lastMs > c.ms`. So a presence beacon newer than a member's departure re-adds them to `members$`.
 
 **Verified empirically** with a throwaway `foldMembers` probe (three cases, since removed):
@@ -51,7 +48,6 @@ memberlist, never resurrect a removed member)". That reasoning was never applied
 
 ## Fix
 
-Exclude ephemeral kinds (20000–29999, per NIP-01) from `ConcordObservedAuthorsModel`'s fold rather
 than special-casing 23313 — observation should mean *durable authorship*, so any future
 presence-like kind is covered by construction instead of needing another patch.
 

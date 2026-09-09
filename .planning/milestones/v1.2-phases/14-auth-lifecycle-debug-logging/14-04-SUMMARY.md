@@ -145,7 +145,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - `Relay.authLog` is in place and injected into `authRetryOperator`'s shared config — plan 14-05 can add the operation-track lines directly against `config.log` in `operators/auth-retry.ts` without touching `relay.ts` again, exactly as this plan's `key_links` intended.
-- `RelayGroup`'s status$/loaders consumers were re-verified green (`pnpm --filter applesauce-loaders test`: 126/126; `pnpm --filter applesauce-concord test`: 559/559) — the `status$` composition this plan promised not to change stayed unchanged.
 - No blockers for 14-05/14-06/14-07.
 
 ## Verification
@@ -153,7 +152,6 @@ None - no external service configuration required.
 - `pnpm --filter applesauce-relay build` exits 0.
 - `pnpm --filter applesauce-relay test` — 272/272 passed (10 files), run twice for stability.
 - `pnpm --filter applesauce-loaders test` — 126/126 passed (non-regression check).
-- `pnpm --filter applesauce-concord test` — 559/559 passed (non-regression check).
 - **RED→GREEN non-vacuity probes (Task 3, mandated by the plan), all performed via temporary `Edit`-tool changes and reverted — never via `git stash`:**
   1. **Test 2 (bucketed line gone) RED:** temporarily restored `this.authLog(\`Auth required for REQ\`)` in place of the request-describing line in `req()`'s CLOSED branch. The new test failed: `AssertionError: expected true to be false` on `captured.some((l) => l.includes("Auth required for REQ"))`.
   2. **Test 2 GREEN:** restored the request-describing line; the test passed again.

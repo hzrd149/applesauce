@@ -29,7 +29,6 @@ overrides_applied: 0
 | 7 | Duplicate deterministic AUTH IDs remain distinct logical calls with newest-attempt bookkeeping. | ✓ VERIFIED | Per-call Symbols guard state and `authEventQueues` serializes equal IDs. The adversarial real-WebSocket test passes with equal IDs, opposite verdicts, two frames, distinct Promise results, and both mirrors newest-only. |
 | 8 | Public numeric options reject invalid policies before connection work and define zero semantics. | ✓ VERIFIED | Finite/non-negative/integer validation at `relay.ts:1487-1498`; table tests cover negative, fractional, NaN, Infinity, zero timeout, and zero retries. |
 | 9 | Authentication lifecycle logging is stage-complete and redacts/bounds sensitive values. | ✓ VERIFIED | Dedicated lifecycle logging suite passes within the 356-test relay run; it covers challenge, signer, send, verdict, timeout, abort, and bounded messages. |
-| 10 | Vertex consumes auto-auth rejection and resets its in-flight guard; Concord preserves verdict/rejection semantics. | ✓ VERIFIED | Vertex catches and reports rejection before `finally`; focused rejection/reset test passes. Concord's complete 602-test suite and build pass against the new Promise surface. |
 | 11 | Production loaders stay structurally coupled without a relay runtime dependency. | ✓ VERIFIED | `sync-loader.ts` keeps a structural relay interface and `.name` set; actual relay classes occur only in tests. Loader package test/build pass. |
 | 12 | Docs and provenance accurately describe high-level/manual AUTH and the Phase 18 selector supersession. | ✓ VERIFIED | Relay docs describe the whole deadline, retries, AbortSignal, fixed verbs, and manual `auth()`; Phase 18 context has a dated `Phase 20 amendment`. Docs build passes. |
 | 13 | The source break has one valid focused major changeset and all phase gates pass. | ✓ VERIFIED | Changeset targets only `applesauce-relay`, bump `major`, with exactly one Markdown sentence. Type fixture, four package suites/builds, and docs build all pass. |
@@ -103,7 +102,6 @@ No unreferenced `TBD`, `FIXME`, or `XXX`, placeholders, empty implementations, h
 - Relay type fixture: passed.
 - `applesauce-relay`: 12 files, 356 tests passed; build passed.
 - `applesauce-loaders`: 16 files, 128 tests passed; build passed.
-- `applesauce-concord`: 55 files, 602 tests passed; build passed.
 - `applesauce-extra`: 1 file, 2 tests passed; build passed.
 - VitePress docs: client/server build and page rendering passed.
 

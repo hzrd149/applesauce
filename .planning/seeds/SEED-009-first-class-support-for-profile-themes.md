@@ -120,7 +120,6 @@ around it is already there: `getProfileContent`, `isValidProfile`, `getProfilePi
 one that needs a changeset on `applesauce-core`.
 
 **Possible reuse for the `bg` tag:** it is imeta-shaped, and imeta parsing already
-exists at `packages/concord/src/helpers/imeta.ts`, with
 `packages/common/src/operations/media-attachment.ts` (`addMediaAttachments`,
 `FileMetadataFields`) on the common side. Check before writing a third parser.
 

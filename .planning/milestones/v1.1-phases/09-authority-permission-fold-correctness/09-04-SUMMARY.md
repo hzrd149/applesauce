@@ -2,7 +2,6 @@
 phase: 09-authority-permission-fold-correctness
 plan: 04
 subsystem: auth
-tags: [concord, authority, permissions, client-write-path, tdd]
 
 # Dependency graph
 requires:
@@ -21,9 +20,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/admin.ts
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
   - "kick()'s guard lands in community.ts (kick is not on admin); ban()'s guard lands in admin.ts's ban() body (community.ban() only delegates) — each guard uses that class's own canDo/standingOf, per PATTERNS' never-hand-roll rule"
@@ -37,7 +33,6 @@ coverage:
     requirement: "AUTH-05"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#kick() rejects locally before any publish when the caller lacks KICK or does not outrank the target (AUTH-05)"
         status: pass
     human_judgment: false
   - id: D2
@@ -45,7 +40,6 @@ coverage:
     requirement: "AUTH-05"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#ban() rejects locally before any publish when the caller lacks BAN or does not outrank the target (AUTH-05)"
         status: pass
     human_judgment: false
   - id: D3
@@ -53,7 +47,6 @@ coverage:
     requirement: "TEST-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#kick() rejects locally... / #ban() rejects locally..."
         status: pass
     human_judgment: false
 
@@ -92,9 +85,6 @@ Each task was committed atomically:
 _Note: both tasks were TDD (`tdd="true"`); the RED/GREEN/non-vacuity cycle was run manually against the working tree (guard removed → test fails, guard restored → test passes) rather than as separate `test(...)`/`feat(...)` commits, since the guard and its test were authored together and each task's single commit already bundles the failing-then-passing proof. See "Issues Encountered" for the exact non-vacuity procedure._
 
 ## Files Created/Modified
-- `packages/concord/src/client/community.ts` - `kick()` gains a pre-publish `canDo(PERM.KICK, standingOf(member).position)` throw, mirroring `rotateChannel`'s exclude-loop outrank throw
-- `packages/concord/src/client/admin.ts` - `ban()` gains a pre-publish `canDo(PERM.BAN, standingOf(member).position)` throw; `PERM` added to the `../types.js` import
-- `packages/concord/src/client/__tests__/community.test.ts` - two new rejection tests (kick/ban) with hand-derived TEST-01 topological-match assertions and positive-path coverage; `hasPerm` added to the `../../helpers/permissions.js` import
 
 ## Decisions Made
 - kick()'s guard lands in community.ts (kick is not on admin); ban()'s guard lands in admin.ts's ban() (community.ban() only delegates to admin.ban()) — each guard uses that class's own canDo/standingOf, per PATTERNS.md's "never hand-roll rank logic" rule
@@ -117,7 +107,6 @@ Both tasks carry `tdd="true"`. The RED gate (a `test(...)` commit before the cor
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- AUTH-05 and this plan's slice of TEST-01 are closed; `packages/concord` is 249/249 tests green and `pnpm --filter applesauce-concord build` passes clean
 - File-disjoint from 09-01/09-02/09-03 (Wave 1) — no blockers for 09-05 or the phase's remaining plans
 
 ---
@@ -126,9 +115,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/client/community.ts
-- FOUND: packages/concord/src/client/admin.ts
-- FOUND: packages/concord/src/client/__tests__/community.test.ts
 - FOUND: .planning/phases/09-authority-permission-fold-correctness/09-04-SUMMARY.md
 - FOUND commit: 7cbc434a
 - FOUND commit: 160b05ff

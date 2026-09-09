@@ -92,7 +92,6 @@
 - `packages/relay/src/relay.ts` (1365 lines) — handles request, subscription, and publish logic; consider extracting subscription management or message handling
 - `packages/core/src/event-store/__tests__/event-memory.test.ts` (1173 lines) — comprehensive but monolithic; split into separate test modules per feature (timeline, replaceable, filters)
 - `packages/wallet/src/wallet/nut-wallet.ts` (1095 lines) — token management; complex state handling
-- `packages/concord/src/client/community.ts` (893 lines) — community protocol; significant conditional logic
 
 **Impact:** Harder to review, modify, and reason about. Increased risk of hidden bugs in large conditional branches.
 
@@ -296,11 +295,8 @@
 
 ---
 
-### Concord Invite and Direct Invite Protocol Complexity
 
-**Issue:** `packages/concord/src/` implements complex Nostr-based protocol operations (community creation, invites, direct invites). The key derivation (`packages/concord/src/helpers/keys.ts`, 593 lines) and crypto operations are critical.
 
-**Files:** `packages/concord/src/helpers/keys.ts`, `packages/concord/src/helpers/crypto.ts`, `packages/concord/src/client/community.ts`
 
 **Impact:** Cryptographic bugs could compromise privacy or authentication. High scrutiny required.
 

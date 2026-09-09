@@ -15,7 +15,6 @@ operation that receives `auth-required:`. `onAuthRequired` / `authTimeout` / `au
 `authRequiredForRead$` / `authRequiredForPublish$` survive as informational status only — their use
 as a *pre-block gate* is what is removed.
 
-**Not this phase:** auth lifecycle debug logging (Phase 14), Concord's stream-auth migration
 (Phase 15, hard-blocked on this one), and any relay-internal dedupe / single-flight / prompt
 suppression (permanently out of scope per REQUIREMENTS.md).
 
@@ -188,7 +187,6 @@ suppression (permanently out of scope per REQUIREMENTS.md).
 ### Milestone scope and requirements
 - `.planning/REQUIREMENTS.md` — RAUTH-01..09 for this phase; the Out of Scope table (no relay-internal
   dedupe; `authRequiredForRead$`/`authRequiredForPublish$` stay as status; changesets for
-  `applesauce-relay` and `applesauce-loaders`, none for concord); and the Verification Standard.
 - `.planning/ROADMAP.md` § Phase 13 — goal and the five success criteria.
 - `.planning/ROADMAP.md` § Phase 15 — the downstream consumer this API must serve (CAUTH-01..04).
 
@@ -240,7 +238,6 @@ suppression (permanently out of scope per REQUIREMENTS.md).
 - `RelayPool` / `RelayGroup` forward every new option to `Relay` unchanged (RAUTH-07's pool leg).
 - `SyncLoader.methodOptions` (`sync-loader.ts:270`) is the single place the three options thread
   into both the negentropy and paginated paths (RAUTH-08).
-- Phase 15's concord engines are the first real consumer of `onAuthRequired` + `missingPubkeys`;
   D-17's error classes and D-18's `PublishResponse.error` exist for their branching.
 
 </code_context>
@@ -255,7 +252,6 @@ suppression (permanently out of scope per REQUIREMENTS.md).
   handle them.
 - Two published packages change behavior, so both need a changeset with a single-sentence body:
   `applesauce-relay` (operation-scoped auth callbacks, timeout/retry semantics, and `waitForAuth`
-  no longer pre-blocking) and `applesauce-loaders` (sync loader pass-through). `applesauce-concord`
   is unreleased and needs none.
 - The changeset for `applesauce-relay` must surface the D-14 consequence: callers relying on an
   indefinite wait for out-of-band auth now need `authTimeout: false`.

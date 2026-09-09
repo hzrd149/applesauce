@@ -13,12 +13,10 @@
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Vendor fixtures into the repo | Transcribe relevant `examples.md` tag sets into a checked-in fixture file under `packages/concord/src/__tests__/`; tests assert against it, reviewers diff it against the spec | ✓ |
 | Transcribe inline per test | Each test hardcodes its expected tag array with a CORD section comment; no new file, but no single auditable place | |
 | Fetch during research | `gsd-phase-researcher` pulls `examples.md` from GitHub and quotes it into RESEARCH.md; plans transcribe from there | |
 
 **User's choice:** Vendor fixtures into the repo
-**Notes:** Asked because the CORD specs live in the external `concord-protocol/concord` repo with no local copy — without a vendored file, "asserted against the spec" is unverifiable, which defeats the point of TEST-01's anti-self-assertion rule. → CONTEXT D-10.
 
 ---
 
@@ -31,7 +29,6 @@
 | Widen to a union | `Rumor \| {id, author}`, good path when given a rumor. Non-breaking and incremental, but leaves the wrong path callable forever | |
 
 **User's choice:** Change signatures to take the rumor
-**Notes:** Scouting collapsed this area before it was asked. All three upstream factories already accept a full event/rumor and already emit the correct tags — `setDeleteEvents` calls `ensureKTag` on its `isEvent` branch, `ReactionParent` accepts a `Rumor`, and `setParent`'s `"tags" in parent` branch *is* the verbatim-root-inheritance path. So no upstream change and no `kind` parameter is needed; the only real question was where concord obtains the rumor.
 
 Surfaced during the walkthrough: `setParent`'s else-branch **throws** on a comment-kind pointer with the message *"please pass the full nip-22 comment event"*. `replyToThread` escapes that guard only by hardcoding `kind: kinds.ForumThread` — so depth-2 nesting silently re-roots rather than failing loudly. Recorded as D-03 with an explicit depth-2 test obligation.
 
@@ -69,8 +66,6 @@ Also established as a **boundary, not a decision**: `sendMessage`'s `replyTo?: {
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| D-15 wins — no changeset | concord is unreleased; a changeset for a package with no consumers is noise. Override recorded so verify-phase scores criterion 1 on the field removal alone | ✓ |
-| Write the changeset anyway | Honor the ROADMAP criterion literally; CHANGELOG carries the migration note for whenever concord ships | |
 | No changeset, but a migration note in code/README | Skip `.changeset/` per D-15 but record the breaking surface in UPSTREAM-NOTES.md or the README | |
 
 **User's choice:** D-15 wins — no changeset

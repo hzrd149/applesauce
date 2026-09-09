@@ -2,7 +2,6 @@
 phase: 08-rotation-robustness-consensus
 plan: 05
 subsystem: auth
-tags: [concord, nostr, rekey, refounding, vac, grant, access-control, cord-04, cord-06]
 
 # Dependency graph
 requires:
@@ -25,17 +24,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/operations/rekey.ts
-    - packages/concord/src/helpers/rekey.ts
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/helpers/permissions.ts
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/sync.ts
-    - packages/concord/src/client/channel-sync.ts
-    - packages/concord/src/client/private-channel.ts
-    - packages/concord/src/helpers/__tests__/rekey.test.ts
-    - packages/concord/src/helpers/__tests__/keys.test.ts
-    - packages/concord/src/client/__tests__/sync.test.ts
 
 key-decisions:
   - "vac lives on the RekeyRotation descriptor (rotation.vac) rather than as a separate includeRekeyChunk function parameter — buildRekeyRumors already forwards the whole rotation object to includeRekeyChunk, so no new parameter needed to thread it through"
@@ -50,10 +38,8 @@ coverage:
     requirement: "ROTATE-08"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/rekey.test.ts#a non-owner rotation's vac citation round-trips through includeRekeyChunk → parseRekey (D-08)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/rekey.test.ts#an owner rotation (no vac) parses with vac undefined"
         status: pass
     human_judgment: false
   - id: D2
@@ -61,13 +47,10 @@ coverage:
     requirement: "ROTATE-08"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#a non-owner rotation whose vac eid does not resolve to grantLocator is rejected — excluded from both adopt and removed"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#a non-owner rotation whose vac correctly resolves is honored (positive control)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#the owner's rotation is honored with no vac at all (owner exemption, D-08)"
         status: pass
     human_judgment: false
 
@@ -106,17 +89,6 @@ Each task was committed atomically:
 _Plan metadata commit follows this summary._
 
 ## Files Created/Modified
-- `packages/concord/src/operations/rekey.ts` - `includeRekeyChunk` emits `rotation.vac` as a `["vac", ...]` tag
-- `packages/concord/src/helpers/rekey.ts` - `RekeyRotation.vac`, `ParsedRekey.vac`, `RekeyRotationSet.vac`; `parseRekey` reads the tag; `groupRotations` captures `vac` at bucket creation
-- `packages/concord/src/helpers/keys.ts` - `buildRefounding`/`buildChannelRekey` thread `opts.vac`; `ScopedHeld.verifyVac` + the `readRekeyScoped` gate; `readRekey`/`readChannelRekey` gain the optional `verifyVac` param
-- `packages/concord/src/helpers/permissions.ts` - new `vacVerifier(state, requiredPerm)` shared predicate builder, next to `refoundAuthority`
-- `packages/concord/src/client/community.ts` - `refound()`/`rotateChannel()` compute+thread `vacFor`; `checkRekey()` threads `vacVerifier(state, PERM.BAN)`; `spawnPrivateChannel()` supplies a fresh-per-call `verifyVac` for `PERM.MANAGE_CHANNELS`
-- `packages/concord/src/client/sync.ts` - `syncEpoch` builds `verifyVac` from `vacVerifier(state, PERM.BAN)` and threads it into both `readRekey` calls (known-branch re-read + tip/adopt)
-- `packages/concord/src/client/channel-sync.ts` - `ChannelSyncContext.verifyVac` field, threaded into `readChannelRekey`
-- `packages/concord/src/client/private-channel.ts` - `ConcordPrivateChannelOptions.verifyVac`, threaded through `syncContext()` and the live `checkRekey()`
-- `packages/concord/src/helpers/__tests__/rekey.test.ts` - vac round-trip + owner-no-vac control
-- `packages/concord/src/helpers/__tests__/keys.test.ts` - verification-reject, positive-control, and owner-exempt oracles (hand-rolled `verifyVac`, hand-derived `grantLocator` eids)
-- `packages/concord/src/client/__tests__/sync.test.ts` - the D-04 racing-rotation fixture's second (non-owner) rotator now hand-cites its own Grant so it still clears the new vac gate
 
 ## Decisions Made
 - vac lives on `RekeyRotation` (the descriptor already forwarded end-to-end) rather than as a bolted-on `includeRekeyChunk` parameter — no call site needed a signature change beyond the descriptor's own new optional field
@@ -131,24 +103,18 @@ _Plan metadata commit follows this summary._
 - **Found during:** Task 1
 - **Issue:** The plan's Task 1 action text and `<files>` list describe vac emission only for `refound()`/`buildRefounding` (the root Refounding path). But Task 2 explicitly wires the receive-side `verifyVac` gate into BOTH the root scope (`sync.ts`) and the channel scope (`channel-sync.ts`) — per its own read_first and action text ("Build the predicate in `sync.ts` (root scope) and `channel-sync.ts` (channel scope)"). Without also emitting a `vac` on channel rekeys, every non-owner `rotateChannel()` call (any `MANAGE_CHANNELS` admin who isn't the owner) would have its rotation silently rejected the moment Task 2 landed — a regression this very plan would have introduced into existing, working functionality.
 - **Fix:** Added an optional `vac` field to `buildChannelRekey`'s opts (threaded into its `buildRekeyRumors` descriptor, mirroring `buildRefounding`), and had `rotateChannel()` compute `admin.vacFor(this.pubkey)` and pass it through — symmetric to `refound()`. Also threaded `opts.vac` into `buildRefounding`'s own bundled-channel-rekeys loop (a Refounding may rotate private channels alongside the root; those rekeys are minted by the same rotator and need the same citation).
-- **Files modified:** `packages/concord/src/helpers/keys.ts`, `packages/concord/src/client/community.ts`
 - **Verification:** `channel-rekey.test.ts` and `private-channel.test.ts`'s existing non-owner rotation tests remained green after Task 2's verifyVac wiring landed.
 - **Committed in:** `f56fef5e` (Task 1 commit)
 
 **2. [Rule 1 - Bug/consistency] Extended verifyVac wiring to the live checkRekey() paths (community.ts, private-channel.ts)**
 - **Found during:** Task 2
 - **Issue:** Task 2's `<files>` list and read_first cite only `sync.ts`/`channel-sync.ts` (the sync-WALK paths). But both scopes also have a separate LIVE-check path — `community.ts`'s `checkRekey()` (root) and `private-channel.ts`'s `checkRekey()` (channel) — that call `readRekey`/`readChannelRekey` directly and already thread `canRemoveSelf` there. Phase 06-03's own deviation log (STATE.md) records the mirror-image gap: `canRemoveSelf` was originally wired only at the live-check sites and had to be back-filled into the sync-walk paths. Leaving the live-check paths unwired here would repeat that same class of gap for `vac` — a lagging client's live rotation check would honor an unverified non-owner rotation even though the same rotation would be correctly rejected on the next full walk.
-- **Fix:** Added `ConcordPrivateChannelOptions.verifyVac` (private-channel.ts), threaded through `syncContext()` and `checkRekey()`; `community.ts`'s `checkRekey()` threads `vacVerifier(state, PERM.BAN)`; `spawnPrivateChannel()` supplies a fresh-per-call `verifyVac` closure over `vacVerifier(this.state$.value, PERM.MANAGE_CHANNELS)`.
-- **Files modified:** `packages/concord/src/client/community.ts`, `packages/concord/src/client/private-channel.ts`
-- **Verification:** Full `applesauce-concord` suite green (230/230); `pnpm --filter applesauce-concord build` clean.
 - **Committed in:** `9c8400b8` (Task 2 commit)
 
 **3. [Rule 1 - Bug] Fixed a pre-existing test broken by the new vac gate**
 - **Found during:** Task 2
 - **Issue:** `sync.test.ts`'s D-04 racing-rotation fixture ("re-reads a known epoch's rekey plane...") has a second rotator (`member`, granted `PERM.BAN` via a role) call `buildRefounding` directly without a `vac`. Once `syncEpoch`'s `verifyVac` gate went live, `member`'s rotation — no longer owner-exempt — was excluded from candidacy, breaking the test's expected re-read cascade.
 - **Fix:** Hand-computed `member`'s Grant citation via `computeEditionHash` (mirroring `admin.vacFor`'s own recompute) against the GRANT edition the test already publishes, and passed it as `vac` into `member`'s `buildRefounding` call.
-- **Files modified:** `packages/concord/src/client/__tests__/sync.test.ts`
-- **Verification:** `pnpm --filter applesauce-concord test` — 230/230 passing.
 - **Committed in:** `9c8400b8` (Task 2 commit)
 
 ---
@@ -164,7 +130,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - ROTATE-08 fully closed: vac citation on emit, fail-closed structural verification on receive, at every walk and live-check path in both scopes.
-- `packages/concord/src/helpers/permissions.ts`'s new `vacVerifier` is available for 09-consensus-and-authority-fold if any authority-fold work needs the same owner-exempt/Grant-citation pattern.
 - No open blockers for 08-06.
 
 ---

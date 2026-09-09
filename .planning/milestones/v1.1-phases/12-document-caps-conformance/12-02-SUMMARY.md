@@ -11,8 +11,6 @@ requires:
 provides:
   - nostr-tools bumped to ^2.24 in packages/core, packages/common, packages/relay, deduplicated to a single installed 2.24.1 instance
   - A behavioral regression test in packages/core proving a 70,000-byte NIP-44 plaintext round-trips past the old 65,535-byte ceiling
-  - Runtime evidence that D-07's premise (the byte ceiling moved upstream) is real, not merely un-enforced in concord
-affects: [12-04, 12-05, 12-06, 12-09, any future concord/core encryption work]
 
 # Tech tracking
 tech-stack:
@@ -30,7 +28,6 @@ key-files:
 
 key-decisions:
   - "All three manifests moved to the identical ^2.24 range in one commit so pnpm dedupes to a single installed nostr-tools instance (verified via node_modules symlink resolution, not just manifest text)"
-  - "Test lives in packages/core, not packages/concord, since concord declares no direct nostr-tools dependency and only reaches nip44 through core's re-export"
   - "Comment attributes the byte figure to CORD-02 Appendix B and corrects D-11's superseded claim per D-25: the maxPlaintextSize fix landed in nostr-tools 2.23.4, not 2.24.0"
 
 patterns-established:
@@ -40,11 +37,9 @@ requirements-completed: [WIRE-08]
 
 coverage:
   - id: D1
-    description: "nostr-tools bumped to ^2.24 across packages/core, packages/common, packages/relay; lockfile updated; installed version resolves to 2.24.1 for all three; packages/concord still declares no direct nostr-tools dependency"
     requirement: "WIRE-08"
     verification:
       - kind: unit
-        ref: "pnpm --filter applesauce-core test / applesauce-common test / applesauce-relay test / applesauce-concord test (all four suites green: 671/533/150/507 tests)"
         status: pass
     human_judgment: false
   - id: D2
@@ -76,8 +71,6 @@ status: complete
 
 ## Accomplishments
 - All three affected manifests (`packages/core`, `packages/common`, `packages/relay`) now pin `nostr-tools` at the identical `"^2.24"` range; `pnpm install` deduplicates them to a single installed `nostr-tools@2.24.1` instance (confirmed via `node_modules` symlink resolution in each package, not just manifest text)
-- `packages/concord` still declares zero direct `nostr-tools` dependency (grep-confirmed)
-- All four affected suites are green post-bump: `applesauce-core` 671/671, `applesauce-common` 533/533, `applesauce-relay` 150/150, `applesauce-concord` 507/507
 - New `nip44 plaintext ceiling` test in `packages/core/src/helpers/__tests__/encryption.test.ts` builds a 70,000-ASCII-character (70,000-UTF-8-byte) plaintext, asserts its measured byte length inline (`new TextEncoder().encode(...).length`) exceeds 65,535, encrypts it, decrypts it, and asserts byte-identical round-trip — with zero assertions against any library constant (`maxPlaintextSize`/`extendedPrefixThreshold` appear only in the explanatory comment)
 - Non-vacuity proven empirically, not just asserted: reverted all three manifests to their pre-bump ranges (`~2.19`/`^2.19`/`~2.19`), reinstalled (confirmed installed `nostr-tools@2.19.4`), ran the new test — it failed with the pre-bump library's own error, `Error: invalid plaintext size: must be between 1 and 65535 bytes`. Restored `^2.24` via `git checkout --`, reinstalled (confirmed `nostr-tools@2.24.1` restored, `pnpm-lock.yaml` diff-clean against the committed state), reran the test — it passed.
 
@@ -106,7 +99,6 @@ _Note: Task 2 is a single `test` commit — no separate `feat`/implementation co
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. No `.changeset/` file created, per D-19 (`applesauce-concord` unreleased in this milestone).
 
 ## Issues Encountered
 None.
@@ -116,8 +108,6 @@ None.
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- D-07's premise (the byte ceiling moved upstream, not merely un-enforced) is now demonstrable at runtime through the exact module every `PrivateKeySigner`-based concord consumer resolves
-- Plans 12-03/12-04/12-05 (which remove concord's own byte-cap enforcement per D-07/D-08/D-19) can proceed without risk of relocating the refusal into a still-pinned-below-2.23.4 `nostr-tools`
 - No blockers for subsequent wave-1/wave-2 plans in this phase
 
 ---

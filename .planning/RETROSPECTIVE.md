@@ -15,7 +15,6 @@
 
 ### What Worked
 - **Dependency-ordered phasing with a hard "Part A" gate** (prove core over rumors before touching common) kept the broad type migration de-risked — Phase 4 turned out to be tiny (4 helpers) once core was proven.
-- **Empirical research agents** — the Phase 3 researcher applied the `castEvent` fix, built/tested it, and reverted, catching that the code reviewer's exact-`T` suggestion would break concord's real rumor cast. Phase 4 research decisively scoped the work (4 helpers, 0 casts) by direct audit.
 - **The recurring full-workspace `pnpm -r build` gate** caught genuine cross-package inference regressions (bare `new EventMemory()` inferring the `StoreEvent` constraint) that per-package builds missed — this became the standing lesson every subsequent phase applied proactively.
 - **`= NostrEvent` defaults + localized bridge casts** (the `signedView` pattern) delivered zero behavior change: existing tests and export snapshots stayed byte-identical across all phases.
 
@@ -47,7 +46,6 @@
 
 ### What Was Built
 
-- **`applesauce-core` symbol propagation redesigned** (Phases 5 + 5.1) — every symbol write non-enumerable via `setCachedValue`; `PRESERVE_EVENT_SYMBOLS` carried explicitly through `pipeFromAsyncArray`/`EventFactory.chain`; both per-step strip loops deleted. Root cause of three HIGH concord findings.
 - **Rotation and refounding correctness** (6 + 8) — Refoundings rotate their plane addresses in-session, drop excluded members, and abort atomically without a relay-majority ack; racing rotations converge via a per-epoch down-only latch and a multiset-consistency gate.
 - **Private channel keying** (7) — `ChannelMetadata.key`/`.epoch` removed; `material.channels` is the sole key source; `channels$` carries a client-local `accessible` flag. Unblocked the Accordian consumer.
 - **Authority fold correctness** (9) — Grant/Kick/Ban/Role folds bind coordinates, handle malformed input totally, and enforce strict outranking against the current roster.
@@ -103,7 +101,6 @@
 NIP-42 authentication moved from ambient, relay-wide cached flags into the operation that receives
 `auth-required:`. One shared `authRetry` operator serves all eight request-like operations and passes
 through `RelayPool`/`RelayGroup` and both `SyncLoader` paths. A `:auth` debug namespace made a single
-auth attempt's lifecycle and failure reason readable from log output. Concord's client-wide
 stream-signer registry and relay drivers were deleted in favour of per-scope `StreamSigners` holders.
 
 ### What Worked
@@ -134,8 +131,6 @@ stream-signer registry and relay drivers were deleted in favour of per-scope `St
 
 - **Suspendable operation clocks (D-15).** Every operation timeout pauses across an auth phase rather
   than racing it. A bare `rxjs` `timeout()` cannot express this, which is now stated at each call site.
-- **Two-root structural guards.** `no-ambient-auth.test.ts` walks both `packages/concord/src` and the
-  concord examples, so a removed mechanism cannot return through a worked example.
 - **Verify the premise before designing on it.** The negentropy re-layering design was held until
   NIP-77 and the vendored library were actually read; both confirmed the assumption, but the check
   also revealed the blocking `await` was never a protocol requirement.
@@ -171,7 +166,6 @@ methods that silently swallow failures, none of which any requirement covered.
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0 | core 601 + common 500 (all green) | existing suites unchanged + new rumor tests | 0 new dependencies (pure internal TS) |
-| v1.1 | 2,466 passed / 2 skipped across 272 files (from a 1,989 baseline) | concord 189 → 554 tests across 54 files; load-bearing derivations now spec-anchored | 0 new dependencies (`nostr-tools` bumped to ^2.24) |
 
 ### Top Lessons (Verified Across Milestones)
 

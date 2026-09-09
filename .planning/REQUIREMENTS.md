@@ -108,7 +108,6 @@ Tracked, not in this roadmap.
 
 - **GROUP-F1**: Superseded by Phase 24 — `RelayGroup.sync()` emits explicit `relay-failed` values alongside `SyncMessage`, and raw Group/Pool negentropy methods were removed in favor of `pool.relay(url).negentropy(...)`.
 
-### Concord
 
 - **CONC-F1**: Invite-bundle rule-table hardening (999.9) — guardrail only, zero live defects across all 26 rules
 - **CONC-F2**: Phase 8 rotation-robustness residuals (999.7) — check first whether 12.3's majority-ack gate already overtook WR-01

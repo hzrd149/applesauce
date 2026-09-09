@@ -1,12 +1,10 @@
 # Phase 7: Private Channel Keying - Research
 
 **Researched:** 2026-07-17
-**Domain:** Concord protocol conformance — channel key single-source-of-truth refactor, client-local access-affordance API, sticky channel deletion, spec-derived test methodology
 **Confidence:** HIGH (all six priority questions resolved by direct code inspection + authoritative upstream spec fetch; no library/ecosystem unknowns — this phase touches no new external packages)
 
 ## Summary
 
-This phase is a verification-and-refactor phase over `packages/concord/src`, not a new-technology phase. Every open question in the CONTEXT.md was resolved by reading the actual implementation this session. The two headline findings that change the plan's shape:
 
 1. **D-09 (compaction vs. sticky-delete) resolves to a qualified "insufficient as literally stated."** `foldControl`'s channel loop (`control.ts:219-238`) computes `heads.set(eid, cand.source)` from the *same single winning candidate* used to decide `channels.push(meta)` — it does not scan the full candidate list. D-08's "scan all candidates for `deleted:true`" fix, if it only changes what's pushed to `channels` and leaves `heads.set` following ordinary head-selection, will let a later resurrection edition become the new compacted head — silently losing the deletion for any client that bootstraps from compacted heads only (a fresh invite joiner, who per the audit's own "verified correct" register does *not* receive `held_roots`). The fix must also pin `heads.set` to the terminal deleting edition once one is found. This is still fold-time-only (no persisted state), so D-08's rejected tombstone alternative is not needed — but the sticky rule must cover both outputs (`channels` list AND `heads` map), not just the first.
 
@@ -20,23 +18,18 @@ Three further findings reshape task granularity: (a) the memo cache-key fix and 
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| Channel key derivation (`channelSecret`/`channelKeyFor`) | Backend logic (`packages/concord/src/helpers`) | — | Pure crypto/derivation function, no I/O; lives in the helpers layer shared by client + tests |
-| Channel key source-of-truth (`material.channels`) | Client state (`ConcordCommunity` instance) | Backend logic (`keys.ts`) | `material` is client-local persisted state (JoinMaterial), threaded through the pure derivation helpers — the client owns *what* is held, helpers own *how* it derives |
 | Control-plane fold (`foldControl`) | Backend logic (`helpers/control.ts`) | — | Pure fold over `DecodedEvent[]` + `JoinMaterial`, no client dependency |
 | `accessible` / access-vs-key-possession view | Client state (`channels$` emission) | — | CONTEXT.md D-05: client-local, not edition data — must NOT touch `ChannelMetadata`/`foldControl` |
-| `MissingChannelKeyError` guard | Client (`ConcordCommunity.sendMessage`) | Backend logic (`planeKeyFor` backstop) | The client has both channel state and the `accessible`/key-holding info at guard time; `planeKeyFor` remains a defense-in-depth backstop for truly unknown ids |
 | Sticky channel-deletion terminality | Backend logic (`foldControl`) | — | Fold-time-only, no persisted state; a pure function of the candidate list |
 | Spec-derived test oracles | Test tier (`helpers/__tests__/*.test.ts`) | — | Must call `crypto.ts` primitives directly, never the implementation under test |
 
 ## Package Legitimacy Audit
 
-Not applicable — this phase installs no new external packages. All work is a refactor within the existing `packages/concord/src` tree using already-present dependencies (`@noble/hashes`, `applesauce-core`, `applesauce-signers`).
 
 ## Priority Research Findings
 
 ### 1. D-09 — Can compaction drop the deleting edition? **Qualified: the sticky rule as literally stated is insufficient; it must also pin `heads`.**
 
-**Code evidence (`packages/concord/src/helpers/control.ts:217-239`):**
 ```ts
 // ---- Channels (MANAGE_CHANNELS) -----------------------------------------
 const channels: ChannelMetadata[] = [];
@@ -60,7 +53,6 @@ for (const [eid, cands] of groupByEntity(byVsk(VSK.CHANNEL))) {
 
 **Consequence for D-08's stated fix.** D-08 says: "Scan the entity's authorized candidates for a `deleted:true`... The head is still retained for compaction (`heads.set`)." Read literally, this only changes the criterion for the `channels.push` decision (scan all candidates, exclude if any is `deleted:true`) while leaving `heads.set` to keep following ordinary head-selection (the highest contiguous version). If an admin later publishes a higher-version `deleted:false` edition citing the deleted edition's `prev`, that edition becomes the ordinary "head" — `heads` would then store *that* edition, and `buildRefounding`'s compaction step (`keys.ts:360-371`, `for (const head of opts.heads) { ...rewrapSeal(head.seal, ...) }`) republishes it into the new epoch.
 
-**Why this matters specifically for *new* joiners.** A currently-synced client that fetched every edition version (v1, v2-deleted, v3-undelete) from genesis would still catch the sticky rule on every fold, since all versions are in its local `events` array regardless of compaction. But a **new invite joiner does not fetch prior-epoch history** — the audit's own "Verified correct" register states this is spec-correct by design: *"`held_roots` omission from bundles is spec-correct"* (`concord-audit.md:226`). A new joiner only ever sees what's compacted into the *current* epoch's control plane. If `heads` was pinned to the resurrection edition (v3) at the last compaction, the new joiner's fold never sees v2 at all — no candidate in their `events` has `deleted:true` — and the sticky scan (correctly, given their information) finds nothing, resurrecting the channel for them. **This is not hypothetical: it is the same "later edition wins" defect CHAN-07 exists to close, relocated to the compaction boundary.**
 
 **Verdict: sticky-fold-rule-sufficient, WITH ONE ADDITIONAL FIX** — no persisted `deletedChannelIds` tombstone is required (D-08's rejected option stays rejected), but the fix must do two things in the same fold pass:
 1. Scan all authorized candidates for the entity; if any is `deleted:true`, exclude the channel from `channels` (as D-08 already specifies).
@@ -122,7 +114,6 @@ function channelKeyMemo(material: JoinMaterial, channel: ChannelMetadata): Group
 This keeps the existing defensive pattern (the code comment at `keys.ts:143-146` explains embedding key+epoch "for safety" in case a caller reuses the same `material` reference across a key change) but sources the private-branch fields from `material.channels`, not from the doomed `ChannelMetadata` fields. The map itself is already memoized ON `material`, so this is belt-and-suspenders against any future caller that mutates a channel's key out of the immutable-update pattern — not strictly load-bearing today, but keep it (matches the milestone's fail-closed-over-convenient stance).
 
 **"Derive nothing" signalling shape — recommend `null` return, not a sentinel object or throw.** Rationale:
-- `channelSecret`/`channelKeyFor`/`channelKeyMemo`/`voiceKeysFor` all become `T | null`. This is type-checked, requires no new type, and composes cleanly with the `deriveConcordKeys` loop's `continue`:
 ```ts
 // helpers/community.ts
 function channelSecret(material: JoinMaterial, channel: ChannelMetadata): { secret: Uint8Array; epoch: number } | null {
@@ -140,7 +131,6 @@ export function channelKeyFor(material: JoinMaterial, channel: ChannelMetadata):
 }
 ```
 ```ts
-// helpers/keys.ts — deriveConcordKeys loop (currently keys.ts:174-177)
 for (const ch of channels) {
   const gk = channelKeyMemo(material, ch);
   if (!gk) continue; // CHAN-01: no keys.channels entry, no channelEpochs entry, no plane
@@ -150,20 +140,14 @@ for (const ch of channels) {
 }
 ```
 - This is a "total-fold-guard" (skip-in-loop) pattern, matching the milestone's established "fail-closed/total branches" convention (Phase 6 D-07/D-08 precedent: guards deny/skip by default, never permit-by-absence).
-- A throw was considered and rejected: `deriveConcordKeys` folds ALL channels in one pass for the whole community; a keyless private channel is a **routine, expected** state (every member sees channel metadata before being granted access) — throwing would crash the entire community fold for every member who lacks one channel's key. `null`+`continue` is correct; throwing belongs only at the `sendMessage` guard (CHAN-02), where the caller is specifically asking about ONE channel they're trying to act on.
 
 **Cross-cutting site NOT named in CONTEXT.md's canonical refs — must be updated in the same commit:**
 - **`voiceKeysFor`** (`helpers/community.ts:53-59`) shares `channelSecret` and must also become `VoiceKeys | null`. The audit explicitly calls this out as in-scope-for-correctness (though voice *features* are FUT-02): *"ensuring it no longer returns a wrong `community_root`-derived room for keyless private channels."*
-- **`deriveKeys`/`CommunityKeys`** (`helpers/community.ts:20-25,62-72`) is a **second, lighter-weight key-derivation path used only by tests** — `client/__tests__/relay-auth.test.ts:40`, `helpers/__tests__/community.test.ts:9`, `__tests__/roundtrip.test.ts:41,78,83,112` — never by the production `ConcordCommunity` engine (which uses `deriveConcordKeys` from `keys.ts`). It shares `channelKeyFor`, so once that returns `GroupKey | null`, `deriveKeys`'s loop (`for (const ch of channels) channelKeys.set(ch.channel_id, channelKeyFor(material, ch));`) will fail to typecheck (`Map<string, GroupKey>` cannot accept `null`) unless it also gets the same skip-on-null guard. **This is easy to miss because it's test-only code with no production caller** — flag it explicitly in the plan so the refactor task's file list includes `community.ts:62-72` and a pass over the three test files that call `deriveKeys` directly.
 
-### 4. Upstream CORD-03 verification (fetched `raw.githubusercontent.com/concord-protocol/concord/main/03.md`, 2026-07-17)
 
 **§1 — formula, both branches (verbatim):**
 ```
-Public  channel_pk = group_key("concord/channel", community_root, channel_id, root_epoch).pk
-Private channel_pk = group_key("concord/channel", channel_key, channel_id, channel_epoch).pk
 ```
-And: *"Its key is an independent random secret, delivered on grant and rekeyed on removal (CORD-06)."* [CITED: raw.githubusercontent.com/concord-protocol/concord/main/03.md §1] — this matches CONTEXT.md's D-11 paraphrase exactly; the planner can cite this verbatim for the hand-derived TEST-01 expected values (both `group_key(...)` calls above, computed directly from `crypto.ts`'s `channelGroupKey`, never via `channelKeyFor`/`deriveConcordKeys`).
 
 **§2 — edition shape + deletion terminality (verbatim):**
 ```jsonc
@@ -177,7 +161,6 @@ And: *"Its key is an independent random secret, delivered on grant and rekeyed o
 
 ### 5. Error-class placement (D-06)
 
-**Finding: no existing error base class exists anywhere in `packages/concord/src`.** Exhaustive grep for `extends Error` and `export class.*Error` across the package found zero matches; every current throw site is a bare `new Error("...")` (confirmed at `client/community.ts:767,778,922,923,929,949,1057,1058,1111,1119` — includes the two existing "outrank" guards from Phase 6, `:929` and `:1119`, both plain `Error`). **`MissingChannelKeyError` will be the first custom error class in this package.** Recommend a minimal standalone class (no base to extend, since none exists):
 ```ts
 export class MissingChannelKeyError extends Error {
   constructor(public readonly channelId: string) {
@@ -190,11 +173,9 @@ Export it from `client/community.ts` (co-located with `sendMessage`, matching th
 
 ### 6. `accessible` naming (D-05 discretion)
 
-**Finding: no prevailing term exists on folded channel state today.** Grep for `accessible`, `hasKey`, `hasChannelKey`, `keyHeld`, `hasKeyFor` across `packages/concord/src` returned zero matches (outside this session's own CONTEXT.md). The closest existing pattern is the inline guard `this.material.channels.find((k) => k.id === c.channel_id)` repeated ad hoc at `client/community.ts:581` (`reconcilePrivateChannels`) and `:657` (`dropChannelKey`) — exactly the "hand-rolled lookup" the Accordian report and CHAN-06 exist to eliminate. `accessible` is free to use as decided; no renaming needed. Recommend factoring the lookup itself into one small helper (e.g., `hasChannelKey(material, channelId)` in `helpers/community.ts`) that both the new `channels$` enrichment and these two existing call sites can share, since they're doing the identical check today with copy-pasted logic.
 
 ## `channels$` reactivity gap (new finding, not in CONTEXT.md — planner must address)
 
-**`channels$` currently only reacts to control-plane fold changes, not to key-holding changes.** `channels$` is defined at `client/community.ts:245` as `slice((s) => s.channels)`, a pure `distinctUntilChanged` projection of `state$`. `state$` only re-emits from `rewireState()`'s `combineLatest([state$, dissolved$])` subscription (`community.ts:444-447`), which is (re)wired at construction, on `adoptRefounding` (`:718`), and when a new plane store is created (`storeFor`, `:414`). None of the four methods that mutate `this.keys.material.channels` — `receiveChannelKeys` (`:601-610`), `persistChannelKey` (`:636-640`), `dropChannelKey` (`:651-660`), or the `mintChannelKey` callback wired into `ConcordCommunityAdmin` (`:297-300`) — call `rewireState()` or otherwise push a new `state$` value. They only call `this.onMaterialChange?.(this.keys.material)`, an external callback with no return path into the internal observable graph.
 
 **Consequence:** if `accessible` is implemented as a `map()` inside the existing `channels$` slice (reading `this.material.channels` at map time), it will compute the *correct* value the first time `channels$` emits after a key change coincides with any other `state$` emission — but it will **not** independently emit when a key arrives via `receiveChannelKeys` (a Direct Invite grant) or is dropped via `dropChannelKey` with no simultaneous control-plane change. This directly undermines CHAN-06's stated purpose ("drives composer/invite enable-disable reactively") for the single scenario the Accordian report actually needed: a grant landing without a simultaneous metadata edition change.
 
@@ -215,7 +196,6 @@ This is a small, contained addition (one `Subject`, four call sites, one new com
 
 ## Standard Stack
 
-No new libraries. This phase is entirely internal to `packages/concord/src`, using the existing `@noble/hashes`, `applesauce-core`, and `applesauce-signers` dependencies already in place. No installation, no version verification needed.
 
 ## Architecture Patterns
 
@@ -239,7 +219,6 @@ No new libraries. This phase is entirely internal to `packages/concord/src`, usi
                                    │  NO key/epoch after D-01)
                                    ▼
                     ┌─────────────────────────────┐        ┌──────────────────────┐
-                    │  ConcordCommunity.state$     │        │ this.keys.material    │
                     │  (BehaviorSubject)           │        │ .channels (ChannelKey[])│
                     └──────────────┬──────────────┘        │ held key material,     │
                                    │                        │ client-local, mutated by│
@@ -259,7 +238,6 @@ No new libraries. This phase is entirely internal to `packages/concord/src`, usi
                                    │
                                    ▼
                     ┌─────────────────────────────┐
-                    │  deriveConcordKeys (keys.ts) │
                     │  per channel: channelKeyMemo │──► null (keyless private)
                     │  → skip: no keys.channels,   │    or GroupKey (public /
                     │    no channelEpochs, no plane│    keyed private)
@@ -276,11 +254,9 @@ No new libraries. This phase is entirely internal to `packages/concord/src`, usi
 
 ### Recommended Task Structure (not a file tree — this is a refactor phase)
 ```
-packages/concord/src/
 ├── types.ts                    # D-01: remove ChannelMetadata.key/.epoch
 ├── helpers/
 │   ├── control.ts               # CHAN-04/CHAN-07: explicit field pick, sticky-delete + heads pinning
-│   ├── keys.ts                  # D-02/D-03: channelKeyMemo null-signalling, deriveConcordKeys skip-loop,
 │   │                            #   channelEpochs from held.epoch
 │   └── community.ts             # D-01/D-02: channelSecret/channelKeyFor/voiceKeysFor → nullable;
 │                                 #   deriveKeys (test-only path) updated in the same commit
@@ -396,7 +372,6 @@ Not applicable in the usual "library version drift" sense — no external depend
 
 | Old Approach | Current/New Approach | When Changed | Impact |
 |--------------|------------------|-----------|--------|
-| Channel key threaded via `ChannelMetadata.key`/`.epoch` (folded, edition-adjacent) | Channel key sourced only from `material.channels` (client-local, immutable-update JoinMaterial) | This phase (D-01) | Breaking type change (concord is unreleased — no changeset needed per project memory); removes the H06/H07/H08 root class outright |
 | `channelKeyFor`/`channelSecret` total-in-appearance but silently falls through to public derivation when keyless | Total, returns `null` | This phase (D-02) | Closes CHAN-01/H07 |
 | `heads.set` follows ordinary version-chain head selection unconditionally | `heads.set` pinned to the terminal deletion once a sticky-delete triggers | This phase (D-08 + this research's refinement) | Closes CHAN-07 across compaction boundaries, not just within one fold |
 
@@ -423,9 +398,7 @@ Not applicable in the usual "library version drift" sense — no external depend
 ### Test Framework
 | Property | Value |
 |----------|-------|
-| Framework | Vitest (workspace-standard; `packages/concord/package.json` `"test": "vitest run --passWithNoTests"`) |
 | Config file | Root/workspace vitest config (no package-local override found) |
-| Quick run command | `pnpm --filter applesauce-concord test` |
 | Full suite command | `vitest run` (per `.planning/config.json` `workflow.test_command`) |
 
 ### Phase Requirements → Test Map
@@ -443,7 +416,6 @@ Not applicable in the usual "library version drift" sense — no external depend
 | TEST-02 | Five Accordian-named cases | unit + integration, mixed | `vitest run` (spans keys.test.ts + community.test.ts) | ❌ cases 1/4 new; 2/3 likely pre-existing; case 5 (direct-invite grant flow) likely exists at `community.test.ts:193+` — confirm it still passes post-refactor |
 
 ### Sampling Rate
-- **Per task commit:** `pnpm --filter applesauce-concord test` (package-scoped)
 - **Per wave merge:** `vitest run` (full monorepo suite, per `.planning/config.json`)
 - **Phase gate:** Full suite green before `/gsd-verify-work`
 
@@ -475,11 +447,8 @@ Not applicable in the usual "library version drift" sense — no external depend
 ## Sources
 
 ### Primary (HIGH confidence)
-- Direct code inspection this session: `packages/concord/src/helpers/control.ts`, `keys.ts`, `community.ts`; `packages/concord/src/client/community.ts`; `packages/concord/src/types.ts`; `packages/concord/src/models/control.ts`, `models/community.ts`; `packages/concord/src/client/admin.ts`; `packages/core/src/helpers/cache.ts`; existing test files `helpers/__tests__/keys.test.ts`, `helpers/__tests__/channel-rekey.test.ts`, `client/__tests__/community.test.ts`.
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/03.md` — CORD-03 §1/§2/§3, fetched and quoted this session (2026-07-17).
 
 ### Secondary (MEDIUM confidence)
-- `.planning/concord-audit.md` — H06/H07/H08/H01c, S04 (channel deletion), and the "Verified correct" register's `held_roots`-omission note — all cross-checked against the live code this session, not merely trusted as prior.
 - `.planning/phases/06-refounding-rotation-authority-correctness/06-CONTEXT.md` — the "cache fix resolved H01 at source ⇒ derivation-level tests only" precedent, confirmed to extend cleanly to the channel plane this session.
 
 ### Tertiary (LOW confidence)
@@ -494,4 +463,3 @@ Not applicable in the usual "library version drift" sense — no external depend
 - Upstream spec quotes: MEDIUM-HIGH — fetched and quoted this session, but the fetch tool summarizes rather than returning raw bytes (see Assumption A1)
 
 **Research date:** 2026-07-17
-**Valid until:** Should be re-verified if `packages/concord/src` changes before planning begins (this is a fast-moving refactor target, not a stable external API) — treat as valid for the remainder of this planning session and immediate execution, not as a durable 30-day reference.

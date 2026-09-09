@@ -17,9 +17,7 @@ created: 2026-07-19
 
 | Property | Value |
 |----------|-------|
-| **Framework** | Vitest (`packages/concord/package.json`: `vitest run --passWithNoTests`) |
 | **Config file** | Workspace-root vitest config (monorepo-wide; no per-package override) |
-| **Quick run command** | `pnpm --filter applesauce-concord test` |
 | **Full suite command** | `pnpm run build && pnpm exec vitest run` |
 | **Estimated runtime** | ~30–60 seconds (package quick run); full monorepo longer |
 
@@ -27,8 +25,6 @@ created: 2026-07-19
 
 ## Sampling Rate
 
-- **After every task commit:** Run `pnpm --filter applesauce-concord test -- <changed-test-file>`
-- **After every plan wave:** Run `pnpm --filter applesauce-concord test`
 - **Before `/gsd-verify-work`:** `pnpm run build && pnpm exec vitest run` (full monorepo) must be green
 - **Max feedback latency:** ~60 seconds (package quick run)
 
@@ -40,15 +36,6 @@ created: 2026-07-19
 
 | Requirement | Behavior (spec-derived oracle) | Test Type | Automated Command | File Exists |
 |-------------|--------------------------------|-----------|-------------------|-------------|
-| ROTATE-05 | Decrypt failure at own locator ≠ removal; resolves to `none`, retried on re-read (§2 removal rule) | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend |
-| ROTATE-06 | Racing rotations converge down-only to strictly-lower sibling; settled epoch never re-forks (§3 latch) | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend (new latch assertions) |
-| ROTATE-07 | Winner among ALL authorized+complete+continuity candidates; **opaque competing fork ⇒ defer `none`** (D-10) | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ✅ extend (opaque-fork scenario) |
-| ROTATE-08 | `vac` cited on emit; receiver verifies structural resolve to `grantLocator` + folded-Roster grant, fail-closed; owner exempt (D-12) | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` / `keys.test.ts` | ❌ Wave 0 |
-| ROTATE-09 | Compaction/snapshot publish gated on **per-wrap majority-confirmed** root roll; minority ⇒ `refound()` throws, no `adoptRefounding` (D-11) | unit/integration | `pnpm --filter applesauce-concord test -- community.test.ts` | ❌ Wave 0 |
-| ROTATE-10 | Chunks correlate on `(rotator,scope,newepoch,prevcommit)` only; `n`-disagreement marks set inconsistent, never completes (D-02) | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` | ✅ extend |
-| ROTATE-11 | `prevepoch` identity validated across a rotation's chunks; disagreement marks inconsistent (rides D-02) | unit | `pnpm --filter applesauce-concord test -- rekey.test.ts` | ✅ extend |
-| ROTATE-12 | Historical epoch material does not inherit tip `refounder`; genesis = `undefined` (per-epoch attribution) | unit | `pnpm --filter applesauce-concord test -- sync.test.ts` | ❌ Wave 0 (create) |
-| ROTATE-13 | Unfoldable compaction head ⇒ `buildRefounding` throws before any publish (D-01) | unit | `pnpm --filter applesauce-concord test -- keys.test.ts` | ❌ Wave 0 |
 | TEST-01 (standing) | Continuity math, `lowerKeyWins` tie-break, complete-set gate each have a hand-derived §2/§3 oracle | unit | (covered by rows above) | Partial — pattern established, extend |
 
 *Status per task assigned during execution: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*

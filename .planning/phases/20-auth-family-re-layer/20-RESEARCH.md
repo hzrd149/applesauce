@@ -29,7 +29,6 @@
 - **D-19:** Amend Phase 18 provenance explicitly: its substantive one-attempt EVENT/AUTH transport invariants remain, while Phase 20 intentionally replaces the public verb distinction with fixed public family members. Record removal of the public second parameter in a focused `applesauce-relay` v7 changeset whose body is one sentence.
 - **D-20:** Real-wire tests must cover fresh-relay connect/wait, relay-never-sends-challenge timeout, signer rejection, null/different challenge during signing, same-challenge repetition, exact freshness exhaustion, whole timeout across every stage, abort and late signer suppression, stable `OK false`, transport failure, multi-await versus separate calls, and concurrent same-pubkey bookkeeping.
 - **D-21:** Raw parity tests must prove public `event()` can only write EVENT, public `auth()` writes exactly one AUTH and never calls `publish()`, AUTH `OK false` containing `auth-required:` does not invoke auth handling, listener-before-write survives synchronous replies, and readiness/timeout/close/repeated-subscription behavior stays aligned through the private helper.
-- **D-22:** Add a compile-time guard that `relay.event(event, "AUTH")` is rejected, and update relay types, exports, documentation, examples, focused changesets, Concord/Vertex compatibility checks, and loader classifier tests together.
 
 ### the agent's Discretion
 - Choose names and internal RxJS/Promise decomposition for the private raw exchange, authenticate options, and terminal errors, provided the locked responsibility and error-channel contracts remain exact.
@@ -55,7 +54,6 @@
 
 ## Summary
 
-Phase 20 should be planned as a narrow refactor of `packages/relay/src/relay.ts` plus explicit compatibility work in relay, loaders, Concord, Vertex, docs, requirements/provenance, and changesets. The current `event(event, verb)` already contains the correct Phase 18 transport mechanics: `waitForReady`, an unshared `defer`, matching listener installation before `socket.next`, fixed `eventTimeout`, and normalized `PublishResponse`. Extract that body into a private helper such as `exchangeEventFrame(event, verb)`; make public `event(event)` apply only EVENT auth-required translation and make `auth(event)` invoke the helper with fixed AUTH routing. [VERIFIED: codebase inspection of `packages/relay/src/relay.ts:1262-1344`]
 
 Implement `authenticate()` as one eagerly-started Promise operation with a single absolute deadline. It must subscribe to `watchTower` while waiting for a non-null challenge, snapshot/sign/compare, loop only on a changed or cleared challenge, and call `auth()` only after freshness and abort checks. Recommended exported errors are `RelayAuthChallengeTimeoutError` and `RelayAuthChallengeChangedError`; both should have pinned `.name` values and appear in both duck-typed classifier sets. A separate generic outer `RelayAuthenticateTimeoutError` would blur the locked dedicated acquisition-timeout contract; use the challenge-timeout class when the deadline expires before a candidate reaches `auth()`, while the existing low-level `RelayEventTimeoutError` remains the fixed written-frame reply failure. [VERIFIED: `20-CONTEXT.md`; naming is planner discretion]
 
@@ -71,7 +69,6 @@ The largest hidden correctness risk is concurrent bookkeeping. `auth()` already 
 | Challenge/sign/freshness policy | API / Backend (`Relay.authenticate`) | External signer | Relay owns challenge lifecycle; signer only signs the supplied template. [VERIFIED: codebase and NIP-42] |
 | Authentication state mirrors | API / Backend (`Relay.auth`) | — | Only a genuine queued AUTH attempt may update connection auth state. [VERIFIED: `20-CONTEXT.md`] |
 | Auth failure classification | API / Backend (relay group + loaders) | — | Both boundaries currently duck-type exact error names. [VERIFIED: codebase] |
-| Consumer compatibility | API / Backend (Concord/Vertex) | — | Consumers call the signer-first Promise surface structurally and need compile/runtime checks. [VERIFIED: codebase] |
 
 ## Project Constraints (from AGENTS.md)
 
@@ -308,7 +305,6 @@ return await this.auth(event);
 | Framework | Vitest 4.0.15 + vitest-websocket-mock 0.5.0 |
 | Config file | root/workspace Vitest configuration already used by package scripts |
 | Quick run command | `pnpm --filter applesauce-relay test -- relay.test.ts auth-lifecycle-logging.test.ts group.test.ts` |
-| Full suite command | `pnpm --filter applesauce-relay test && pnpm --filter applesauce-relay build && pnpm --filter applesauce-loaders test && pnpm --filter applesauce-loaders build && pnpm --filter applesauce-concord build && pnpm --filter applesauce-extra build` |
 
 ### Phase Requirements → Test Map
 
@@ -323,7 +319,6 @@ return await this.auth(event);
 ### Sampling Rate
 - **Per task commit:** package-focused test/build for files changed.
 - **Per wave merge:** full suite command above.
-- **Phase gate:** full relay/loaders tests and relay/loaders/Concord/extra builds green before `$gsd-verify-work`.
 
 ### Wave 0 Gaps
 - [ ] Compile-time fixture proving `relay.event(event, "AUTH")` fails.
@@ -356,7 +351,6 @@ return await this.auth(event);
 
 ### Primary (HIGH confidence)
 - Repository source and tests: `packages/relay/src/relay.ts`, `types.ts`, `group.ts`, relay tests.
-- Cross-package consumers/classifiers: loaders sync-loader, Concord auth, Vertex.
 - Phase 20 context, requirements, roadmap, Phase 18 context/verification.
 
 ### Secondary (MEDIUM confidence)

@@ -42,7 +42,6 @@ ranges — there is no single source of truth to bump:
 |-------|-----------|
 | `~5.6.3` | `apps/examples` |
 | `^5.7.3` | `packages/relay` |
-| `^5.8.3` | `packages/actions`, `common`, `concord`, `content`, `core`, `extra`, `loaders`, `react`, `signers`, `wallet-connect` |
 | `^5.9.3` | root `package.json`, `apps/agent-skills`, `apps/llms`, `packages/accounts`, `sqlite`, `wallet` |
 
 Note `apps/examples` is the only tilde pin and the furthest behind (`5.6.3`); the root

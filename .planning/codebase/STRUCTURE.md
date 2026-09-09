@@ -20,7 +20,6 @@ applesauce/
 │   ├── wallet-connect/       # WalletConnect (Cosmos) signer
 │   ├── sqlite/               # SQLite event database backend
 │   ├── extra/                # Experimental features
-│   └── concord/              # Concord protocol (CORD) client
 │
 ├── apps/                      # Applications and documentation
 │   ├── docs/                 # VitePress documentation site
@@ -137,12 +136,9 @@ applesauce/
 - Purpose: Experimental or optional features
 - Contains: Unstable APIs, POCs, optional integrations
 
-**packages/concord:**
-- Purpose: Concord protocol (CORD) for encrypted group communications
 - Contains: Helpers, operations, factories, casts, and client
 - Structure mirrors core: `helpers/`, `operations/`, `factories/`, `casts/`, `models/`, `client/`
 - Key files:
-  - `src/client/` — Concord group client
   - `src/helpers/` — CORD event parsing
   - `src/factories/` — Build CORD events
   - `src/casts/` — Type-safe CORD event wrappers

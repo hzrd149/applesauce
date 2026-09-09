@@ -6,7 +6,6 @@
 
 ## Summary
 
-This phase's deliverable is a SCOPE decision, and the codebase evidence resolves it clearly: **no `applesauce-common` cast needs to be genericized (COMMON-02 targeted set is empty)**, and **the COMMON-01 structural-helper set should be small and curated, not a blanket sweep of all 48 helper files**. Every concrete rumor consumer that exists today (`applesauce-concord`'s `ConcordDirectInvite`, `applesauce-actions`' wrapped-message actions) either already works directly against a hardcoded `Rumor` type (predating this migration — `gift-wrap.ts`, `messages.ts`, `wrapped-messages.ts`, `encrypted-content-cache.ts`, the gift-wrap factories/operations/models) or built entirely custom types/casts in its own package (`concord`'s `DirectInviteRumor`, `EditRumor`) rather than extending any `applesauce-common` cast. No downstream consumer calls a `applesauce-common` cast, model, or kind-specific getter with a rumor today.
 
 The deeper architectural finding: almost every kind-specific `applesauce-common` helper (`badge.ts`, `article.ts`, `zap.ts`, `calendar-event.ts`, etc.) is built on `isValidXxx(event): event is XxxEvent` guards where `XxxEvent = KnownEvent<K>`, and `KnownEvent<K>` (defined in `applesauce-core/helpers/event.ts`) is **hardcoded to `NostrEvent`, not generic over `E extends StoreEvent`**. Phases 1-3 deliberately left `KnownEvent` out of core's genericization list. Genericizing these ~40 kind-specific helper files would therefore require either (a) reopening core's already-closed scope to genericize `KnownEvent`, or (b) diverging each guard's return type from its exported `XxxEvent` type alias — both violate the "zero behavior change" / "no high-churn without concrete use case" bounds set by CONTEXT.md and the migration doc. These files should be explicitly deferred to COMMON-F1/COMMON-F2, not touched in this phase.
 
@@ -19,8 +18,6 @@ The deeper architectural finding: almost every kind-specific `applesauce-common`
 | Structural helper genericization (id/kind/pubkey/created_at/content/tags reads) | Library (applesauce-common) | — | Pure type-signature change; no store/network/UI involvement |
 | Kind-specific typed getters (`isValidXxx`/`XxxEvent`) | Library (applesauce-common) | Library (applesauce-core, `KnownEvent`) | Blocked by core's `KnownEvent` being NostrEvent-hardcoded; out of scope this phase |
 | Cast infrastructure compilation against `CastRefEventStore<E>` | Library (applesauce-core, already generic) | Library (applesauce-common casts, consumers) | Core already generic; common casts compile unchanged via `NostrEvent` defaults — no action needed |
-| Rumor-specific NIP-59 flows (gift-wrap/seal/rumor unwrap, wrapped messages) | Library (applesauce-common) | Downstream (concord, actions) | Already implemented pre-migration with hardcoded `Rumor` type; not part of this phase's scope |
-| Custom per-app rumor casts (e.g. Direct Invite) | Downstream (applesauce-concord) | — | Consumers build their own `EventCast<CustomRumorType>` rather than extending common casts — confirms no "targeted cast" need exists in common |
 
 ## Package Legitimacy Audit
 
@@ -63,8 +60,6 @@ No `npm install` / registry verification needed — no external packages added.
                                               │
                                               ▼
                       Downstream consumers (evidence gathered, not modified)
-                      ├─ applesauce-concord: builds OWN Rumor types (DirectInviteRumor, EditRumor)
-                      │  and OWN casts (ConcordDirectInvite extends core's EventCast directly)
                       └─ applesauce-actions: wrapped-messages.ts already imports Rumor from
                          applesauce-common/helpers/gift-wrap (pre-existing, untouched)
 ```
@@ -104,17 +99,14 @@ Import `StoreEvent` from `applesauce-core/helpers/event` for the parameter bound
 
 ### Anti-Patterns to Avoid
 - **Genericizing a `isValidXxx(event): event is XxxEvent` guard by changing only the parameter type:** the return type `event is XxxEvent` still narrows to `KnownEvent<K>` (hardcoded `NostrEvent`), so a rumor passed in would incorrectly narrow to a `NostrEvent`-shaped type at the call site — a real type-soundness bug, not just style. Do not attempt this without first genericizing `KnownEvent` in core (out of scope).
-- **Adding a new `EventCast<Rumor>` subclass in `applesauce-common` "to establish the pattern"** with no concrete consumer: this is exactly the "high churn, low value" pattern CONTEXT.md's Out-of-Scope table forbids. The pattern is already established in `applesauce-core`'s own test suite (RUMOR-06) and in `applesauce-concord`'s `ConcordDirectInvite` — a third demonstration inside `common` adds no new proof and no real capability.
 - **Touching `KnownEvent` in `applesauce-core`:** this reopens Phases 1-3's closed scope (CORE-01..07 are marked complete) and is not listed as a Phase 4 requirement.
 
 ## Don't Hand-Roll
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Rumor-aware cast for a new kind | A new generic `EventCast<Rumor>` subclass inside `applesauce-common` | `applesauce-core`'s already-generic `EventCast<E>` directly in the consuming package (concord's own `ConcordDirectInvite` pattern) | Common casts are kind-specific and NostrEvent-typed by design; per-app rumor casts belong in the app package, not common, until a genuinely shared cross-app rumor kind exists |
 | Structural helper for a new kind | A NostrEvent-only helper when a rumor variant is foreseeable | The `E extends StoreEvent = NostrEvent` pattern from Phase 1, applied only to the curated set below | Keeps future extension mechanical without speculative churn now |
 
-**Key insight:** The generic infrastructure (`EventStore<E>`, `EventCast<E>`, `CastRefEventStore<E>`) is already fully built and proven in core (Phases 1-3). `applesauce-common` does not need to preemptively adopt generics everywhere to benefit from it — downstream packages can already build fully rumor-typed casts today by importing core's generics directly (concord proves this). Phase 4's job is narrowly to make the handful of genuinely cross-kind, structural-only common helpers reusable in that scenario, not to convert the whole package.
 
 ## Structural Helpers to Genericize (concrete list — COMMON-01)
 
@@ -145,16 +137,12 @@ Also NOT touched (already handle `Rumor` directly, pre-dating this migration, ou
 
 ## Targeted Casts (concrete finding: none — COMMON-02)
 
-`[VERIFIED: packages/common/src/casts/*.ts, packages/concord/src, packages/actions/src, packages/wallet/src]` — grep audit of every downstream consumer for `Rumor` usage combined with `applesauce-common` cast imports.
 
 **Finding:** Zero `applesauce-common` casts are applied to rumors by any current consumer.
 
-- `applesauce-concord`'s only rumor cast is `ConcordDirectInvite` (`packages/concord/src/casts/direct-invite.ts`), which extends **`applesauce-core`'s `EventCast` directly** (`import { EventCast } from "applesauce-core/casts"`), not any `applesauce-common` cast. Its event type (`DirectInviteRumor`) is defined locally in concord (`packages/concord/src/helpers/direct-invite.ts`), not derived from any common `XxxEvent` alias.
 - `applesauce-actions`' `wrapped-messages.ts` action file imports `Rumor` from `applesauce-common/helpers/gift-wrap` and `castUser` from `applesauce-common/casts` — but `castUser`/`PubkeyCast` operates on a **pubkey string**, not an event, so it is unaffected by the `StoreEvent` generic question entirely.
 - `applesauce-wallet` has no `Rumor` references anywhere in its source (`[VERIFIED: grep -rn "Rumor" packages/wallet/src]` returned zero matches).
-- Concord's `invite-list.ts` and `community-list.ts` casts do `import "applesauce-common/casts"` for side-effect registration only (their own list-cast subclasses), not for a rumor-typed cast.
 
-**Recommendation:** COMMON-02's targeted-cast set is **empty for this phase**. Do not add a new `EventCast<Rumor>` cast to `applesauce-common` speculatively — no concrete consumer needs one, and the pattern is already proven twice over (core's RUMOR-06 test, concord's `ConcordDirectInvite`). Should a genuinely shared cross-app rumor kind emerge later (e.g. a `applesauce-common`-level NIP-17 message cast), it becomes a COMMON-F1 candidate at that time, following the exact `EventCast<E extends StoreEvent = NostrEvent>` pattern already established in core.
 
 **Models/factories:** Since no cast changes, no `applesauce-common` model or factory needs touching for COMMON-02. This also means `CastRefEventStore` references inside common casts require no change — they already compile against `NostrEvent` via core's default, per the migration doc's watch-item (line 217 of `rumor-store-migration.md`), and no genericization work makes them do otherwise this phase.
 
@@ -184,8 +172,6 @@ No `models/__tests__` or `factories/__tests__` export-snapshot files exist `[VER
 ### Pitfall 2: Downstream-inference trap (bare generic instantiation)
 **What goes wrong:** A genericized helper with `<E extends { tags: string[][] } = NostrEvent>` gets called somewhere with a bare, unannotated object literal (`{ tags: [] }`), and TypeScript infers `E` as that literal's exact shape instead of falling back to the `NostrEvent` default — silently changing downstream type inference at that call site.
 **Why it happens:** TS generic defaults only apply when no argument is passed to infer from; any call site provides an argument, so inference always wins over the default.
-**How to avoid:** After genericizing, run the FULL `pnpm run build` (not just `pnpm --filter applesauce-common build`) to catch every downstream package (concord, actions, wallet, react) that calls these helpers — this is the exact lesson already learned in Phases 1-3 per `01-01-SUMMARY.md`'s "Reflect.get inference" deviation and CONTEXT.md's explicit reminder.
-**Warning signs:** New `tsc` errors in `packages/concord`, `packages/actions`, `packages/wallet`, or `packages/react` after a common helper's signature changes, even though `applesauce-common`'s own build is green.
 
 ### Pitfall 3: `CastRefEventStore` references in common casts silently breaking
 **What goes wrong:** Even though this phase adds no new casts, if a future task accidentally imports `EventCast`/`CastRefEventStore` without their default type parameter, existing common cast subclasses (`Note`, `Profile`, etc.) could stop inferring `NostrEvent` and instead widen to `StoreEvent`.
@@ -214,7 +200,6 @@ export function getNip10References<E extends { tags: string[][] } = NostrEvent>(
 // CastRefEventStore and EventCast already default to NostrEvent via core's generics;
 // this class requires zero edits to remain correct and zero edits to support a future
 // rumor-typed Note IF a concrete need ever arises (it would become `EventCast<Rumor & {kind:1}>`
-// at that time, following concord's ConcordDirectInvite precedent, not before).
 export class Note extends EventCast<KnownEvent<1>> { ... }
 ```
 
@@ -223,7 +208,6 @@ export class Note extends EventCast<KnownEvent<1>> { ... }
 | Old Approach | Current Approach | When Changed | Impact |
 |--------------|------------------|---------------|--------|
 | `EventStore`/`EventCast` hardcoded to `NostrEvent` | Generic over `E extends StoreEvent = NostrEvent` | Phases 1-2 (this milestone) | `applesauce-common` casts already compile against the generic core with zero changes — confirmed by the existing green build noted in CONTEXT.md ("Phase 2 already fixed one applesauce-common file... the common package currently builds clean against generic core") |
-| N/A — no prior common-level rumor cast pattern | Concrete rumor casts live in the consuming app package (concord), not in `applesauce-common` | Established during Phase 3 gate + concord's own CORD-05 work (pre-existing) | Sets the precedent this research recommends continuing: rumor casts stay app-local until a shared need exists |
 
 **Deprecated/outdated:** None — this is additive-only generics work with no runtime behavior change.
 
@@ -296,7 +280,6 @@ None — existing test infrastructure (`threading` covered via `note.test.ts`/ca
 - `packages/common/src/helpers/*.ts` (all 48 files) — read/grepped directly to classify structural-vs-KnownEvent-guarded helpers
 - `packages/common/src/casts/*.ts` (30 files) — grepped for `Rumor` usage (zero matches) and read `cast.ts`, `note.ts`, `profile.ts` as representative samples
 - `packages/core/src/helpers/event.ts` — confirmed `KnownEvent<K> = Omit<NostrEvent, "kind"> & { kind: K }` is NostrEvent-hardcoded
-- `packages/concord/src/casts/direct-invite.ts`, `packages/concord/src/types.ts`, `packages/concord/src/helpers/direct-invite.ts` — confirmed concord's rumor cast bypasses `applesauce-common` entirely
 - `packages/actions/src/actions/wrapped-messages.ts` — confirmed pre-existing `Rumor`-typed common helper usage needs no change
 - `packages/common/src/{helpers,casts,operations}/__tests__/exports.test.ts` and `packages/common/src/__tests__/exports.test.ts` — confirmed the 4 export-snapshot files and their "sorted export names" invariant
 - `packages/common/package.json`, root `package.json` — confirmed test/build commands and package version (6.2.0)
@@ -312,7 +295,6 @@ None.
 
 **Confidence breakdown:**
 - Standard stack: HIGH — no new libraries, verified via package.json
-- Architecture: HIGH — verified via direct source reads of core's `KnownEvent`, common's helper/cast patterns, and concord's rumor cast implementation
 - Pitfalls: HIGH — pitfalls 1-2 are directly evidenced in this codebase (Pitfall 2 is literally the deviation already recorded in `01-01-SUMMARY.md`)
 
 **Research date:** 2026-07-09

@@ -7,7 +7,6 @@ requires:
   - phase: 20-auth-family-re-layer
     provides: fixed raw AUTH member
 provides: [bounded challenge acquisition, freshness-aware signing, abort-safe authentication, typed terminal errors]
-affects: [relay-group, loaders, concord, vertex]
 tech-stack:
   added: []
   patterns: [one absolute logical-operation deadline, snapshot-sign-compare freshness loop]

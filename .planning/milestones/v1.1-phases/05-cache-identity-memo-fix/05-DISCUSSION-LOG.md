@@ -7,7 +7,6 @@
 **Phase:** 5-Cache Identity Memo Fix
 **Areas discussed:** Hand-rolled memo sites, Helper API shape, Enforcement of conventions, Phase 5/6 test boundary
 
-**Carried forward from prior context (not re-asked):** central fix in `applesauce-core` rather than local stripping in concord (PROJECT.md Key Decisions, line 104); `Object.defineProperty` with `{enumerable:false, writable:true, configurable:true}` as the proven change (concord-audit.md H01); the `EncryptedContentSymbol` carry-forward must keep working (CACHE-03); TEST-01's independently-derived-spec-value standard (PROJECT.md Constraints).
 
 ---
 
@@ -32,10 +31,8 @@ Scout finding that opened the area: ~20 identity memos are written by hand-rolle
 |--------|-------------|----------|
 | applesauce-core only | Sites in packages/core/src; core is where cache.ts and the convention live | |
 | core + common | Also lists.ts, app-data.ts, groups.ts, trusted-assertions.ts, gift-wrap.ts | ✓ |
-| Every package incl. concord | Full sweep | |
 
 **User's choice:** core + common
-**Notes:** Captures all three `EncryptedContentSymbol` write-sites the audit names, including `common/operations/gift-wrap.ts:121`. Concord excluded — its memo sites are rewritten in Phases 6–7, so comments would churn immediately.
 
 ### Q3: How to handle SeenRelaysSymbol, which is neither memo nor carry-forward?
 
@@ -59,7 +56,6 @@ Scout finding that opened the area: ~20 identity memos are written by hand-rolle
 **User's choice:** Canonical in cache.ts, sites point to it
 **Notes:** One source of truth; the rule sits on the mechanism a future cleanup would reach for. Docs page rejected against CLAUDE.md's guidance on standalone restating files.
 
-### Q5: Does Phase 5 correct concord keys.ts:98-104's false comment?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
@@ -211,15 +207,12 @@ Follow-up decision:
 
 Scout finding that opened the area: `rollForward` (`keys.ts:248-255`) is a **pure spread** with no other defect, so its Criterion-5 assertion should pass on the cache fix alone — making Phase 5's test effectively ROTATE-01's acceptance test, though ROTATE-01 is assigned to Phase 6.
 
-### Q1: Does Phase 5 land the concord spec-derived test?
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Yes — land it in concord, roadmap-literal | Criterion 5 is explicit that it reproduces/closes H01's failure mode | ✓ |
 | No — core-only, defer to Phase 6 | Keeps the diff in core | |
 | Yes, and flag that ROTATE-01 may close early | Land it and record the finding | |
 
-**User's choice:** Yes — land it in concord, roadmap-literal
 **Notes:** Without it, Phase 5 ships a mechanism change with no evidence it fixed the bug it exists to fix.
 
 ### Q2: Should CONTEXT.md record that ROTATE-01 may already be satisfied?
@@ -232,9 +225,7 @@ Scout finding that opened the area: `rollForward` (`keys.ts:248-255`) is a **pur
 **User's choice:** Yes — as a note to Phase 6
 **Notes:** Recorded under Specific Ideas, framed as a finding rather than a scope change.
 
-### Q3 (user-initiated): What are the rollForward requirements for concord, and why does it need rollForward instead of just the memo behavior?
 
-**User's question, asked via free-text.** Answered from the code rather than speculation: the two are orthogonal. `rollForward` is a state transition — mint new material, archive the prior root into `held_roots` so past epochs stay decodable, retain prior planes so already-fetched wraps still decode. It would be needed with zero caching. The memo is an unrelated optimization inside `baseKeysFor` caching expensive secp256k1 derivations, because `reconcileLive` threads one `material` object through every state emission. The bug is only that the memo rides along on the object `rollForward` spreads. Concord's requirements on the family: ROTATE-01/02 (`rollForward`), ROTATE-03 (`rollForwardChannel`), ROTATE-12 (`refounder` inheritance) — all Phase 6/7.
 
 ### Q4: Which H01 instances does Phase 5 prove?
 
@@ -259,5 +250,3 @@ None — every question resolved to an explicit user choice. The one "You decide
 - Migrating the true identity memos (`filter.ts:23`, `event.ts:128`, `lists.ts:47`) onto the helper.
 - An ESLint rule banning `EncryptedContentSymbol` from `setCachedValue` — rejected as disproportionate.
 - A test enforcing the grep contract, failing CI when a new undocumented symbol-write site appears.
-
-**No scope creep occurred** — the discussion stayed inside the cache-mechanism boundary throughout. The two scope-adjacent decisions (D-11's concord comment fix, D-16/17's concord tests) were both admitted deliberately as narrow, roadmap-supported exceptions rather than new capabilities.

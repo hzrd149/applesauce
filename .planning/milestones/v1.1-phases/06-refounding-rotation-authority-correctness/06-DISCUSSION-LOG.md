@@ -11,7 +11,6 @@
 
 ## Member-removal gate (ROTATE-04) — epoch scoping
 
-Reframed after the user asked to verify against the upstream Concord spec. My initial "snapshot-timestamp floor" framing was a heuristic; CORD-02 §5 ("the Guestbook rides the epoch") shows the fix is structural epoch separation.
 
 | Option | Description | Selected |
 |--------|-------------|----------|
@@ -64,12 +63,9 @@ Reframed after the user asked to verify against the upstream Concord spec. My in
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Add a concord-level spread guard | Extend the H01 probe (seed memo → rollForward → assert new-epoch address) to guestbook + rekey | ✓ |
 | Rely on the mandated per-address tests | Treat the success-criterion-5 assertions as sufficient | |
 | You decide during planning | Let the planner decide on a dedicated probe | |
 
-**User's choice:** Add a concord-level spread guard.
-**Notes:** H01 self-heals on restart, so it can regress silently; cheap insurance at the concord layer beyond the mandated per-address assertions.
 
 ---
 

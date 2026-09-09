@@ -45,7 +45,6 @@ None — `applesauce-common` genericization is Phase 4. Any signed-cast/common-c
 
 Phases 1–2 already genericized `EventStore`/`AsyncEventStore`, the model framework, and the cast subsystem over `StoreEvent`/`Rumor`. Phase 3's job is narrow and concrete: add a `RumorStore` convenience wrapper, prove the whole chain (verification, delete handling, models, casts) with rumor-typed tests, and settle the one open design question carried forward from Phase 2 — `castEvent`'s input typing (WR-01).
 
-This research **empirically resolved WR-01** by compiling real probes against the actual codebase (not just reasoning about types): the exact fix the Phase 2 reviewer proposed (`event: C extends EventCast<infer T> ? T : never`) does restore the compile-time sig guard, but it also over-tightens a **real existing call site** in this monorepo — `packages/concord/src/casts/direct-invite.ts`'s `ConcordDirectInvite extends EventCast<DirectInviteRumor>`, called as `castEvent(rumor, ConcordDirectInvite, store)` where `rumor: Rumor` (kind: number, not narrowed to the literal `3313` `DirectInviteRumor` expects). The exact-`T` fix breaks this real call site. A **sig-gated** variant (`CastEventInput<T> = T extends { sig: string } ? NostrEvent : StoreEvent`) fixes WR-01 (rejects a rumor for a signed-only cast) **without** over-tightening narrowed-kind rumor casts, and was verified to compile cleanly across the *entire* workspace (`pnpm -r build`, all 53 core test files, all 38 concord test files green) after actually implementing and reverting it in this session.
 
 Separately, this research discovered a **second, previously undocumented gap** not caught by Phase 1/2 review: `castEvent(rumor, RumorNote, rumorStore)` — the literal call CONTEXT.md quotes as the target usage — does **not** type-check today when `rumorStore` is genuinely typed `EventStore<Rumor>` (i.e., `RumorStore`'s real shape), because `EventCast`'s inherited constructor's `store` parameter is hardcoded to bare `CastRefEventStore` (= `CastRefEventStore<NostrEvent>`), and `CastRefEventStore<E>` is invariant in `E` (a `Map` field inside `EventModels` makes it so). Parameterizing `EventCast`'s own `store` field over `T` to fix this was tried and empirically breaks `user.ts`'s `User.timeline$<T extends EventCast>(...)` generic (unrelated to rumors) — a real, verified ripple, not a hypothetical one. The low-risk resolution (already proven to compile) is a documented, localized bridge cast at the call site — `castEvent(rumor, RumorNote, rumorStore as unknown as CastRefEventStore)` — matching the exact "signedView"/`as unknown as NostrEvent` bridging convention already used throughout `casts/event.ts` and `event-store/delete-manager.ts`.
 
@@ -199,8 +198,6 @@ And in `packages/core/src/observable/cast-stream.ts`, change both internal call 
 - Applied this exact patch to `cast.ts` + `cast-stream.ts`.
 - `pnpm --filter applesauce-core build` — clean.
 - `pnpm --filter applesauce-core test` — 591/592 pass; the one failure is the `exports.test.ts` inline snapshot picking up the new `performCast` export (expected — the plan must run `vitest -u` or manually update that snapshot; this is not a defect).
-- `pnpm -r build` (full workspace) — clean, exit 0, including `applesauce-concord`, `applesauce-common`, `applesauce-wallet`, `applesauce-react`, `apps/examples`.
-- `pnpm --filter applesauce-concord test` — 124/124 pass, confirming `ConcordDirectInvite`'s real `castEvent(rumor, ConcordDirectInvite, store)` call sites (in `packages/concord/src/casts/__tests__/direct-invite.test.ts`) are unaffected.
 - A compiled `@ts-expect-error` probe confirmed `castEvent(rumor, SignedOnlyCast, store)` (a cast reading `event.sig`) now correctly fails to compile — WR-01 is fixed.
 
 `performCast` will appear in `applesauce-core`'s public export surface (via `casts/index.ts`'s `export * from "./cast.js"` → top-level `index.ts`) since there is no narrower re-export mechanism currently in use in that file (other internal-ish symbols like `CAST_REF_SYMBOL`/`CASTS_SYMBOL` already leak the same way). Document `performCast` as `@internal` in its JSDoc; this is a pre-existing, accepted convention in this codebase, not a new pattern.
@@ -254,10 +251,8 @@ Not applicable — this is not a rename/refactor/migration phase. `RumorStore` i
 ## Common Pitfalls
 
 ### Pitfall 1: The "obvious" `castEvent` fix over-tightens real narrowed-kind rumor casts
-**What goes wrong:** Naively applying the Phase 2 reviewer's literal suggestion (`event: C extends EventCast<infer T> ? T : never`) makes `castEvent`'s input exactly `T`. For casts with a literal-narrowed `kind` in `T` (e.g. concord's `DirectInviteRumor = Omit<Rumor,"kind"> & {kind: 3313}`), this rejects a bare `Rumor` (kind: `number`) — which is exactly what `unlockGiftWrap` returns and what `packages/concord/src/casts/__tests__/direct-invite.test.ts` already passes to `castEvent` today.
 **Why it happens:** `T` for these casts is narrower than what real call sites naturally produce (kind is only checked/narrowed inside the constructor at runtime, e.g. `isValidDirectInviteRumor`, not at the type level at the call site).
 **How to avoid:** Use the sig-gated `CastEventInput<T>` (Pattern 2 above) instead of the exact-`T` conditional — it only restricts on the presence of `sig`, leaving `kind`/other fields loose, matching how the constructor already re-validates the narrower shape at runtime.
-**Warning signs:** Any `pnpm --filter applesauce-concord build`/`test` failure after touching `castEvent`'s signature — that package is the only real, non-test consumer of `castEvent` (not via the stream operators) in this monorepo today.
 
 ### Pitfall 2: Assuming `castEvent(rumor, RumorNote, rumorStore)` "just works" against a real `RumorStore`
 **What goes wrong:** The existing `rumor-cast.test.ts` (pre-dating this phase) passes `new EventStore()` (bare, NostrEvent-default) as the store, which silently sidesteps the real gap — a genuine `RumorStore`/`EventStore<Rumor>` does not type-check as the `store` argument, because `CastRefEventStore<E>` is invariant in `E`.
@@ -330,7 +325,6 @@ None blocking. One discretionary item for the planner to explicitly decide (alre
 
 ## Environment Availability
 
-Not applicable — no external tools/services/runtimes beyond the existing workspace toolchain (`pnpm`, `tsc`, `vitest`), all confirmed present and working in this session (`pnpm --filter applesauce-core build`/`test`, `pnpm -r build`, `pnpm --filter applesauce-concord test` all ran successfully).
 
 ## Validation Architecture
 
@@ -387,9 +381,6 @@ Not applicable — no external tools/services/runtimes beyond the existing works
 - `packages/core/src/event-store/event-store.ts`, `async-event-store.ts` — read in full this session; confirmed `EventStoreOptions<E>`/`AsyncEventStoreOptions<E>` shapes and the CORE-03 fix are exactly as the migration doc assumes.
 - `packages/core/src/casts/cast.ts`, `event.ts`, `user.ts`, `packages/core/src/observable/cast-stream.ts` — read and empirically modified/reverted in this session to validate the WR-01 fix and the store-bridging finding.
 - `packages/core/src/event-store/delete-manager.ts`, `interface.ts` — confirmed `DeleteManager<E>` is already fully generic with no `NostrEvent`/`sig` dependency.
-- `packages/concord/src/casts/direct-invite.ts` + its test — real, in-repo prior art for `EventCast<Rumor-subtype>` + `castEvent`, used to construct the over-tightening regression test.
-- Compiled `tsc` probes (this session, via `packages/core/tsconfig.json`, all created and deleted within `packages/core/src/` and cleaned up before finishing): confirmed WR-01 reproduces today, confirmed the sig-gated fix resolves it without regressing concord, confirmed the RumorStore/`CastRefEventStore` invariance gap, confirmed the bridge-cast resolution compiles.
-- `pnpm --filter applesauce-core build`/`test`, `pnpm -r build`, `pnpm --filter applesauce-concord test` — actually run in this session with the proposed fix applied (then reverted).
 
 ### Secondary (MEDIUM confidence)
 - `.planning/rumor-store-migration.md` — the maintainer's authoritative design spec (treated as locked design per CONTEXT.md, cross-checked against the actual code where the doc makes verifiable claims).

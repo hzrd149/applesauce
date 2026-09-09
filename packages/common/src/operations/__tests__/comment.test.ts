@@ -33,7 +33,6 @@ describe("setParent", () => {
   it("should keep a reply to a comment rumor rooted on the original rumor", async () => {
     // The regression: a rumor has no `sig`, so a signature-based check misreads it
     // as a bare pointer and throws on the comment kind instead of inheriting the
-    // root pointer. Mirrors applesauce-concord, whose planes are all rumors.
     const root = user.rumor({ kind: 9, content: "hello" });
     const reply = { ...(await build(root)), kind: COMMENT_KIND, id: "a".repeat(64) };
 

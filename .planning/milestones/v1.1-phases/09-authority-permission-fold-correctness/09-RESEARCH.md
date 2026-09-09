@@ -1,7 +1,6 @@
 # Phase 9: Authority & Permission Fold Correctness - Research
 
 **Researched:** 2026-07-19
-**Domain:** CORD-04 Control Plane authority folds (Grant/Role/Banlist) and CORD-02 Guestbook membership fold (Kick), `applesauce-concord` (`packages/concord/src/`)
 **Confidence:** HIGH
 
 ## Summary
@@ -42,7 +41,6 @@ No package installs, no `npm view`/`pip`/`cargo` version checks needed — this 
 
 ## Package Legitimacy Audit
 
-**Not applicable.** This phase installs no new packages, ecosystem or otherwise — it modifies existing TypeScript source in `packages/concord/src/`. No `package-legitimacy check` run was needed.
 
 ## Architecture Patterns
 
@@ -83,7 +81,6 @@ No package installs, no `npm view`/`pip`/`cargo` version checks needed — this 
 
 No new files or folders — every change lands inside existing files:
 ```
-packages/concord/src/
 ├── helpers/
 │   ├── control.ts        # AUTH-03, AUTH-04, AUTH-06, AUTH-07, D-14 (banlist half)
 │   ├── guestbook.ts       # AUTH-08 (Kick vac gate), D-14 (owner-exemption half)
@@ -104,7 +101,6 @@ packages/concord/src/
 **When to use:** Any time an entity's content is `JSON.parse`d and then used without a runtime type guard — the existing `try/catch` around `JSON.parse` itself does NOT protect against a well-formed-JSON-but-wrong-shape payload (e.g. `{"member":"ab..","role_ids":"not-an-array"}` parses fine; `.every` on it throws).
 **Example (existing role-position pattern to extend, `control.ts:161-163`):**
 ```typescript
-// Source: packages/concord/src/helpers/control.ts:154-163 (current, AUTH-06 target)
 try {
   role = JSON.parse(cand.content) as Role;
 } catch {
@@ -129,7 +125,6 @@ if (!Array.isArray(grant.role_ids) || !grant.role_ids.every((rid) => typeof rid 
 **When to use:** Any entity whose coordinate is a pure function of stable identifiers (community_id, member, etc.) — Grant and Banlist both qualify (CORD-04 §1's coordinate table).
 **Example (existing banlist precedent, `control.ts:292-303`, to mirror for Grant):**
 ```typescript
-// Source: packages/concord/src/helpers/control.ts:292-303 (existing, correct)
 const banlist = new Set<string>();
 for (const cand of groupByEntity(byVsk(VSK.BANLIST)).get(banlistLocator(cidBytes)) ?? []) {
   const s = standing(cand.author);
@@ -221,7 +216,6 @@ export function foldMembers(
 ```
 **The sibling precedent this mirrors** (`client/channel-sync.ts:28-32`, identical shape on `private-channel.ts:56,62`):
 ```typescript
-// Source: packages/concord/src/client/channel-sync.ts:28-32
 canRemoveSelf?: (rotator: string) => boolean;
 verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
 ```
@@ -262,7 +256,6 @@ export function foldMembers(
 
 **Existing `vacVerifier`** (`helpers/permissions.ts:98-111`, unchanged, just called with a new `requiredPerm`):
 ```typescript
-// Source: packages/concord/src/helpers/permissions.ts:98-111
 export function vacVerifier(
   state: CommunityState,
   requiredPerm: bigint,
@@ -284,7 +277,6 @@ export function vacVerifier(
 **What:** Mirror `rotateChannel`/`refound`'s existing outrank-throw shape for `kick()`/`ban()`.
 **Existing precedent** (`client/community.ts:1036-1041`, `rotateChannel`):
 ```typescript
-// Source: packages/concord/src/client/community.ts:1036-1041
 for (const target of opts.exclude ?? []) {
   if (!this.canDo(PERM.MANAGE_CHANNELS, this.standingOf(target).position))
     throw new Error(`cannot exclude ${target} from the channel — you do not outrank them`);
@@ -312,7 +304,6 @@ async ban(member: string): Promise<void> {
   await this.grantRoles(member, []);
 }
 ```
-Note: `kick()` lives on `ConcordCommunity` (`community.ts`), `ban()` on `ConcordCommunityAdmin` (`admin.ts`) — the throw lands in each class using that class's own `canDo`/`standingOf` (both already exist, `community.ts:1334`/`:1321` and `admin.ts:359`/`:352`, delegating to each other — `community.ts`'s `canDo` calls `this.admin.canDo`).
 
 ### Anti-Patterns to Avoid
 
@@ -357,7 +348,6 @@ Not applicable — this is a correctness fix to fold *logic*, not a rename/refac
 ### Pitfall 4: Threading `verifyVac` through `foldMembers` requires touching 3 call sites, not 1
 **What goes wrong:** Fixing only `helpers/guestbook.ts` (adding the parameter) but forgetting to pass `vacVerifier(..., PERM.KICK)` at all three call sites leaves the parameter permanently `undefined`, silently disabling the gate everywhere (the `if (verifyVac)` guard makes this a silent no-op, not a compile error, since the parameter is optional).
 **Why it happens:** `foldMembers` has 3 call sites (`models/community.ts:54`, `models/members.ts:22`, `client/sync.ts:176`) plus test call sites (`roundtrip.test.ts:71`, `helpers/__tests__/guestbook.test.ts`) — easy to fix the helper and one obvious call site and miss the others.
-**How to avoid:** `grep -rn "foldMembers(" packages/concord/src/` before considering the task done; verify all 3 production call sites pass `verifyVac`.
 **Warning signs:** A new spec-derived AUTH-08 test passes (it calls `foldMembers` directly with `verifyVac` supplied) while a `community.test.ts`/integration-level regression test for the same scenario still shows the un-vac'd Kick succeeding — that gap is exactly a missed call site.
 
 ### Pitfall 5: D-14's banlist rank check must read `standing(pk)` (the banned target), not `standing(cand.author)` twice
@@ -374,21 +364,17 @@ See Architecture Patterns 1-5 above for verbatim current-code + fix-sketch pairs
 
 ### grantLocator / banlistLocator — the coordinate primitives (unchanged, `crypto.ts:184,189`)
 ```typescript
-// Source: packages/concord/src/helpers/crypto.ts:184-191
 /** A member's Grant coordinate. secret = community_id, id = member_xonly. */
 export function grantLocator(communityId: Uint8Array, memberXonlyHex: string): string {
-  return bytesToHex(concordHkdf(communityId, "concord/grant", hexToBytes(memberXonlyHex)));
 }
 
 /** The Banlist coordinate. secret = community_id, id = 0..0. */
 export function banlistLocator(communityId: Uint8Array): string {
-  return bytesToHex(concordHkdf(communityId, "concord/banlist", ZERO_32));
 }
 ```
 
 ### The existing test fixture helper for fold tests (`helpers/__tests__/test-utils.ts`)
 ```typescript
-// Source: packages/concord/src/helpers/__tests__/test-utils.ts
 export function decoded(
   rumor: RumorTemplate,
   author: string,
@@ -413,7 +399,6 @@ Use this to build synthetic `DecodedEvent`s for `foldControl`/`foldMembers` test
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
 | A1 | AUTH-08's Kick `vac` gate intentionally does NOT implement CORD-04 §5's literal "a reader will not honor it until it has synced that Grant to at least the cited version" (block-until-synced, version+hash pinning) — it resolves only the eid-coordinate match plus the *current* roster's permission grant, per Phase 8's D-12 "pure over folded state" ruling, carried forward by this phase's D-04. | AUTH-08 / Pattern 4 / Anti-Patterns | If a future audit or spec-conformance re-check treats §5's "block-until-synced" as a hard MUST rather than an implementation choice, this phase's Kick gate (and the root/channel rekey gates it mirrors) would need a follow-up phase adding version/hash pinning — a deliberate, already-ruled scope boundary, not an oversight, but worth flagging since it's a literal-vs-practical divergence from the fetched spec text |
-| A2 | The CORD-04 raw spec text was fetched successfully this session (`raw.githubusercontent.com/concord-protocol/concord/main/04.md` and `02.md`, via direct `curl`, not the summarizing WebFetch tool) and quoted verbatim in this document — treated as `[CITED]`, the highest tier available for spec claims (no Context7 entry exists for this niche protocol). | Summary / Standard Stack / rulings | If the `main` branch has moved since 2026-07-19, section numbers or wording could drift; re-verify before a downstream phase relies on an exact quote |
 
 **If empty:** N/A — see table above. A1 is a carried-forward, already-adjudicated milestone decision (not new to this phase); A2 is a sourcing-method note, not a factual gap.
 
@@ -421,7 +406,6 @@ Use this to build synthetic `DecodedEvent`s for `foldControl`/`foldMembers` test
 
 1. **Exact wording of the upstream clarification note for D-03 (AUTH-07's §2/§3 ambiguity)**
    - What we know: CORD-04 §2 states the Grant-specific rule ("outrank every Role it hands out"); §3's general rule ("strictly outrank its target") is restated as a numbered MUST in §5's "Authorizing an Action" procedure ("Confirms the actor holds the action's required bit and strictly outranks its target, traced to the owner") — which reads as binding on every authority action, Grant included, since a Grant is itself "an authority action" per §1's framing ("Every authority action is an edition on the Control Plane").
-   - What's unclear: Whether the upstream Concord spec maintainers consider §2's silence on the target-member case a gap (worth a PR/issue) or already-resolved by §5's general restatement. This phase's D-03 says the mechanism (GH issue vs. in-repo note) is Claude's discretion during execution — that discretion is unaffected by this research.
    - Recommendation: File the note as originally planned (D-03); this research found §5 to be even *more* directly supportive of the "strict" ruling than CONTEXT.md's citation implied (§5 restates the general rule as a numbered authorization step, not just an aside), which strengthens rather than weakens the case for the clarification.
 
 2. **Whether `models/community.ts`'s `control` value (pre-members `CommunityState`) is safe to pass into `vacVerifier` before `.members` is populated**
@@ -435,7 +419,6 @@ Use this to build synthetic `DecodedEvent`s for `foldControl`/`foldMembers` test
 |------------|------------|-----------|---------|----------|
 | Node.js | build/test | ✓ | v24.17.0 | — |
 | pnpm | workspace scripts | ✓ | 11.10.0 | — |
-| vitest | `pnpm --filter applesauce-concord test` | ✓ (root `vitest.config.ts` present, workspace-wide) | via root config | — |
 | TypeScript | `tsc` build | ✓ (per PROJECT.md: 5.8–5.9) | — | — |
 
 No missing dependencies. This phase needs no new environment setup beyond what every prior phase (5-8) already used successfully.
@@ -446,29 +429,16 @@ No missing dependencies. This phase needs no new environment setup beyond what e
 
 | Property | Value |
 |----------|-------|
-| Framework | Vitest (workspace-root `vitest.config.ts`, no per-package override in `packages/concord/`) |
 | Config file | `/home/user/Projects/applesauce/vitest.config.ts` (root) |
-| Quick run command | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts helpers/__tests__/guestbook.test.ts` |
-| Full suite command | `pnpm --filter applesauce-concord test` |
 
 ### Phase Requirements → Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|--------------------|-------------|
-| AUTH-03 | A Grant at a mismatched eid (forged coordinate) is dropped | unit | `pnpm --filter applesauce-concord test -- control.test.ts` | ✅ extend `control.test.ts` (mirrors existing "folds the banlist only at its derived coordinate" test at `:60-87`) |
-| AUTH-04 | A Grant with non-array/non-string `role_ids` is skipped, not thrown | unit | `pnpm --filter applesauce-concord test -- control.test.ts` | ✅ new test in `control.test.ts` |
-| AUTH-05 | `kick()`/`ban()` throw locally when caller lacks bit/rank | unit/integration | `pnpm --filter applesauce-concord test -- community.test.ts` | ✅ extend `client/__tests__/community.test.ts` (existing `kick`/`canDo` tests at `:669,676,1295`) |
-| AUTH-06 | `Role.position` NaN/float/sentinel rejected | unit | `pnpm --filter applesauce-concord test -- control.test.ts` | ✅ new test in `control.test.ts` |
-| AUTH-07 | Junior `MANAGE_ROLES` holder cannot revoke/demote a senior member's Grant (non-self target) | unit | `pnpm --filter applesauce-concord test -- control.test.ts` | ✅ new test in `control.test.ts` |
-| AUTH-08 | Kick `vac` gate: missing/wrong-coordinate vac dropped; demoted actor's Kick dropped by current roster | unit | `pnpm --filter applesauce-concord test -- guestbook.test.ts` | ✅ extend `helpers/__tests__/guestbook.test.ts` |
-| D-14 | Banlist honors a pk only when signer strictly outranks it; owner never bannable | unit | `pnpm --filter applesauce-concord test -- control.test.ts guestbook.test.ts` | ✅ extend both files (control.ts fold half + guestbook.ts owner-exemption half) |
 | TEST-01 (standing) | Every derivation/fold touched has an independently-hand-derived spec-value assertion, not implementation-echo | unit (cross-cutting) | same commands above | ✅ — see Sampling Rate below |
 
 ### Sampling Rate
 
-- **Per task commit:** `pnpm --filter applesauce-concord test -- <touched-test-file>.test.ts` (fast, targeted)
-- **Per wave merge:** `pnpm --filter applesauce-concord test` (full concord suite)
-- **Phase gate:** Full concord suite green + `pnpm run build` (all packages) before `/gsd-verify-work`, matching Phase 6-8's gate pattern
 
 ### Wave 0 Gaps
 
@@ -513,22 +483,7 @@ Per D-12: every assertion below must be computed BY HAND from the CORD-04/02 for
 ## Sources
 
 ### Primary (HIGH confidence)
-- Upstream Concord spec, `raw.githubusercontent.com/concord-protocol/concord/main/04.md` — fetched via direct `curl` (not summarized), full text read for §1, §2, §3, §5, §6, Appendix A/B. Quoted verbatim above.
-- Upstream Concord spec, `raw.githubusercontent.com/concord-protocol/concord/main/02.md` — fetched via direct `curl`, full text read for §5 (Guestbook/Kick wire shape), §6 (round-trip discipline), §8.
-- `packages/concord/src/helpers/control.ts` — read in full this session (339 lines), all cited line numbers verified.
-- `packages/concord/src/helpers/permissions.ts` — read in full this session (112 lines).
-- `packages/concord/src/helpers/guestbook.ts` — read in full this session (117 lines).
-- `packages/concord/src/helpers/crypto.ts` — read in full this session (246 lines).
-- `packages/concord/src/client/admin.ts` — read in full this session (383 lines).
-- `packages/concord/src/client/community.ts` — read at lines 690-829, 1000-1055, 1220-1290, plus grep of all `kick`/`ban`/`vacFor`/`canDo`/`standingOf` occurrences.
-- `packages/concord/src/client/sync.ts` — read at lines 160-204, plus `state0` definition grep confirming ordering safety.
-- `packages/concord/src/client/channel-sync.ts`, `client/private-channel.ts` — grepped for `verifyVac`/`canRemoveSelf` precedent shape, confirming CONTEXT.md's citations (`:32`/`:62`) exactly.
-- `packages/concord/src/helpers/keys.ts` — grepped for `readRekeyScoped`/`ScopedHeld`/`readRekey` signatures confirming the `verifyVac` threading pattern's origin.
-- `packages/concord/src/helpers/rekey.ts` — read lines 135-190 for the `vac` tag parsing convention (`parseRekey`) mirrored in this phase's Kick-branch vac parsing.
-- `packages/concord/src/models/community.ts`, `models/members.ts` — read in full, confirming both `foldMembers` call sites already have a `CommunityState`-shaped `control` in scope.
-- `packages/concord/src/helpers/__tests__/control.test.ts`, `guestbook.test.ts`, `test-utils.ts` — read in full, confirming existing fixture/assertion conventions to extend.
 - `.planning/phases/09-authority-permission-fold-correctness/09-CONTEXT.md` — the locked D-01..D-14 decisions this research grounds.
-- `.planning/REQUIREMENTS.md`, `.planning/STATE.md`, `.planning/concord-audit.md`, `.planning/PROJECT.md`, `.planning/phases/06-refounding-rotation-authority-correctness/06-CONTEXT.md` — read in full per the task's file list.
 
 ### Secondary (MEDIUM confidence)
 - None — every claim in this document traces to a primary source read this session.

@@ -92,7 +92,6 @@ status: complete
 - **Files modified:** 6 (5 source + 1 changeset)
 
 ## Accomplishments
-- `IEventModelMixin<E, TStore>`, `ModelEventStore<E, TStore>`, `Model<T, E, TStore>`, and `ModelConstructor<T, Args, E, TStore>` all thread `E` in the second position with `NostrEvent` defaults — zero downstream 1-arg/2-arg call sites across `applesauce-{common,wallet,concord,react,actions}` required edits
 - `EventModels<E, TStore>` implements `IEventSubscriptions<E>`; `filters()`/`event()`/`replaceable()`/`addressable()`/`timeline()` return `E`-typed observables (the literal WR-02 fix)
 - `EventStore<E>`/`AsyncEventStore<E>` extend `EventModels<E>` — the D-02 seam Phase 1 left open is closed
 - Full-workspace `pnpm -r build` (18 packages/apps) green — the 6 zero-type-param `declare module { interface EventModels }` augmentations (RESEARCH Pitfall 2) compiled unmodified; only one narrow downstream arity fix was needed (`filter-timeline-by-mutes.ts`)

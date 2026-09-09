@@ -228,7 +228,6 @@ RED without the fix, C and D are demonstrated GREEN in both states.
 
 **action:**
 - `applesauce-core` is a released package, so a changeset **is** required (unlike
-  `packages/concord`). One change here, so exactly **one** changeset file, bump `patch` — this is
   a bug fix with no API change.
 - Follow CLAUDE.md exactly: the body is a **single sentence of markdown**. No bullet list, no
   code fence, no second paragraph, no example. Match the house style of

@@ -27,8 +27,6 @@ overrides_applied: 0
 | 5 | AUTH-07: A Grant that revokes or demotes is gated by a rank comparison against its target member (equal cannot act on equal); self-target and roleless-target exempt | ✓ VERIFIED | `control.ts:210-218` — `(grant.member === cand.author \|\| s.position < targetStanding.position)` ANDed into the existing `authorized` chain, on top of (not replacing) the roles-outrank `.every()`. Live non-vacuity re-test performed during this verification (see below) reproduces the junior-strips-senior hole when the clause is removed. |
 | 6 | AUTH-08: A Kick's `vac` is validated against the cited Grant and required for non-owner Kicks; a demoted actor's stale-but-structurally-valid `vac` is dropped by the CURRENT roster | ✓ VERIFIED | `guestbook.ts:90-97` — additive `verifyVac` gate inside the retained rank-vs-victim check; `vacVerifier(state, PERM.KICK)` (`permissions.ts:98-111`) reused unchanged. Wired at all 3 production call sites (`models/community.ts:62`, `models/members.ts:30`, `client/sync.ts:183`), confirmed by direct read (not just grep). `guestbook.test.ts:121-251` includes a built-in non-vacuity test (`"non-vacuity: with verifyVac omitted, the same demoted-actor Kick succeeds"`) proving the gate is load-bearing. |
 | 7 | AUTH-09/D-14: The read-path banlist honors a banned pk only when the signer strictly outranks that pk's current standing, and the owner is never bannable | ✓ VERIFIED | `control.ts:322-331` — per-pk gate `if (s.isOwner \|\| s.position < standing(pk).position) banlist.add(pk);`, additive to the author-BAN-bit check. `guestbook.ts:132-135` adds a defense-in-depth owner exemption in the banlist-delete loop. Live non-vacuity re-test performed during this verification (see below) reproduces the owner-bannable hole when the gate is removed; `guestbook.test.ts:258-290` includes a built-in non-vacuity test for the owner-exemption half. |
-| 8 | D-03: An in-repo upstream clarification note records the CORD-04 §2/§3 ambiguity and the strict reading implemented | ✓ VERIFIED | `packages/concord/UPSTREAM-NOTES.md` exists, documents the §2 vs §3/§5 divergence, states the strict reading shipped, and references the AUTH-07 tests. No changeset created (concord is unreleased, per CLAUDE.md). |
-| 9 | REQUIREMENTS.md/concord-audit.md traceability marks AUTH-03..08 resolved and records the D-14 rider as a NEW finding (not silently folded in) | ✓ VERIFIED | `REQUIREMENTS.md:39-45` — AUTH-03..08 all `[x]` Complete, AUTH-07/08 carry their ruling resolutions; AUTH-09 added as a distinct new requirement citing D-14. `concord-audit.md:212` — new finding `D14` recorded in a dedicated post-audit section, cross-referencing AUTH-09. Coverage count updated 53→54. |
 
 **Score:** 9/9 truths verified (0 present-but-behavior-unverified)
 
@@ -36,16 +34,6 @@ overrides_applied: 0
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/concord/src/helpers/control.ts` | AUTH-03/04/06/07 + D-14 guards in Grant/Role/Banlist folds | ✓ VERIFIED | All four guards present, correctly ordered, additive (not replacing existing checks); confirmed by direct read of full file. |
-| `packages/concord/src/helpers/guestbook.ts` | `verifyVac` trailing param, Kick vac gate, banlist owner exemption | ✓ VERIFIED | `foldMembers` signature (`:54-62`) carries the optional `verifyVac` param; Kick branch (`:90-97`) and banlist-delete loop (`:132-135`) both confirmed. |
-| `packages/concord/src/client/community.ts` | `kick()` local pre-publish throw | ✓ VERIFIED | `:1015-1016`, precedes `grantRoles`/`vacFor`/`publishToPlane`. |
-| `packages/concord/src/client/admin.ts` | `ban()` local pre-publish throw | ✓ VERIFIED | `:262-263`, precedes `publishEdition`/`grantRoles`. |
-| `packages/concord/src/models/community.ts`, `models/members.ts`, `client/sync.ts` | `verifyVac: vacVerifier(<state>, PERM.KICK)` wired at each `foldMembers` call | ✓ VERIFIED | All three sites read directly and confirmed passing the 7th positional argument correctly. |
-| `packages/concord/UPSTREAM-NOTES.md` | D-03 clarification note | ✓ VERIFIED | Exists, substantive (18 lines), documents the ambiguity and the shipped reading. |
-| `.planning/REQUIREMENTS.md`, `.planning/concord-audit.md` | AUTH-03..09 traceability + D-14 new finding | ✓ VERIFIED | Both files updated as claimed. |
-| `packages/concord/src/helpers/__tests__/control.test.ts` | spec-derived tests for AUTH-03/04/06/07 + D-14(banlist read) | ✓ VERIFIED | All present, hand-derive expected coordinates/ranks independently of the implementation (via `grantLocator` called directly, hand-tabulated positions). |
-| `packages/concord/src/helpers/__tests__/guestbook.test.ts` | spec-derived tests for AUTH-08 + D-14(owner exemption) | ✓ VERIFIED | Present, including in-suite non-vacuity assertions (not just narrated in SUMMARY). |
-| `packages/concord/src/client/__tests__/community.test.ts` | AUTH-05 rejection tests | ✓ VERIFIED | Present, hand-derive the `canActOn` decision independently before asserting the throw (TEST-01 topological match). |
 
 ### Key Link Verification
 
@@ -70,8 +58,6 @@ SUMMARY.md non-vacuity claims were independently re-verified during this session
 | D-14/AUTH-09 banlist rank gate | Replaced the conditional `banlist.add(pk)` with an unconditional add via `sed` | `"honors a banlist entry only when the signer strictly outranks the target..."` FAILED — `"owner must never be bannable: expected true to be false"` | ✓ PASS (non-vacuous) |
 | AUTH-08 vac gate | Not independently reverted (test suite already contains a dedicated in-code non-vacuity test: `"non-vacuity: with verifyVac omitted, the same demoted-actor Kick succeeds"`) | Confirmed present and asserts the correct (opposite) outcome when `verifyVac` is omitted | ✓ PASS (non-vacuous, self-contained) |
 
-Full suite: `pnpm --filter applesauce-concord test` → **251/251 passed** (45 test files), re-run independently in this session.
-Workspace build: `pnpm --filter applesauce-concord build` → **exit 0**.
 
 ### Anti-Patterns Found
 
@@ -87,7 +73,6 @@ None. Scanned all 8 phase-modified files (`control.ts`, `guestbook.ts`, `permiss
 | AUTH-06 | 09-02 | `Role.position` integer validation | ✓ SATISFIED | `control.ts:163-168` + test |
 | AUTH-07 | 09-01 | Grant target-rank gate (strict reading) | ✓ SATISFIED | `control.ts:210-218` + test, ruling resolved and documented |
 | AUTH-08 | 09-03 | Kick `vac` gate | ✓ SATISFIED | `guestbook.ts:90-97` + tests, ruling resolved and documented |
-| AUTH-09 (D-14, new) | 09-02/09-03/09-05 | Banlist per-target rank + owner exemption | ✓ SATISFIED | `control.ts:322-331`, `guestbook.ts:132-135` + tests; recorded as new finding in REQUIREMENTS.md/concord-audit.md |
 | TEST-01 (standing, this phase's contribution) | all | Spec-derived tests for every fold touched | ✓ SATISFIED | Verified hand-derived (not read from implementation) coordinates/ranks in every new test; non-vacuity independently reproduced for 3 of 4 core guards this session, the 4th self-contained in-suite |
 
 No orphaned requirements found — REQUIREMENTS.md's Phase 9 rows (AUTH-03..09) all trace to a plan in this phase.

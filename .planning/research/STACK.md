@@ -101,7 +101,6 @@ flagging now, before the release is cut:
 - **Practical consequence for this milestone:** because "lockstep" is the explicit goal, **every one of
   the 14 packages needs at least one changeset in this release** — real ones for `applesauce-relay`
   (999.23–999.28, 999.20/999.21), `applesauce-loaders` (held v1.2 changesets + auth threading),
-  `applesauce-concord` (first stable release), `applesauce-react` (SEED-003), and an explicit (even if
   trivial/"no behavior change, republished under the coordinated major") changeset for any package that
   has no other reason to move, or it silently stays behind at its pre-7.0.0 version while its siblings
   jump — the opposite of what "lockstep major" is supposed to guarantee.
@@ -110,7 +109,6 @@ flagging now, before the release is cut:
   (e.g., an internal-dependency-triggered one). For a package that should simply sit out because it has
   no changeset at all, no flag is needed — default `linked` behavior already does not touch it (see
   above). Given `.planning/PROJECT.md` already resolves the one live "hold back?" question in this
-  milestone — **`applesauce-concord` is being published as v7's first stable release, not held back** —
   `--ignore` is documented here as the mechanism for the general case, not because it's currently needed.
 - **Dry-run mechanism (no dedicated `--dry-run` flag exists on `status`, `version`, or `publish` per the
   current documented CLI surface):** run `changeset status --verbose --since=master` (matches this repo's

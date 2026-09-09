@@ -2,7 +2,6 @@
 
 ## What This Is
 
-Applesauce is a reactive Nostr SDK for TypeScript/JavaScript, built as a pnpm monorepo of publishable packages (`core`, `common`, `actions`, `relay`, `loaders`, `react`, `accounts`, `signers`, `sqlite`, `content`, `wallet`, `concord`, and more) layered over a single in-memory `EventStore` and RxJS observables. It gives Nostr client developers event storage, models, timelines, filters, casts, loaders, signers, and React bindings.
 
 ## Core Value
 
@@ -10,24 +9,18 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
-**Phase 25.3 complete (2026-09-06).** Concord invite-bundle rules are now structurally bound to
 protocol field types, persisted Invite List entries cross a closed validation boundary, and corrupt
 self-authored entries are quarantined per source without erasing valid state or triggering repair
-publication. The compiler, focused schemas, real event-store recovery path, and all 672 Concord tests pass.
 
-**Phase 25.1 complete (2026-09-04).** Concord encrypted-media parsing now rejects malformed
 AES-GCM nonce lengths through safe typed diagnostics while preserving attachment metadata and exact
 wire emission; real cryptographic tests confirm historical per-file keys survive community
 refounding and private-channel rekeying.
 
 **Shipped v1.2 operation-scoped-relay-auth (2026-08-19).** Three milestones are complete: v1.0 made
-the event layer generic over unsigned rumors, v1.1 brought `applesauce-concord` into conformance with
 the CORD-01..07 protocol specs, and v1.2 moved NIP-42 authentication out of ambient relay-wide state
-into the operation that actually receives `auth-required:` — then migrated Concord's stream auth onto
 that hook and deleted its client-wide registry driver.
 
 v1.2: 3 phases, 37 plans, 16/16 requirements, all three phases Nyquist-compliant. 1,029 tests pass
-across `relay`/`loaders`/`concord`; the full workspace builds 14/14.
 
 **No release has been cut from v1.2.** Its held changesets ship with the milestone now in
 flight — **v7.0.0 relay-method-layering**, scoped 2026-08-19. The closing design review of v1.2
@@ -39,7 +32,6 @@ assume.
 
 **Phase 17 complete (2026-08-20).** The v7 correctness riders now have prototype-safe relay
 CLOSED classification, independently optional SQLite backend peers, lossless group-pointer relay
-round trips, fatal-only Concord UI error state, and acknowledgement-checked invite revocation.
 Re-verification passed 14/14 after the exported-admin required-publication path was made fail closed.
 
 Full record: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md) ·
@@ -82,9 +74,7 @@ argument, so a hostile relay could erase its own log line or forge one identical
 code review, not by the phase's own oracles, because those oracles only exercised long strings. Fixed at
 the single shared formatter so all seven sinks inherit it.
 
-**Phase 15 complete (2026-08-18)** — Concord's stream auth is now operation-scoped, closing v1.2.
 All four CAUTH requirements verified; 14 plans (8 original + 6 gap-closure) across 10 waves, suite at
-**2,684 passing / 2 skipped** across 278 files. `ConcordRelayAuth` is gone, and `no-ambient-auth.test.ts`
 makes its reintroduction fail loudly rather than merely being absent.
 
 The phase took two verification rounds. The first passed its own gates, was marked complete, and was
@@ -146,7 +136,6 @@ held changesets, as the coordinated `applesauce-*@7.0.0` major.
   `major` changeset bumps every member. Do not hand-write eleven changesets — write against the package
   that actually changed. Confirm on a dry run before cutting, since `linked` and
   `updateInternalDependencies: "minor"` interact.
-- **v7 is `applesauce-concord`'s first official stable release (user, 2026-08-19).** It has only ever
   published as `next`-tagged snapshots, so its changelog starts from zero rather than explaining removals
   from snapshots — Phase 15's deletions need no migration note. The consequence to accept deliberately:
   999.19's residuals and the FUT-01 channel-conversion gap ship as-is in a stable release.
@@ -162,7 +151,6 @@ held changesets, as the coordinated `applesauce-*@7.0.0` major.
   current test can see it: `relay.test.ts:2748` deliberately keeps both sides under 32 items. Any test
   here must exceed the frame-size threshold to force a second round.
 - **Deliberately out of scope:** 999.17 (`debug` replacement — wants a major, but the largest rider by far);
-  999.2 / 999.7 / 999.9 concord entries; FUT-01 / FUT-02; the three Nyquist validation gaps.
 
 <details>
 <summary>Shipped: v1.2 operation-scoped-relay-auth (2026-08-19)</summary>
@@ -170,7 +158,6 @@ held changesets, as the coordinated `applesauce-*@7.0.0` major.
 ## Milestone: v1.2 operation-scoped-relay-auth — SHIPPED
 
 **Goal:** Move NIP-42 authentication out of ambient, relay-wide cached state and into the
-operation that actually receives `auth-required:`, then migrate Concord's stream auth onto that
 hook instead of its own client-wide registry driver.
 
 **Target features:**
@@ -183,21 +170,17 @@ hook instead of its own client-wide registry driver.
   lifecycle and its success/failure reason are observable rather than opaque. Promoted from
   backlog 999.4; scope includes SEED-001's `packages/loaders/` sweep (derive each `Debugger`
   once; never `.extend()` at a log call site).
-- **Concord stream-auth cleanup** — per-operation handlers owned by each community and
   private-channel engine, retiring the client-wide append-only signer registry, its relay driver
   reference counting, and `ensureAuth()`. Promoted from backlog 999.11.
 
 **Key context:** `waitForAuth` changes meaning — from "pre-block this operation if the relay-wide
 flag is set" to "after this operation receives `auth-required:` and the handler resolves, wait
 for this auth state before retrying". That is a behavior change for two *published* packages
-(`applesauce-relay`, `applesauce-loaders`), so both need changesets; concord is unreleased and
-needs none. The Concord cleanup is hard-blocked on the relay hooks landing first, including both
 the paginated REQ and negentropy sync paths.
 
 **Remaining backlog candidates** (deliberately not in this milestone): **999.7** Phase 8
 rotation-robustness residuals — 12.3's majority-ack gate may have overtaken WR-01; check before
 scoping. **999.9** invite-bundle rule-table hardening — guardrail only, zero live defects.
-**999.2** concord media epoch-key decryption audit — its stated premise looks wrong:
 `helpers/imeta.ts` carries per-file keys in the message's own tag rather than resolving from
 epoch state, so there may be nothing to audit. **999.10** shipped 2026-08-05 as quick task
 `260805-ds0` (PR #89). Also outstanding: FUT-01/FUT-02 feature gaps; three Nyquist validation
@@ -238,11 +221,7 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ NIP-42 auth is operation-scoped: `onAuthRequired`/`authTimeout`/`authRetries` on all eight request-like operations, passing through `RelayPool`/`RelayGroup` and both `SyncLoader` paths — v1.2 (Phase 13, RAUTH-01..09). An operation that never received `auth-required:` is no longer pre-blocked by one that did; the relay-wide flags survive as informational status only
 - ✓ A single NIP-42 auth attempt is legible from debug output alone — challenge, signing, AUTH sent, result, and why it failed — with outcomes attributable to the operation that triggered them — v1.2 (Phase 14, ALOG-01/02). Proven against real captured `debug` output, not implementation strings
 - ✓ Every `Debugger` in `packages/loaders/` is derived once per lifetime, never on a path a reactive pipeline can re-enter — v1.2 (Phase 14, ALOG-03; closes SEED-001). Restated from the original wording, which tested for a pattern that does not exist in this monorepo and so passed vacuously
-- ✓ Concord authenticates per scope, not per client: each community and private-channel engine answers only the `missingPubkeys` its own scope holds keys for, and a reconnect re-authenticates exactly that set — v1.2 (Phase 15, CAUTH-01/02/04)
-- ✓ Concord's client-wide auth driver machinery is gone — `relay-auth.ts` deleted along with `authenticateStreamKeys`, `version$`, driver reference counting, `ensureAuth()`, relay-status-driven authentication and `autoAuthenticate`, with a two-root structural guard failing CI on reintroduction — v1.2 (Phase 15, CAUTH-03, widened from stream-keys-only to cover the user-key half)
-- ✓ Relay/SQLite/group-pointer correctness and Concord residual publication honesty — v7.0.0 (Phase 17, FIX-01/02/03 and RESID-01/02). Hostile CLOSED prefixes cannot reach the prototype chain, SQLite consumers install one backend, compatibility pointers retain relay identity, transient AUTH stays out of fatal UI state, and invite revocation requires acknowledged publication
 - ✓ React 19 workspace support retains the React 18 consumer contract, and both OPFS examples run on `@snort/worker-relay` v2 without destructive migration — v7.0.0 (Phase 25, ECO-02/03)
-- ✓ Concord encrypted attachments retain their own file keys across community refounding and private-channel rekeying, and malformed AES-GCM nonce lengths fail safely at parse time — Validated in Phase 25.1 (CONC-F3)
 
 ### Active
 
@@ -255,7 +234,6 @@ follow-ups todo; and eight still-dormant seeds.
 - [ ] `count()` returns what NIP-45 defines (`approximate`, `hll`) through validation rather than an unchecked cast, so a cross-relay aggregate is constructible at all
 - [ ] `authenticate()` acquires a challenge rather than reading one, and a challenge that moves under a slow signer produces a retried auth rather than a misreported relay refusal
 - [ ] Multi-round negentropy reconciliation reaches the wire, transfers per round without stalling the protocol, and reports both directions honestly
-- [ ] The v7.0.0 major publishes: all fourteen packages in lockstep, v1.2's held changesets included, `applesauce-concord` cut as its first official stable release, and no changeset claiming behavior the code does not have
 
 ### Out of Scope
 
@@ -266,7 +244,6 @@ follow-ups todo; and eight still-dormant seeds.
 - Changing public runtime behavior for default `EventStore` users — migration is type-level and runtime-light
 - CORD-07 §2/§3/§5/§6/§7 voice transport (broker token grants kind 27235, AES-GCM framing, rendezvous, SFU) — HTTPS/WebRTC concerns, not Nostr event handling, and defensibly outside an events SDK (audit L13, FUT-02). *Reason still valid after v1.1 — nothing in the milestone moved the SDK boundary.*
 - Public↔private channel conversion and channel rename (CORD-03 §2) — a genuine feature gap, not a conformance defect; deferred to a feature milestone (audit L12, FUT-01). *Reason still valid; now a candidate input for the next milestone, since v1.1 removed the conformance work that would have conflicted with it.*
-- Re-auditing `concord-audit.md`'s "verified correct" register — seven agents checked that ground against both sides and found it faithful. *Reason weakened, deliberately kept: the register wrongly cleared `rollForwardChannel`, so it is a prior, not a proof. Treat it as such if a future defect points into cleared ground.*
 
 ## Context
 
@@ -276,10 +253,7 @@ follow-ups todo; and eight still-dormant seeds.
 - This is the first GSD-tracked milestone; the packages themselves are already published and in use.
 - **Shipped v1.0 (2026-07-09):** 4 phases, 11 plans, 23 tasks; 99 files changed (+7519/-427). A runtime-light type migration — `applesauce-core` fully generic over `StoreEvent`/`Rumor` with `RumorStore` + sig-gated `castEvent`; `applesauce-common` structural helpers genericized. Gates green: `applesauce-core` 601 tests, `applesauce-common` 500 tests, full workspace `pnpm run build` (18/18). All 16 v1 requirements satisfied, milestone audit passed, 0 open threats.
 - **Known follow-ups (deferred):** COMMON-F1/F2 (genericize remaining common casts/helpers one-by-one as concrete rumor needs arise); a pre-existing `getHashtagTag` unsafe-`undefined` cast; a migration release-note for the `verifyEvent: undefined` verification-disable semantics.
-- **v1.1 authoritative spec:** `.planning/concord-audit.md` — the 2026-07-15 conformance audit of `packages/concord/src/` against CORD-01..07, produced by seven parallel agents (one per spec doc) and orchestrator-verified. 43 findings: 9 HIGH, 17 MEDIUM, 4 suspected, 13 LOW. Carries file:line, the violated spec sentence, symptom, and fix per finding, plus a "verified correct" register marking ground that does not need re-auditing.
 - **Why v1.1 exists:** a downstream app reported an incomplete member list after a Refounding. Root cause was `buildInviteBundle` dropping an optional `refounder` field from a hand-rolled literal — invisible to TypeScript, silent at runtime, green on all 189 tests. The audit was commissioned on the premise that a defect that quiet was unlikely to be alone; it was not. Nearly every finding is one of four variants of the same mistake: a guard that defaults to permit, a hand-rolled literal that drops an optional field, a correct helper that exists but is never called (`splitTime`, `store.replaceable`, `canRemoveSelf`, `grantLocator`), or a `catch`/`continue` that degrades where the spec says MUST.
-- **Test-methodology finding (drives a v1.1 requirement):** all 189 concord tests passed while 9 HIGH bugs were live, because every test compares the implementation against itself. A four-line probe deriving the expected address from the spec formula caught the worst bug instantly. Spec-derived assertions are the gap.
-- **CONCORD-H07's blocked downstream consumer (Accordian) is unblocked as of v1.1 Phase 7.** Private channel metadata without held key material previously derived the *public* address, so a composer could publish private content to a plane every community member can derive. Their acceptance criteria and five required tests were adopted verbatim into the audit register and are satisfied; `channels$` now carries a client-local `accessible` flag that reacts to a Direct Invite landing with no metadata edition change — the exact scenario they reported.
 - **Shipped v1.1 (2026-08-04):** 12 phases, 87 plans, 203 tasks; 592 commits, 541 files changed (+77,363/−3,980) over 21 days. All 43 audit findings closed, 54/54 requirements satisfied, 12/12 phases verified, cross-phase integration clean, 5/5 E2E flows traced. Full workspace suite **2,466 passed / 2 skipped** across 272 files (from a 1,989 baseline). Closed as `override_closeout`: one `low` todo and nine dormant seeds acknowledged rather than resolved.
 - **Not git-tagged, by decision.** This repo tags per-package via changesets (`applesauce-core@6.2.0`, …). `v1.0` and `v1.1` are planning milestones; package releases are cut separately and independently.
 - **What v1.1 taught about verification.** Green tests remained necessary but not sufficient throughout. The milestone's own gap waves repeatedly found that a fix was real but its *test* compared the implementation to itself, or that a comment describing an invariant was false. Two habits came out of it and are worth keeping: assert against a value derived independently from the spec, and record a RED→GREEN non-vacuity probe so a passing test is known to fail for the right reason.
@@ -291,7 +265,6 @@ follow-ups todo; and eight still-dormant seeds.
 - **Compatibility**: Default `EventStore` (no type param) must remain a signed `NostrEvent` store with unchanged behavior; downstream packages must keep compiling with minimal migration.
 - **Sequencing**: `applesauce-common` migration (Part B) only begins after the core migration (Part A) is proven — rumor store + `EventCast<Rumor>` tests green and `applesauce-core` builds clean.
 - **Verification**: `pnpm --filter applesauce-core test` + `build` minimum; broader `pnpm run build` when exports/downstream types are affected.
-- **v1.1 sequencing**: the `applesauce-core` cache fix lands before any concord rotation work — H01 currently *masks* H02, so fixing H01 alone activates a latent memberlist bug. H08 has two independent root causes (metadata threading **and** the channel-plane memo); fixing either alone leaves a rekeyed channel on its old plane.
 - **v1.1 test standard**: every fix carries a regression test asserting against an **independently-derived spec value**, not against implementation output. Comparing the implementation to itself is precisely what let all 43 findings pass CI.
 - **v1.1 breaking changes** (accepted): remove `ChannelMetadata.voice` (CORD-03 §2 and CORD-07 §1 both state no per-channel voice flag exists); remove `ChannelMetadata.key`/`.epoch` (client-tracked keying must not ride folded edition metadata). Both need changesets and migration notes.
 
@@ -304,14 +277,10 @@ follow-ups todo; and eight still-dormant seeds.
 | Keep `verifyRumor` = hash-only check | Rumors come from a protocol layer that already verified auth/validity | ✓ Good — documented integrity-not-authorization boundary |
 | Defaults stay `= NostrEvent` everywhere | Minimize downstream migration churn | ✓ Good — zero behavior change; existing tests + export snapshots unchanged |
 | Migrate `applesauce-common` only after core proves out (Part A gate) | De-risk the broad type change one layer at a time | ✓ Good — gate held; common work was minimal (4 helpers) once core was proven |
-| Sig-gate `castEvent` input (`CastEventInput<T>`) + internal `performCast` | Restore the compile-time guard the Phase-2 generic widening dropped without over-tightening real rumor casts | ✓ Good — signed casts reject rumors at compile time; concord's rumor cast still compiles |
 | Keep common casts `NostrEvent` (COMMON-02 empty targeted set) | No common cast has a concrete rumor use case; their `KnownEvent<K>` types are out-of-scope to genericize | ⚠️ Revisit — COMMON-F1/F2 will genericize one-by-one as needs arise |
-| Fix the cache-memo defect centrally in `applesauce-core`, not locally in concord (v1.1) | The local fix patches 3 call sites and leaves the trap armed for the next caller. Central fix's only behavior change is that spread/`Object.assign` stop copying the cache — `JSON.stringify`/`Object.keys`/`Reflect.get` are unaffected either way, and ~all 101 call sites cache onto immutable signed `NostrEvent`s that are never spread. Proven not to disturb the deliberate `EncryptedContentSymbol` carry-forward (those 3 sites hand-roll their own writes); full monorepo green at 1989 tests. | ✓ Good — central fix held. It also exposed that a *documented two-category convention* was the wrong shape, which is what Phase 5.1 corrected |
 | Insert Phase 5.1 to redesign symbol propagation rather than keep Phase 5's documented taxonomy | Phase 5 shipped a memo-vs-carry-forward taxonomy plus a comment pass across 22 files — and then a review found 14 of those comments were themselves false. A convention that needs 35 hand-audited call sites to stay true is not a convention; it is a standing defect source | ✓ Good — all symbol writes are now non-enumerable via one helper, carry-forward is an explicit whitelist the pipeline copies, and both strip loops are gone. The comment burden went with them |
 | Scope v1.1 to all 43 findings rather than HIGH-only | HIGH-only still drags in a breaking change (H08 needs `ChannelMetadata.key` deleted), so the compatibility cost is paid either way; and the MEDIUM/LOW set is mostly the same four defect shapes, cheaper to fix in one pass than to re-derive context for later | ✓ Good — 43/43 closed. The premise held: the four defect shapes recurred throughout, so context carried across findings instead of being re-derived per fix |
-| Make TEST-01 (spec-derived assertions) a standing criterion across Phases 5–12, not one phase's deliverable | All 189 concord tests passed while 9 HIGH bugs were live because every test compared the implementation to itself. A phase permitted to assert against its own output would reintroduce the milestone's root cause | ✓ Good — the sharpest case proved the point: Phase 7's spec-derived probe of the CORD-03 §1 channel derivations is exactly what exposed H07. Closed at Phase 12 once all eight phases passed their own criterion |
 | Close defect classes structurally rather than patching enumerated instances | Repeated gap-closure rounds kept surfacing the next instance of the same class — a rule table drifting from its type, a symbol copied without a disposition, a validation check missed on a fifth field | ✓ Good — the pattern the milestone converged on. `validateInviteBundle`'s mapped-type rule tables, `copySymbolsToDuplicateEvent`'s tuple arity, and `CHANNEL_KEY_STRIPPED_FIELDS` deriving from its fold disposition each make the bad state a compile error instead of a review finding |
-| Remove `ChannelMetadata.voice` and `.key`/`.epoch` as accepted breaking changes | CORD-03 §2 and CORD-07 §1 both state no per-channel voice flag exists; and client-tracked keying riding folded edition metadata is the root of H06/H07/H08 | ✓ Good — concord is unreleased, so the break cost nothing downstream. `material.channels` as sole key source made a keyless private channel derive nothing instead of silently deriving the public address |
 
 ## Evolution
 
@@ -334,7 +303,6 @@ This document evolves at phase transitions and milestone boundaries.
 *Last updated: 2026-09-03 — Phase 25 ecosystem riders verified complete. React 18/19 share one rendering suite, worker-relay v2 preserves existing OPFS data, and Phase 26 release coordination is next.*
 
 ---
-*Last updated: 2026-08-20 — Phase 17 correctness fixes and Concord residuals verified complete (14/14 must-haves).
 The sole initial verification gap was closed by making exported-admin required publication fail closed
 when no strict publisher is configured; Phase 18 is next, with no automatic transition performed.*
 
@@ -345,29 +313,23 @@ Scope assembled from the backlog rather than fresh discovery: the 999.23–999.2
 unrelated package fixes (999.12, 999.15), and three ecosystem seeds (SEED-002/003/004) pulled in
 because the lockstep major republishes every package anyway. Two decisions taken at scoping: the
 milestone carries the release version rather than continuing the v1.x planning sequence — this is
-the first milestone that maps 1:1 to a package release — and **v7 is `applesauce-concord`'s first
 official stable release** (user), which settles the open question recorded in ROADMAP.md's v7
 release coordination note. 999.17 (`debug` replacement) was considered and deliberately left in the
 backlog: it is the one rider that genuinely needs a major, but also the largest by far.*
 
 ---
-*Last updated: 2026-09-06 — Phase 25.3 complete; Concord invite validation and fail-soft reconciliation verified 11/11.*
 
 *Last updated: 2026-08-18 — Phase 15 complete; milestone v1.2 operation-scoped-relay-auth fully executed. Started from three promoted
 backlog items (999.5, 999.4, 999.11) plus SEED-001's loaders sweep. Every premise was verified
 against the code before scoping: the relay-wide pre-block is live at `relay.ts:846/944/995/1063`,
-no `onAuthRequired` exists yet, and concord's churn mechanism is `relay-auth.ts:174`'s
 `combineLatest([relay.challenge$, this.version$])` re-authing the whole registry on every key add
-(`:65`). Noted gap: 999.11 cites `.planning/debug/concord-multi-user-auth-churn.md` as root-cause
 evidence, but that file was never committed — the mechanism is confirmed independently, the
 reproduction is not.*
 
 *Updated 2026-08-11 — Phase 14 (auth lifecycle debug logging) complete: 9/9 plans, ALOG-01/02/03
 verified, suite at 2,647 passing. Two code-review findings were closed as gap plans (14-08, 14-09);
-eight were deliberately backlogged as ROADMAP item 999.16. Next: Phase 15, Concord stream-auth cleanup.*
 
 *Last updated: 2026-08-19 after the v1.2 operation-scoped-relay-auth milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.2 restructured how auth reaches an operation, not what the SDK is); all v1.2 requirements moved to Validated; Current State rewritten with the v7 release constraint; the next milestone recorded as v7.0.0 relay/auth re-layering with 999.23 flagged as the required first phase.*
 
-*Prior: 2026-08-04 after the v1.1 first-fixes milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.1 was a conformance milestone in `applesauce-concord`; it did not shift what the SDK is or what matters most about it); all eight v1.1 Active requirements moved to Validated; Out of Scope audited with each reason re-confirmed; six Key Decisions resolved to outcomes; Context updated with shipped state.*
 
 *Prior: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration).*

@@ -1,8 +1,6 @@
 ---
 phase: 10-invite-lifecycle-event-time-consistency
 plan: 01
-subsystem: concord-invites
-tags: [concord, nostr, invite-bundle, input-validation, fail-closed]
 
 # Dependency graph
 requires: []
@@ -22,9 +20,7 @@ tech-stack:
 
 key-files:
   created:
-    - packages/concord/src/helpers/__tests__/invite-bundle.test.ts
   modified:
-    - packages/concord/src/helpers/invite-bundle.ts
 
 key-decisions:
   - "getInviteBundleVsk's malformed-vsk branch returns INVITE_BUNDLE_VSK_REVOKED directly (executor's discretion per D-04), so the existing isInviteBundleRevoked === REVOKED predicate needs no change"
@@ -38,7 +34,6 @@ coverage:
     requirement: "INVITE-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/invite-bundle.test.ts#validateInviteBundle (INVITE-02/D-10)"
         status: pass
     human_judgment: false
   - id: D2
@@ -46,7 +41,6 @@ coverage:
     requirement: "INVITE-05"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/invite-bundle.test.ts#decodeFragment (INVITE-05/D-12)"
         status: pass
     human_judgment: false
   - id: D3
@@ -54,14 +48,12 @@ coverage:
     requirement: "INVITE-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/invite-bundle.test.ts#getInviteBundleVsk / isInviteBundleRevoked (INVITE-01/D-04)"
         status: pass
     human_judgment: false
   - id: D4
     description: "getInviteBundleLocator produces the hand-derived (33301, link_signer, \"\") coordinate from CORD-05 §2, computed independently via getPublicKey rather than read back from the function under test"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/invite-bundle.test.ts#getInviteBundleLocator coordinate (TEST-01/D-13)"
         status: pass
     human_judgment: false
 
@@ -86,7 +78,6 @@ status: complete
 - `validateInviteBundle` now rejects a bundle whose `channels` or `relays` is not an array before any array method touches it (INVITE-02/D-10), closing the unbounded-allocation/substring-typed-as-array hole.
 - `decodeFragment` now rejects any fragment version that isn't exactly `FRAGMENT_VERSION` — both higher and lower — instead of only rejecting lower versions, so a future v5 fragment can't be silently misdecoded against the current v4 relay dictionary (INVITE-05/D-12).
 - `getInviteBundleVsk` distinguishes an absent `vsk` (stays live, CORD-05 §1 default) from a present-but-unparseable `vsk` (denies), closing the `Number("junk") → NaN → live` revocation-bypass; a clean numeric non-vocabulary value like `"7"` stays joinable (INVITE-01/D-04).
-- Net-new `packages/concord/src/helpers/__tests__/invite-bundle.test.ts` with 11 spec-derived tests, including a hand-derived `(33301, link_signer, "")` coordinate assertion against `getInviteBundleLocator` computed independently via `getPublicKey`.
 
 ## Task Commits
 
@@ -101,8 +92,6 @@ Each task was committed atomically:
 _Note: each task's non-vacuity claim was verified by hand — the guard was temporarily reverted in the working tree, the target test(s) confirmed to fail exactly as documented, then the guard restored before committing. No revert was ever itself committed._
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/invite-bundle.ts` - `validateInviteBundle` array-shape guard (D-10), `decodeFragment` strict version check (D-12), `getInviteBundleVsk` absent-vs-malformed branch (D-04)
-- `packages/concord/src/helpers/__tests__/invite-bundle.test.ts` - net-new spec-derived test file (11 tests across 4 `describe` blocks)
 
 ## Decisions Made
 - `getInviteBundleVsk`'s malformed branch returns `INVITE_BUNDLE_VSK_REVOKED` directly rather than a distinct sentinel value — the simplest conforming shape per the plan's stated executor discretion, since `isInviteBundleRevoked`'s existing `=== INVITE_BUNDLE_VSK_REVOKED` predicate then denies it with zero downstream changes.
@@ -123,7 +112,6 @@ None - no external service configuration required.
 
 - `getInviteBundleVsk`'s absent-vs-malformed distinction is now the primitive that `joinByLink`'s collapse-then-tombstone-check rewrite (10-05, D-01..D-03) will consume on its coordinate collapse winner — the `key_links` dependency this plan's frontmatter recorded.
 - `invite-bundle.test.ts` is intentionally left open for 10-06 to extend with `expires_at` unit (D-05) coverage in the same file, per this plan's `## Artifacts This Phase Produces` note.
-- No blockers. Full `applesauce-concord` suite green (263/263, up from 255 pre-plan) and `pnpm --filter applesauce-concord build` (tsc) clean.
 
 ---
 *Phase: 10-invite-lifecycle-event-time-consistency*
@@ -131,8 +119,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/helpers/__tests__/invite-bundle.test.ts
-- FOUND: packages/concord/src/helpers/invite-bundle.ts
 - FOUND: commit 8ea567fd
 - FOUND: commit efc3be82
 - FOUND: commit 34bf20bc

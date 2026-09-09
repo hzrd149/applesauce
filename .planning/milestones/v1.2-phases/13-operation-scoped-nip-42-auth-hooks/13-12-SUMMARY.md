@@ -202,7 +202,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - RAUTH-01 through RAUTH-09 are all now `Complete` in `.planning/REQUIREMENTS.md` — the phase's own requirement set is fully satisfied, closing the wave sequence 13-VERIFICATION.md opened (13-08 through 13-13 plus this plan).
-- Phase 14 (ALOG — auth lifecycle observability) and Phase 15 (CAUTH — Concord stream-auth cleanup, hard-blocked on RAUTH landing first) can both proceed: the operation-scoped auth hooks are now genuinely bounded, correctly resend, correctly map errors, and correctly suspend clocks on every one of the eight operations plus `RelayPool`/`RelayGroup`/`SyncLoader`.
 - No blockers. This was the phase's designated closing plan; no further gap-closure plan is scoped for Phase 13.
 
 ---

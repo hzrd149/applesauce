@@ -64,27 +64,16 @@ Grant, Kick, Ban, and Role folds enforce the CORD-04 rank comparisons and reject
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Authoritative protocol spec (verify fixes against this, not only the audit paraphrase)
-- Upstream Concord spec — `https://github.com/concord-protocol/concord` (raw: `https://raw.githubusercontent.com/concord-protocol/concord/main/<NN>.md`). For this phase: **CORD-04 §2/§3/§5** (`04.md` — §2 Grant maps member→roles, honored only if signer outranks every role handed out, empty `role_ids` = revoke; §3 "the actor must hold the required bit **and** *strictly* outrank its target — equal cannot act on equal," "no edition may claim a position at or above its own signer"; §5 `vac` = authority citation pinned by coordinate/version/hash, non-owner actions require it, owner omits it, resolves rank against the current refuse-downgrade roster, a superseded/demoted citation is dropped). **CORD-02 §5** (`02.md` — defers Kick's `vac` rule to CORD-04 §5). `examples.md` for wire fixtures. *(Rulings for AUTH-07/08 were taken against this text, 2026-07-19.)*
 
 ### Milestone authority
-- `.planning/concord-audit.md` — M05 (grants folded without verifying their coordinate; `grantLocator` exists, used on write, never on read — `control.ts:174,194`), M06 (unvalidated `role_ids` throws an uncaught `TypeError` killing `foldControl` — `control.ts:183-193`), L04 (`kick()`/`ban()` publish with no local authority check — `community.ts`/`admin.ts`), L05 (`Role.position` not validated — `control.ts:162-163`), S01/S02 (the two rulings). Carries file:line, violated spec sentence, symptom, fix per finding.
 - `.planning/REQUIREMENTS.md` — AUTH-03..08 (+ the standing TEST-01 closure rule; TEST-01 does NOT close at this phase). Add the D-14 banlist rider as a new finding/requirement when updating traceability.
 - `.planning/ROADMAP.md` — Phase 9 detail: goal, success criteria 1-6, the AUTH-07/08 "blocked-on-ruling, resolved as first task" note.
 - `.planning/PROJECT.md` — v1.1 constraints: the spec-derived-test standard (assert against independently-derived spec values, never implementation output); fail-closed guard discipline.
 - `.planning/phases/06-refounding-rotation-authority-correctness/06-CONTEXT.md` — the authority precedents this phase inherits: fail-closed guards (D-07), rank semantics via `canActOn` (D-09), throw-and-abort local rejects (D-05/D-06), the "bring the omitted path up to the correct sibling path" pattern.
 
 ### Primary source files (verify current line numbers this session)
-- `packages/concord/src/helpers/control.ts` — `foldControl`; role fold + position guard (`:150-170`, AUTH-06/D-11); grant fold (`:174-195`, AUTH-03/D-10, AUTH-04/D-07, AUTH-07/D-01-02); the banlist coordinate precedent to mirror (`:288-300`, and the read-path rank/owner gap for D-14).
-- `packages/concord/src/helpers/permissions.ts` — `resolveStanding` (`:38-59`), `canActOn`/`canDo`/`hasPerm`, `refoundAuthority` (`:77-82`), **`vacVerifier(state, requiredPerm)` (`:85-115`)** — the D-08/D-12 predicate AUTH-08 reuses (owner exempt, non-owner requires `vac`, `vac[0] === grantLocator(cid, rotator)`, current roster grants the perm, pure over folded state).
-- `packages/concord/src/helpers/guestbook.ts` — `foldMembers` (`:48-116`); the Kick authorization branch (`:77-84`, add the `vac` gate D-04/D-05, keep the rank-vs-victim check); the banlist application `members.delete(banned)` (`:114`, add owner exemption D-14).
-- `packages/concord/src/helpers/crypto.ts` — `grantLocator(communityId, memberXonlyHex)` (`:184`), `banlistLocator` (`:189`); the coordinate primitives for AUTH-03 and the AUTH-08 `vac[0]` check.
-- `packages/concord/src/client/admin.ts` — `vacFor(actor)` (`:133-142`, owner→undefined, else `[grantLocator, version, hash]`); `ban()` (`:257-263`, add local reject D-09); grant write path (`:251`).
-- `packages/concord/src/client/community.ts` — `kick()` (`:1011-1014`, already attaches `vacFor`; add local reject D-09); `vacVerifier` wiring for channel-rekey (`:707`) and refound (`:785`) — the precedents.
 
 ### Existing tests (extend / add alongside)
-- `packages/concord/src/helpers/__tests__/control.test.ts` (or the `foldControl` suite) — add: malformed-`role_ids` degrades-not-throws (AUTH-04); grant coordinate mismatch is dropped (AUTH-03); AUTH-07 non-self target-rank gate (junior cannot revoke/demote senior); `Role.position` NaN/float/sentinel rejected (AUTH-06); banlist per-target rank + owner-unbannable (D-14).
-- `packages/concord/src/helpers/__tests__/guestbook.test.ts` — Kick `vac` gate (non-owner without vac / wrong-coordinate vac is dropped; demoted actor's Kick dropped by current roster) alongside the existing rank-vs-victim tests.
-- `packages/concord/src/client/__tests__/community.test.ts` / `admin` tests — `kick()`/`ban()` local throw when caller lacks bit or rank (AUTH-05).
 </canonical_refs>
 
 <code_context>

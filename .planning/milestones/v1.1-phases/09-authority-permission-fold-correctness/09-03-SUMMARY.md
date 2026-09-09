@@ -2,7 +2,6 @@
 phase: 09-authority-permission-fold-correctness
 plan: 03
 subsystem: auth
-tags: [concord, foldMembers, vacVerifier, guestbook, kick, membership-fold]
 
 # Dependency graph
 requires:
@@ -24,18 +23,12 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/guestbook.ts
-    - packages/concord/src/helpers/__tests__/guestbook.test.ts
-    - packages/concord/src/models/community.ts
-    - packages/concord/src/models/members.ts
-    - packages/concord/src/client/sync.ts
 
 key-decisions:
   - "verifyVac is an optional trailing positional parameter on foldMembers (not an options object) — matches the function's existing positional-parameter shape"
   - "client/sync.ts passes vacVerifier(state0, PERM.KICK) inline as the 7th foldMembers argument (not a named local) to avoid colliding with the existing `const verifyVac = vacVerifier(state, PERM.BAN)` declared later in the same function for the root rekey scope"
 
 patterns-established:
-  - "A fold-level authority gate (vac) is threaded as an optional trailing predicate parameter, mirroring the channel-sync.ts/private-channel.ts ConcordPrivateChannel shape, so callers that don't need the gate compile unchanged"
 
 requirements-completed: [AUTH-08, D-14, TEST-01]
 
@@ -45,7 +38,6 @@ coverage:
     requirement: "AUTH-08"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/guestbook.test.ts#AUTH-08 Kick vac gate"
         status: pass
     human_judgment: false
   - id: D2
@@ -53,7 +45,6 @@ coverage:
     requirement: "AUTH-08"
     verification:
       - kind: unit
-        ref: "pnpm --filter applesauce-concord test (models/, client/__tests__/sync.test.ts green with the new positional argument wired)"
         status: pass
     human_judgment: false
   - id: D3
@@ -61,7 +52,6 @@ coverage:
     requirement: "D-14"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/guestbook.test.ts#D-14 owner exemption in the banlist-delete loop"
         status: pass
     human_judgment: false
 
@@ -98,11 +88,6 @@ Each task was committed atomically:
 _Note: Task 3 is a `fix` (not `feat`) since it closes a defense-in-depth gap in existing behavior._
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/guestbook.ts` - `foldMembers` gained the `verifyVac` trailing param, the Kick branch's additive vac gate, and the D-14 owner-exemption guard in the banlist-delete loop
-- `packages/concord/src/helpers/__tests__/guestbook.test.ts` - `AUTH-08 Kick vac gate` describe block (5 tests) and `D-14 owner exemption in the banlist-delete loop` describe block (2 tests)
-- `packages/concord/src/models/community.ts` - wired `vacVerifier(control, PERM.KICK)` into its `foldMembers` call, added `vacVerifier`/`PERM` imports
-- `packages/concord/src/models/members.ts` - wired `vacVerifier(control, PERM.KICK)` into its `foldMembers` call, added `vacVerifier`/`PERM` imports
-- `packages/concord/src/client/sync.ts` - wired `vacVerifier(state0, PERM.KICK)` inline into its `foldMembers` call (state0 predates the `members` fold, per RESEARCH Open Question 2 — vacVerifier only reads material/roles/grants)
 
 ## Decisions Made
 - `verifyVac` is threaded as an optional trailing positional parameter on `foldMembers` (matching the function's existing positional shape), not an options object
@@ -122,7 +107,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - AUTH-08 and D-14 are closed for `foldMembers`; the shared `vacVerifier` predicate now gates both the root/channel rekey (Phase 8) and Kick (this plan) authority paths, keeping one source of truth for the vac-citation rule
-- `applesauce-concord` at 247/247 tests green, package builds clean (`tsc`), formatting clean
 - Plan 09-04 (file-disjoint, Wave 1) is unblocked by this plan's completion
 
 ---

@@ -1,7 +1,6 @@
 # Phase 12: Document & Caps Conformance - Research
 
 **Researched:** 2026-07-29
-**Domain:** Nostr wire-document conformance (Concord protocol) — byte/membership caps, unknown-field round-tripping, spec-citation correctness
 **Confidence:** HIGH
 
 <user_constraints>
@@ -29,7 +28,6 @@ paragraphs.**
 - **D-06:** 50 counts **live** memberships only (tombstones don't consume budget), enforced at
   `recordJoin` only — refuse local join at 50, tolerate merged overflow from another device
   (mirrors the existing asymmetric byte-cap pattern at `client.ts:795-798`).
-- **D-07:** Remove all serialized-byte caps in `packages/concord`: `LIST_MAX_BYTES` (gate at
   `client.ts:1168`), `INVITE_LIST_MAX_BYTES` (gate at `invite-manager.ts:276`),
   `COMMUNITY_LIST_MAX_ENTRY_BYTES` (throw at `client.ts:808`), and
   `INVITE_BUNDLE_MAX_TOTAL_BYTES` at both sites (mint throw `invite-bundle.ts:306`, validator gate
@@ -43,7 +41,6 @@ paragraphs.**
   `COMMUNITY_LIST_MAX_ENTRY_BYTES` → `INVITE_BUNDLE_MAX_TOTAL_BYTES` prose chain) must be
   deleted/rewritten, never left citing a deleted constant.
 - **D-11:** Bump `nostr-tools` to `^2.24` in `packages/core`, `packages/common`, `packages/relay`
-  (concord has no direct dep, inherits transitively). 2.19.4 (installed) throws below 65535;
   2.24.x lifts the ceiling to 4294967295.
 - **D-12:** Model the document root as an **open document** — `parseCommunityList`/
   `parseInviteList` stop returning a closed two-field struct and stop renaming `entries`→
@@ -71,13 +68,11 @@ paragraphs.**
   Full validated inventory (2026-07-29): `CORD-06 §94` (10 sites, invalid — CORD-06 has 3
   sections), `CORD-03 §44` (2 sites, invalid — CORD-03 has 3 sections, not named by the original
   audit), `CORD-01 §Deletions` (3 sites, **valid** — CORD-01 uses named unnumbered sections).
-- **D-17:** Registry lives in `packages/concord/src/__tests__/cord-wire-fixtures.ts`. Each of the
   12 replacements is chosen by **reading the actual CORD text at that call site** — never an
   in-range guess or title match. File already records branch `main` (correct, despite D-17's own
   text flagging a possible mismatch with Phase 11's context — verified, no change needed).
 - **D-18:** `validateInviteBundle`/`rebuildByRules` is **exempt** from D-01 — untrusted-input
   boundary, the allowlist rebuild is the fail-closed mechanism, not a defect.
-- **D-19:** No changeset (concord unreleased) — covers D-12's breaking types and D-07's removed
   exports.
 - **D-20:** Namespaced `debug` convention — derive the `Debugger` once, never `.extend()` at a
   call site.
@@ -105,7 +100,6 @@ recommendations — see Architecture Patterns and Code Examples below.**
 - The 64-byte cap on Role `name` (CORD-02 §6 confirms it's the same protocol-wide cap; `createRole`
   at `admin.ts:210-219` enforces nothing). D-03's shared helper makes this a near-free follow-up
   but is explicitly not this phase's work.
-- A CORD-02-vs-NIP-44 divergence report upstream to concord-protocol/concord.
 - A time-windowed `voicePresence$` (unrelated, inherited from Phase 11).
 - `05.1-review-followups.md` and `11-verify-followups.md` — reviewed, not folded (unrelated
   defect classes).
@@ -128,7 +122,6 @@ recommendations — see Architecture Patterns and Code Examples below.**
 
 ## Summary
 
-This phase closes six wire-conformance requirements in `applesauce-concord`, all downstream of
 one governing principle (D-01: preserve, don't reconstruct). CONTEXT.md already locked 21
 decisions with unusual precision; this research fetched the live CORD spec text the repo has no
 local copy of, traced every citation site to its actual code context, and — most importantly —
@@ -137,7 +130,6 @@ names.
 
 **The single most important finding:** `operations/community-list.ts:87` and
 `operations/invite-list.ts:73` (the two reconstruction sites D-12 names) are **not on
-`ConcordClient`'s actual publish path**. `CommunityListFactory`/`modifyCommunityList`/
 `InviteListFactory`/`modifyInviteList` have zero call sites anywhere under `client/*.ts` — grep
 confirms it. The real, exercised WIRE-09 defect lives in `client/client.ts`'s
 `saveCommunityList()` (`JSON.stringify({ entries: list, tombstones })` at line 1207) and
@@ -146,13 +138,11 @@ line ~281) — both hand-roll the two-field document directly from the client's 
 in-memory arrays, which structurally have no field to carry an unknown top-level key through.
 Fixing only `parseCommunityList`/`parseInviteList` (D-12) and the two `operations/*.ts` files,
 without also touching `client.ts`/`invite-manager.ts`, would leave WIRE-09 unfixed for every real
-`ConcordClient` user. The concord-audit.md source finding (L07) already names `client.ts:762` and
 `invite-manager.ts:220` (today's `~1207`/`~281`) as lossy sites — this is not new scope, just
 scope CONTEXT.md's decision prose didn't enumerate.
 
 **Primary recommendation:** Fix the open-document shape at the parse layer (D-12, as decided),
 then thread a `documentExtras: Record<string, unknown>` (or equivalent) carrier through
-`ConcordClient`'s and `ConcordInviteManager`'s own persisted state so `saveCommunityList()`/
 `invite-manager.save()` can spread it back in at publish time — the same "preserve, don't
 reconstruct" discipline D-12 applies to the helper layer, extended to the two places that
 actually publish.
@@ -161,12 +151,9 @@ actually publish.
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| Byte/count cap enforcement (WIRE-06/07/08) | SDK helpers (`packages/concord/src/helpers`) | SDK client (`client/admin.ts`, `client/client.ts`) call sites | D-03 locks "enforce in helpers, not client methods" — the shared check must be reachable from `helpers/community.ts`'s public `createCommunity`, which the client tier cannot gate alone |
 | Document round-trip / unknown-field preservation (WIRE-09) | SDK client (`client/client.ts`, `client/invite-manager.ts`) | SDK helpers (`helpers/community-list.ts`, `helpers/invite-list.ts`) parse layer | The parse layer fixes the *type*; the client tier owns the actual publish reconstruction and is where the live defect sits (see Summary) |
-| Channel/metadata edition fold (WIRE-09 item 2/3, WIRE-10) | SDK helpers (`helpers/control.ts` fold, `client/admin.ts` publish) | — | Both the read-side fold and the write-side edit/delete live in `packages/concord`; no browser/API split — this SDK has no server tier of its own |
 | Spec-citation correctness (WIRE-12) | Source comments (all tiers) | Test infra (`__tests__/cord-wire-fixtures.ts`) | Citations are documentation, not runtime behavior; the guard belongs in test/lint tooling |
 
-*(This SDK has no browser/server/CDN split — `packages/concord` is a protocol library consumed by
 host apps. "Tier" above maps to the SDK's own internal layering: helpers vs. client.)*
 
 ## Package Legitimacy Audit
@@ -186,8 +173,6 @@ throughout this milestone. D-11 only bumps the version range. Direct verificatio
 952k weekly downloads and an authoritative GitHub repo (`nbd-wtf/nostr-tools`, the canonical Nostr
 protocol reference library). No `checkpoint:human-verify` is warranted for the *package identity*;
 however, the planner should still gate the **version bump itself** behind a task that runs the
-existing test suite (`pnpm --filter applesauce-concord test`, plus `core`/`common`/`relay`) after
-the bump, since D-11 is also an unreviewed dependency-range change in packages other than concord.
 
 **Version verification (direct source inspection, not just registry metadata):**
 
@@ -221,16 +206,12 @@ locked decision — D-11's target (`^2.24`) is still correct and still contains 
 corrects the historical claim about exactly which release introduced it. No planner action
 required beyond not repeating the "2.24.0 is first" claim in any new comment.
 
-**Confirmed causal chain (why the bump must land in `packages/core`, not `packages/concord`):**
-`packages/concord` never imports `nostr-tools` directly (`grep` confirms zero matches). A
-concord-consuming app's `signer.nip44.encrypt/decrypt` calls resolve through
 `packages/signers/src/signers/private-key-signer.ts`, which imports `nip44` from
 `applesauce-core/helpers/encryption`, which is `packages/core/src/helpers/encryption.ts:2`'s
 `export { nip04, nip44 } from "nostr-tools"` — a direct re-export. So `packages/core`'s
 `nostr-tools` pin is the actual runtime-determining version for any `PrivateKeySigner`-based app.
 Bumping `common`/`relay` too (as D-11 specifies) keeps the monorepo's pnpm-deduplicated
 `node_modules` on one `nostr-tools` instance rather than risking two co-installed majors.
-`[VERIFIED: source trace across packages/core, packages/signers, packages/concord]`
 
 ## Architecture Patterns
 
@@ -245,7 +226,6 @@ Bumping `common`/`relay` too (as D-11 specifies) keeps the monorepo's pnpm-dedup
                                          │ fetch + decrypt/decode
                                          ▼
    ┌──────────────────────────────────────────────────────────────────┐
-   │  PARSE LAYER (packages/concord/src/helpers/*.ts)                 │
    │  parseCommunityList / parseInviteList  — D-12: open document,    │
    │  no key rename, [k: string]: unknown carries every top-level key │
    │  foldControl (control.ts) — D-13 item 3: channel/metadata folds  │
@@ -255,8 +235,6 @@ Bumping `common`/`relay` too (as D-11 specifies) keeps the monorepo's pnpm-dedup
                                     │ (memoized via getOrComputeCachedValue)
                                     ▼
    ┌──────────────────────────────────────────────────────────────────┐
-   │  CAST LAYER (packages/concord/src/casts/*.ts)                    │
-   │  ConcordCommunityList.communities / ConcordInviteList.invites    │
    │  (public getter NAMES unchanged — only internal .entries access) │
    └───────────────────────────────┬────────────────────────────────┘
                                     │ watchLists() merges into client state
@@ -278,7 +256,6 @@ Bumping `common`/`relay` too (as D-11 specifies) keeps the monorepo's pnpm-dedup
                     │  publish back to relay (13302/13303)  │
                     └───────────────────────────────┘
 
-   PARALLEL, LOWER-LEVEL PATH (not on ConcordClient's call graph today):
    operations/community-list.ts + factories/community-list.ts
    — D-12 also fixes these (they exist as a standalone factory API,
      used only by their own tests today, grep-confirmed zero call
@@ -288,7 +265,6 @@ Bumping `common`/`relay` too (as D-11 specifies) keeps the monorepo's pnpm-dedup
 ### Recommended file-level changes
 
 ```
-packages/concord/src/
 ├── types.ts                    # ChannelMetadata, CommunityMetadata gain [k: string]: unknown
 │                                #   (matches CommunityListCommunity's existing convention)
 ├── helpers/
@@ -353,7 +329,6 @@ identically to the closed struct for this purpose (confirmed: `getOrComputeCache
 
 ### Pattern 2: The shared byte-cap helper (D-03)
 
-**What:** No existing shared byte-length utility exists in `packages/concord` — `grep` finds eight
 independent `new TextEncoder().encode(x).length` call sites, no common helper. `MAX_ROLES` (100,
 `helpers/control.ts:28`) is the closest precedent for "an exported cap constant consumed by
 multiple call sites," and `invite-bundle.ts:307-309`'s throw message
@@ -380,7 +355,6 @@ export function assertByteCap(value: string, maxBytes: number, field: string): v
 
 ### Pattern 3: The client-tier "extras" carrier (the finding this research surfaces)
 
-**What:** `ConcordClient` and `ConcordInviteManager` each maintain a *reduced* in-memory
 representation (`this.list`/`this.tombstones`, `this.invites`/`this.tombstones`) that has never
 had a field for "everything else in the document." D-12 fixes the *parse* layer; it does not by
 itself give the client tier anywhere to put a preserved top-level key between read and re-publish.
@@ -421,7 +395,6 @@ not an established pattern. Recommendation included there.
   because a truncated value is indistinguishable from an intentional one and two clients would
   disagree on the truth.
 - **Fixing only `operations/*.ts`** for WIRE-09 and calling it done — see Summary/Pitfall 1. The
-  factory/operations layer is real, tested code, but it is not what `ConcordClient` calls.
 
 ## Don't Hand-Roll
 
@@ -432,7 +405,6 @@ not an established pattern. Recommendation included there.
 | Open-document typing | A bespoke `Record<string, unknown>` wrapper type per document | The codebase's own `[k: string]: unknown` index-signature convention (already used 4×) | Consistency; a new pattern here would be the third distinct way "open object" is expressed in this package |
 
 **Key insight:** Every "don't hand-roll" item above already has a working precedent inside
-`packages/concord` itself — this phase is about applying an existing convention consistently, not
 importing a new one.
 
 ## Common Pitfalls
@@ -442,12 +414,10 @@ importing a new one.
 **What goes wrong:** A plan that implements D-12 exactly as CONTEXT.md's decision text names it
 (`parseCommunityList`/`parseInviteList` + `operations/community-list.ts:87` +
 `operations/invite-list.ts:73`) passes every test written against those files but leaves the
-actual `ConcordClient`/`ConcordInviteManager` publish path — which never calls
 `CommunityListFactory`/`InviteListFactory`/`modifyCommunityList`/`modifyInviteList` at all
 (zero call sites under `client/*.ts`, grep-confirmed) — exactly as lossy as before.
 
 **Why it happens:** CONTEXT.md's D-12 text cites the operations files as "the reconstruction
-lines that cause L07," which is true of those files, but the concord-audit.md source finding L07
 itself lists **five** site groups, including `client.ts:762` and `invite-manager.ts:220`
 (current: `client.ts:1207`, `invite-manager.ts:~281`) — sites CONTEXT.md's decision prose doesn't
 individually enumerate.
@@ -457,9 +427,6 @@ at `client.ts:1207` (`saveCommunityList`) and `invite-manager.ts:~281` (`save()`
 WIRE-09 sites, not optional follow-up. Apply Pattern 3's `documentExtras` carrier (or equivalent).
 
 **Warning signs:** A round-trip test that unlocks/mutates/re-publishes via the `EventFactory`
-chain (`CommunityListFactory.modify(event).join(...)`) will pass even if `ConcordClient` itself
-is still lossy — because it never exercises `ConcordClient` at all. A genuine regression test for
-this requirement must drive `ConcordClient.recordJoin`/`.leave`/`saveCommunityList` (or the
 equivalent invite-manager methods) end-to-end, not just the factory layer.
 
 ### Pitfall 2: The community-metadata fold is already correct — don't "fix" what isn't broken
@@ -578,11 +545,9 @@ correct behavior is "measures and logs but does not throw." These need rewriting
 
 Every row below was independently confirmed by (1) reading the actual code at that file:line and
 (2) matching its stated subject against the live CORD-06/CORD-03 text fetched from
-`github.com/concord-protocol/concord@main`. All 10 `CORD-06 §94` sites resolve to the same real
 section — every one is about a Refounding bundling a channel-scoped rekey, sealed under the prior
 root (CORD-06 §3's exact subject). Both `CORD-03 §44` sites resolve to CORD-03 §3 (Messages) —
 both are the `checkChatBinding` anti-replay drop, which is CORD-03 §3's binding-check MUST
-("Concord Channels make CORD-01's binding a requirement... a receiver MUST check both
 strict-equal... dropping a mismatch").
 
 | File:Line | Current (invalid) | Actual subject (verified in code) | Correct citation |
@@ -625,7 +590,6 @@ CORD-07: §1 Voice Keys, §2 The Broker, §3 Media Encryption, §4 Presence, §5
          §6 Video and Screenshare, §7 Moderation
 ```
 
-`[VERIFIED: github.com/concord-protocol/concord@main, direct raw-file fetch]` — this exactly
 matches D-17's own transcribed table in CONTEXT.md; independently re-derived here from the live
 repo, not copied from CONTEXT.md.
 
@@ -653,7 +617,6 @@ implementations MUST enforce the cap at every layer themselves (libraries are le
 lenient publisher mints events a strict reader cannot decrypt)."
 ```
 
-`[VERIFIED: github.com/concord-protocol/concord@main/02.md, direct raw-file fetch]` — matches
 CONTEXT.md D-05/D-06/D-07's citations verbatim; independently confirmed against the live file, not
 merely trusted from CONTEXT.md.
 
@@ -731,7 +694,6 @@ what you don't understand."
 
 3. **Does the CORD-03 §2 comment "name ≤ 64 bytes, the protocol-wide cap (CORD-04)" (in the spec's
    own example JSON comment) indicate the cap should also be cited as CORD-04 somewhere in
-   concord's code, or is this a spec-authoring inconsistency to ignore?** — **RESOLVED: ignore it
    and cite CORD-02 §6 for all cap comments**, per D-05's locked citation. The recommendation below
    was accepted. It affects none of the 12 citation-replacement sites. Worth reporting upstream
    alongside the CORD-02-vs-NIP-44 divergence already in CONTEXT.md's Deferred Ideas.
@@ -760,10 +722,7 @@ today at a lower version.
 
 | Property | Value |
 |----------|-------|
-| Framework | Vitest ^4.0.15 (`packages/concord/package.json`) |
 | Config file | none dedicated — root/package defaults (`vitest run --passWithNoTests`) |
-| Quick run command | `pnpm --filter applesauce-concord test -- <pattern>` |
-| Full suite command | `pnpm --filter applesauce-concord test` (also run `core`/`common`/`relay` after the D-11 bump) |
 
 ### Phase Requirements → Test Map
 
@@ -772,23 +731,19 @@ today at a lower version.
 | WIRE-06 | Channel name >64 UTF-8 bytes throws on write, multi-byte string exercised | unit | `vitest run helpers/__tests__/community.test.ts` or new admin test | ✅ extend `client/__tests__/*.test.ts` (admin methods have no dedicated test file today — confirm during planning) |
 | WIRE-07 | Community name/description cap enforcement + metadata round-trip proof (Pitfall 2) | unit | `vitest run helpers/__tests__/community.test.ts` | ✅ extend |
 | WIRE-08 | 50-membership cap, live-only counting, asymmetric local-refuse/merge-tolerate | unit | `vitest run client/__tests__/client.test.ts` | ✅ extend (mirrors existing `COMMUNITY_LIST_MAX_ENTRY_BYTES` test block) |
-| WIRE-09 | Open-document round-trip through `ConcordClient`'s ACTUAL publish path (Pitfall 1) — not just the factory layer | integration | `vitest run client/__tests__/client.test.ts` + `client/__tests__/invite-watcher.test.ts` or a new suite | ❌ Wave 0 — no existing test drives `saveCommunityList`/`invite-manager.save()` with an unknown top-level field present |
 | WIRE-10 | `deleteChannel` preserves unknown fields, never leaks key material (Pitfall 3's denylist test) | unit | `vitest run client/__tests__/community.test.ts` (admin tests likely live here or a sibling) | ❌ Wave 0 — the hostile-`key`-field regression test does not exist |
 | WIRE-12 | Structural citation guard (D-16) | unit/lint | `vitest run __tests__/` (new file) or a script in `package.json`'s `test` chain | ❌ Wave 0 — no citation-validation mechanism exists at all today |
 
 ### Sampling Rate
 
 - **Per task commit:** targeted `vitest run <changed-file's test>`
-- **Per wave merge:** `pnpm --filter applesauce-concord test` (full suite; also re-run `core`/
   `common`/`relay` suites after D-11's bump lands)
 - **Phase gate:** Full suite green before `/gsd-verify-work`, including the D-11-bumped packages
 
 ### Wave 0 Gaps
 
 - [ ] A cross-cutting document-conformance test file (recommended: new
-      `packages/concord/src/__tests__/document-caps-conformance.test.ts`, sibling to
       `cord-wire-fixtures.ts`) for the two client-tier round-trip proofs (WIRE-09 via
-      `ConcordClient`, not the factory layer) and the D-16 structural guard — these don't have a
       natural home in any existing per-file suite (resolves the "test file organization"
       discretion item: **hybrid** — narrow unit assertions extend existing suites per-file, the
       two cross-cutting proofs get one new suite)
@@ -828,7 +783,6 @@ today at a lower version.
 
 ### Primary (HIGH confidence)
 
-- `github.com/concord-protocol/concord@main` — `02.md`, `03.md`, `05.md`, `06.md`, `01.md`
   fetched via direct `curl` to `raw.githubusercontent.com` and read verbatim with the Read tool
   (not summarized) — §6/§8/Appendix B of CORD-02, §2/§3 of CORD-03, §4 of CORD-05, all three
   sections of CORD-06, and CORD-01's "Deletions" section. `[VERIFIED: github raw file fetch]`
@@ -836,7 +790,6 @@ today at a lower version.
   `unpkg.com/nostr-tools@<version>/lib/esm/nip44.js` across 8 versions (2.19.4, 2.22.0, 2.22.1,
   2.23.0–2.23.2, 2.23.4, 2.23.12, 2.24.0, 2.24.1), cross-checked against the locally-installed
   `node_modules/.pnpm/nostr-tools@2.19.4.../nip44.js`. `[VERIFIED: npm registry + unpkg CDN + local install]`
-- `packages/concord/src/**/*.ts` — every cited file:line was read directly (Read tool), not
   grepped-and-assumed: `helpers/community-list.ts`, `helpers/invite-list.ts`,
   `operations/community-list.ts`, `operations/invite-list.ts`, `factories/community-list.ts`,
   `factories/invite-list.ts`, `casts/community-list.ts`, `casts/invite-list.ts`,
@@ -844,8 +797,6 @@ today at a lower version.
   `helpers/community.ts`, `helpers/keys.ts`, `helpers/invite-bundle.ts`,
   `client/private-channel.ts`, `client/community.ts`, `client/channel-sync.ts`,
   `operations/gift-wrap.ts`, `types.ts`, `__tests__/cord-wire-fixtures.ts`, plus all
-  `package.json` files for `core`/`common`/`relay`/`concord`/`signers`. `[VERIFIED: direct file read]`
-- `.planning/concord-audit.md` — M12, M17, L02, L07, L09, L11 findings read directly, confirming
   and extending CONTEXT.md's site enumeration (notably: L07's own site list already names
   `client.ts:762`/`invite-manager.ts:220`, validating Pitfall 1's finding as pre-existing audit
   scope, not new scope this research invented). `[VERIFIED: direct file read]`

@@ -72,7 +72,6 @@ status: complete
 - All 16 leaf/component interfaces (`IEventStoreRead`, `IAsyncEventStoreRead`, `IEventStoreReadAdvanced`, `IAsyncEventStoreReadAdvanced`, `IEventStoreStreams`, `IEventStoreActions`, `IAsyncEventStoreActions`, `IEventClaims`, `IEventSubscriptions`, `IDeleteManager`, `IAsyncDeleteManager`, `IExpirationManager`, `IEventDatabase`, `IAsyncEventDatabase`, `IEventMemory`, `IMissingEventLoader`) now carry `<E extends StoreEvent = NostrEvent>` with bare `NostrEvent` event params/returns replaced by `E`
 - `IEventStore<E>` and `IAsyncEventStore<E>` are generic, threading `E` through their store-owned component interfaces while composing the `EventModels`-backed `IEventSubscriptions`/`IEventModelMixin` portion at the `NostrEvent` default — the D-02 seam that keeps `EventStore extends EventModels implements IEventStore<E>` compiling in Phase 1
 - `IEventModelMixin`, `ModelEventStore`, `Model`, `ModelConstructor` left completely untouched, deferred to Phase 2 per D-02
-- `pnpm --filter applesauce-core build` and `pnpm --filter applesauce-core test` (589/589) both green with zero edits to any downstream consumer (managers, store classes, `applesauce-common`, `applesauce-react`, `applesauce-relay`, `applesauce-concord` all still build clean against the bare/default interfaces)
 
 ## Task Commits
 
@@ -102,7 +101,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 - All CORE-05 interfaces are generic and ready for Plan 03 (managers: `DeleteManager`, `AsyncDeleteManager`, `ExpirationManager`, `EventMemory`) to implement `I*Manager<E>`/`IEventMemory<E>` with concrete `E`-typed classes
 - Plan 04 (`EventStore<E>`/`AsyncEventStore<E>` classes) can now implement `IEventStore<E>`/`IAsyncEventStore<E>` directly
-- `pnpm --filter applesauce-core build` and `pnpm --filter applesauce-core test` are both green; downstream packages (`applesauce-common`, `applesauce-react`, `applesauce-relay`, `applesauce-concord`) verified to still build clean with zero edits
 - No blockers for Plan 03
 
 ---

@@ -1,7 +1,6 @@
 # Phase 5: Cache Identity Memo Fix - Pattern Map
 
 **Mapped:** 2026-07-15
-**Files analyzed:** 8 (2 primary changes + 3 test files + 1 changeset + comment-sweep pattern + 1 concord comment fix)
 **Analogs found:** 8 / 8
 
 ## File Classification
@@ -10,10 +9,6 @@
 |-------------------|------|-----------|-----------------|---------------|
 | `packages/core/src/helpers/cache.ts` | utility (memoization) | transform | itself (18 lines, being edited in place) | n/a — read in full below |
 | `packages/core/src/helpers/__tests__/cache.test.ts` (new) | test | transform + request-response | `packages/common/src/operations/__tests__/tags.test.ts` (memo/spread half) + `packages/common/src/factories/__tests__/git-lists.test.ts` (real-signing half) | exact (composite) |
-| `packages/concord/src/helpers/__tests__/keys.test.ts` | test | CRUD (fixture-derived) | itself — existing `describe("ConcordKeys", …)` suite, new case added | exact (extend existing file) |
-| `packages/concord/src/helpers/__tests__/channel-rekey.test.ts` | test | CRUD (fixture-derived) | itself — existing `describe("channel-scoped rekey", …)` suite, new case added | exact (extend existing file) |
-| ~33 comment-only sweep sites (`core`/`common`) | (mixed: helper/operation) | n/a (comment only) | `packages/concord/src/helpers/keys.ts:90-100` (`BaseKeysSymbol` block comment) and `packages/core/src/helpers/pipeline.ts:4` (`PRESERVE_EVENT_SYMBOLS` one-liner JSDoc) | role-match (comment-density template) |
-| `packages/concord/src/helpers/keys.ts:98-104` | comment correction | n/a | itself (in-place edit) | n/a |
 | `.changeset/*.md` (new, core patch) | config/doc | n/a | `.changeset/cache-group-key-derivation.md` | exact |
 
 ## Pattern Assignments
@@ -48,7 +43,6 @@ Object.defineProperty(event, symbol, { value, enumerable: false, writable: true,
 ```
 `getCachedValue`/`Reflect.has`/`Reflect.get` reads are unaffected — only the two writes change.
 
-**Canonical taxonomy prose (D-06) lands here** — model the explanatory-comment density on the `BaseKeysSymbol` block comment excerpted below (concord's own worked, prose-heavy symbol-memo doc comment) rather than the one-line JSDoc currently on `getOrComputeCachedValue`. Cross-reference `PRESERVE_EVENT_SYMBOLS` (`pipeline.ts:5`) and `event-store.ts:219`'s merge list per D-07.
 
 ---
 
@@ -147,12 +141,8 @@ This is *why* `configurable: true` is required in the D-02 fix — `Reflect.dele
 
 ---
 
-### `packages/concord/src/helpers/__tests__/keys.test.ts` (existing, gaining H01(a) case)
 
-**File header comment convention** (lines 1-3) — every concord test file opens with a prose comment naming the spec/CORD reference and what's exercised; new case's surrounding file already has this, no new header needed, but the *pattern* for any new describe block is:
 ```typescript
-// The single ConcordKeys state object + its functional operations, exercised
-// with no ConcordClient: derive → wrap → decode-via-planes → refound → readRekey
 ```
 
 **Fixture/genesis helper reused** (lines 24-28):
@@ -164,30 +154,22 @@ async function genesis(name = "Test") {
   return { owner, ownerPub, material: g.material, generalChannelId: g.generalChannelId };
 }
 ```
-New H01(a) case should call `genesis()`, then `rollForward(deriveConcordKeys(material, []), newRoot, newEpoch, refounder, [])` and compare `.control.pk` against `controlGroupKey(newRoot, hexToBytes(communityIdBytes), newEpoch).pk` (from `crypto.ts:123-125`, imported independently — never from `keys.ts`/`deriveConcordKeys` itself, per D-18).
 
-**Assertion style** (lines 44-55, `deriveConcordKeys` test) — `toMatchObject`/`toBe` directly on `.control.pk`, `.planes.get(...)`:
 ```typescript
-it("deriveConcordKeys builds every plane address + a decrypt lookup", async () => {
   const { material } = await genesis();
-  const keys = deriveConcordKeys(material, []);
   expect(keys.planes.get(keys.control.pk)).toMatchObject({ type: "control", convKey: keys.control.convKey });
 });
 ```
 
-**`crypto.ts` signatures to import directly** (`packages/concord/src/helpers/crypto.ts:118-125`):
 ```typescript
 export function channelGroupKey(secret: Uint8Array, channelId: Uint8Array, epoch: number): GroupKey {
-  return groupKey("concord/channel", secret, channelId, epoch);
 }
 export function controlGroupKey(root: Uint8Array, communityId: Uint8Array, epoch: number): GroupKey {
-  return groupKey("concord/control", root, communityId, epoch);
 }
 ```
 
 ---
 
-### `packages/concord/src/helpers/__tests__/channel-rekey.test.ts` (existing, gaining H01(c) case)
 
 **Existing `rollForwardChannel` case to extend alongside** (lines 68-83) — this is the exact shape the new spec-derived case slots next to:
 ```typescript
@@ -216,11 +198,9 @@ New H01(c) case: `const rolled = rollForwardChannel(channel, newKeyHex, newEpoch
 
 ### ~33 comment-only sweep sites (`core`/`common`) — no behavior change, D-08
 
-**Template A — dense worked-example block comment** (`packages/concord/src/helpers/keys.ts:90-100`, the `BaseKeysSymbol`/`ChannelKeysSymbol` comment — use this density/shape for the canonical taxonomy prose in `cache.ts` itself, and as the model for any sweep site that needs more than one line):
 ```typescript
 /**
  * Every group key derives from `material` (...), which is a STABLE object on
- * the hot path — `deriveConcordKeys` returns the same `material` it was
  * handed, and `reconcileLive` threads that one object through every state
  * emission. So we memoize the expensive secp256k1 derivations directly on it
  * (the repo's `getOrComputeCachedValue` symbol pattern), computed once and
@@ -242,7 +222,6 @@ Reflect.set(event, HiddenTagsSymbol, tags);
 
 ---
 
-### `packages/concord/src/helpers/keys.ts:98-104` (comment-only correction, D-11)
 
 **Current (false) prose to correct** (already excerpted above as Template A) — the phrase `"until a rekey/Refounding mints a fresh material — exactly when the keys must change"` is the false claim (it was false before the memo fix, is made true by it); correct it to state that this is now true post-fix, or soften the claim to acknowledge the prior bug and this phase's resolution, per D-11.
 
@@ -253,7 +232,6 @@ Reflect.set(event, HiddenTagsSymbol, tags);
 **Exact frontmatter + single-sentence body shape**, from `.changeset/cache-group-key-derivation.md:1-5` (note: this existing changeset is for a *related but different* prior fix — same package/area, useful as the closest sibling example):
 ```markdown
 ---
-"applesauce-concord": patch
 ---
 
 Memoize group-key derivation on the community key material so a community's stream keys are derived once instead of on every folded-state change and twice per synced epoch.
@@ -278,13 +256,9 @@ expect(Reflect.has(spreadCopy, symbol)).toBe(false);
 **Source:** `packages/common/src/factories/__tests__/git-lists.test.ts:26-36` + `packages/common/src/__tests__/fixtures.ts` (`FakeUser`)
 **Apply to:** `cache.test.ts`'s carry-forward half — `.as(user)....sign()` (or raw `eventPipe(...)` + `signer.signEvent(...)`) then read decrypted content back off the signed result.
 
-### Concord test file header + genesis fixture
-**Source:** `packages/concord/src/helpers/__tests__/keys.test.ts:1-28`, `channel-rekey.test.ts:1-51`
 **Apply to:** the two new spec-derived cases — reuse `genesis()`/`privateChannel()` rather than hand-building `JoinMaterial`/`ChannelKey`.
 
 ### Independent spec-formula computation (never call code under test)
-**Source:** `packages/concord/src/helpers/crypto.ts:118-125` (`channelGroupKey`, `controlGroupKey`)
-**Apply to:** both new spec-derived test cases' expected-value computation, per D-18 — import directly from `crypto.ts`, never derive expected values via `rollForward`/`rollForwardChannel`/`deriveConcordKeys`/`deriveChannelKeys`.
 
 ## No Analog Found
 
@@ -292,7 +266,6 @@ None — every file/site in the phase's settled scope has at least a role-match 
 
 ## Metadata
 
-**Analog search scope:** `packages/core/src/helpers/`, `packages/core/src/helpers/__tests__/`, `packages/common/src/{operations,factories,helpers}/__tests__/`, `packages/common/src/__tests__/fixtures.ts`, `packages/concord/src/helpers/`, `packages/concord/src/helpers/__tests__/`, `.changeset/`
 **Files scanned:** ~15 (cache.ts, pipeline.ts, encrypted-content.ts + its test, tags.test.ts, git-lists.test.ts, fixtures.ts, keys.test.ts, channel-rekey.test.ts, keys.ts excerpts, crypto.ts excerpt, one changeset)
 **Pattern extraction date:** 2026-07-15
 ```

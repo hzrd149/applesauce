@@ -91,7 +91,6 @@ status: complete
 - Added a compile-time-only `@ts-expect-error` negative probe: a minimal `SignedOnlyCast extends EventCast<NostrEvent>` reading `this.event.sig`, used as `castEvent(rumor, SignedOnlyCast, store)` — the line only compiles-as-expected because it genuinely fails to type-check; if the sig-gate regresses, `@ts-expect-error` becomes unused and the build fails
 - The two original bare-`EventStore()` cases remain untouched — 4 total tests in `rumor-cast.test.ts` now (2 original + 2 new), all passing
 - Regenerated `exports.test.ts`'s inline snapshot via `pnpm --filter applesauce-core exec vitest run -u src/__tests__/exports.test.ts` — the only diff was the addition of `performCast` (`RumorStore` was already present from plan 03-01's snapshot update)
-- Part A gate cleared: `pnpm --filter applesauce-core test` (54 test files, 601/601 tests pass), `pnpm --filter applesauce-core build` (clean tsc), and full `pnpm -r build` (exit 0 across `applesauce-core`, `applesauce-concord`, `applesauce-common`, `applesauce-wallet`, `applesauce-react`, `apps/examples`) — no downstream fixes were required
 
 ## Task Commits
 

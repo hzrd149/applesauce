@@ -110,17 +110,14 @@ coverage:
         status: pass
     human_judgment: false
   - id: D8
-    description: "Five single-sentence changesets (4 applesauce-relay minor, 1 applesauce-loaders minor) cover every distinct published behavior change, including the D-14 authTimeout consequence, with none for the unreleased applesauce-concord"
     verification:
       - kind: other
-        ref: "5 new files under .changeset/, each with a single-sentence body, correct package/bump frontmatter, and no applesauce-concord mention"
         status: pass
     human_judgment: false
   - id: D9
     description: "13-VALIDATION.md's per-task map filled (Task ID/Plan/Wave for all 18 rows, including 4 rows added for this phase's own new checks), nyquist_compliant: true, status: approved; REQUIREMENTS.md RAUTH-01..09 marked Complete against the actual implemented+tested state"
     verification:
       - kind: other
-        ref: "grep -c 'TBD' 13-VALIDATION.md == 0; grep -c 'nyquist_compliant: true' == 1; pnpm --filter applesauce-relay test (231/231), pnpm --filter applesauce-loaders test (118/118), pnpm --filter applesauce-concord test (559/559, non-gating smoke)"
         status: pass
     human_judgment: false
 
@@ -148,7 +145,6 @@ status: complete
 - `errorToPublishResponse` attaches the caught error object on `PublishResponse.error` alongside the existing `message` fallback (D-18) — a group publish that fails auth now reaches a consumer as something it can branch on structurally, not just a string
 - Table-driven pass-through tests (`it.each` over method names, per D-20) prove `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` reach the underlying relay method unchanged for all 7 `RelayGroup` operations (`req`/`request`/`subscription`/`count`/`event`/`sync`/`negentropy`) and all 7 `RelayPool` operations (`req`/`request`/`subscription`/`count`/`event`/`publish`/`sync`) — a newly added operation that skips wiring the four fields would now fail this table rather than going unnoticed
 - Group-level coverage added for RAUTH-05 (two relays each invoke their own handler independently, a rejecting handler on one doesn't affect the other's retry), D-19 (one relay's sync failure doesn't stop another's events, group sync still completes), D-18 (failed group publish carries the original error object), and RAUTH-09 (`group.status$` still surfaces `authRequiredForRead` per relay)
-- Five single-sentence changesets: four `applesauce-relay` minor bumps (operation-scoped auth callbacks; the `authTimeout`-bounded auth wait carrying the D-14 "callers relying on an indefinite wait now need `authTimeout: false`" consequence; `PublishResponse.error`; group-sync per-relay isolation) and one `applesauce-loaders` minor bump (`SyncLoader` auth threading) — none for the unreleased `applesauce-concord`
 - `13-VALIDATION.md`'s per-task map filled for all 18 rows (the 9 original requirement rows, 3 gap rows, and 4 new rows this plan added: the shared `auth-retry.ts` operator's own unit test, `sync()`'s internal-call threading tests, and the group-level RAUTH-05/D-19/D-18/RAUTH-09 checks), `nyquist_compliant: true`, `status: approved`
 - `REQUIREMENTS.md`'s RAUTH-01 through RAUTH-09 all marked Complete, verified against the actual code (traced every pass-through site in `group.ts`/`pool.ts`) rather than accepted on plan text alone
 
@@ -194,7 +190,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - Phase 13 is complete: all eight auth sites (`req`/`request`/`subscription`/`count`/`publish`/`event`/`sync`/`negentropy`) are converted to the shared operator model, `RelayPool`/`RelayGroup` pass every option through on all eight operations, and `SyncLoader` threads the three options into both its paths. RAUTH-01 through RAUTH-09 are Complete in REQUIREMENTS.md.
-- Phase 15 (Concord stream-auth migration, CAUTH-01..04) is unblocked: `PublishResponse.error` and the typed auth error classes (`AuthHandlerError`/`AuthTimeoutError`/`AuthRequiredError`) exist for its branching, and `RelayPool`/`RelayGroup` forward `onAuthRequired`/`authTimeout`/`authRetries` uniformly.
 - One item remains tracked but explicitly out of this phase's scope: `.planning/phases/13-operation-scoped-nip-42-auth-hooks/deferred-items.md`'s 13-02 finding (a connection can drop mid-auth-wait at very low `keepAlive`, verified pre-existing and not a regression) — worth a backlog entry once Phase 14's auth lifecycle logging work gives it a place to land.
 - Phase 14 (ALOG-01/02/03, auth lifecycle observability) can now build on this phase's complete operation-scoped auth surface, including the `console.debug` D-19 drop-notice this plan added as a placeholder (Phase 14 territory per the plan's own text, not replaced with real debug-logger wiring here).
 

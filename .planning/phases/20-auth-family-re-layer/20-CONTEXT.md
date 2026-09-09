@@ -43,7 +43,6 @@ Re-layer the AUTH family so `auth()` is the fixed low-level one-frame/one-reply 
 ### Verification Contract
 - **D-20:** Real-wire tests must cover fresh-relay connect/wait, relay-never-sends-challenge timeout, signer rejection, null/different challenge during signing, same-challenge repetition, exact freshness exhaustion, whole timeout across every stage, abort and late signer suppression, stable `OK false`, transport failure, multi-await versus separate calls, and concurrent same-pubkey bookkeeping.
 - **D-21:** Raw parity tests must prove public `event()` can only write EVENT, public `auth()` writes exactly one AUTH and never calls `publish()`, AUTH `OK false` containing `auth-required:` does not invoke auth handling, listener-before-write survives synchronous replies, and readiness/timeout/close/repeated-subscription behavior stays aligned through the private helper.
-- **D-22:** Add a compile-time guard that `relay.event(event, "AUTH")` is rejected, and update relay types, exports, documentation, examples, focused changesets, Concord/Vertex compatibility checks, and loader classifier tests together.
 
 ### the agent's Discretion
 - Choose names and internal RxJS/Promise decomposition for the private raw exchange, authenticate options, and terminal errors, provided the locked responsibility and error-channel contracts remain exact.
@@ -64,7 +63,6 @@ Re-layer the AUTH family so `auth()` is the fixed low-level one-frame/one-reply 
 
 ### Public Integration Surfaces
 - `apps/docs/loading/relays/relays.md` — documented direct EVENT and manual/multi-user authentication flows.
-- `packages/concord/src/client/auth.ts` — operation-scoped consumers of `authenticate()` and verdict/error handling.
 - `packages/loaders/src/loaders/sync-loader.ts` — structural Relay auth interface and duck-typed terminal auth classifier.
 - `packages/extra/src/vertex.ts` — challenge-driven automatic authentication consumer.
 

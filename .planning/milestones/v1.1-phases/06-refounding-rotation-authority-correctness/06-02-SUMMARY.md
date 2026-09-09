@@ -1,13 +1,10 @@
 ---
 phase: 06-refounding-rotation-authority-correctness
 plan: 02
-subsystem: concord
-tags: [nostr, concord, epoch-rotation, membership, guestbook, rumor-store]
 
 # Dependency graph
 requires:
   - phase: 06-01
-    provides: spec-derived guestbook/base-rekey address probes + memo-armed spread guards (ROTATE-01/02 test coverage), confirming rollForward/deriveConcordKeys correctly re-derive per-epoch addresses
 provides:
   - Epoch-scoped Guestbook plane store keying (`guestbook@<epoch>`) so a Refounding's new epoch reads only its own Joins/Leaves/Kicks/Snapshots
   - A live `observed` set scoped to current-epoch guestbook + channel stores only (control/dissolved/rekey excluded)
@@ -25,14 +22,7 @@ tech-stack:
 
 key-files:
   created:
-    - .changeset/concord-memberlist-epoch-scoping.md
   modified:
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/client/sync.ts
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/models/community.ts
-    - packages/concord/src/client/__tests__/community.test.ts
-    - packages/concord/src/helpers/__tests__/guestbook.test.ts
 
 key-decisions:
   - "D-01/D-02: fixed ROTATE-04 (H02) via epoch-scoped store keying (guestbook@<epoch>), not a timestamp-floor heuristic — matches CORD-02 §5's 'the Guestbook rides the epoch' structural model."
@@ -42,7 +32,6 @@ key-decisions:
   - "Open Question 1 (public-channel observed residual) resolved as: acknowledge and pin via a regression test, not fix — channel epoch-keying is explicitly Phase 7 territory."
 
 patterns-established:
-  - "Reaching into ConcordCommunity's private `stores`/`keys` fields via a type cast in a test is the sanctioned technique for probing store lifecycle (disposal, retention) when no production compaction mechanism yet exists to trigger the condition naturally."
 
 requirements-completed: [ROTATE-04, ROTATE-02]
 
@@ -52,7 +41,6 @@ coverage:
     requirement: "ROTATE-04"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#drops a member excluded by a Refounding even with a prior-epoch Join or observed authorship (ROTATE-04)"
         status: pass
     human_judgment: false
   - id: D2
@@ -60,7 +48,6 @@ coverage:
     requirement: "ROTATE-04"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#drops a member excluded by a Refounding even with a prior-epoch Join or observed authorship (ROTATE-04)"
         status: pass
     human_judgment: false
   - id: D3
@@ -68,7 +55,6 @@ coverage:
     requirement: "ROTATE-04"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#honors the NEW epoch's guestbook snapshot after a Refounding, not the prior epoch's"
         status: pass
     human_judgment: false
   - id: D4
@@ -76,7 +62,6 @@ coverage:
     requirement: "ROTATE-04"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#D-04: passing state.members as the next refound()'s keep does not re-admit a dropped member"
         status: pass
     human_judgment: false
   - id: D5
@@ -84,21 +69,18 @@ coverage:
     requirement: "ROTATE-02"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#D-03: disposes+deletes a guestbook store whose epoch ages out of held_roots"
         status: pass
     human_judgment: false
   - id: D6
     description: "foldMembers' forward-observation !c admit is characterized as spec-correct and unmodified by this fix"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/guestbook.test.ts#admits a bare observed entry with no coalesced guestbook state (the `!c` branch) — foldMembers is unmodified by ROTATE-04's fix"
         status: pass
     human_judgment: false
   - id: D7
     description: "Open Question 1: public-channel observed residual pinned as a known, deferred-to-Phase-7 regression fixture"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#Open Question 1 (DEFERRED to Phase 7): an excluded member's OLD public-channel message still counts as observed post-Refounding"
         status: pass
     human_judgment: false
 
@@ -121,13 +103,10 @@ status: complete
 
 ## Accomplishments
 
-- `deriveConcordKeys` stamps `epoch: material.root_epoch` on the Guestbook `PlaneInfo`, and `planeStoreKey` (`client/sync.ts`) now returns `guestbook@<epoch>` for that plane — a Refounding's new epoch reads a fresh, empty Guestbook store instead of one flattened across every prior epoch.
 - `client/community.ts` routes all Guestbook store access (eager construction, the `guestbookStore` getter, `rewireState`) through a new `guestbookPlaneKey()` helper resolving the CURRENT epoch, and scopes the live `observed` set to current-epoch guestbook + channel stores only (control/dissolved/rekey excluded).
-- `models/community.ts`'s `ConcordCommunityStateModel` no longer counts the control store as observed activity — only the (current-epoch) guestbook + caller-supplied observed stores feed the fold.
 - A D-03 retention trim in `adoptRefounding` disposes+deletes any `guestbook@<epoch>` store whose epoch is no longer current nor held in `material.held_roots`.
 - `helpers/guestbook.ts`'s `foldMembers` is completely unmodified — confirmed via `git diff --stat`.
 - Regression coverage: a ROTATE-04 test proving a prior-epoch Join or prior-epoch observed authorship cannot resurrect an excluded member; a reworked new-epoch-snapshot test proving the NEW epoch's snapshot (not the old one) seeds membership; a D-04 keep-list footgun test; a D-03 store-disposal test; a `foldMembers` forward-observation characterization test; and an explicitly-deferred Open Question 1 residual test for the public-channel observation gap.
-- `.changeset/concord-memberlist-epoch-scoping.md` (patch) ships the fix.
 
 ## Task Commits
 
@@ -140,13 +119,6 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `packages/concord/src/helpers/keys.ts` - `deriveConcordKeys` stamps `epoch` on the guestbook `PlaneInfo`
-- `packages/concord/src/client/sync.ts` - `planeStoreKey` returns `guestbook@<epoch>` for the guestbook plane; channel/control/dissolved/rekey unchanged
-- `packages/concord/src/client/community.ts` - `guestbookPlaneKey()` helper, epoch-scoped guestbook store routing, scoped `observed` composition in `rewireState`, D-03 retention trim in `adoptRefounding`
-- `packages/concord/src/models/community.ts` - `observedStores` no longer includes the control store
-- `packages/concord/src/client/__tests__/community.test.ts` - reworked new-epoch-snapshot test + 5 new regression tests (ROTATE-04, D-03, D-04, Open Question 1)
-- `packages/concord/src/helpers/__tests__/guestbook.test.ts` - forward-observation `!c` characterization test
-- `.changeset/concord-memberlist-epoch-scoping.md` - patch changeset (created)
 
 ## Decisions Made
 
@@ -162,7 +134,6 @@ None - plan executed exactly as written. The reworked `:515` test's exact mechan
 
 ## Issues Encountered
 
-None. All scoped test runs and the full `applesauce-concord` suite (200 tests) passed on first implementation, and `tsc` (`pnpm --filter applesauce-concord build`) compiled cleanly with no type errors.
 
 ## User Setup Required
 

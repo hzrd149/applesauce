@@ -12,7 +12,6 @@ provides:
   - "packages/loaders/src/loaders/sync-loader.ts's paginatedRequest logger (backwardLog) hoisted out of the switchMap-reachable request$() call site to buildRelayStream's per-relay top level, matching requestLog's 14-02 pattern"
   - "the D-18 regression guard widened from a single-namespace filter (\"request\" only) to a total extend()-count assertion, so it observes derivations anywhere in the per-relay scope, not just the one namespace 14-02 happened to touch"
   - "WR-07 closed; ALOG-03 as restated by 14-02 now actually holds across packages/loaders/, not just the one call site 14-02 fixed"
-affects: [15-concord-stream-auth-cleanup]
 
 # Tech tracking
 tech-stack:

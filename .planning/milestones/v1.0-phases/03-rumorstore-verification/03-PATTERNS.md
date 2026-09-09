@@ -131,7 +131,6 @@ export function castEvent<C extends EventCast<StoreEvent>, E extends StoreEvent 
 }
 ```
 
-**Target (WR-01 fix — RESEARCH.md Pattern 2, empirically verified in research session via `pnpm -r build` + `pnpm --filter applesauce-concord test`):** Rename the body above to `performCast` (mark `@internal` in JSDoc), add `CastEventInput<T>`, and add a new sig-gated `castEvent` wrapper that delegates to it:
 ```typescript
 export type CastEventInput<T extends StoreEvent> = T extends { sig: string } ? NostrEvent : StoreEvent;
 
@@ -153,7 +152,6 @@ export function castEvent<C extends EventCast<StoreEvent>, E extends StoreEvent 
   return performCast(event as StoreEvent, cls, store);
 }
 ```
-**Do not** use the naive exact-`T` conditional (`event: C extends EventCast<infer T> ? T : never`) — RESEARCH.md Pitfall 1 confirms this over-tightens and breaks `packages/concord/src/casts/direct-invite.ts`'s real `castEvent(rumor, ConcordDirectInvite, store)` call site (narrowed-kind rumor cast). Use the sig-gated form only.
 
 ---
 

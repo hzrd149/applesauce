@@ -47,7 +47,6 @@ applies no `deleted` filter) but silently excluded from sync/subscription/sub-en
 
 **Verified this pass — CLOSED, and closed as a class, not by enumeration:**
 
-- `packages/concord/src/helpers/control.ts:212-219` — `CHANNEL_METADATA_FOLD_RULES` is a rule
   table whose TYPE (`ChannelMetadataFoldRules`, line 189-191) is a total mapped type over
   `ChannelMetadataDeclared` (the five declared `ChannelMetadata` fields with optionality removed).
   `deleted` is ruled `{ disposition: "optional", guard: isBooleanValue }`; `custom` is ruled
@@ -74,7 +73,6 @@ applies no `deleted` filter) but silently excluded from sync/subscription/sub-en
   cause rather than the two instances.
 
 **Regression coverage (WR-09, closed) — read and confirmed non-vacuous by direct execution:**
-`packages/concord/src/helpers/__tests__/control.test.ts` Tests G (non-boolean `deleted`: `"false"`,
 `"true"`, `1`, `null` — all dropped, channel remains live and reachable via a `!c.deleted` gate,
 with genuine `false`/`true` discriminating controls), H (non-object `custom`: string/null/array — all
 dropped, genuine nested object survives deep-equal), I (WIRE-09 non-regression: the SAME hostile
@@ -86,14 +84,12 @@ a guard miss and every `"required"` rule rejects the edition), and L (`__proto__
 the folded object's prototype). Ran directly (not trusting SUMMARY.md's claim):
 
 ```
-pnpm --filter applesauce-concord exec vitest run \
   src/helpers/__tests__/control.test.ts src/client/__tests__/community.test.ts -t "CR-01"
 → Test Files  2 passed (2)
 → Tests  4 passed | 82 skipped (86)
 ```
 
 **Downstream reachability (12-11, closed with a noted robustness caveat — WR-05, non-blocking):**
-`packages/concord/src/client/__tests__/community.test.ts`'s two `CR-01:` tests (lines 1740, 1833)
 drive the hostile-`deleted` edition through the REAL `client/community.ts` gates end-to-end
 (`publicChannelKeys()`, `currentAuthors()`, `channels$`, `reconcilePrivateChannels`'s sub-engine
 retention) rather than re-testing the fold in isolation, proving CR-01's fix reaches the paths the
@@ -131,10 +127,6 @@ type>` guards.
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `packages/concord/src/helpers/control.ts` | Type-derived, total channel-fold rule tables | ✓ VERIFIED | `CHANNEL_METADATA_FOLD_RULES`, `CHANNEL_KEY_FOLD_DISPOSITION`, `CHANNEL_KEY_STRIPPED_FIELDS`, `foldChannelEdition` all present, exported, wired into `foldControl`; `deleted`/`custom` guards restored and type-bound; `held` added to the strip set |
-| `packages/concord/src/helpers/__tests__/control.test.ts` | Regression coverage for CR-01/WR-01/WR-09 | ✓ VERIFIED | Tests G, H, I, J, K, L present and passing; J and K are table-generated (not hand-enumerated), extending coverage automatically to future fields |
-| `packages/concord/src/client/__tests__/community.test.ts` | Downstream reachability proof through real `client/community.ts` gates | ✓ VERIFIED (with WR-05 robustness caveat) | Two `CR-01:` tests present, passing, exercise `publicChannelKeys()`, `currentAuthors()`, `channels$`, and private sub-engine retention on both the public-sync and private-sub-engine paths |
-| `packages/concord/src/client/admin.ts` | `deleteChannel` destructure-and-spread | ✓ VERIFIED | Confirmed unchanged at `:228-232`, now fed by a well-typed fold |
 | (carried from prior pass, unchanged) `helpers/caps.ts`, `helpers/community-list.ts`, `helpers/invite-list.ts`, `helpers/invite-bundle.ts`, `__tests__/cord-wire-fixtures.ts`/`cord-citations.test.ts` | — | ✓ VERIFIED (regression check only) | Not touched by the gap wave; no evidence of drift found |
 
 ### Key Link Verification
@@ -177,7 +169,6 @@ in shipped behavior today, matching 12-REVIEW.md's own verdict (0 BLOCKER / 6 WA
 | `helpers/control.ts:213-255` | The three rule tables are `export const` (binding frozen, contents mutable) and package-public via `helpers/index.ts` | ⚠️ Warning (WR-03) | A consumer or test could mutate a table at runtime and disarm the fold process-wide; nothing does so today |
 | `helpers/control.ts:139-161` | `DeclaredKeysOf`'s doc comment gives a false rationale (verified false via `tsc --strict` probes: totality holds with or without it); the abstraction's real load-bearing use is in `ChannelKeyFoldDisposition`'s conditional, uncredited | ⚠️ Warning (WR-04) | A future author acting on the stated (wrong) reason could remove the abstraction believing it inert, reopening a key-material-leak path with no compile error |
 | `client/__tests__/community.test.ts:1780-1785, 1861-1864` | Both CR-01 downstream tests' "premise confirmation" assertion cannot distinguish "v2 adopted" from "v2's `prev` dangled, v1 (no `deleted`) stayed head" | ⚠️ Warning (WR-05) | Currently non-vacuous by a verified content-string byte-match coincidence with `createChannel`'s real output; one field added to that content object would silently turn both tests into always-green no-ops |
-| `packages/concord/tsconfig.json` (`exclude`), `helpers/__tests__/control.test.ts:1121` | The central 12-10 claim ("adding a field fails the build") is demonstrated only by manual, undocumented-as-automated `tsc --strict` probe transcripts in 12-10-SUMMARY.md — both test files are `tsc`-excluded, so no `@ts-expect-error` fixture enforces this going forward | ⚠️ Warning (WR-06) | Confirmed by reading `tsconfig.json`'s `exclude` array; the guarantee holds today (verified by re-running the probe transcripts' underlying claim by inspection) but is not gated by CI |
 
 No unreferenced `TBD`/`FIXME`/`XXX` debt markers found in the gap-wave file set.
 
@@ -191,9 +182,6 @@ settled by locked decision D-07/D-25.
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| CR-01 fold-level and downstream regression tests pass | `pnpm --filter applesauce-concord exec vitest run src/helpers/__tests__/control.test.ts src/client/__tests__/community.test.ts -t "CR-01"` | 2 files passed, 4/4 named tests passed | ✓ PASS |
-| Full concord suite passes (independently confirmed baseline, not re-run in full per this milestone's single-full-run rule) | `pnpm --filter applesauce-concord test` | 554/554 (per orchestrator baseline) | ✓ PASS (trusted per task's independently-verified baseline) |
-| Package typechecks | `pnpm exec tsc --noEmit -p packages/concord/tsconfig.json` | exit 0 (per orchestrator baseline) | ✓ PASS (trusted per baseline) |
 | `held` stripped alongside `key`/`epoch`/`id` | Read `CHANNEL_KEY_FOLD_DISPOSITION` (`control.ts:240-246`) | all four classified `"strip"` | ✓ PASS |
 | `deleteChannel`/`ChannelMetadata` overrides (D-04/D-14) unregressed | `grep` + direct file read | Both confirmed unchanged | ✓ PASS |
 | Working tree clean | `git status --short` | empty | ✓ PASS |

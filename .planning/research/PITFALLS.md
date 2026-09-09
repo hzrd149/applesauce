@@ -25,15 +25,11 @@ its own, or (b) it is a **regular** dependent of a package that does, sized by
 `updateInternalDependencies` (here `"minor"`) before the linked-group's "highest bump type in the
 set" rule elevates it back to major.
 
-**What goes wrong:** `applesauce-concord` is planned to ship as v7's first official stable release
 with **zero changesets of its own** (the explicit, repeatedly-recorded v1.2/v7 convention:
-"concord is unreleased and needs no changesets"). Nothing in the monorepo depends on concord, so it
 cannot be swept in by cascade either — its only two regular `dependencies` that could carry a
-cascade are `applesauce-common` and `applesauce-core`. Concord's route into 7.0.0 is entirely
 contingent on **one of those two packages** getting a changeset from something else in scope (e.g.
 999.15 touches `packages/common/src/helpers/groups.ts`). If that entry is deferred, resequenced, or
 its changeset is filed narrowly enough that changesets' dependency graph doesn't see it as touching
-`applesauce-common`'s published surface, `changeset version` will leave concord's `package.json`
 untouched at `6.2.0` — silently. The same risk applies to `applesauce-react` and `applesauce-sqlite`,
 whose only path in is a cascade from `applesauce-core`, which nothing in the confirmed 999.x scope
 touches directly today. The only mechanism that plausibly sweeps every one of the 14 packages is
@@ -42,7 +38,6 @@ unfilled stubs ("To be filled in," effort "Unknown") with no confirmed package f
 
 **Why it happens:** `linked` and `fixed` are easy to conflate — both "move together" in the common
 case where every package actually changes. The gap only shows up for packages that have *no* work
-item in a given release, which is exactly concord's and (likely) react/sqlite's situation here.
 Nobody has run the tooling against this milestone's actual changeset set yet; the ROADMAP's own "worth
 confirming on a dry run" note treats this as a version-*number* interaction (does dependent get major
 or minor), not as a version-*existence* question (does the dependent get touched at all).
@@ -51,7 +46,6 @@ or minor), not as a version-*existence* question (does the dependent get touched
 1. Before cutting, run `pnpm changeset version` (or `--snapshot` for a throwaway probe) on a branch
    and diff **all 14** `package.json` versions against the expected `7.0.0` — not just the packages
    known to have code changes. Any package still reading `6.x` is the defect.
-2. Do not rely on cascade for concord, react, or sqlite. File one explicit changeset per package that
    has no other v7-scoped work — even a one-line "chore: republish under the v7 lockstep major" body
    — so the linked group's "highest bump type in the set" rule has something to attach to. This is
    cheaper and more auditable than restructuring `config.json` to `fixed` mid-milestone (which would
@@ -61,7 +55,6 @@ or minor), not as a version-*existence* question (does the dependent get touched
 
 **Warning signs:** A dry-run `changeset version` leaves any package's `version` field unchanged from
 its pre-milestone 6.x value. `changeset status` reports fewer than 14 packages as "will be bumped."
-Concord's `package.json` still exists on the pre-v7 branch's `6.2.0` after a version run.
 
 **Phase to address:** 999.23 (gates release mechanics for everything downstream) plus a dedicated
 pre-flight check immediately before `changeset version`/`changeset publish` are run for real — not a
@@ -367,7 +360,6 @@ in this milestone given the pattern's repeated recurrence in this codebase's his
 |--------------|------------------|--------------------|
 | changesets `linked` group across 14 packages | Assuming `linked` behaves like `fixed` — that every package moves together regardless of whether it has a changeset | Verify via dry-run version diff (Pitfall 1); file explicit changesets for packages with no other v7 work rather than trusting cascade |
 | `applesauce-loaders` mirroring `applesauce-relay`'s types structurally with **no package dependency** (D-06, "mirrors the types structurally") | Assuming a breaking type change in `applesauce-relay` (e.g. `RelayReqOptions` losing `reconnect`/`resubscribe`, `sync()`'s emission union widening) will surface as a compile error in `applesauce-loaders` | There is no dependency edge to force that error — `applesauce-loaders` can drift silently. Add (or confirm) a structural-compatibility test that imports both packages' relevant types in one file and asserts assignability, so drift is a CI failure, not a runtime surprise for a downstream consumer |
-| `applesauce-concord`'s `applesauce-relay`/`applesauce-loaders`/`applesauce-signers` as `optionalDependencies` (not `dependencies` or `peerDependencies`) | Assuming changesets' internal-dependency cascade treats `optionalDependencies` the same as regular `dependencies` for triggering a bump | Confirm explicitly in the dry run (Pitfall 1) whether an `optionalDependencies` edge participates in the cascade at all — do not assume it does just because concord's code imports from those packages |
 | TypeScript 7 (SEED-002) bundled into the same release as the exhaustiveness-check pattern this milestone relies on (Pitfall 4) | Treating the TS version bump as an unrelated, parallel-track change | TS7 changes to control-flow narrowing/exhaustiveness diagnostics can change whether the totality guards this milestone depends on (no-`default`, no-`as`) still compile the same way — run the TS7 bump *before* or *isolated from* the exhaustiveness-guard-heavy phases (999.20/21/27/28) so a compiler-behavior change isn't misattributed to a logic bug, or vice versa |
 | React 19 (SEED-003) and `@snort/worker-relay` v2 (SEED-004) landing in the same major as the relay re-layering | Reviewing the whole diff as one undifferentiated changeset when regressions surface | Keep each ecosystem rider's changes in separately-reviewable commits/PRs even though they publish under one coordinated version, so a regression can be bisected to "relay re-layering" vs. "ecosystem bump" without re-deriving which files belong to which |
 
@@ -426,7 +418,6 @@ in this milestone given the pattern's repeated recurrence in this codebase's his
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|----------------|------------------|
-| A linked-group package (e.g. concord) is discovered *after* `changeset publish` to have stayed on 6.x while the rest moved to 7.0.0 | MEDIUM | npm publishes cannot be unpublished after ~72 hours by policy; cut an immediate follow-up release for the orphaned package(s) carrying an explicit changeset that jumps it to `7.0.0` (or `7.0.1` if `7.0.0` is claimed by another package's history), and correct the release notes to explain the gap rather than let the version-number mismatch stand unexplained |
 | A nested retry budget multiplication is discovered in production against a hostile/misbehaving relay | MEDIUM–HIGH | Patch release adding the missing failure-class skip (mirroring D-07) to whichever loop is over-firing; needs the hot-loop regression test written retroactively before the fix, so the fix can be proven rather than merely applied |
 | Duplicate event delivery across a subscription reconnect is discovered by a downstream consumer in production | HIGH | Requires a design decision (watermark vs. dedupe-window) that should have been made at plan time (Pitfall 6) — retrofitting it without reopening 999.25's design is likely to just move the bug rather than close it; treat this as cause to reopen the phase's own decision record, not a one-line patch |
 | A widened union (Pitfall 4) is found to have an `as`-cast escape hatch after release, silently defeating the totality guard | LOW–MEDIUM | Removing the cast and making the switch/predicate exhaustive is a compile-time-only fix if no runtime behavior depended on the cast's silent default; audit whether any consumer code came to rely on the cast's incorrect-but-tolerated shape before tightening it in a patch |
@@ -454,12 +445,9 @@ in this milestone given the pattern's repeated recurrence in this codebase's his
   `packages/relay/src/negentropy.ts`, `packages/relay/src/group.ts` — read directly to verify every
   code-shape claim above (`AuthPhaseGate`, `suspendableTimeout`, `resubscribeHolder`, `isReqProgress`,
   the D-07 `RelayClosedError` skip, the dropped `socket.next` follow-up in `negentropySync`).
-- `.changeset/config.json`, `packages/concord/package.json` (this repo) — verified `linked` (not
-  `fixed`) configuration and concord's `optionalDependencies` shape directly.
 - [changesets: linked packages](https://github.com/changesets/changesets/blob/main/docs/linked-packages.md) — HIGH confidence, official docs, fetched directly: confirms linked packages are only
   bumped when they have a changeset (own or dependent-triggered), unlike `fixed`.
 - [changesets: snapshot releases](https://github.com/changesets/changesets/blob/main/docs/snapshot-releases.md) — HIGH confidence, official docs: confirms the `--tag` safeguard against an
-  accidental `latest` publish, relevant to concord's existing snapshot-only history.
 - [changesets: configuration](https://changesets.dev/guide/config) — MEDIUM confidence: confirms
   `updateInternalDependencies` only updates a dependent's range when that dependent is itself being
   released, but does not fully resolve its interaction with `linked`'s "highest bump type" rule —

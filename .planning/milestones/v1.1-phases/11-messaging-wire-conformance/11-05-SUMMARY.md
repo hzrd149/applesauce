@@ -2,7 +2,6 @@
 phase: 11-messaging-wire-conformance
 plan: 05
 subsystem: testing
-tags: [concord, nip-59, nip-22, nip-09, nip-25, vitest, wire-conformance, cord-protocol]
 
 # Dependency graph
 requires:
@@ -12,7 +11,6 @@ requires:
     provides: react/replyToThread/deleteMessage routed through the full target Rumor
 provides:
   - Fixture-anchored regression tests binding WIRE-03/04/05 to the vendored examples.md tag sets, closing this phase's TEST-01 audit trail
-affects: [12.3-audit-milestone, any-future-concord-wire-shape-change]
 
 # Tech tracking
 tech-stack:
@@ -23,7 +21,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
   - "setupWireConformance's pool.publish mock captures published wraps (mirroring the file's existing published:NostrEvent[] pattern) so WIRE-05's delete cases can decode a kind-5 rumor that EventStore itself refuses to store queryably — additive change, does not affect WIRE-03/04's store-read cases"
@@ -37,10 +34,8 @@ coverage:
     requirement: WIRE-03
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-03: a reaction to a threaded reply names the reply's real kind (1111), not a hardcoded 9 (non-vacuous)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-03: a reaction to a kind-9 message matches examples.md §2.3 verbatim"
         status: pass
     human_judgment: false
   - id: D2
@@ -48,10 +43,8 @@ coverage:
     requirement: WIRE-04
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-04: a depth-1 reply to a kind-9 message matches examples.md §2.2 verbatim"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-04: a depth-2 reply inherits the ROOT from the message, not from its immediate parent (D-03, non-vacuous)"
         status: pass
     human_judgment: false
   - id: D3
@@ -59,10 +52,8 @@ coverage:
     requirement: WIRE-05
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-05: delete of a genuine sig-less Rumor matches examples.md §2.4, with a real 64-hex e tag"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#WIRE-05: delete of a kind-1111 reply names the reply's real kind, not the message's (CORD_TARGET_KIND_RULE)"
         status: pass
     human_judgment: false
 
@@ -104,7 +95,6 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `packages/concord/src/client/__tests__/community.test.ts` - Added the `wire conformance` describe block (six test cases + shared setup/lookup helpers) and imports from `cord-wire-fixtures.ts` and `helpers/gift-wrap.ts`.
 
 ## Decisions Made
 
@@ -122,7 +112,6 @@ None — no bugs, missing functionality, or blocking issues were found in applic
 - **Found during:** Task 3 (initial draft, before first test run)
 - **Issue:** `newestOfKind(community, channelId, kinds.EventDeletion)` always threw "no rumor of kind 5 found" — `EventStore.add()` routes kind-5 events into `DeleteManager` instead of the queryable database, so no kind-5 rumor is ever visible to `getTimeline`.
 - **Fix:** Added wrap capture (`published: NostrEvent[]`) to `setupWireConformance`, and a `decodedChannelDelete` helper that computes the public channel's `channelGroupKey` from `community.material` and decodes the matching published wrap via `decodeWrap` (existing helper, already used elsewhere in the package for exactly this purpose).
-- **Files modified:** `packages/concord/src/client/__tests__/community.test.ts` (same file, same commit as Task 3 — no separate commit needed since this was resolved before any commit was made).
 - **Verification:** Both WIRE-05 cases pass against the current fix and were RED under both non-vacuity probes (see below).
 
 ---
@@ -163,7 +152,6 @@ None - no external service configuration required.
 
 - Phase 11's TEST-01 audit trail (ROADMAP success criterion 6) is now traceable: every WIRE-02/03/04/05 wire shape this phase touches has at least one assertion binding to `cord-wire-fixtures.ts` (WIRE-02 was 11-01/11-06's scope; WIRE-03/04/05 close here).
 - REQUIREMENTS.md's WIRE-03/04/05 rows should move from "In Progress" to "Complete" — this plan is their final sub-part per the roadmap's own accounting.
-- `applesauce-concord` is 494 tests green (488 baseline + 6 new); `pnpm test` is 2367 passed / 2 skipped (baseline 2361 + 6 new).
 - Plan 11-06 (voice presence, per the phase's Artifacts section) is next; nothing in this plan blocks it.
 
 ---
@@ -172,7 +160,6 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/client/__tests__/community.test.ts
 - FOUND: commit 16f43948 (Task 1)
 - FOUND: commit e315770d (Task 2)
 - FOUND: commit 81585ea4 (Task 3)

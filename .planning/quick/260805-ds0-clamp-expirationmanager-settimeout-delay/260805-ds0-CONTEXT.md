@@ -13,7 +13,6 @@ alongside them.
 Two independent bug reports describe the same `applesauce-core` defect:
 
 1. `.planning/phases/999.10-applesauce-core-expiration-timer-overflow/expiration-report.md`
-   (on the `concord` branch) — captured 2026-07-29 as backlog Phase 999.10, with a
    patch shape already validated in a local clone.
 2. `/tmp/claude-1000/-home-user-Projects-nsite-gateway/71e8a5a4-1c37-486d-a7fe-c08c842d04b0/scratchpad/applesauce-expiration-timer-overflow-report.md`
    — filed 2026-08-05 from a production incident (16 GB syslog, host disk exhausted,
@@ -26,8 +25,6 @@ Two independent bug reports describe the same `applesauce-core` defect:
 
 ### Branch
 - Work lands on `fix/clamp-settimeout-delays`, branched off `origin/master` (4f2c1bbe).
-- **Not** `concord` — downstream `nsite-gateway` is blocked waiting on an
-  `applesauce-core` patch release, and `concord` is 760 commits from master.
 
 ### Scope — all three defects
 User elected to fix all three rather than core-only.
@@ -131,9 +128,7 @@ back to the full core suite if it cannot be resolved quickly.
 <canonical_refs>
 ## Canonical References
 
-- Backlog Phase 999.10 in `.planning/ROADMAP.md` **on the `concord` branch** — this
   task resolves it. It cannot be ticked off from this branch; flag it for follow-up
-  when this lands and `concord` next merges master.
 - NIP-40 (expiration tag) — the source of the untrusted far-future timestamps.
 - `.changeset/verify-event-undefined-fix.md` — house changeset format.
 

@@ -213,7 +213,6 @@ Zero hits inside a re-enterable reactive callback (`switchMap`/`mergeMap` projec
 - `pnpm vitest run packages/relay/src/__tests__/auth-lifecycle-logging.test.ts packages/relay/src/__tests__/relay.test.ts packages/relay/src/__tests__/auth-retry.test.ts packages/relay/src/__tests__/group.test.ts` (Task 3's exact verify command) — 227/227 passing.
 - `pnpm exec vitest run packages/relay` (whole-package run) — 291/291 passing, confirming no leaked-enable-state divergence between isolated and whole-package runs (RESEARCH Pitfall 4).
 - `git status --porcelain packages/relay/src/relay.ts packages/relay/src/operators/auth-retry.ts` — empty at every commit point; no production file modified by this plan.
-- Full-monorepo cross-package verification (build + `applesauce-loaders`/`applesauce-concord` non-regression) is the orchestrator's post-merge-gate responsibility per this plan's explicit instruction, not re-run here.
 
 ## User Setup Required
 

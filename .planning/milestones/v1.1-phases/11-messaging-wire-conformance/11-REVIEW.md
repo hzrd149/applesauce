@@ -4,22 +4,6 @@ reviewed: 2026-07-29T11:40:00Z
 depth: standard
 files_reviewed: 16
 files_reviewed_list:
-  - apps/docs/concord/channels.md
-  - apps/examples/src/examples/concord/admin-management.tsx
-  - packages/concord/src/__tests__/cord-wire-fixtures.test.ts
-  - packages/concord/src/__tests__/cord-wire-fixtures.ts
-  - packages/concord/src/__tests__/roundtrip.test.ts
-  - packages/concord/src/client/__tests__/community.test.ts
-  - packages/concord/src/client/__tests__/private-channel.test.ts
-  - packages/concord/src/client/admin.ts
-  - packages/concord/src/client/community.ts
-  - packages/concord/src/client/private-channel.ts
-  - packages/concord/src/client/sync.ts
-  - packages/concord/src/helpers/__tests__/keys.test.ts
-  - packages/concord/src/helpers/control.ts
-  - packages/concord/src/helpers/keys.ts
-  - packages/concord/src/operations/gift-wrap.ts
-  - packages/concord/src/types.ts
 findings:
   critical: 1
   warning: 9
@@ -41,7 +25,6 @@ Reviewed the six-plan Phase 11 diff (`73ce1952..HEAD`) at standard depth, plus t
 called code the diff depends on (`applesauce-core`'s `ensureKTag` /
 `setDeleteEvents` / `DeleteManager`, `applesauce-common`'s `setParent` /
 `setReactionParent`, `helpers/chat.ts`, `helpers/guestbook.ts`,
-`models/observed.ts`, `helpers/community.ts`). `pnpm --filter applesauce-concord test`
 passes (495/495) and `tsc --noEmit` is clean, so nothing below is a build break.
 
 Three of the four areas the brief flagged came back clean on the specific
@@ -71,11 +54,8 @@ leaving `editMessage` behind (WR-02).
 
 ### CR-01: Published docs still call the pre-phase signatures — the documented calls now emit malformed wire events
 
-**File:** `apps/docs/concord/community.md:95`, `apps/docs/concord/community.md:97`, `apps/docs/concord/community.md:106`
 **Issue:** 11-04 changed `react`, `replyToThread` and `deleteMessage` to take a
 full `Rumor` (`community.ts:1096`, `:1103`, `:1117`). The phase updated
-`apps/docs/concord/channels.md` (the voice removal) but not
-`apps/docs/concord/community.md`, which still documents the old shapes:
 
 ```ts
 await community.react(channelId, { id, author }, "🔥");     // :95
@@ -105,7 +85,6 @@ work while the docs instruct readers to produce malformed events is a blocker.
 ### Reactions, edits, and deletes
 
 `react` and `deleteMessage` take the full target **rumor** (read it back from the
-channel store) — a Concord rumor has no `sig`, so the id alone is not enough to
 build the NIP-25/NIP-09 `k` tag:
 
 ```ts
@@ -124,20 +103,17 @@ const [thread] = community.channelStore(channelId).getTimeline([{ kinds: [11] }]
 await community.replyToThread(channelId, thread, "How about dark mode?");
 ```
 ```
-Also grep the rest of `apps/docs/concord/` and `apps/examples/` for the old
 shapes as part of the fix (only `community.md` hits today).
 
 ## Warnings
 
 ### WR-01: The new `Rumor` parameters are accepted with zero runtime validation
 
-**File:** `packages/concord/src/client/community.ts:1096`, `:1103`, `:1117`
 **Issue:** `react(channelId, target: Rumor, …)`, `replyToThread(channelId, parent: Rumor, …)`
 and `deleteMessage(channelId, target: Rumor)` are `public`, are the migration
 target of a same-arity breaking change, and validate nothing. A caller who
 passes the old `{ id, author }` pointer, a bare id string, or a rumor whose
 `kind` is `0` gets a silently malformed published event (see CR-01 for the
-trace). Concord is unreleased so the break itself is fine — the absence of a
 fail-fast guard on a same-arity break is not. `requireChannelKey` already
 establishes the "throw a precise error before the factory runs" convention two
 lines above each of these.
@@ -155,7 +131,6 @@ private requireRumor(target: Rumor, method: string): void {
 
 ### WR-02: `editMessage` was left out of the target-kind fix and cannot comply
 
-**File:** `packages/concord/src/client/community.ts:1110`, `packages/concord/src/factories/edit.ts:12`, `packages/concord/src/operations/edit.ts:13`
 **Issue:** The phase vendored `CORD_TARGET_KIND_RULE`
 (`cord-wire-fixtures.ts:112`): *"Reactions, **edits**, and deletes target a
 threaded reply exactly as they target a kind-9 message (by its rumor id); the k
@@ -185,7 +160,6 @@ reply target.
 
 ### WR-03: `ephemeralSk` documents key REUSE as its purpose, with no single-use or blast-radius warning
 
-**File:** `packages/concord/src/operations/gift-wrap.ts:39-51`, `:79`
 **Issue:** The option's whole documented purpose is that the caller *retains*
 the value ("Letting a caller retain this value lets it predict the wrap's decoy
 `p` tag so it can later delete its own giftwrap by that tag"). Nothing in the
@@ -229,10 +203,8 @@ decoySk?: Uint8Array;
 
 ### WR-04: Removing the 23313 drop lets a voice-presence beacon resurrect a departed or kicked member
 
-**File:** `packages/concord/src/client/community.ts:677-693`, `packages/concord/src/client/community.ts:640`, `packages/concord/src/models/observed.ts:9`, `packages/concord/src/helpers/guestbook.ts:123-126`
 **Issue:** 11-06 removed `if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;`
 from `route()`. `rewireState()` (`:640`) feeds every `channel:*` store into
-`ConcordCommunityStateModel`'s `observed` set, and `ConcordObservedAuthorsModel`
 reads `store.timeline([{}])` — **every kind, unfiltered**. `foldMembers` then
 does:
 
@@ -255,7 +227,6 @@ delivery — keep 23313 in the store (the phase goal) but keep it out of the
 roster fold:
 ```ts
 // models/observed.ts — presence beacons are transport, not publishing (CORD-02 §5)
-export function ConcordObservedAuthorsModel(): Model<Map<string, number>, Rumor> {
   return (store) =>
     store.timeline([{}]).pipe(map((rumors) => observedAuthors(rumors.filter((r) => r.kind !== VOICE_PRESENCE_KIND))));
 }
@@ -265,18 +236,15 @@ them, assert they stay out of `members$`.
 
 ### WR-05: 23313 presence rumors now accumulate forever in every channel store, including persistent caches
 
-**File:** `packages/concord/src/client/community.ts:688`, `packages/concord/src/client/private-channel.ts:317`
 **Issue:** 23313 is in the ephemeral kind range, but neither `EventStore` nor
 `RumorStore` filters ephemeral kinds (`packages/core/src/event-store/event-store.ts`
 evicts only on an `expiration` tag, and the vendored CORD-07 §4 fixture carries
 none). Every presence beacon is therefore written permanently into
 `channel:<id>` — and `storeFactory` is explicitly a persistence hook
-(`ConcordCommunityOptions.storeFactory`, "persistent cache"), so a real app
 grows an unbounded on-disk log of presence heartbeats. There is also no
 joined/left reconciliation anywhere in the package, so a consumer rendering
 `channelStore(id).timeline([{ kinds: [23313] }])` (the only affordance the phase
 provides) shows every member who has *ever* joined as currently present. The
-"Reading channel messages" section of `apps/docs/concord/channels.md:25-36` was
 not updated to tell consumers that non-chat kinds now land in the same store.
 **Fix:** either drop presence at the store boundary while still surfacing it
 (e.g. route 23313 to a dedicated `presence$` subject instead of the durable
@@ -287,7 +255,6 @@ consumer.
 
 ### WR-06: `voice` is dropped from the fold and clobbered on republish, losing another client's channel state
 
-**File:** `packages/concord/src/helpers/control.ts:306-312`, `packages/concord/src/client/admin.ts:190-198`
 **Issue:** 11-02 removed the `...(typeof raw.voice === "boolean" ? { voice: raw.voice } : {})`
 branch from `foldControl`, and `voice` is *not* captured by the `custom`
 passthrough (only a literal `custom` key is). So a CORD-07 channel edition
@@ -318,14 +285,12 @@ fold via `custom` or be dropped — the current state does neither cleanly.
 
 ### WR-07: `deleteMessage` has no author or permission check, so moderating another member's message is silently inert
 
-**File:** `packages/concord/src/client/community.ts:1117-1128`
 **Issue:** `deleteMessage` publishes a kind-5 for any rumor handed to it.
 `DeleteManager.check` (`packages/core/src/event-store/delete-manager.ts:97-116`)
 only honors a deletion when `deleteEvent.pubkey === target.pubkey`, so a
 moderator deleting someone else's message publishes an event that every
 conformant client ignores — with no error, no return value, and no logging. The
 UI shows success; nothing is deleted anywhere. `PERM.MANAGE_MESSAGES`
-(`types.ts:33`) is defined, granted in `apps/docs/concord/moderation.md:70` and
 preselected in `admin-management.tsx:561`, and is enforced **nowhere** in the
 package. 11-04 put `target.pubkey` in scope for the first time, which makes the
 check a one-liner.
@@ -346,7 +311,6 @@ not be advertised in the docs/examples until it exists.
 
 ### WR-08: The WIRE-11 "never leaks" assertion cannot fail for the leak path it claims to cover
 
-**File:** `packages/concord/src/helpers/__tests__/keys.test.ts:101-103`
 **Issue:**
 ```ts
 const secretHex = bytesToHex(sk);
@@ -376,7 +340,6 @@ expect(JSON.stringify(decoded.seal)).not.toContain(secretHex);
 
 ### WR-09: The voice key API is now unreachable dead public surface
 
-**File:** `packages/concord/src/helpers/voice.ts:4`, `packages/concord/src/helpers/community.ts:62-70`, `packages/concord/src/helpers/index.ts:22`
 **Issue:** 11-02 removed `ChannelMetadata.voice` and `CreateChannelOptions.voice`
 and the `foldControl` branch that read it, but left the whole downstream API
 exported: `VOICE_PRESENCE_KIND`, `voiceKeysFor(material, channel)`,
@@ -397,7 +360,6 @@ e.g. read it back off `ChannelMetadata.custom.voice` and say so in the
 
 ### IN-01: The wrap-options shape is hand-duplicated in four places
 
-**File:** `packages/concord/src/operations/gift-wrap.ts:39`, `packages/concord/src/helpers/keys.ts:237`, `packages/concord/src/client/community.ts:1034`, `packages/concord/src/client/community.ts:1579`
 **Issue:** `{ plaintext?: boolean; ephemeral?: boolean; ephemeralSk?: Uint8Array }`
 is written out inline three times on top of the exported `WrapOptions`/`SealOptions`.
 11-03 had to edit all four in lockstep; the next option will too, and a missed
@@ -407,7 +369,6 @@ from `operations/gift-wrap.ts` and use it at all three call sites.
 
 ### IN-02: The presence fixture binds a placeholder to itself, making that tag assertion trivially true
 
-**File:** `packages/concord/src/client/__tests__/community.test.ts:1581-1585`, `packages/concord/src/client/__tests__/private-channel.test.ts:214-218`
 **Issue:** `substituteFixtureTags(..., { "<SFU identity>": "<SFU identity>" })`
 asserts the literal placeholder text round-trips, since the same literal was put
 into the outgoing template. The comment acknowledges it, but the effect is that
@@ -418,7 +379,6 @@ assertion pins transit of a value the test did not also hardcode on both sides.
 
 ### IN-03: `tagValues` returns `undefined` behind a non-null assertion
 
-**File:** `packages/concord/src/__tests__/cord-wire-fixtures.ts:163-165`
 **Issue:** `.map((tag) => tag[1]!)` is declared `string[]` but yields `undefined`
 for a one-element tag (`["ms"]`). An assertion like
 `expect(tagValues(tags, "k")).toEqual(["9"])` would then fail with a confusing
@@ -427,7 +387,6 @@ for a one-element tag (`["ms"]`). An assertion like
 
 ### IN-04: The "vendored fixture shape" block asserts only tautologies
 
-**File:** `packages/concord/src/__tests__/cord-wire-fixtures.test.ts:95-117`
 **Issue:** These cases assert that string literals in the same module are
 non-empty strings and that `section` matches `examples.md §\d`. They cannot fail
 for any edit that keeps the constants well-formed, and in particular cannot
@@ -439,17 +398,13 @@ diff step.
 
 ### IN-05: Both new files fail the repo's prettier config
 
-**File:** `packages/concord/src/__tests__/cord-wire-fixtures.ts:31`, `packages/concord/src/__tests__/cord-wire-fixtures.test.ts:23`
 **Issue:** `pnpm exec prettier --check` flags both new files (over-wrapped
 `CORD_EXAMPLES_CAVEAT`, over-wrapped `toThrow(...)`, un-expanded nested array).
-Prettier is not CI-gated and several pre-existing concord files already fail, so
 this is cosmetic — but the next `pnpm format` will reformat these files and
 muddy the phase's blame.
-**Fix:** `pnpm exec prettier --write packages/concord/src/__tests__/cord-wire-fixtures*.ts`
 
 ### IN-06: `deleteMessage` cannot emit an `a` tag for an addressable target
 
-**File:** `packages/concord/src/client/community.ts:1124`
 **Issue:** Passing only `[target.id]` takes `setDeleteEvents`' bare-string branch
 (`packages/core/src/operations/delete.ts:21-24`), which skips the
 `isAddressableKind || isReplaceableKind` branch that would add the `a`

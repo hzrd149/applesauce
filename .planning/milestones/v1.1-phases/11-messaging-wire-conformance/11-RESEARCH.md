@@ -1,7 +1,6 @@
 # Phase 11: Messaging Wire Conformance - Research
 
 **Researched:** 2026-07-29
-**Domain:** Nostr wire-shape conformance inside `packages/concord` (NIP-59 reversed streams, NIP-09 delete, NIP-25 reaction, NIP-22 threaded comment) against the external CORD-01/03/07 specs
 **Confidence:** HIGH
 
 <user_constraints>
@@ -25,7 +24,6 @@
   enumerated-patch shape this project has repeatedly rejected).
 
 - **D-02:** **No upstream factory changes are required.** All three factories already
-  handle a full event/rumor correctly; concord's only defect is passing an identity
   instead. Verified: `DeleteFactory.fromEvents`'s `isEvent(event)` branch calls
   `ensureKTag(tags, event.kind)`; `ReactionFactory`'s `ReactionParent` union includes
   `Rumor`; `CommentFactory`'s `"tags" in parent` branch calls `createCommentTagsForEvent`
@@ -41,8 +39,6 @@
 **Voice presence delivery (WIRE-02)**
 
 - **D-04:** **Delete the drop; route 23313 into the plane store like any other rumor.**
-  Two symmetric sites, both go: `packages/concord/src/client/community.ts:682`,
-  `packages/concord/src/client/private-channel.ts:316`. Consumers read it via the
   already-public raw store — `channelStore(channelId)` (`client/community.ts:607`)
   with `.timeline([{ kinds: [23313] }])`. Accepted trade-off: 23313 is ephemeral
   presence and a rumor store is durable, so presence accumulates and consumers must
@@ -52,7 +48,6 @@
 - **D-05:** Two comments must be corrected alongside the deletion, or they become
   false: the funnel doc-comment at `client/community.ts:679-680` ("…and voice presence
   (not chat)") and the deferral note at (the actual path is
-  `packages/concord/src/__tests__/roundtrip.test.ts:3-4`, not `client/__tests__/` as
   CONTEXT.md states — see Pitfalls) ("§9 voice … deferred with their phases").
 
 **`voice` flag removal (WIRE-01)**
@@ -81,12 +76,10 @@
 
 **Milestone conventions carried forward**
 
-- **D-09:** **No changeset** — concord is unreleased. This is a deliberate override of
   ROADMAP.md Phase 11 success criterion 1 ("breaking change; changeset + migration
   note included"). `verify-phase` must score criterion 1 on the field removal alone.
 
 - **D-10:** **Fixtures are vendored.** Transcribe the relevant `examples.md` tag sets
-  into a checked-in fixture file under `packages/concord/src/__tests__/`. Every
   fixture entry must carry its CORD section citation. Note L11: existing comments
   cite `CORD-06 §94`, a section that does not exist — do not copy that citation
   style.
@@ -101,7 +94,6 @@
 - Whether `Rumor` or a narrower structural type is the right parameter type for D-01's
   three signatures (recommendation provided).
 - Fixture file name, location within `__tests__/`, and internal structure.
-- Test file organization — extending existing concord suites vs. a new
   wire-conformance suite.
 
 ### Deferred Ideas (OUT OF SCOPE)
@@ -122,7 +114,6 @@
 
 | ID | Description | Research Support |
 |----|-------------|------------------|
-| WIRE-01 | `ChannelMetadata.voice` removed — every channel is callable, no per-channel voice flag | Confirmed 4 in-package sites (D-06) are exhaustive for `packages/concord/src`, **plus two additional out-of-package sites CONTEXT.md's table missed**: `apps/examples/src/examples/concord/admin-management.tsx` (4 usages) and `apps/docs/concord/channels.md` (1 usage) — see Pitfalls/removal-sweep findings below |
 | WIRE-02 | Kind 23313 reaches consumers via the receive funnel | D-04 confirmed exhaustive (exactly 2 sites); typing (23311) precedent confirmed by absence of any special-case for it in either routing file |
 | WIRE-03 | Reaction `k` tag names the real target kind | `ReactionFactory`/`setReactionParent` verified to already support `Rumor` via the `ReactionParent` union — zero upstream edits needed, confirmed by direct source read |
 | WIRE-04 | Threaded reply inherits root verbatim, derives `K`/`k` from real kind | `createCommentTagsForEvent`'s `parent.kind === COMMENT_KIND` branch verified by direct source read to correctly re-derive the deeper root via `getCommentRootPointer` — this is the depth-2 mechanism; exact CORD-03 §3 citation + `examples.md` §2.2 fixture transcribed below |
@@ -134,7 +125,6 @@
 
 This phase has no crypto derivations and installs no new external packages — it is a
 surgical wire-shape/tag-emission fix confined almost entirely to
-`packages/concord/src/client/community.ts`, `helpers/keys.ts`, `operations/gift-wrap.ts`,
 `types.ts`, `client/admin.ts`, and `helpers/control.ts`, plus one vendored fixture file.
 CONTEXT.md's D-01 through D-11 are well-supported by direct source inspection: every
 site it names checked out exactly as stated. Two things sharpen the plan beyond what
@@ -142,13 +132,11 @@ CONTEXT.md settled:
 
 First, **D-02's claim for `deleteMessage` needs a mechanism correction, not a reversal.**
 `DeleteFactory.fromEvents`'s `isEvent(event)` branch (the one that calls `ensureKTag`)
-requires `typeof event.sig === "string"`. A Concord `Rumor` (`UnsignedEvent & { id:
 string }`, re-exported from `applesauce-common/helpers`) **has no `sig` field by
 design** — NIP-59 rumors are never individually signed. So passing `target: Rumor`
 straight into `DeleteFactory.fromEvents([target])` takes the *bare-string* else-branch
 regardless of D-01's signature change, and the `k` tag is still never emitted — the
 exact bug WIRE-05 exists to close survives silently. The fix stays entirely inside
-concord (no core/common edit, so D-02's "no upstream changes" conclusion holds): pass
 only `target.id` into `fromEvents`, then explicitly apply `ensureKTag(draft.tags,
 target.kind)` to the resolved template before `bindToChannel` — mirroring the exact
 "manually apply an `EventOperation` to an awaited factory result" idiom this file
@@ -157,7 +145,6 @@ from `applesauce-core/helpers/factory` via `helpers/index.ts`, so nothing new ne
 exporting.
 
 Second, **the external CORD-01/03/07 specs and `examples.md` were fetched directly**
-(not paraphrased) from `github.com/concord-protocol/concord` — note the actual default
 branch is `main`, not `master` as CONTEXT.md's canonical-refs section states (both
 resolve to identical content today via `raw.githubusercontent.com`, but `main` is the
 verifiable, API-confirmed default branch and should be the citation the vendored
@@ -177,15 +164,12 @@ fixture directly from the verified `examples.md` §2.1–2.4/2.8 transcription b
 
 | Capability | Primary Tier | Secondary Tier | Rationale |
 |------------|-------------|----------------|-----------|
-| Reaction/reply/delete tag shape | API/Backend (SDK event-construction layer) | — | Pure event-draft construction inside `packages/concord`'s factories/operations layer; no network or storage concerns |
 | Voice presence delivery | API/Backend (SDK receive funnel) | Database/Storage (plane `RumorStore`) | `route()` decides what reaches the store; the store is where a consumer app later reads it — this phase only removes a `return` in the funnel, it does not add a consumer-facing model |
-| `voice` flag removal | API/Backend (SDK type + admin write path) | Browser/Client (example app UI) | The type and write/fold sites are all in `packages/concord/src`; the *consuming* UI checkbox lives in `apps/examples` (Browser/Client tier) and must be updated in lockstep or it fails `tsc` |
 | Ephemeral wrap key retention | API/Backend (SDK crypto/envelope layer) | — | Key generation/threading happens entirely inside `operations/gift-wrap.ts`/`helpers/keys.ts`; no UI or storage tier is implicated by "retention only" (D-08) |
 
 ## Standard Stack
 
 No new external packages are introduced by this phase. All work is internal to the
-monorepo's existing `applesauce-core`, `applesauce-common`, and `applesauce-concord`
 packages (`nostr-tools`, `@noble/hashes`, `applesauce-signers` are already dependencies
 and already imported by the exact files this phase touches). **Package Legitimacy Audit
 is not applicable** — no `npm install` is required for this phase.
@@ -240,7 +224,6 @@ RECEIVE SIDE (route() — the single funnel, shared by sync + live subscription)
 ### Recommended Project Structure (files touched, no new directories)
 
 ```
-packages/concord/src/
 ├── types.ts                         # ChannelMetadata.voice removed (WIRE-01)
 ├── client/
 │   ├── admin.ts                     # CreateChannelOptions.voice + write site removed (WIRE-01)
@@ -253,18 +236,15 @@ packages/concord/src/
 │   ├── control.ts                   # fold line for `voice` removed (WIRE-01)
 │   ├── keys.ts                      # wrapForTarget's opts gains ephemeralSk (WIRE-11)
 │   └── __tests__/roundtrip.test.ts  # stale "§9 voice … deferred" comment corrected (D-05) — NOTE: actual
-│                                     #   path is packages/concord/src/__tests__/roundtrip.test.ts, not
 │                                     #   client/__tests__/ as CONTEXT.md states
 ├── operations/
 │   └── gift-wrap.ts                 # WrapOptions.ephemeralSk; buildWrap uses it when supplied (D-07)
 └── __tests__/
     └── <fixture-file>.ts            # vendored examples.md tag-set transcription (D-10)
 
-apps/examples/src/examples/concord/
 └── admin-management.tsx             # voice checkbox/state/render — MUST update alongside WIRE-01 removal
                                       #   (see Pitfalls: removal-sweep gaps)
 
-apps/docs/concord/
 └── channels.md                      # doc example `{ voice: true }` — MUST update (removal-sweep gap)
 ```
 
@@ -281,7 +261,6 @@ template — exactly `deleteMessage`'s situation, and exactly the pattern
 file.
 **Example:**
 ```ts
-// Source: packages/concord/src/client/community.ts:1082 (existing precedent) +
 // packages/core/src/helpers/factory.ts (ensureKTag, already publicly exported)
 import { ensureKTag } from "applesauce-core/helpers/factory";
 
@@ -324,7 +303,6 @@ handles depth-N nesting correctly, it just was never reachable because
   that later code may treat as verified; use the explicit `ensureKTag` application
   instead (Pattern 1).
 - **Widening `react`/`replyToThread`/`deleteMessage` to accept `Rumor | { id; author
-  }`.** CONTEXT.md's D-01 already rejects this for the concord-level signature; the
   same logic applies to any narrower union invented at the `ensureKTag`-fix site — do
   not reintroduce an alternate path that can still drop the `k` tag.
 - **Adding `ephemeralSk` as a new parameter to `react`/`replyToThread`/`deleteMessage`/
@@ -337,7 +315,6 @@ handles depth-N nesting correctly, it just was never reachable because
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Emitting a `k` tag for a delete/reaction/threaded-reply target | A new tag-construction helper in concord | `ensureKTag` (`packages/core/src/helpers/factory.ts`, publicly exported) | Already the exact function `setDeleteEvents`'s own `isEvent` branch calls; concord should call the identical helper directly rather than inventing an equivalent |
 | Root-tag inheritance for nested comment replies | Manual `E`/`K`/`P` tag construction in `replyToThread` | `CommentFactory.create(parent: Rumor, body)` → `setParent` → `createCommentTagsForEvent` | Already implements CORD-03 §3's exact rule (verbatim root inheritance at any depth); a hand-rolled version would have to re-derive `getCommentRootPointer`'s logic and risks silently diverging |
 | Ephemeral-key generation for the wrap's decoy `p` tag | A separate keypair-generation utility | `generateSecretKey()`/`getPublicKey()` from `applesauce-core/helpers/keys` (already imported in `operations/gift-wrap.ts`) | Same primitive already used for the non-supplied-key path; D-07 only adds a caller-supplied override, not a new generation mechanism |
 
@@ -354,14 +331,12 @@ exported helper.
 
 **What goes wrong:** `setDeleteEvents` (`packages/core/src/operations/delete.ts:8`)
 branches on `isEvent(event)`, which requires `typeof event.sig === "string"`
-(`packages/core/src/helpers/event.ts:93-102`). A Concord `Rumor` (`UnsignedEvent & {
 id: string }`) never has a `sig` — that is the entire point of NIP-59 rumors. So
 `isEvent(target)` returns `false` for any genuine message rumor, and `setDeleteEvents`
 silently takes its bare-string else-branch (`ensureEventPointerTag(tags, { id: event
 })`, which is itself malformed if `event` is an object, not a string) — the `k` tag is
 never added, reproducing L03/WIRE-05 even after D-01's signature is implemented.
 **Why it happens:** CONTEXT.md's D-02 verification table describes the `isEvent`
-branch's *behavior* correctly but does not check whether a Concord `Rumor` actually
 satisfies `isEvent` at runtime — it doesn't, because `Rumor` deliberately excludes `sig`.
 **How to avoid:** Pass only `target.id` (a string) into `DeleteFactory.fromEvents([...])`
 so the bare-string branch runs deliberately, then explicitly apply `ensureKTag(draft.tags,
@@ -398,17 +373,13 @@ is closed — this is exactly what CONTEXT.md's D-03 flags.
 ### Pitfall 3: The WIRE-01 removal sweep is not exhaustive at the four sites CONTEXT.md's table lists
 
 **What goes wrong:** CONTEXT.md's "Confirmed sites" table lists four `voice` sites, all
-inside `packages/concord/src`. A repo-wide grep for `voice` (excluding voice-key/media
 identifiers like `VOICE_PRESENCE_KIND`/`voice_key`/`voice_media_key`, which are
 unrelated CORD-07 crypto terms, not the abolished flag) finds two more real
 **consumers** of the field that will fail to compile once it's removed:
-- `apps/examples/src/examples/concord/admin-management.tsx` — a `voice` state
   variable (line 688), a `{ private: isPrivate, voice }` call into `createChannel`
   (line 694), a checkbox bound to it (line 737), and a render read `channel.voice ? "
   · voice" : ""` (line 759) — four distinct usages in one file.
-- `apps/docs/concord/channels.md` — a doc code example: `// A voice channel; const
   voiceId = await community.admin.createChannel("lounge", { voice: true });` (lines 14-15).
-**Why it happens:** CONTEXT.md's audit scope was `packages/concord/src` only; it did
 not sweep `apps/examples` or `apps/docs`, which import and consume the package.
 **How to avoid:** Update `admin-management.tsx` (drop the voice state/checkbox/render
 branch) and `channels.md` (drop the `{ voice: true }` example) in the same plan wave
@@ -424,11 +395,7 @@ test suite to catch this; verify explicitly.
 
 **What goes wrong:** Assuming symmetry with WIRE-02's two-site fix (community.ts +
 private-channel.ts), a plan might also thread `ephemeralSk` through
-`ConcordPrivateChannel`.
-**Why it happens:** `ConcordPrivateChannel` looks like a peer engine to
-`ConcordCommunity`, but it is receive-only — a grep for `async send`/`publish` inside
 `private-channel.ts` returns nothing. All sending (public or private channels alike)
-goes through `ConcordCommunity`'s methods (`sendMessage`, `sendEvent`, `react`,
 `replyToThread`, `deleteMessage`, `sendThread`, `editMessage`), gated by
 `requireChannelKey(channelId)`, which itself branches on whether the channel is
 private.
@@ -473,20 +440,16 @@ option, the mechanism is identical for channel sends via `sendEvent`).
 - *Returning the ephemeral key out of `publishToPlane`/`sendEvent`* — unnecessary
   because D-07's shape is caller-*supplies*, not engine-*generates-and-returns*: a
   caller wanting retention already holds the key before calling (it generated it
-  itself via the same `generateSecretKey()` concord already imports), so there is
   nothing to hand back.
 
 **D-08's round-trip test** should exercise `wrapForTarget` directly (mirroring the
 existing pattern at `helpers/__tests__/keys.test.ts:59-81`, which already builds a
 wrap and decodes it): supply a known `ephemeralSk`, decode the returned `wrap`, and
 assert `wrap.tags.find(t => t[0] === "p")?.[1] === bytesToHex(getPublicKey(suppliedSk))`.
-No `ConcordClient`/`sendEvent` involvement is required for this proof, since the
 option is a pure passthrough by the time it reaches `buildWrap`.
 
 ## Vendored Fixture Transcription (D-10)
 
-Fetched directly from `github.com/concord-protocol/concord` (confirmed default branch
-via `api.github.com/repos/concord-protocol/concord` is **`main`**, not `master` as
 CONTEXT.md's canonical-refs section states — `raw.githubusercontent.com/.../master/...`
 happens to resolve identically today, but the vendored fixture file and its comments
 should cite `main`, the API-verified default branch, in case that legacy alias is ever
@@ -621,11 +584,9 @@ confirmed alongside CORD-03 §2's identical sentence already cited by CONTEXT.md
 **Note for the vendored test:** WIRE-02's success criterion is "reaches consumers
 through the receive funnel" — the fixture test for this requirement is necessarily
 different in shape from the other three (there is no factory emitting this tag set in
-concord yet; it's a receive-path test). The correct assertion is: publish a
 kind-23313-shaped rumor through the same wrap/seal path the other rumors use, verify
 it is NOT dropped by `route()`, and lands in `channelStore(channelId).timeline([{
 kinds: [23313] }])` — asserting its tags match this transcribed shape guards against a
-future regression that mangles the tags on the way in, even though concord's send side
 for voice presence is out of this phase's scope (voice is CORD-07 §2/§3/§5 territory,
 deferred as FUT-02).
 
@@ -634,7 +595,6 @@ deferred as FUT-02).
 Not applicable — this phase is a wire-shape/tag-emission fix and a type-field removal,
 not a rename/refactor/migration of an identifier or string across systems. `voice` as
 a *word* is not being renamed; the `ChannelMetadata.voice` *field* is being deleted
-outright (D-06, D-09: no migration, concord is unreleased so no persisted community
 document anywhere carries this field in a way any real deployment needs to migrate).
 No stored data, live service config, OS-registered state, secrets/env vars, or build
 artifacts reference this field by name outside the source tree — confirmed by the
@@ -694,14 +654,12 @@ user confirmation needed.
 |----------|-------|
 | Framework | Vitest 4.1.6 (`vitest run` at root, workspace-aware) |
 | Config file | `vitest.config.ts` (root) + `vitest.workspace.ts` |
-| Quick run command | `pnpm --filter applesauce-concord test` (or `vitest run` from `packages/concord`) |
 | Full suite command | `pnpm test` (root: `turbo build --filter='./packages/*' && vitest run`) |
 
 ### Phase Requirements → Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| WIRE-01 | `ChannelMetadata`/`CreateChannelOptions` no longer have `voice`; `tsc` fails any reintroduced read | type-level (compile guard) + unit | `pnpm --filter applesauce-concord build` (tsc); existing `community.test.ts`/`control.test.ts` channel-fold tests must not reference `voice` | ✅ existing files, edit in place |
 | WIRE-02 | Kind 23313 lands in `channelStore(...).timeline([{kinds:[23313]}])` instead of being dropped | integration (route() through the real wrap/decode path) | `vitest run community.test.ts -t "voice presence"` (new test) | ❌ Wave 0 — new `it(...)` block in `client/__tests__/community.test.ts` (and the symmetric case in `private-channel.test.ts`) |
 | WIRE-03 | `react()` on a non-kind-9 target (e.g. a kind-1111 reply) emits `k` naming the real kind | unit, fixture-anchored | `vitest run community.test.ts -t "reaction k tag"` (new test) | ❌ Wave 0 — asserts against the vendored §2.3 fixture tag set |
 | WIRE-04 | `replyToThread` at depth 1 (off kind-9) and depth 2 (off a kind-1111 reply) produce correct `K`/`E`/`P` vs `k`/`e`/`p` | unit, fixture-anchored, MUST cover depth-2 | `vitest run community.test.ts -t "threaded reply"` (new test) | ❌ Wave 0 — the depth-2 case per Pitfall 2/D-03 is the critical non-vacuity case |
@@ -710,7 +668,6 @@ user confirmation needed.
 
 ### Sampling Rate
 
-- **Per task commit:** `pnpm --filter applesauce-concord test` (fast — concord's own suite)
 - **Per wave merge:** `pnpm test` (root — full workspace, `turbo build --filter='./packages/*' && vitest run`)
 - **Phase gate:** Full suite green before `/gsd-verify-work`, **plus** a manual
   `pnpm --filter applesauce-examples build` (or equivalent `tsc -b` in `apps/examples`)
@@ -719,7 +676,6 @@ user confirmation needed.
 
 ### Wave 0 Gaps
 
-- [ ] A vendored fixture file under `packages/concord/src/__tests__/` transcribing the
       four tag sets above (reaction, threaded reply, delete, voice presence), each
       with its `examples.md`/CORD section citation (D-10) — every other Wave 0 test
       below should import from this file, not hardcode its own copy of the tag set.
@@ -759,7 +715,6 @@ user confirmation needed.
 
 ### Primary (HIGH confidence — direct source read or direct spec fetch, cross-verified)
 
-- `github.com/concord-protocol/concord`, `main` branch (API-confirmed default branch;
   content verified byte-identical whether fetched via `.../main/...` or
   `.../master/...`) — `examples.md` (fetched and read in full, 690 lines), `01.md`
   (CORD-01, "Deletions" section), `03.md` (CORD-03, "Messages"/§3), `07.md` (CORD-07,
@@ -768,11 +723,8 @@ user confirmation needed.
   (`isEvent`, `Rumor` type), `packages/common/src/operations/reaction.ts`,
   `packages/common/src/operations/comment.ts`, `packages/common/src/helpers/comment.ts`
   (`createCommentTagsForEvent`, `getCommentRootPointer`) — all read directly
-- `packages/concord/src/client/community.ts`, `private-channel.ts`, `helpers/keys.ts`,
   `operations/gift-wrap.ts`, `types.ts`, `client/admin.ts`, `helpers/control.ts` — all
   read directly at the cited line numbers
-- `apps/examples/src/examples/concord/admin-management.tsx`, `apps/docs/concord/channels.md`
-  — read directly; both confirmed to reference `voice` outside `packages/concord/src`
 - `package.json` (root) + `turbo.json` — confirmed `pnpm test`'s build filter excludes
   `apps/examples`
 

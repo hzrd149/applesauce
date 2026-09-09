@@ -8,23 +8,9 @@
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
 |---|---|---|---|---|
-| `packages/concord/src/client/community.ts` (`react`, `replyToThread`, `deleteMessage`) | client method (event-construction) | request-response | `sendThread`/`sendEvent` in the **same file** (untouched shape) | exact — in-file sibling |
-| `packages/concord/src/client/community.ts` (`route`, ~682) | receive funnel | event-driven | symmetric site in `private-channel.ts:316` | exact |
-| `packages/concord/src/client/private-channel.ts` (`route`, ~316) | receive funnel | event-driven | `community.ts`'s `route()` | exact |
-| `packages/concord/src/operations/gift-wrap.ts` (`buildWrap`/`wrapSeal`) | crypto/envelope operation | transform | none needed — pure option threading through the existing function | n/a (in-place edit) |
-| `packages/concord/src/helpers/keys.ts` (`wrapForTarget`) | service (envelope orchestration) | request-response | `publishToPlane` (`community.ts:1574`) — the caller one level up, already forwards an `opts` bag unchanged | role-match |
-| `packages/concord/src/types.ts` (`ChannelMetadata.voice` removal) | model/type | CRUD (fold) | n/a — deletion only | n/a |
-| `packages/concord/src/client/admin.ts` (`CreateChannelOptions.voice`, write site) | controller/config | CRUD | n/a — deletion only | n/a |
-| `packages/concord/src/helpers/control.ts` (fold line ~311) | transform (fold) | batch/transform | n/a — deletion only | n/a |
-| `apps/examples/src/examples/concord/admin-management.tsx` | component | request-response (UI form) | n/a — consumer cleanup, no new pattern | n/a |
-| `apps/docs/concord/channels.md` | doc | n/a | n/a — consumer cleanup | n/a |
-| `packages/concord/src/__tests__/<fixture>.ts` (new) | test fixture / constant module | batch (static data) | **no vendored-fixture precedent found in `packages/concord`** — nearest analog is the inline `examples.md`-cited comment style already used ad hoc in `roundtrip.test.ts`/`community.ts` doc comments (e.g. `CORD-03 §44`); no dedicated fixture-file pattern exists anywhere in the workspace | no analog — new pattern, see below |
-| `packages/concord/src/client/__tests__/community.test.ts` (new `it()` blocks + edit to existing table test) | test | request-response | the file's own existing `it()` blocks, esp. the `MissingChannelKeyError` table test at line 324 | exact — in-file sibling |
-| `packages/concord/src/helpers/__tests__/keys.test.ts` (new `it()` block) | test | request-response | the file's own `wrapForTarget` test at line 59 | exact — in-file sibling |
 
 ## Pattern Assignments
 
-### `react()` / `replyToThread()` / `deleteMessage()` in `packages/concord/src/client/community.ts`
 
 **Analog:** `sendThread` (lines 1088-1093) and `sendEvent` (lines 1031-1040) in the **same file** — both untouched by this phase, so they show the canonical shape uncontaminated by the bug being fixed.
 
@@ -118,7 +104,6 @@ export function isEvent(event: any): event is NostrEvent {
   );
 }
 ```
-A Concord `Rumor` never has `sig` (NIP-59 rumors are never individually signed), so `isEvent(target)` is always `false` for a genuine message target — passing the rumor straight into `DeleteFactory.fromEvents([target])` silently takes the bare-string else-branch and drops `k` regardless of D-01's signature change. **Fix:** pass `target.id` (a string) into `fromEvents`, then apply `ensureKTag` explicitly to the resolved template, mirroring the `bindToChannel(...)( await factory )` idiom:
 ```typescript
 async deleteMessage(channelId: string, target: Rumor): Promise<void> {
   this.requireChannelKey(channelId);
@@ -131,7 +116,6 @@ async deleteMessage(channelId: string, target: Rumor): Promise<void> {
 ```
 `ensureKTag` is exported from `applesauce-core/helpers/factory` (already re-exported through `helpers/index.ts` in this workspace) — no new export needed.
 
-### The receive funnel — `packages/concord/src/client/community.ts:674-693` (`route`)
 
 **Current code (delete line 682, correct the comment at 679-680):**
 ```typescript
@@ -149,7 +133,6 @@ private route(info: PlaneInfo, decoded: DecodedEvent): void {
 ```
 Delete `if (decoded.rumor.kind === VOICE_PRESENCE_KIND) return;` and correct the comment to drop "and voice presence (not chat)" — 23313 now flows through exactly like typing (23311), which was never special-cased.
 
-**Symmetric site, `packages/concord/src/client/private-channel.ts:311-327`:**
 ```typescript
 private route(info: PlaneInfo, decoded: DecodedEvent): void {
   if (info.type === "channel") {
@@ -163,9 +146,7 @@ private route(info: PlaneInfo, decoded: DecodedEvent): void {
 ```
 Same fix, same comment correction, in this file.
 
-**D-05's second stale comment site:** `packages/concord/src/__tests__/roundtrip.test.ts:3-4` (NOT `client/__tests__/` — RESEARCH.md's correction to CONTEXT.md's stated path) — "§9 voice … deferred with their phases" must be corrected alongside.
 
-### `WrapOptions.ephemeralSk` — `packages/concord/src/operations/gift-wrap.ts:39,66-77`
 
 **Current:**
 ```typescript
@@ -197,10 +178,8 @@ function buildWrap(seal: NostrEvent, streamSk: Uint8Array, convKey: Uint8Array, 
 
 ### Plumbing chain — `wrapForTarget` → `publishToPlane` → `sendEvent`
 
-**`wrapForTarget`, `packages/concord/src/helpers/keys.ts:232-247`:**
 ```typescript
 export async function wrapForTarget(
-  keys: ConcordKeys,
   target: WrapTarget,
   author: ISigner,
   rumor: RumorTemplate,
@@ -293,7 +272,6 @@ Delete the `voice` spread line only — leave `deleted` and `custom` untouched (
 
 ### Out-of-package consumers (must land in the same wave — Pitfall 3)
 
-**`apps/examples/src/examples/concord/admin-management.tsx`** — four sites, all in `ChannelsTab` (lines 683-762):
 ```tsx
 const [voice, setVoice] = useState(false);          // line 688 — delete
 ...
@@ -313,7 +291,6 @@ await community.admin.createChannel(name.trim() || "new-channel", { private: isP
 ```
 Delete all four sites; the surrounding `isPrivate` checkbox (lines 724-732) and the `deleted` render read (line 760) are the untouched siblings to preserve exactly.
 
-**`apps/docs/concord/channels.md:13-16`:**
 ```md
 // A voice channel
 const voiceId = await community.admin.createChannel("lounge", { voice: true });
@@ -339,7 +316,6 @@ Once D-01 lands, `react`/`deleteMessage`/`replyToThread` take a full `Rumor`, no
 ```typescript
 it("wrapForTarget seals a rumor that decodes at the plane's address", async () => {
   const { owner, ownerPub, material } = await genesis();
-  const keys = deriveConcordKeys(material, []);
   const { wrap, rumorId } = await wrapForTarget(
     keys,
     { plane: "control" },
@@ -361,7 +337,6 @@ This IS the direct analog for WIRE-11's round-trip proof: supply `ephemeralSk` i
 ## Shared Patterns
 
 ### The four-step messaging shape
-**Source:** `packages/concord/src/client/community.ts` — every one of `sendMessage`, `sendThread`, `react`, `replyToThread`, `editMessage`, `deleteMessage`
 **Apply to:** All three D-01 signature changes
 ```typescript
 this.requireChannelKey(channelId);
@@ -382,10 +357,8 @@ await this.publishToPlane({ plane: "channel", channelId }, rumor, {});
 
 | File | Role | Data Flow | Reason |
 |---|---|---|---|
-| `packages/concord/src/__tests__/<fixture>.ts` (vendored `examples.md` transcription) | test fixture / constant module | batch (static data) | No vendored external-spec fixture file exists anywhere in the workspace (`packages/concord/src/__tests__/` has only test files, no `fixtures.ts`/`constants.ts`-style data module). The closest precedent is the inline citation-comment convention already used ad hoc (e.g. `// CORD-03 §44:` in `community.ts`, `roundtrip.test.ts`'s deferral comment) — carry that citation style into the new file's per-entry comments, but the file-as-checked-in-artifact structure itself is novel to this phase. Recommend: a plain exported-const-per-shape module (e.g. `export const REACTION_FIXTURE = {...}` with `examples.md` §2.3 cited in a leading comment, mirroring RESEARCH.md's four transcribed JSON blocks) rather than inventing a class or loader — nothing in this codebase reads fixtures from JSON files on disk; keep it a `.ts` module of exported objects so tests `import` it directly like any other test helper. |
 
 ## Metadata
 
-**Analog search scope:** `packages/concord/src/client/*.ts`, `packages/concord/src/operations/gift-wrap.ts`, `packages/concord/src/helpers/{keys,control}.ts`, `packages/concord/src/types.ts`, `packages/concord/src/client/__tests__/community.test.ts`, `packages/concord/src/helpers/__tests__/keys.test.ts`, `packages/core/src/operations/delete.ts`, `packages/core/src/helpers/event.ts`, `apps/examples/src/examples/concord/admin-management.tsx`, `apps/docs/concord/channels.md`
 **Files scanned:** 13 read directly, plus 2 greps (`admin.ts` write site, `voice` sweep across `apps/`)
 **Pattern extraction date:** 2026-07-29

@@ -8,27 +8,14 @@
 
 | New/Modified File | Role | Data Flow | Closest Analog | Match Quality |
 |--------------------|------|-----------|-----------------|----------------|
-| `packages/concord/src/client/client.ts` (`joinByLink`) | service/controller | request-response (relay fetch + collapse) | `packages/core/src/event-store/event-store.ts:255-270,308-322` (NIP-01 replaceable collapse) | exact (logic to replicate, different call site) |
-| `packages/concord/src/helpers/invite-bundle.ts` (`validateInviteBundle`) | utility (validator) | transform (fail-closed guard) | `packages/concord/src/helpers/control.ts:210` (AUTH-04 `Array.isArray` guard) | exact |
-| `packages/concord/src/helpers/invite-bundle.ts` (`decodeFragment`) | utility (parser) | transform | itself, prior-phase guard idiom (`control.ts` fail-closed convention) | role-match |
-| `packages/concord/src/helpers/invite-bundle.ts` (`getInviteBundleVsk`/`isInviteBundleRevoked`) | utility (parser) | transform | `packages/concord/src/helpers/stream.ts:35-39` (`hasMalformedMs`'s "present but unparseable ⇒ treat specially" shape) | role-match |
-| `packages/concord/src/client/community.ts` (`refreshInviteBundles`) | service | batch (per-item try/skip loop) | same file, `revokeInvite`/adjacent per-link publish-with-catch pattern (`.pool.publish(...).catch(...)` at `client.ts` and `community.ts:1148`) | role-match |
-| `packages/concord/src/client/invite-manager.ts`, `client/community.ts`, `helpers/invite-bundle.ts`, `types.ts` (`expires_at` unit sites) | model/utility | transform (unit conversion, no logic branch) | itself — mechanical multi-site rename/unit-fix, no external analog needed | n/a (locked/mechanical) |
-| `packages/concord/src/operations/channel.ts` (`includeMs`/`bindToChannel`) | utility (EventOperation) | transform (choke-point single clock read) | `packages/concord/src/helpers/stream.ts:16-18` (`splitTime`, the dead-code correct pairing) | exact |
-| `packages/concord/src/operations/guestbook.ts` (`includeSnapshotChunk`) + `packages/concord/src/factories/guestbook.ts` (`SnapshotFactory`/`buildSnapshotFactories`) | utility/factory | transform (caller-threaded shared timestamp) | `packages/concord/src/operations/channel.ts:22-38` (`includeMs`/`bindToChannel`, once TIME-01 fixed) | role-match (same mechanism, one call-depth up) |
-| `packages/concord/src/helpers/stream.ts` (`parseMs`, `rumorMs`, `hasMalformedMs`) | utility (shared predicate) | transform | itself — introduces the shared parser both existing functions route through | n/a (locked/mechanical) |
-| `packages/concord/src/helpers/__tests__/stream.test.ts` (net-new) | test | unit | `packages/concord/src/client/__tests__/client.test.ts` (`describe`/`it` structure + hand-derived-value assertion style) | role-match |
-| `packages/concord/src/helpers/__tests__/invite-bundle.test.ts` (net-new) | test | unit | `packages/concord/src/client/__tests__/client.test.ts` `asyncServingPool` DI-pool idiom (for any fixture-building conventions reused) + inline hand-derived-coordinate assertions | role-match |
 
 ## Pattern Assignments
 
-### `packages/concord/src/client/client.ts` — `joinByLink` (D-01/D-02/D-03/D-05)
 
 **Analog:** `packages/core/src/event-store/event-store.ts:255-270, 308-322` (NIP-01 replaceable-collapse rule)
 
 **Current buggy shape** (`client.ts:410-436`, read this session — matches RESEARCH.md's citation exactly):
 ```typescript
-async joinByLink(url: string): Promise<ConcordCommunity> {
   const parsed = parseInviteLink(url);
   const relays = parsed.bootstrapRelays.length ? parsed.bootstrapRelays : this.defaultRelays;
   const events = await lastValueFrom(
@@ -49,7 +36,6 @@ async joinByLink(url: string): Promise<ConcordCommunity> {
   return this.joinFromBundle(bundle, relays);
 }
 
-private async joinFromBundle(bundle: InviteBundle, fallbackRelays: string[]): Promise<ConcordCommunity> {
   if (bundle.expires_at && Date.now() > bundle.expires_at) throw new Error("invite expired");  // <- D-05: ms compare, must become seconds
   ...
 }
@@ -83,9 +69,7 @@ function newestAtCoordinate(events: NostrEvent[]): NostrEvent | undefined {
 
 ---
 
-### `packages/concord/src/helpers/invite-bundle.ts` — `validateInviteBundle` (D-10)
 
-**Analog:** `packages/concord/src/helpers/control.ts:200-215` (AUTH-04, Phase 9)
 
 **Analog excerpt** (`control.ts:205-210`):
 ```typescript
@@ -120,7 +104,6 @@ Fix: insert `if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays
 
 ---
 
-### `packages/concord/src/helpers/invite-bundle.ts` — `decodeFragment` (D-12)
 
 **Current guard** (`invite-bundle.ts:81`, read this session):
 ```typescript
@@ -135,7 +118,6 @@ Fix: `if (version !== FRAGMENT_VERSION) throw new Error("unsupported invite frag
 
 ---
 
-### `packages/concord/src/helpers/invite-bundle.ts` — `getInviteBundleVsk` (D-04)
 
 **Current code** (`invite-bundle.ts:249-257`, read this session):
 ```typescript
@@ -153,11 +135,9 @@ export function isInviteBundleRevoked(event: NostrEvent): boolean {
 
 ---
 
-### `packages/concord/src/client/community.ts` — `refreshInviteBundles` (D-11)
 
 **Current code** (`community.ts:1133-1150`, read this session):
 ```typescript
-async refreshInviteBundles(links: ConcordInviteLink[]): Promise<void> {
   const state = this.state$.value;
   const inviteRelays = this.relays();
   for (const link of links) {
@@ -180,9 +160,7 @@ async refreshInviteBundles(links: ConcordInviteLink[]): Promise<void> {
 
 ---
 
-### `packages/concord/src/operations/channel.ts` — `includeMs`/`bindToChannel` (D-06/D-07)
 
-**Analog:** `packages/concord/src/helpers/stream.ts:15-18` (`splitTime`, dead code, zero call sites — confirmed this session)
 ```typescript
 /** Split a JS millisecond timestamp into (created_at seconds, ms remainder). */
 export function splitTime(nowMs: number = Date.now()): { created_at: number; ms: number } {
@@ -203,7 +181,6 @@ Fix (per RESEARCH.md's verified recommended shape): `includeMs` imports `splitTi
 
 ---
 
-### `packages/concord/src/operations/guestbook.ts` + `packages/concord/src/factories/guestbook.ts` — snapshot chunk sharing (D-08)
 
 **Analog:** `operations/channel.ts`'s `includeMs`/`bindToChannel` pair, once fixed above — same mechanism, applied one call-depth higher because N chunks must share one instant by construction (a per-chunk clock read reintroduces the bug even after TIME-01 lands).
 
@@ -230,7 +207,6 @@ Fix: `buildSnapshotFactories` computes `const time = splitTime(nowMs)` **once**,
 
 ---
 
-### `packages/concord/src/helpers/stream.ts` — `parseMs`, `rumorMs`, `hasMalformedMs` (D-09)
 
 **Current code** (`stream.ts:20-40`, full file read this session):
 ```typescript
@@ -260,20 +236,15 @@ and rewrite `rumorMs`/`hasMalformedMs` to both call `parseMs(tag)`, keeping each
 
 ---
 
-### Net-new: `packages/concord/src/helpers/__tests__/stream.test.ts`
 
-**Analog:** `packages/concord/src/client/__tests__/client.test.ts` — overall `describe`/`it` structure and its hand-derived-value assertion style (no DI-pool needed here since `splitTime`/`parseMs` are pure functions with no I/O).
 
 Key assertions to structure per D-13: a table-driven `it.each` (or manual cases) for the ≥500ms remainder repro (`1700000000700 → {created_at: 1700000000, ms: 700}`, verifying it does NOT skew to `1700000001`), the `…000700` vs `…001400` ordering repro, and the canonical-`ms` malformed table (`"42abc"`, `"0x10"`, `"007"`, `" 5"`, `"+1"` all → malformed under both `rumorMs`-derived ordering and `hasMalformedMs`).
 
 ---
 
-### Net-new: `packages/concord/src/helpers/__tests__/invite-bundle.test.ts`
 
-**Analog:** `packages/concord/src/client/__tests__/client.test.ts` — the `asyncServingPool` DI helper (lines ~779-804, excerpted below) is the project's established "relay serves matching events asynchronously" fixture idiom, reusable if any test in this file needs to construct a fake bundle event and route it through fetch-like code; more directly, most of this file's assertions are pure-function calls (`validateInviteBundle`, `decodeFragment`, `getInviteBundleVsk`) that don't need the DI pool at all — only import the pattern's *event-fixture shape*, not the pool itself.
 
 ```typescript
-// packages/concord/src/client/__tests__/client.test.ts:779-804 (read this session)
 function asyncServingPool(events: NostrEvent[]): RelayPool {
   const serve = (filters: unknown) => {
     const fs = (Array.isArray(filters) ? filters : [filters]) as Array<{ kinds?: number[]; authors?: string[] }>;
@@ -301,21 +272,18 @@ function asyncServingPool(events: NostrEvent[]): RelayPool {
   } as unknown as RelayPool;
 }
 ```
-The `joinByLink` lagging-relay/collapse-then-tombstone regression test (D-01/D-02, INVITE-01) belongs in `client.test.ts` (extending this existing `describe("ConcordClient.joinByLink ...")` block with a new decoy-event + tombstone case), not in the new `invite-bundle.test.ts` file — `invite-bundle.test.ts` covers the pure-function pieces (`validateInviteBundle`, `decodeFragment`, `getInviteBundleVsk`, the hand-derived `(33301, link_signer, "")` coordinate via `getInviteBundleLocator`).
 
 ---
 
 ## Shared Patterns
 
 ### Fail-closed guard-before-array-method (INVITE-02/D-10)
-**Source:** `packages/concord/src/helpers/control.ts:210` (`Array.isArray(grant.role_ids) || !grant.role_ids.every(...)`)
 **Apply to:** `validateInviteBundle` (`helpers/invite-bundle.ts`)
 ```typescript
 if (!Array.isArray(bundle.channels) || !Array.isArray(bundle.relays)) return undefined;
 ```
 
 ### Single clock read via `splitTime` (TIME-01/TIME-02/D-06/D-07/D-08)
-**Source:** `packages/concord/src/helpers/stream.ts:16-18`
 **Apply to:** `operations/channel.ts` (`includeMs`), `operations/guestbook.ts` (`includeSnapshotChunk`), `factories/guestbook.ts` (`buildSnapshotFactories`)
 ```typescript
 export function splitTime(nowMs: number = Date.now()): { created_at: number; ms: number } {
@@ -362,10 +330,8 @@ None. Every file in scope has a confirmed same-package sibling or a directly-cit
 
 ## Out of Scope (explicitly excluded per CONTEXT.md deferral)
 
-`packages/concord/src/operations/rekey.ts` (`includeRekeyChunk`) and `packages/concord/src/helpers/rekey.ts` (`buildRekeyRumors`) carry the identical TIME-02 defect shape but are explicitly deferred — do not classify, do not modify, do not reference as an analog target (only as a *source* of the same-defect-class pattern shape if a future phase needs it).
 
 ## Metadata
 
-**Analog search scope:** `packages/concord/src/{client,helpers,operations,factories,casts}/`, `packages/core/src/event-store/`, `packages/core/src/observable/`
 **Files scanned:** `client/client.ts`, `client/community.ts`, `client/invite-manager.ts`, `client/__tests__/client.test.ts`, `helpers/invite-bundle.ts`, `helpers/invite-list.ts`, `helpers/stream.ts`, `helpers/control.ts`, `operations/channel.ts`, `operations/guestbook.ts`, `factories/guestbook.ts`, `casts/invite-list.ts`, `packages/core/src/event-store/event-store.ts`
 **Pattern extraction date:** 2026-07-21

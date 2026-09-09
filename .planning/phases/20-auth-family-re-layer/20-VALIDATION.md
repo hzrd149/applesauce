@@ -22,7 +22,6 @@ created: 2026-08-31
 
 - After each task: run its focused command; run the relay build whenever public declarations change.
 - After each wave: run the affected package's complete test suite.
-- Before verification: run the compiler fixture, Relay/Loaders/Concord/Extra tests and builds, docs build, changeset audit, and fixed-routing static checks.
 - Keep iterative targeted commands under 60 seconds; the full cross-package gate is reserved for phase close.
 
 ## Per-Task Verification Map
@@ -34,7 +33,6 @@ created: 2026-08-31
 | 20-02-01 | 2 | AUTHF-01, AUTHF-03 | Fresh-connect wait, 30s-default whole deadline, signer/transport/reply rejection | focused relay test + build | pending |
 | 20-02-02 | 2 | AUTHF-02, AUTHF-03 | Freshness matrix, abort/late suppression, multi-await/call independence, newest state, redacted logs | relay + lifecycle suites | pending |
 | 20-03-01 | 3 | AUTHF-05 | Actual exported errors classify in Group and loaders; non-auth control does not | Group + loader tests/build | pending |
-| 20-03-02 | 3 | AUTHF-03 | Concord verdict/rejection and Vertex challenge-driven authenticate compatibility | package tests/builds including new vertex.test.ts | pending |
 | 20-04-01 | 4 | AUTHF-01..04 | Docs build and authoritative provenance audit | docs build + positive searches | pending |
 | 20-04-02 | 4 | AUTHF-01..05 | Exact changeset, static contract, and complete package gates | Plan 20-04 exact command | pending |
 

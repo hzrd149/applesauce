@@ -67,8 +67,6 @@
   - NIP-92: Media Attachments
   - NIP-98: HTTP File Storage (Blossom)
 
-**Concord Protocol (CORD):**
-- `packages/concord/` - Concord protocol implementation
 - Community management and event synchronization
 - Stream-key authentication for community relays
 
@@ -127,7 +125,6 @@
 
 **NIP-42 (Event Authentication):**
 - Used for relay authentication
-- Stream-key auth for Concord community relays
 - Implementation: `packages/relay/src/relay.ts`
 
 **NIP-98 (HTTP Authentication):**

@@ -39,7 +39,6 @@ human_verification: []
 
 # Phase 5: Cache Identity Memo Fix Verification Report
 
-**Phase Goal:** A value memoized onto a config object by `applesauce-core`'s cache helper does not survive an object spread, so a rolled-forward copy recomputes its derivation instead of returning the source's stale memo — the single root cause behind three HIGH concord findings.
 **Verified:** 2026-07-16T05:30:00Z
 **Status:** gaps_found
 **Re-verification:** Yes — round-3 gap-closure (plans 05-12..05-14) against the prior VERIFICATION.md's CACHE-02 failure

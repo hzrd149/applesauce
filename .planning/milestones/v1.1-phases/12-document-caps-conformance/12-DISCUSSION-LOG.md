@@ -96,7 +96,6 @@
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Re-anchor provenance to CORD-02 | Keep enforcing 65,535 but document it as a Concord constant | |
 | Re-anchor + note the divergence | As above, plus record that NIP-44 has moved | |
 | Stop enforcing the byte cap | Drop our own gate; let the transport be the only authority | ✓ |
 
@@ -111,7 +110,6 @@
 | Yes — fold it in | Land the caps work against the library matching current NIP-44 | ✓ |
 
 **User's choice:** Yes — fold it in
-**Notes:** Scope confirmed as `packages/core`, `packages/common`, `packages/relay`; concord declares no direct `nostr-tools` dependency.
 
 ### Blast radius of "stop enforcing"
 
@@ -217,7 +215,6 @@
 ## Deferred Ideas
 
 - The 64-byte cap on Role `name` — CORD-02 §6 says the cap is uniform across Channels and Roles; `createRole` enforces nothing. Surfaced by the spec fetch, covered by no requirement, not discussed.
-- Reporting the CORD-02-vs-NIP-44 divergence upstream to the concord-protocol repo.
 - A time-windowed `voicePresence$` — inherited from Phase 11, unrelated to this phase.
 
 ### Reviewed Todos (not folded)

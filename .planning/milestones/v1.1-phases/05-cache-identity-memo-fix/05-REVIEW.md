@@ -16,9 +16,6 @@ files_reviewed_list:
   - packages/common/src/helpers/mute.ts
   - packages/common/src/helpers/trusted-assertions.ts
   - packages/common/src/operations/gift-wrap.ts
-  - packages/concord/src/helpers/keys.ts
-  - packages/concord/src/helpers/__tests__/channel-rekey.test.ts
-  - packages/concord/src/helpers/__tests__/keys.test.ts
   - packages/core/src/casts/cast.ts
   - packages/core/src/event-store/async-event-store.ts
   - packages/core/src/event-store/event-store.ts
@@ -60,7 +57,6 @@ load-bearing; `configurable: true` alone really does permit redefinition regardl
 descriptor that `groups.ts`'s in-callback `Reflect.set` creates; and `cache.test.ts`'s carry-forward
 half really is non-vacuous (a non-enumerable write at `modifyHiddenTags`'s return would be dropped
 by `includeAltTag` → `modifyPublicTags`'s `{ ...draft, tags }` before `sign`'s enumerability-blind
-re-copy could rescue it, turning the suite red). The concord CONCORD-H01 narrative also checks out
 against `rollForward`'s and `rollForwardChannel`'s spreads.
 
 The comment corpus is nevertheless wrong in two places I can disprove: one is repeated verbatim
@@ -356,7 +352,6 @@ if (relays) {
 **File:** `packages/core/src/helpers/relays.ts:16-18`, `packages/core/src/helpers/event.ts:180-182`, `packages/common/src/helpers/gift-wrap.ts:181-182` and `:215-216` and `:220-221`, `packages/common/src/operations/gift-wrap.ts:82-86`
 **Issue:** Each of these describes an **enumerable** `Reflect.set` as propagating "not via object
 spread" / "rather than by spread". Enumerable own symbol-keyed properties *are* copied by object
-spread — that asymmetry is the entire subject of `concord/helpers/keys.ts:115-120`'s CONCORD-H01
 note and of `cache.ts`'s category 1. The twelve sites in WR-01 handle this correctly by explicitly
 disclosing "this write is a plain enumerable `Reflect.set`, so the value **does** survive a spread
 today". This cluster does not, and reads as an assertion that spread does not carry them.
@@ -522,7 +517,6 @@ Recorded so a later round does not re-litigate them:
 - `cache.test.ts:86-109` — the carry-forward half is non-vacuous: `includeAltTag` →
   `modifyPublicTags`'s `{ ...draft, tags }` sits between the write and `sign`'s enumerability-blind
   re-copy, so a non-enumerable write at `modifyHiddenTags`'s return would fail the suite. Claim holds.
-- `concord/keys.ts:94-121` and `:558-568` — the CONCORD-H01 narrative against `rollForward`'s
   `{ ...keys.material, ... }` and `rollForwardChannel`'s `{ ...channel, ... }` spreads, and the
   `JSON.stringify`-skips-symbols / spread-copies-symbols asymmetry. Claims hold.
 - `encrypted-content.ts:117-124` — `setEncryptedContentCache`'s enumerable write is required because

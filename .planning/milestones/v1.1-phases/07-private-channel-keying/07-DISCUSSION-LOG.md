@@ -18,7 +18,6 @@
 | You decide | Take the audit recommendation and let research confirm signatures. | |
 
 **User's choice:** Full removal
-**Notes:** Aligns with the audit's "these fields should not exist" and forecloses the `custom.key` footgun. concord is unreleased, so no changeset/migration cost. Keyless private channels consequently derive nothing (the `deriveConcordKeys` loop skips them), which is CHAN-01.
 
 ---
 
@@ -41,10 +40,8 @@
 |--------|-------------|----------|
 | Named error class | Exported `MissingChannelKeyError` thrown from `sendMessage`; consumers `instanceof`-catch. | ✓ |
 | Distinct message only | Plain `Error` with a distinct message; consumers must string-match. | |
-| You decide | Fit concord's existing error conventions. | |
 
 **User's choice:** Named error class
-**Notes:** `MissingChannelKeyError(channelId)` with message `missing private channel key`. Thrown from `sendMessage` (which has the channel state + `accessible` flag); `planeKeyFor`'s generic `unknown channel` throw stays a backstop for truly-unknown ids. Research to place the class consistently with any existing concord error conventions.
 
 ---
 
@@ -63,9 +60,6 @@
 
 ## Claude's Discretion
 
-- The exact `NONE`/skip signalling shape between `channelSecret`/`channelKeyFor`/`channelKeyMemo` and the `deriveConcordKeys` loop (memo cache-key currently `channel.key`-based).
-- `accessible` naming unless research finds a prevailing concord term.
-- Error-message wording beyond the distinct string; whether `MissingChannelKeyError` extends a concord base error class.
 - Plan/commit sequencing within the "behavioral fix lands with its spec-derived test" constraint.
 
 ## Deferred Ideas

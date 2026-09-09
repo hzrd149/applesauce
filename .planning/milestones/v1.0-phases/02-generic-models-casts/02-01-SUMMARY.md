@@ -76,7 +76,6 @@ coverage:
         ref: "pnpm --filter applesauce-core build && pnpm --filter applesauce-core test"
         status: pass
       - kind: integration
-        ref: "pnpm -r build (full workspace, all packages including common/wallet/concord/react/actions/examples)"
         status: pass
     human_judgment: false
 
@@ -100,7 +99,6 @@ status: complete
 - `claimEvents<E extends StoreEvent = NostrEvent, T>` and `claimLatest<E extends StoreEvent = NostrEvent, T>` accept `IEventClaims<E>` with `E`-typed internal `Set`/`latest` state
 - `EventModel<E>`, `ReplaceableModel<E>`, `TimelineModel<E>`, `FiltersModel<E>` and their four module-private helpers (`getEventFromStores`, `getReplaceableFromStores`, `getByFiltersFromStores`, `loadEventUsingFallback`) are generic over `E`
 - `insertEventIntoDescendingList` bridged at its single `TimelineModel` call site, matching Phase 1's `event-memory.ts` precedent exactly
-- `pnpm --filter applesauce-core build` + `test` green (592/592 tests unchanged), and the full workspace `pnpm -r build` (every package: common, wallet, concord, react, actions, examples, etc.) also green
 
 ## Task Commits
 
@@ -161,7 +159,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - `claimEvents`/`claimLatest` and the four base models are generic over `E`, ready for Plan 02 to thread `E` through `Model<T, E, TStore>`/`ModelEventStore<E, TStore>`/`IEventSubscriptions<E>`/`EventModels<E, TStore>` (closing the D-02/WR-02 seam) and replace this plan's temporary store bridge-casts with a properly `E`-typed `store` parameter.
-- Full workspace `pnpm -r build` confirmed green before handoff — no downstream package (`applesauce-common`, `wallet`, `concord`, `react`, `actions`, `examples`) regressed.
 - No blockers for Plan 02.
 
 ---

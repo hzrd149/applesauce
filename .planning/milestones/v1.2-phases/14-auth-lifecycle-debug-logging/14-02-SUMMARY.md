@@ -13,7 +13,6 @@ provides:
   - packages/loaders/src/loaders/sync-loader.ts's per-url request logger hoisted out of the switchMap projector, derived once per relay in buildRelayStream(url)
   - a derive-once-per-relay regression test pinning the fix structurally (spy Debugger, not log text)
   - SEED-001 marked resolved with an accurate, non-stale audit record
-affects: [15-concord-stream-auth-cleanup]
 
 # Tech tracking
 tech-stack:

@@ -21,8 +21,6 @@ created: 2026-07-16
 |----------|-------|
 | **Framework** | Vitest (root `vitest.config.ts`, workspace-wide) |
 | **Config file** | `vitest.config.ts` / `vitest.workspace.ts` (root) |
-| **Quick run command** | `pnpm --filter applesauce-concord test -- helpers/__tests__/keys.test.ts helpers/__tests__/guestbook.test.ts client/__tests__/community.test.ts` |
-| **Full suite command** | `pnpm --filter applesauce-concord test` |
 | **Estimated runtime** | ~15–30 seconds (package-scoped) |
 
 ---
@@ -30,8 +28,6 @@ created: 2026-07-16
 ## Sampling Rate
 
 - **After every task commit:** Run the quick-run command scoped to the touched test files
-- **After every plan wave:** Run `pnpm --filter applesauce-concord test`
-- **Before `/gsd-verify-work`:** Full `applesauce-concord` suite must be green
 - **Max feedback latency:** ~30 seconds
 
 ---

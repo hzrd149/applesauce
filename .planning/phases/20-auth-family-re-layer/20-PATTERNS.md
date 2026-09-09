@@ -17,7 +17,6 @@
 | `packages/relay/src/__tests__/group.test.ts` | test | batch/event-driven | Existing group auth-failure isolation test | exact |
 | `packages/loaders/src/loaders/sync-loader.ts` | service/model | streaming | Existing `RELAY_AUTH_ERROR_NAMES` boundary | exact |
 | `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` | test | streaming | Existing terminal auth-name parity tests | exact |
-| `packages/concord/src/client/auth.ts` | service | request-response | Existing signer-first `authenticate()` consumers | exact |
 | `packages/extra/src/vertex.ts` | service | event-driven | Existing challenge-driven `auth()` integration | exact |
 | `apps/docs/loading/relays/relays.md` | config/documentation | request-response | Existing Authentication section | exact |
 | `.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`, `.planning/phases/18-event-family-re-layer/18-CONTEXT.md`, `.changeset/relay-auth-family-re-layer.md` | config/documentation | transform | Phase 18 provenance and relay major changeset | exact |
@@ -222,9 +221,7 @@ If compatibility requires exposing the options argument structurally, derive or 
 
 **Parity test analog** (`packages/loaders/src/loaders/__tests__/sync-loader.test.ts:1012-1072`): retain the parameterized name coverage but strengthen the new cases by constructing exported relay error classes. A test-only workspace dependency or root cross-package fixture is acceptable; production duck typing must remain unchanged.
 
-### `packages/concord/src/client/auth.ts` (service, request-response)
 
-**Consumer analog** (`packages/concord/src/client/auth.ts:178-197`, `:225-243`):
 
 ```ts
 try {
@@ -273,7 +270,6 @@ Create one focused relay major changeset for removal of `event(event, "AUTH")`; 
 ### Protocol Verdict vs Client Failure
 
 **Source:** `packages/relay/src/relay.ts:1267-1287`  
-**Apply to:** raw helper, `event()`, `auth()`, `authenticate()`, Concord compatibility tests.
 
 Matching `OK true` and `OK false` are `PublishResponse` values. EVENT alone translates `auth-required:` to `AuthRequiredError`. Timeout, abort, signer, freshness, and transport failures reject. AUTH must never feed the EVENT authentication loop.
 
@@ -304,6 +300,5 @@ None. The repository already contains direct patterns for every planned role. Th
 
 ## Metadata
 
-**Analog search scope:** `packages/relay/src`, `packages/loaders/src`, `packages/concord/src`, `packages/extra/src`, `apps/docs/loading/relays`, `.planning`, `.changeset`  
 **Primary analog files read:** 12 source/test/doc files plus Phase 18 context and verification  
 **Pattern extraction date:** 2026-08-31

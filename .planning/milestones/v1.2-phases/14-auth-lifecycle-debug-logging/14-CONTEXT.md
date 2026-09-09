@@ -16,7 +16,6 @@ of a wire-verb discriminated union on `RelayAuthContext`, and `event()`'s locall
 timeout response stops masquerading as a relay verdict. Neither is "just logging", and the phase
 should be planned as relay-API-touching, not observability-only.
 
-**Not this phase:** Concord's stream-auth migration and its four remaining reads of
 `authRequiredForRead$`/`authRequiredForPublish$` (Phase 15, CAUTH-01..04); a lint rule enforcing
 the logger convention (explicitly out of scope per REQUIREMENTS.md, and D-19 declines the
 alternatives too); any change to auth retry/timeout *behavior* beyond the two widenings above.
@@ -52,7 +51,6 @@ alternatives too); any change to auth retry/timeout *behavior* beyond the two wi
   `take(1)` log subscriptions at `relay.ts:546` and `:554` — they are the last internal readers in
   the package *and* they are the bucketed lines this phase retires. Keep every write (`:931`,
   `:1056`, `:1147`, `:1262`), `resetState()`'s clears (`:413-414`), and the `status$` composition
-  (`:571-572`). Concord's four readers (`relay-auth.ts:110`, `:206`, `invite-watcher.ts:258`,
   `:435`) consume `status$` and are CAUTH-03's, not this phase's.
 
 ### Operation attribution (ALOG-02)
@@ -168,7 +166,6 @@ alternatives too); any change to auth retry/timeout *behavior* beyond the two wi
 ### Milestone scope and requirements
 - `.planning/REQUIREMENTS.md` — ALOG-01/02/03; the Out of Scope table (lint rule scoped out;
   `authRequiredForRead$`/`authRequiredForPublish$` stay as status; changesets required for
-  `applesauce-relay` and `applesauce-loaders`, none for concord); and the Verification Standard.
   **Needs amending per D-18.**
 - `.planning/ROADMAP.md` § Phase 14 — goal and three success criteria. **Criterion 3 needs amending
   per D-18.**
@@ -249,7 +246,6 @@ alternatives too); any change to auth retry/timeout *behavior* beyond the two wi
   error, following `validateInviteBundle`'s rule tables and 13-14's total progress predicate.
 
 ### Integration Points
-- Phase 15's concord engines are the first consumer of D-02's union — they branch on request shape to
   pick which scoped key to authenticate with.
 - `RelayGroup`/`RelayPool` forward the auth options unchanged; D-14 adds `RelayGroup.sync`'s
   dropped-relay line on `group.ts:84`'s logger.
@@ -280,14 +276,12 @@ alternatives too); any change to auth retry/timeout *behavior* beyond the two wi
   shape, D-11's `error` field on the timeout path), so it needs changesets — and, per D-01, it must
   also **edit** `.changeset/relay-operation-scoped-auth-callbacks.md`, whose body currently names
   `operation` in the context it advertises. One change per file, single-sentence body.
-  `applesauce-loaders` needs one for the D-18 sweep only if its behavior changes; concord needs none.
 
 </specifics>
 
 <deferred>
 ## Deferred Ideas
 
-- **Concord's four remaining reads of the auth-required flags** — `relay-auth.ts:110`, `:206`,
   `invite-watcher.ts:258`, `:435`, all consuming `status$`. They are the client-wide ambient driver
   CAUTH-03 retires. Phase 15, not here.
 - **A lint rule enforcing the logger convention** — scoped out by REQUIREMENTS.md at milestone start

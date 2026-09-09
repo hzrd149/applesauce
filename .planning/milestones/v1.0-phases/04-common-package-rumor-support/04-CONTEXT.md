@@ -27,7 +27,6 @@ Out of scope: converting ALL of `applesauce-common` to generic event types (expl
 
 ### Scope of genericization (guided by migration doc; exact sets resolved in research)
 - **Helpers (COMMON-01):** Genericize `applesauce-common` helper functions that read ONLY structural `StoreEvent` fields (id/kind/pubkey/created_at/content/tags) over `E extends StoreEvent = NostrEvent`, defaulting to `NostrEvent`. Do NOT broaden helpers that semantically require a signature or signed-only fields. Research identifies the precise structural-only set.
-- **Casts / models / factories (COMMON-02):** Be CONSERVATIVE. Genericize only a **targeted** subset with a concrete rumor use case — do NOT convert all common casts. Keep `NostrEvent` defaults so existing signed-cast call sites compile unchanged (watch `CastRefEventStore` references per migration doc). Research determines the targeted set from actual rumor consumers (e.g. what `applesauce-concord`'s rumor casts need); if no cast has a concrete rumor need beyond what Phase 3 already demonstrated, the targeted cast set may be small or empty and the phase focuses on structural helpers.
 
 ### Zero behavior change (LOCKED, consistent with Phases 1–3)
 - Every generic parameter defaults to `NostrEvent`. Existing `applesauce-common` tests and export/helper snapshots MUST pass unchanged (or snapshots regenerated only for genuinely new/renamed exports via `vitest -u`, never hand-edited).

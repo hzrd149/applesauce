@@ -2,7 +2,6 @@
 phase: 09-authority-permission-fold-correctness
 plan: 02
 subsystem: auth
-tags: [concord, fold, control-plane, roles, banlist, permissions, tdd]
 
 # Dependency graph
 requires:
@@ -24,8 +23,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/control.ts
-    - packages/concord/src/helpers/__tests__/control.test.ts
 
 key-decisions:
   - "AUTH-06's guard tests four hand-picked CORD-04 §3 u32-boundary values, none of which requires an actual JS NaN to travel over JSON (which is impossible — JSON.stringify(NaN) always serializes to null): a wire-arrived non-numeric string \"NaN\" (Number.isInteger rejects non-number types; the OLD `<=` checks coerce it to NaN and never trigger, reproducing the described `NaN <= x` hole), a real float (1.5), an omitted position field (undefined — the project's known \"hand-rolled literal drops an optional field\" bug class), and the roleless sentinel 0xffffffff itself"
@@ -40,7 +37,6 @@ coverage:
     requirement: AUTH-06
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#rejects a Role.position that is not a positive integer below the roleless sentinel (AUTH-06)"
         status: pass
     human_judgment: false
   - id: D2
@@ -48,7 +44,6 @@ coverage:
     requirement: D-14
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/control.test.ts#honors a banlist entry only when the signer strictly outranks the target, and the owner is never bannable (D-14)"
         status: pass
     human_judgment: false
 
@@ -86,8 +81,6 @@ Each task followed RED → GREEN TDD:
    - `53006160` feat(09-02): D-14 banlist per-entry rank gate honors only strictly-outranked targets
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/control.ts` — Role fold gained the AUTH-06 integer/range guard (`:163-168`); Banlist fold's flat `banlist.add(pk)` replaced with the D-14 per-pk rank gate (`:319-330`).
-- `packages/concord/src/helpers/__tests__/control.test.ts` — added 2 new spec-derived tests (AUTH-06's four-case Role.position rejection + valid-position control case; D-14's senior/junior/owner/bystander banlist rank test).
 
 ## Decisions Made
 - AUTH-06 test values chosen to be achievable over the real JSON wire (a JS `NaN` cannot survive `JSON.stringify`/`JSON.parse` round-trip — it always serializes to `null`): a wire string `"NaN"`, a real float `1.5`, an omitted `position` key (`undefined`), and the sentinel `0xffffffff` — see key-decisions above for full rationale.
@@ -114,7 +107,6 @@ Each new guard was proven load-bearing by reverting it and observing the associa
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- Both AUTH-06 and D-14 holes closed with spec-derived, non-vacuous tests; `applesauce-concord` 251/251 tests green, package builds clean (`tsc`).
 - `control.ts`'s Grant fold (AUTH-03/04/07, from 09-01), Role fold (AUTH-06), and Banlist fold (D-14) are now all hardened. Remaining phase-9 scope per 09-PATTERNS.md: AUTH-08 guestbook vac gate, AUTH-05 client-side kick/ban pre-publish guards (already landed per STATE.md's 09-03/09-04 summaries, executed out of wave order relative to this plan).
 
 ---

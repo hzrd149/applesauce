@@ -8,18 +8,9 @@
 
 | New/Modified File | Role | Data Flow | Closest Analog (same file, sibling code) | Match Quality |
 |---|---|---|---|---|
-| `packages/concord/src/helpers/control.ts` (Grant fold, `:174-198`) — AUTH-03/04/07 | service (pure fold/reducer) | transform (event-sourced read fold) | Banlist fold, same file `:288-303` (coordinate-gate + rank pattern) | exact — same file, same fold shape |
-| `packages/concord/src/helpers/control.ts` (Role fold, `:150-170`) — AUTH-06 | service (pure fold/reducer) | transform | Existing `role.position <= 0` guard immediately above, same file `:161-163` | exact — extend adjacent guard |
-| `packages/concord/src/helpers/control.ts` (Banlist fold, `:288-303`) — D-14 | service (pure fold/reducer) | transform | AUTH-07's Grant target-rank gate (same fix shape, same file) | exact — same fix pattern, different entity |
-| `packages/concord/src/helpers/guestbook.ts` (`foldMembers` Kick branch, `:77-84`) — AUTH-08 | service (pure fold/reducer) | transform | `vacVerifier` predicate injection already used for channel-rekey (`client/channel-sync.ts:32`) / private-channel (`client/private-channel.ts:62`) | role-match — cross-file predicate-injection precedent |
-| `packages/concord/src/helpers/guestbook.ts` (banlist apply, `:114`) — D-14 owner exemption | service (pure fold/reducer) | transform | Same file's `resolveStanding`-injected pattern already used for the Kick/Join branches above it | exact — same file, same injected-callback convention |
-| `packages/concord/src/client/community.ts` `kick()` (`:1011-1015`) — AUTH-05 | controller (client write-path method) | request-response (pre-publish guard) | `rotateChannel`'s exclude-loop outrank throw, same file `:1036-1041` | exact — identical throw shape, single-target instead of loop |
-| `packages/concord/src/client/admin.ts` `ban()` (`:257-263`) — AUTH-05 | controller (client write-path method) | request-response (pre-publish guard) | `refound()`'s local outrank throw (same class family, `admin.ts`/`community.ts` `canDo`/`standingOf` delegation) | exact — same class's own `canDo`/`standingOf` |
-| `packages/concord/src/models/community.ts:54`, `models/members.ts:22`, `client/sync.ts:176` — `foldMembers` call-site wiring | provider/store (fold call site) | transform | `vacVerifier(state, PERM.*)` construction already used at `community.ts:707` (channel-rekey) / `community.ts:785` (refound) | exact — same construction, new `requiredPerm` arg |
 
 ## Pattern Assignments
 
-### `packages/concord/src/helpers/control.ts` — Grant fold (AUTH-03, AUTH-04, AUTH-07)
 
 **Analog:** the banlist coordinate-gate fold in the same file, `control.ts:292-303` (existing, correct); AUTH-07's rank-gate mirrors the Role fold's own outrank check pattern.
 
@@ -38,7 +29,6 @@ Hoist this single `const` above the Grant fold loop; do not leave a second re-de
 
 **Coordinate-gate analog to mirror** (`control.ts:292-303`, existing/correct, template for AUTH-03):
 ```typescript
-// Source: packages/concord/src/helpers/control.ts:292-303 (existing, correct)
 const banlist = new Set<string>();
 for (const cand of groupByEntity(byVsk(VSK.BANLIST)).get(banlistLocator(cidBytes)) ?? []) {
   const s = standing(cand.author);
@@ -79,13 +69,11 @@ for (const [eid, cands] of grantCandidates) {
 
 ---
 
-### `packages/concord/src/helpers/control.ts` — Role fold, `Role.position` guard (AUTH-06)
 
 **Analog:** the existing adjacent guard in the same fold, `control.ts:161-163`.
 
 **Current code to extend:**
 ```typescript
-// Source: packages/concord/src/helpers/control.ts:154-163 (current, AUTH-06 target)
 try {
   role = JSON.parse(cand.content) as Role;
 } catch {
@@ -103,7 +91,6 @@ if (!Number.isInteger(role.position) || role.position <= 0 || role.position >= 0
 
 ---
 
-### `packages/concord/src/helpers/control.ts` — Banlist fold, rank + owner exemption (D-14)
 
 **Analog:** AUTH-07's Grant target-rank gate above (same fix shape — "signer must strictly outrank the target's CURRENT standing" — applied to a different entity in the same file).
 
@@ -127,13 +114,11 @@ for (const cand of groupByEntity(byVsk(VSK.BANLIST)).get(banlistLocator(cidBytes
 
 ---
 
-### `packages/concord/src/helpers/guestbook.ts` — `foldMembers` Kick branch, `vac` gate (AUTH-08)
 
 **Analog:** the `verifyVac?: (rotator, vac) => boolean` injected-predicate pattern already used on `client/channel-sync.ts:32` and `client/private-channel.ts:62` for channel-rekey/refound gating.
 
 **Sibling injection precedent** (`client/channel-sync.ts:28-32`):
 ```typescript
-// Source: packages/concord/src/client/channel-sync.ts:28-32
 canRemoveSelf?: (rotator: string) => boolean;
 verifyVac?: (rotator: string, vac: [string, string, string] | undefined) => boolean;
 ```
@@ -198,7 +183,6 @@ export function vacVerifier(
 
 ---
 
-### `packages/concord/src/helpers/guestbook.ts` — banlist apply, owner exemption (D-14)
 
 **Analog:** the same file's Kick/Join branches already inject `resolveStanding` as a callback; the owner-exemption check reuses that same injected function, no new import.
 
@@ -213,13 +197,11 @@ Note: `resolveStanding` here is the function *parameter* already threaded throug
 
 ---
 
-### `packages/concord/src/client/community.ts` `kick()` (AUTH-05, D-09)
 
 **Analog:** `rotateChannel`'s exclude-loop outrank throw, same file, `community.ts:1036-1041`.
 
 **Analog code** (existing, correct):
 ```typescript
-// Source: packages/concord/src/client/community.ts:1036-1041
 for (const target of opts.exclude ?? []) {
   if (!this.canDo(PERM.MANAGE_CHANNELS, this.standingOf(target).position))
     throw new Error(`cannot exclude ${target} from the channel — you do not outrank them`);
@@ -240,7 +222,6 @@ async kick(member: string): Promise<void> {
 
 ---
 
-### `packages/concord/src/client/admin.ts` `ban()` (AUTH-05, D-09)
 
 **Analog:** same class family's own `canDo`/`standingOf` (`admin.ts:352-368`), same throw shape as `community.ts`'s `rotateChannel`.
 
@@ -261,15 +242,12 @@ async ban(member: string): Promise<void> {
 ## Shared Patterns
 
 ### Rank comparison (never hand-roll)
-**Source:** `packages/concord/src/helpers/permissions.ts` — `resolveStanding`, `canActOn`, `canDo`, `hasPerm`, `standingOf`
 **Apply to:** AUTH-05, AUTH-07, D-14 — owner = position 0, roleless = `0xffffffff` sentinel already correctly encoded; do not reimplement.
 
 ### Grant-citation verification (never hand-roll)
-**Source:** `packages/concord/src/helpers/permissions.ts:98-111` — `vacVerifier(state, requiredPerm)`
 **Apply to:** AUTH-08's Kick gate — call with `PERM.KICK`; no bespoke vac-array parser inside `guestbook.ts`.
 
 ### Coordinate derivation (never hand-roll)
-**Source:** `packages/concord/src/helpers/crypto.ts:184` (`grantLocator`), `:189` (`banlistLocator`) — both frozen, byte-exact, unchanged this phase.
 **Apply to:** AUTH-03's Grant coordinate-gate; reuse the imported function, do not recompute inline elsewhere.
 
 ### Skip-candidate on malformed shape, never throw
@@ -286,6 +264,5 @@ None — every fix in this phase (AUTH-03..08, D-14) has a correct in-repo sibli
 
 ## Metadata
 
-**Analog search scope:** `packages/concord/src/helpers/{control,guestbook,permissions,crypto}.ts`, `packages/concord/src/client/{community,admin,channel-sync,private-channel,sync}.ts`, `packages/concord/src/models/{community,members}.ts` — all read/grepped directly this session (RESEARCH.md) plus one confirming grep this pass (`control.ts` imports/`cidBytes`/`banlistLocator` line numbers, all matched).
 **Files scanned:** 10 (all analogs already known from CONTEXT.md/RESEARCH.md; no additional Glob/Grep discovery pass was needed — this phase's scope was fully pre-mapped by research).
 **Pattern extraction date:** 2026-07-19

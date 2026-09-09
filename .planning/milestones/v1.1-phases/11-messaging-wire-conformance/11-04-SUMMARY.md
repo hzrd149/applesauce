@@ -2,17 +2,12 @@
 phase: 11-messaging-wire-conformance
 plan: 04
 subsystem: messaging
-tags: [nostr, nip-25, nip-22, nip-09, concord, wire-conformance]
 
 # Dependency graph
 requires:
   - phase: 11-messaging-wire-conformance
     provides: plan 03 landed in the same wave on the same working tree (WrapOptions.ephemeralSk threading through publishToPlane/sendEvent, preserved verbatim here); no direct code dependency
 provides:
-  - "ConcordCommunity.react(channelId, target: Rumor, reaction) — passes the target rumor straight into ReactionFactory.create, no hand-built identity object"
-  - "ConcordCommunity.replyToThread(channelId, parent: Rumor, body) — passes the parent rumor straight into CommentFactory.create, no hand-built pointer"
-  - "ConcordCommunity.deleteMessage(channelId, target: Rumor) — passes target.id into DeleteFactory.fromEvents, then applies ensureKTag(template.tags, target.kind) explicitly on the awaited template"
-affects: [concord-wire-conformance, concord-messaging]
 
 # Tech tracking
 tech-stack:
@@ -24,13 +19,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
-  - "D-02's stated mechanism for deleteMessage was corrected per plan Task 1: a Concord Rumor has no sig, so isEvent(event) is false and DeleteFactory.fromEvents([target]) would silently skip the k tag. Fix passes target.id (the bare-string branch) and applies ensureKTag explicitly on the awaited template before binding — D-02's zero-upstream-edits conclusion still holds."
   - "No upstream factory in packages/core or packages/common was touched — ReactionParent/CommentParent already accept Rumor and setReactionParent/setParent already do the right thing once given a real rumor."
-  - "Per D-09, no changeset created for these breaking signature changes (concord unreleased)."
 
 requirements-completed: []
 
@@ -40,10 +31,8 @@ coverage:
     requirement: "WIRE-03, WIRE-04, WIRE-05"
     verification:
       - kind: build
-        ref: "pnpm --filter applesauce-concord build exits 0"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#every channel-plane write path ... throws MissingChannelKeyError for a keyless private channel (CHAN-02 / WR-01) — reshaped target is a genuine sig-less Rumor (kind 1111, non-empty tags), exercised through react/deleteMessage/replyToThread's new signatures"
         status: pass
       - kind: unit
         ref: "pnpm test (full workspace) — 2361 passed, 2 skipped, matching the pre-plan baseline"
@@ -73,11 +62,9 @@ status: complete
 
 - `react(channelId, target: Rumor, reaction)` deletes the hand-built `{ id, pubkey, kind: kinds.ChatMessage }` object and passes `target` straight into `ReactionFactory.create` — `ReactionParent`'s union already accepts `Rumor` and `setReactionParent` already calls `ensureKTag` with the parent's real kind (WIRE-03)
 - `replyToThread(channelId, parent: Rumor, body)` deletes the hand-built `{ type: "event", id, kind: kinds.ForumThread, pubkey }` pointer and passes `parent` straight into `CommentFactory.create`, so `setParent` takes its `"tags" in parent` branch and reaches `createCommentTagsForEvent` — the verbatim-root-inheritance implementation (WIRE-04)
-- `deleteMessage(channelId, target: Rumor)` corrects D-02's stated mechanism: since a Concord `Rumor` never has a `sig`, `setDeleteEvents`'s `isEvent(event)` branch would never fire and no `k` tag would be emitted. The fix awaits `DeleteFactory.fromEvents([target.id])` to a plain template, then builds a new template replacing `tags` with `ensureKTag(template.tags, target.kind)`, and hands that to `bindToChannel` (WIRE-05)
 - The now-unused `kinds` namespace import was removed from the `applesauce-core/helpers/event` import; `ensureKTag` imported from `applesauce-core/helpers/factory`; `Rumor` added to the existing `../types.js` type-import block
 - The `MissingChannelKeyError` table test's shared `target` fixture was reshaped from `{ id, author }` into a genuine sig-less `Rumor` (kind 1111, non-empty tags) — the toolchain cannot catch a stale fixture here (`__tests__` is excluded from `tsc`, and the guard throws before the factory runs), so this was a deliberate correctness change, not a mechanical rename
 - `editMessage` (bare-id signature) and `sendMessage`'s `replyTo` (NIP-C7 chat quote-reply) were left untouched, per the plan's explicit out-of-scope fence
-- No file under `packages/core` or `packages/common` was touched; no changeset created (D-09, concord unreleased)
 
 ## Task Commits
 
@@ -90,8 +77,6 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `packages/concord/src/client/community.ts` - `react`/`replyToThread`/`deleteMessage` signatures changed to take `Rumor`; hand-built identity/pointer objects deleted; `deleteMessage` gained the explicit `ensureKTag` application; `kinds` import removed, `ensureKTag` and `Rumor` imports added
-- `packages/concord/src/client/__tests__/community.test.ts` - the `MissingChannelKeyError` table test's shared `target` local reshaped into a genuine sig-less `Rumor` (kind 1111, non-empty tags); `deleteMessage`'s row updated to pass the whole rumor instead of `target.id`
 
 ## Decisions Made
 

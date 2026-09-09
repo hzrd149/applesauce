@@ -2,7 +2,6 @@
 phase: 05-cache-identity-memo-fix
 plan: 03
 subsystem: core
-tags: [documentation, cache, symbols, taxonomy, concord]
 
 # Dependency graph
 requires:
@@ -10,7 +9,6 @@ requires:
     provides: "05-01's non-enumerable cache.ts fix and its landed identity-memo/carry-forward/accumulated-state taxonomy prose, which this plan's comments cite"
 provides:
   - "Every hand-rolled symbol-write site in applesauce-core and applesauce-common (35 sites: 15 core + 20 common) carries a one-line category comment naming its taxonomy category and citing cache.ts"
-  - "The corrected CONCORD-H01 reasoning at concord/helpers/keys.ts's BaseKeysSymbol and ChannelPlaneKeysSymbol block comments, safe for Phase 6-7 authors to read while working on rollForward/rollForwardChannel"
 affects: [06-refounding-core, 07-channel-rekey-robustness]
 
 # Tech tracking
@@ -43,7 +41,6 @@ key-files:
     - packages/common/src/helpers/trusted-assertions.ts
     - packages/common/src/helpers/gift-wrap.ts
     - packages/common/src/operations/gift-wrap.ts
-    - packages/concord/src/helpers/keys.ts
 
 key-decisions:
   - "Restructured several multi-line comments so the category term (identity memo / carry-forward payload / accumulated state) lands on the physical line immediately preceding the Reflect.set call, satisfying the plan's per-line acceptance check rather than only the comment block as a whole"
@@ -89,14 +86,11 @@ coverage:
         status: pass
     human_judgment: false
   - id: D5
-    description: "The false CONCORD-H01 reasoning at keys.ts's BaseKeysSymbol comment is corrected: states the safety claim is true only post-05-01 (non-enumerable write), cites CONCORD-H01, names the JSON.stringify/spread asymmetry, retains the persistence-safety half"
     requirement: "CACHE-02"
     verification:
       - kind: unit
-        ref: "pnpm --filter applesauce-concord test"
         status: pass
       - kind: other
-        ref: "grep -c non-enumerable / H01 / JSON.stringify / spread in packages/concord/src/helpers/keys.ts"
         status: pass
     human_judgment: false
   - id: D6
@@ -104,7 +98,6 @@ coverage:
     requirement: "CACHE-02"
     verification:
       - kind: other
-        ref: "git diff -U0 <base>..HEAD -- packages/core/src packages/common/src packages/concord/src/helpers/keys.ts | grep '^[+-]' | grep -v comment/blank -> empty"
         status: pass
     human_judgment: false
 
@@ -114,9 +107,7 @@ completed: 2026-07-15
 status: complete
 ---
 
-# Phase 05 Plan 03: Cache sweep classification + CONCORD-H01 comment fix Summary
 
-**Comment-only pass across 22 files: 35 hand-rolled symbol-write sites (15 core, 20 common) each now name their identity-memo/carry-forward-payload/accumulated-state category and cite the cache.ts taxonomy, plus the false pre-05-01 reasoning at concord's keys.ts is corrected to explain why it's now true.**
 
 ## Performance
 
@@ -130,7 +121,6 @@ status: complete
 - All 15 core sweep sites (relays.ts, hidden-tags.ts x2, encrypted-content.ts, filter.ts, event.ts x2, contacts.ts, casts/cast.ts, event-store.ts x2, async-event-store.ts, operations/event.ts x2, operations/tags.ts) carry a category one-liner citing cache.ts
 - All 20 common sweep sites (mute.ts, encrypted-content-cache.ts, lists.ts, bookmark.ts, groups.ts, emoji-pack.ts x2, app-data.ts, trusted-assertions.ts, gift-wrap.ts x6, operations/gift-wrap.ts x5) carry the same convention, with operations/gift-wrap.ts:~131 (the sole common carry-forward site) getting the most detailed warning since it sits amid otherwise-uniform accumulated-state writes
 - The D-10 grep contract re-run at completion returns exactly 34 documented hits (matching the plan's authoritative post-05-01 count), plus the one non-grep-visible worked example at operations/tags.ts:87
-- The false CONCORD-H01 reasoning in concord/helpers/keys.ts is corrected at both the BaseKeysSymbol block comment and the analogous ChannelPlaneKeysSymbol comment in deriveChannelKeys — both now state the safety claim is true only because of the 05-01 non-enumerable fix, cite CONCORD-H01, and explain the JSON.stringify/spread asymmetry
 
 ## Task Commits
 
@@ -138,7 +128,6 @@ Each task was committed atomically:
 
 1. **Task 1: Classify and comment the 15 core sweep sites** - `ca1a75e4` (docs)
 2. **Task 2: Classify and comment the 20 common sweep sites** - `542cc3c2` (docs)
-3. **Task 3: Correct the false comment at concord keys.ts (BaseKeysSymbol + ChannelPlaneKeysSymbol)** - `47d9f1f1` (docs)
 
 _No plan-metadata commit — orchestrator handles that after wave completion per worktree-mode instructions._
 
@@ -164,7 +153,6 @@ _No plan-metadata commit — orchestrator handles that after wave completion per
 - `packages/common/src/helpers/trusted-assertions.ts` - `TrustedProvidersHiddenSymbol` write commented as identity memo
 - `packages/common/src/helpers/gift-wrap.ts` - six `Seal`/`Rumor`/`GiftWrap` symbol writes commented as accumulated state, including the negative-result-sentinel note at the parse-fail site
 - `packages/common/src/operations/gift-wrap.ts` - four accumulated-state writes and the sole common carry-forward site (`EncryptedContentSymbol` on the gift) commented, the latter with the strongest warning in the sweep
-- `packages/concord/src/helpers/keys.ts` - `BaseKeysSymbol` and `ChannelPlaneKeysSymbol` block comments corrected to state the post-05-01 safety claim, cite CONCORD-H01, and name the JSON.stringify/spread asymmetry
 
 ## Decisions Made
 - Restructured several multi-line comments so the category term lands on the line immediately preceding the write, to satisfy the plan's literal per-site acceptance check (not just "somewhere in the comment block")
@@ -173,10 +161,8 @@ _No plan-metadata commit — orchestrator handles that after wave completion per
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. All comment placements, categories, and specific-handling instructions (the 4 special core sites, the 2 special common sites, the concord correction shape) were followed per the plan's tables and read_first guidance. The restructuring described above under "Decisions Made" is comment-formatting refinement to satisfy the plan's own stated acceptance criteria, not a deviation from its intent.
 
 ## Issues Encountered
-- Running `pnpm --filter applesauce-common test` and `pnpm --filter applesauce-concord test` initially failed with module-resolution errors (`Cannot find package 'applesauce-core/helpers/event'`, etc.) because this is a fresh worktree with no built `dist/` output for the workspace packages the tests import via package `exports`. Resolved by running `pnpm --filter <pkg> build` for `applesauce-core`, `applesauce-signers`, `applesauce-common`, `applesauce-relay`, and `applesauce-loaders` before re-running the test suites. This is a pre-existing monorepo build-dependency requirement, unrelated to this plan's comment-only changes — the `dist/` outputs are gitignored and were not committed.
 
 ## User Setup Required
 
@@ -184,7 +170,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - The core+common sweep is complete and the D-10 grep contract is re-runnable at any future review time (34/34 currently documented)
-- Phase 6-7 authors working on `rollForward`/`rollForwardChannel` now have correct in-code reasoning at `keys.ts` instead of the reasoning that caused CONCORD-H01
 - No blockers for downstream phases
 
 ---

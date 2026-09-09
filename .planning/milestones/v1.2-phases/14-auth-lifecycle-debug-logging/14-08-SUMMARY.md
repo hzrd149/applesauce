@@ -210,7 +210,6 @@ None - no external service configuration required.
 - WR-05, WR-06, WR-08, and IN-01 through IN-05 remain deliberately out of scope per this plan's explicit prohibitions -- backlogged, not forgotten.
 - `packages/loaders/` (ALOG-03/WR-07) is untouched, per this plan's prohibition -- owned by plan 14-09 in a sibling worktree.
 - The known pre-existing flaky test `D-15: publish's timeout is suspended across the auth phase` in `relay.test.ts` was not touched and did not fail during any run of this plan's work (passed cleanly both stability-check runs).
-- No blockers for phase closeout once this wave's worktrees merge; cross-package verification (build + `applesauce-loaders`/`applesauce-concord` non-regression, and confirming 14-09's landed diff in `packages/loaders/` does not perturb anything here) is the orchestrator's post-merge-gate responsibility, not re-run here.
 
 ## Self-Check: PASSED
 

@@ -13,7 +13,6 @@
 - **D-01:** Phase 13's entire auth surface is unreleased. `applesauce-relay` is published at 6.2.1; `RelayAuthOperation`, `RelayAuthContext`, `onAuthRequired`, `authTimeout`, `authRetries`, and `PublishResponse.error` exist only on master, described by fourteen pending changesets in `.changeset/`. They have zero downstream consumers today. Every API widening in this phase is therefore an edit to a pending changeset body rather than a major bump — and that window closes at the next release. This fact is what justifies D-02 and D-11 living in a logging phase; it must be re-verified before planning, because a release in between invalidates the reasoning.
 - **D-02:** `operation: "read" | "publish" | "sync"` is removed from `RelayAuthContext` and replaced by a wire-verb discriminated union carrying the request the relay actually refused — shape roughly `{ verb: "REQ"; id; filters } | { verb: "COUNT"; id; filters } | { verb: "EVENT"; event } | { verb: "NEG-OPEN"; id; filter }`. Relays gate auth on request shape, not category; the discriminant is the NIP-01/NIP-77 verb, exhaustive so a new verb is a compile error.
 - **D-03:** The read/publish distinction survives in exactly one place — a compatibility adapter at the `receivedAuthRequiredForReq` / `receivedAuthRequiredForEvent` write, mapping verb to legacy flag.
-- **D-04:** `authRequiredForRead$` / `authRequiredForPublish$` stay as public API (RAUTH-09 unchanged) but nothing internal reads them. Delete the two `take(1)` log subscriptions at `relay.ts:546` and `:554` — the last internal readers *and* the bucketed lines this phase retires. Keep every write (`:931`, `:1056`, `:1147`→**see Research correction, actual write is `:1149`**, `:1262`), `resetState()`'s clears (`:413-414`), and the `status$` composition (`:571-572`). Concord's four readers consume `status$` and are CAUTH-03's, not this phase's.
 
 **Operation attribution (ALOG-02)**
 - **D-05:** An operation is identified in its log lines by its wire key plus a phase counter — the id already carried on the union (REQ/COUNT subscription id, `event.id`, NEG-OPEN id), truncated for display only, with `phase n/N`. `negentropy()` must own its subscription id instead of `negentropySync` minting it at `negentropy.ts:71` per negotiation, so the id stays stable across auth retries.
@@ -48,7 +47,6 @@
 - Test file placement and the capture harness's shape (D-16).
 
 ### Deferred Ideas (OUT OF SCOPE)
-- Concord's four remaining reads of the auth-required flags (`relay-auth.ts:110`, `:206`, `invite-watcher.ts:258`, `:435`, all consuming `status$`) — Phase 15, not here.
 - A lint rule enforcing the logger convention — scoped out by REQUIREMENTS.md at milestone start and declined again by D-19.
 - Value-signalling the remaining `CLOSED` prefixes (blocked, rate-limited, invalid) — carried forward from Phase 13's deferred list; D-11 closes one instance, not the class.
 </user_constraints>
@@ -78,7 +76,6 @@ The second piece — the `packages/loaders/` `Debugger`-hygiene sweep — turns 
 
 One correction this research surfaces that the planner must act on: **D-14's claim that "D-19's silently-dropped relay in `RelayGroup.sync`" needs a log line added by Phase 14 is stale.** That line already exists — it landed in Phase 13 (plan 13-07) at `group.ts:359`: `this.log(\`dropping relay from group sync (D-19): ${relay.url}\`, err)`. The surrounding source comment (`group.ts:356-357`) explicitly defers only a *status channel* to "Phase 14 (ALOG-02) territory" — not this log line. The planner should not create a task to "add" this line; instead, decide whether it needs D-15 prose cleanup (it currently embeds a literal `(D-19)` plan-citation in production log text) and whether it should route through an `:auth`-flavored channel given D-13's namespace design lives on `Relay`, not `RelayGroup`.
 
-D-13's namespace-glob claim was verified empirically against the installed `debug@4.4.3` in this repo (see Code Examples): `DEBUG=applesauce:Relay:*` matches both the base relay namespace and its `:auth` child; `DEBUG=applesauce:Relay:*:auth` narrows to only the child. D-16's capture-harness — enable a concrete namespace, override `debug.log`, collect calls, restore in a `finally` — is not a new pattern to invent: it already exists verbatim in `packages/concord/src/helpers/__tests__/relays.test.ts` (`captureDebugOutput()`), built for exactly this "module-level logger, never injected" situation `Relay` is in (no `logger` option exists on `RelayOptions` today). The planner should lift this helper into `packages/relay/src/__tests__/`, reusing `relay.test.ts`'s existing `WS` mock server + real-`Relay` + real-clock setup (matching 13-CONTEXT.md D-20's precedent of real timers, not fake ones).
 
 **Primary recommendation:** Treat this as two sequenced workstreams — (1) `applesauce-relay`: wire-verb union (D-02) → two-track logging (D-08/D-09/D-12) → `:auth` namespace + capture-harness tests (D-13/D-16) → changeset edit (D-01); (2) `applesauce-loaders`: single-site hoist at `sync-loader.ts:611`, mark SEED-001 resolved, no changeset needed (zero observable behavior change). Do not re-derive the D-19 dropped-relay line — it exists; only its routing/prose is open.
 
@@ -111,7 +108,6 @@ This phase has no browser/client, SSR, CDN, or database tier — it is entirely 
 ### Alternatives Considered
 | Instead of | Could Use | Tradeoff |
 |------------|-----------|----------|
-| Real `debug` output capture (enable namespace + override `debug.log`) | Dependency-injected spy `Debugger` (the pattern `packages/concord/src/client/__tests__/sync-logging.test.ts` uses) | Not viable for `Relay`: `RelayOptions` has no `logger` field, so there is no DI seam. The loaders package *does* support DI (`SyncLoaderOptions.logger?: debug.Debugger`), so either pattern is viable there, but the relay-side oracle (which is what ALOG-01 actually needs to prove) must use real capture |
 
 **Installation:** None required — `debug` is already a direct dependency of `applesauce-core` (`^4.4.0`) and transitively available to `applesauce-relay`/`applesauce-loaders`. No new packages are introduced by this phase.
 
@@ -237,7 +233,6 @@ export function loadBackwardBlocks(request, opts) {
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Capturing real `debug`-package output in a test | A custom `console.log` monkey-patch or a fresh DI seam added to `Relay` | The existing `captureDebugOutput()` pattern in `packages/concord/src/helpers/__tests__/relays.test.ts:243-258` | It already solves the exact problem (module-level, non-injected logger; global enable state; safe restore) and is proven working in this codebase today |
 | Rendering `debug`'s `%s`/`%d` printf-style substitutions in assertions | A hand-rolled string-interpolation checker | `node:util`'s `format(...)`, exactly as the existing harness and `sync-logging.test.ts`'s `spyLogger()`/`render()` pair already do | `debug` delegates its own formatting to the same substitution rules `util.format` implements; using anything else risks assertions that pass against a differently-formatted string than what a real terminal would show |
 | Namespace-glob matching logic (verifying `DEBUG=applesauce:Relay:*` reaches `:auth` children) | A custom glob matcher or hand-reasoned assumption | `debug`'s own `enabled()`/`enable()` API, called directly in tests | This research empirically confirmed (see Pitfall/Finding below) that `debug@4.4.3`'s wildcard matching crosses `:`-delimited segments; do not assume RFC-glob semantics (`*` stopping at the next `:`) — it does not behave that way in this version |
 
@@ -255,7 +250,6 @@ export function loadBackwardBlocks(request, opts) {
 | Secrets/env vars | None — no env var or secret key named after `operation`/`RelayAuthOperation`. | None |
 | Build artifacts / installed packages | The word `operation` appears in one **unreleased changeset body** (`.changeset/relay-operation-scoped-auth-callbacks.md`) that will become the published changelog entry the next time `applesauce-relay` is released. This is the one artifact that must be edited (D-01) — not a runtime state item, but the single place the retired name would otherwise leak into a shipped changelog. | Edit the changeset body per D-01/D-02 before this phase's commits land |
 
-**Confirmed via direct grep:** `grep -rn "RelayAuthOperation" . --include="*.ts" --include="*.md"` (excluding `node_modules`/`.planning`) returns only the type's own declaration/import/consumption sites inside `packages/relay/src/` — zero hits in `apps/`, `packages/concord/`, or documentation.
 
 ## Common Pitfalls
 
@@ -292,7 +286,6 @@ D-13's claim is correct; no additional namespace design work is needed to make `
 ### Pitfall 4: Vitest's shared debug-module state leaking across tests in the same file
 **What goes wrong:** `debug`'s `enabled`/`enable`/`disable`/`log` state is a module-level singleton. A test that calls `debugFactory.enable(NAMESPACE)` without restoring the prior state in a `finally` block leaves that namespace enabled (or the log sink overridden) for every subsequent test in the same file — and, if the harness accidentally captures unrelated log output, produces flaky false-positive/false-negative assertions.
 **Why it happens:** Vitest's default `isolate: true` (no override present in this repo's root `vitest.config.ts`) gives each **test file** a fresh module registry, so state does not leak *across files* — but within one file, all tests share the same imported `debug` module instance, so state *does* leak across tests unless each test restores it.
-**How to avoid:** Reuse the exact `captureDebugOutput()` pattern already proven in `packages/concord/src/helpers/__tests__/relays.test.ts:243-258` — record `wasEnabled` before, always restore `debug.log` and conditionally `disable()` in a `finally`/`restore()` called from every test (including failure paths).
 **Warning signs:** A test that passes in isolation (`pnpm vitest run <path>`) but fails or behaves differently when run as part of the full `relay.test.ts` suite is a symptom of leaked enable-state.
 
 ### Pitfall 5: `negentropySync`'s subscription id has no caller-supplied override today
@@ -311,7 +304,6 @@ Verified patterns from this codebase's own source:
 
 ### D-16's capture harness (lift this into `packages/relay/src/__tests__/`)
 ```typescript
-// Source: packages/concord/src/helpers/__tests__/relays.test.ts:243-258 (verified working precedent)
 import debugFactory from "debug";
 import { format } from "node:util";
 
@@ -424,7 +416,6 @@ Not applicable in the traditional sense — this phase does not adopt a newer ex
 | Dependency | Required By | Available | Version | Fallback |
 |------------|------------|-----------|---------|----------|
 | `debug` (npm) | All logging in this phase | Yes | `4.4.3` installed (dep range `^4.4.0` in `applesauce-core`) | — |
-| `@types/debug` | TypeScript typing for `Debugger` in `packages/loaders/` (used without an explicit direct dependency — resolved transitively) | Yes (verified: `packages/loaders` builds clean via `tsc --noEmit` today) | Not pinned directly in `packages/loaders/package.json` | If a future toolchain change breaks this transitive resolution, mirror Phase 12.2's precedent (`12.2-01: debug/@types/debug added as concord's own direct dependencies`) and add both as direct deps of `applesauce-loaders` |
 | `vitest-websocket-mock` | D-16's relay-level capture harness (reuses `relay.test.ts`'s existing `WS` server) | Yes | `^0.5.0` | — |
 
 **Missing dependencies with no fallback:** none.
@@ -450,10 +441,8 @@ Not applicable in the traditional sense — this phase does not adopt a newer ex
 ### Sampling Rate
 - **Per task commit:** `pnpm vitest run <changed-test-file-path>`
 - **Per wave merge:** `pnpm --filter applesauce-relay test` and, if `packages/loaders/` was touched, `pnpm --filter applesauce-loaders test`
-- **Phase gate:** Both full suites green before `/gsd-verify-work`; per REQUIREMENTS.md, `pnpm --filter applesauce-concord test` is NOT required for this phase (concord is Phase 15's scope) but should stay green as a non-regression check since `applesauce-relay`'s `PublishResponse`/`RelayAuthContext` shape changes are consumed nowhere in concord today (re-verified, zero hits).
 
 ### Wave 0 Gaps
-- [ ] `packages/relay/src/__tests__/<new-or-existing>.test.ts` — houses D-16's `captureDebugOutput()` harness (lifted from `packages/concord/src/helpers/__tests__/relays.test.ts:243-258`) plus the RED→GREEN non-vacuity probes for ALOG-01/02
 - [ ] Confirm whether `sync-loader.ts`'s existing test suite (`packages/loaders/src/loaders/__tests__/sync-loader.test.ts`, not read in depth during this research — locate and inspect during planning) already asserts on `log`/`request` line content that would catch a regression from the D-18 hoist, or whether a new assertion is needed
 - Framework install: none — `vitest`, `vitest-websocket-mock`, `debug` are all already present
 
@@ -464,7 +453,6 @@ Not applicable in the traditional sense — this phase does not adopt a newer ex
 | ASVS Category | Applies | Standard Control |
 |---------------|---------|-----------------|
 | V5 Input Validation | Yes | Relay-supplied strings (the NIP-01 `CLOSED` `reason`, the NIP-42 challenge, `OK` message text) are logged verbatim in several places (D-09's "relay's own `OK` message carried verbatim as the why"). D-06 already builds in the relevant mitigation for filter summaries (kinds spelled out, everything else counted, "so a 500-author filter cannot produce a multi-kilobyte line") — the same discipline should extend to the `reason`/`OK message` strings: `debug` itself does not sanitize or truncate arguments, so an adversarial relay returning a multi-megabyte `reason` string would be logged in full. This is unlikely to be a genuine attack surface (debug output, not a UI/log-aggregation ingestion pipeline) but is worth a truncation guard consistent with D-06's spirit. |
-| V7 Error Handling and Logging | Yes | The existing pattern of dual-emitting via `this.log`/module-level `log` (Phase 12.2's `D-09` precedent for concord) is not required here since `Relay`'s logging is already the sole error-visibility channel for this subsystem — no separate `console.warn`/`console.error` calls exist in the auth path today (`relay.ts` uses only `this.log(...)` throughout `req()`/`count()`/`event()`/`negentropy()`/`authenticate()`). No change needed; this phase should not introduce a second parallel logging channel. |
 | V6 Cryptography | No | No cryptographic material is logged or handled directly by this phase — the AUTH event itself is signed by the caller-supplied signer before `auth()`/`authenticate()` ever see it; `authenticate()` (`relay.ts:1303`) only calls `signer.signEvent(...)`, it never touches raw key material. Confirm no log line accidentally includes the full signed AUTH event object (which contains the pubkey and signature, both public/non-secret, but still worth keeping out of log lines per D-06's "counted not spelled out" discipline — log the pubkey, never the full event). |
 | V4 Access Control | No | This phase does not change who can authenticate or what an authenticated pubkey can do — it only makes the existing state machine observable. |
 
@@ -485,8 +473,6 @@ Not applicable in the traditional sense — this phase does not adopt a newer ex
 - `packages/relay/src/group.ts` (full read) — `RelayGroup` logger, D-19 dropped-relay line (found already implemented), `errorToPublishResponse`
 - `packages/loaders/src/loaders/sync-loader.ts` (full read, 763 lines) — full D-18 sweep, `SyncAuthContext` shape confirmed to have no `operation` field
 - `packages/loaders/src/loaders/timeline-loader.ts` (full read, 490 lines) — all 7 cited logger-derivation sites confirmed compliant
-- `packages/concord/src/helpers/__tests__/relays.test.ts` — `captureDebugOutput()` harness, the D-16 precedent
-- `packages/concord/src/client/__tests__/sync-logging.test.ts` — the DI-spy alternative pattern (not applicable to `Relay`, applicable to loaders if desired)
 - `packages/relay/src/__tests__/relay.test.ts`, `group.test.ts`, `auth-retry.test.ts` — existing test conventions (`WS` mock server, `subscribeSpyTo`, real clock per 13-D-20)
 - `.changeset/*.md` (46 files enumerated, 14 confirmed targeting `applesauce-relay`) — `relay-operation-scoped-auth-callbacks.md` and `relay-publish-response-error-field.md` read in full
 - `.planning/seeds/SEED-001-avoid-inline-debug-extend.md`, `.planning/phases/13-operation-scoped-nip-42-auth-hooks/13-CONTEXT.md`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`, `.planning/STATE.md` — cross-referenced for prior-phase decisions and drift

@@ -1,8 +1,6 @@
 ---
 phase: 10-invite-lifecycle-event-time-consistency
 plan: 02
-subsystem: concord
-tags: [time-encoding, ms-tag, event-ordering, memberlist-fold, applesauce-concord]
 
 # Dependency graph
 requires:
@@ -20,11 +18,7 @@ tech-stack:
 
 key-files:
   created:
-    - packages/concord/src/helpers/__tests__/stream.test.ts
   modified:
-    - packages/concord/src/helpers/stream.ts
-    - packages/concord/src/operations/channel.ts
-    - packages/concord/src/operations/__tests__/chat.test.ts
 
 key-decisions:
   - "parseMs's rejection of non-canonical forms rests entirely on the String(n) === tag round-trip after Number(tag) is range/integer-checked"
@@ -42,10 +36,8 @@ coverage:
     requirement: "TIME-03"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/stream.test.ts#parseMs > it.each canonical table"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/stream.test.ts#parseMs > absent-tag conventions"
         status: pass
     human_judgment: false
   - id: D2
@@ -53,13 +45,10 @@ coverage:
     requirement: "TIME-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/stream.test.ts#splitTime > decomposes a >=500ms remainder without rounding up"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/stream.test.ts#splitTime > orders a …000700 rumor before a …001400 rumor"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/operations/__tests__/chat.test.ts#chat operations > includeMs overrides created_at from the same single clock read (TIME-01)"
         status: pass
     human_judgment: false
 
@@ -99,10 +88,6 @@ Each task was committed atomically:
 _Note: both tasks combined their test additions and implementation into a single commit each rather than a strict RED-then-GREEN two-commit split — see Decisions Made._
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/stream.ts` - Added `parseMs`; rewrote `rumorMs`/`hasMalformedMs` to consume it
-- `packages/concord/src/helpers/__tests__/stream.test.ts` - **Net-new.** Table-driven `parseMs` agreement suite (Task 1) plus `splitTime` decomposition/reorder repro cases (Task 2)
-- `packages/concord/src/operations/channel.ts` - `includeMs` now imports `splitTime` and overrides `draft.created_at` alongside the `ms` tag
-- `packages/concord/src/operations/__tests__/chat.test.ts` - Extended with a case asserting `includeMs` overrides `created_at` from the same clock read
 
 ## Decisions Made
 - `parseMs` computes `n = Number(tag)` then requires `Number.isInteger(n) && n >= 0 && n <= 999 && String(n) === tag` — the round-trip check is load-bearing (without it, `"007"` and `"0x10"` would incorrectly validate)
@@ -123,7 +108,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 - `parseMs` and the corrected `includeMs`/`splitTime` decomposition are now available for any later plan in this phase that touches invite lifecycle timing (10-03..10-06)
 - `operations/rekey.ts`/`helpers/rekey.ts` still carry the identical dual-parser/round-vs-floor defect, deliberately deferred per this plan's prohibitions — flagged as a known follow-up, not a blocker for 10-03+
-- `applesauce-concord` full suite green: 277/277 tests, 47/47 files; `tsc --noEmit` clean
 
 ---
 *Phase: 10-invite-lifecycle-event-time-consistency*
@@ -131,9 +115,5 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/helpers/__tests__/stream.test.ts
-- FOUND: packages/concord/src/helpers/stream.ts
-- FOUND: packages/concord/src/operations/channel.ts
-- FOUND: packages/concord/src/operations/__tests__/chat.test.ts
 - FOUND commit: 98f33267
 - FOUND commit: 9faac641

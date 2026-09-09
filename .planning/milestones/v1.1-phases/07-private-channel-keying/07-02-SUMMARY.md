@@ -1,8 +1,6 @@
 ---
 phase: 07-private-channel-keying
 plan: 02
-subsystem: concord
-tags: [concord, rxjs, reactive-state, access-control, client-api]
 
 # Dependency graph
 requires:
@@ -24,8 +22,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/__tests__/community.test.ts
 
 key-decisions:
   - "sameChannelViews compares length + per-entry channel_id/accessible, mirroring members$'s sameSet precedent — a mapped array needs a content comparator, not reference identity"
@@ -42,7 +38,6 @@ coverage:
     requirement: "CHAN-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#channels$ flips accessible:true when a key is granted out-of-band with no control-plane fold (CHAN-06)"
         status: pass
     human_judgment: false
   - id: D2
@@ -50,7 +45,6 @@ coverage:
     requirement: "CHAN-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#channels$ flips accessible:true when a key is granted out-of-band with no control-plane fold (CHAN-06)"
         status: pass
     human_judgment: false
   - id: D3
@@ -58,7 +52,6 @@ coverage:
     requirement: "CHAN-06"
     verification:
       - kind: other
-        ref: "grep -n \"accessible\" packages/concord/src/types.ts returns no matches"
         status: pass
     human_judgment: false
 
@@ -85,7 +78,6 @@ status: complete
 - Adopted `hasChannelKey(material, channelId)` (Plan 01) for `dropChannelKey`'s presence-only guard, replacing a hand-rolled `material.channels.some(...)` lookup; `reconcilePrivateChannels`'s value-needing `find(...)` was deliberately left intact since it needs the key object itself.
 - Added `export type ChannelView = ChannelMetadata & { accessible: boolean }` and retyped `channels$` from `Observable<ChannelMetadata[]>` to `Observable<ChannelView[]>`.
 - Added a private `materialChanged$` Subject and redefined `channels$` as `combineLatest([state channels slice, materialChanged$.pipe(startWith(undefined))])`, mapping each channel to `{ ...c, accessible: !c.private || hasChannelKey(this.material, c.channel_id) }`, terminating in a new `sameChannelViews` content comparator (mirrors `members$`'s `sameSet`).
-- Wired `materialChanged$.next()` into all four sites that mutate `this.keys.material.channels`: `receiveChannelKeys`, `persistChannelKey`, `dropChannelKey`, and the `mintChannelKey` callback passed to `ConcordCommunityAdmin`.
 - Added a CHAN-06 reactivity test that mints a private channel, drops the key locally via `leaveChannel` (no fold), subscribes to `channels$`, then calls `receiveChannelKeys` alone (no other community activity) and asserts a fresh `accessible: true` emission — proving the grant itself is the sole trigger, not a co-occurring `state$` fold.
 
 ## Task Commits
@@ -98,8 +90,6 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `packages/concord/src/client/community.ts` - Added `ChannelView` type, `sameChannelViews` comparator, private `materialChanged$` Subject; redefined `channels$` as a `combineLatest` composite; adopted `hasChannelKey` in `dropChannelKey`.
-- `packages/concord/src/client/__tests__/community.test.ts` - Added the CHAN-06 reactivity test (grant-only trigger, no intervening state activity).
 
 ## Decisions Made
 
@@ -122,7 +112,6 @@ None - no external service configuration required.
 
 - `ChannelView`, `hasChannelKey`, and the `materialChanged$` reactivity idiom are all available for Plan 03's `MissingChannelKeyError` guard in `sendMessage` (CHAN-02), which can reuse `hasChannelKey(this.material, channelId)` directly.
 - `client/index.ts`'s existing `export *` from `client/community.ts` already re-exports `ChannelView` — no additional export wiring needed.
-- Full `applesauce-concord` package suite (209 tests) and full monorepo `pnpm vitest run` (2084 tests) both green; full monorepo `pnpm run build` (18/18 tasks) green.
 - No consumer of `channels$` exists yet outside this package's own tests (confirmed via repo-wide grep), so the `ChannelMetadata[]` → `ChannelView[]` breaking type change has no other call sites to update this phase.
 
 ---

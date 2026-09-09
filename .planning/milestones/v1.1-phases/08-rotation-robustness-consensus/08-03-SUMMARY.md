@@ -1,7 +1,6 @@
 ---
 phase: 08-rotation-robustness-consensus
 plan: 03
-subsystem: concord
 tags: [rekey, refounding, nip44, convergence, rotation]
 
 # Dependency graph
@@ -24,8 +23,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/helpers/__tests__/keys.test.ts
 
 key-decisions:
   - "D-06's transient-decrypt case reuses the existing {kind:\"none\"} outcome — no new ScopedRekeyOutcome/RekeyOutcome/ChannelRekeyOutcome variant; the external contract is byte-identical to before this plan"
@@ -40,7 +37,6 @@ coverage:
     requirement: "ROTATE-05"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#a transient decrypt failure at our own locator yields none, never removed (ROTATE-05, D-06)"
         status: pass
     human_judgment: false
   - id: D2
@@ -48,7 +44,6 @@ coverage:
     requirement: "ROTATE-07"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#a decryptable candidate coexisting with an opaque competing fork defers (none), never adopts (ROTATE-07, D-10)"
         status: pass
     human_judgment: false
   - id: D3
@@ -56,14 +51,12 @@ coverage:
     requirement: "ROTATE-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#among two decryptable candidates, the lexicographically lowest new key wins (ROTATE-06/07, D-03)"
         status: pass
     human_judgment: false
   - id: D4
     description: "Spec-strict removal is unchanged when the winner is fully decryptable (by other holders) and excludes us, with no opaque competitor in play"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#a single complete authorized fork excluding us still removes (spec-strict removal control, D-03)"
         status: pass
     human_judgment: false
 
@@ -99,13 +92,10 @@ Each task was committed atomically:
 2. **Task 2: Spec-derived oracles — transient decrypt, opaque-fork defer, lowest-key tie-break** - `17ae8ce7` (test)
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/keys.ts` - `readRekeyScoped` restructured: decryptable/opaque partition, `noBlobRotators` (removal-eligible), `opaqueCompetitor` (defer-eligible, includes decrypt-throw); doc comment rewritten to describe the new partition
-- `packages/concord/src/helpers/__tests__/keys.test.ts` - New `describe("readRekeyScoped convergence — ROTATE-05/06/07 (D-06/D-10)")` block with 5 spec-derived oracles: transient-decrypt, opaque-fork-deferral, lowest-key tie-break, spec-strict removal control, plus the `withThrowingDecrypt` signer-wrapper test helper
 
 ## Decisions Made
 - D-06's transient-decrypt case reuses `{kind: "none"}` — no new outcome variant, per the plan's `key_links` requirement that the external contract stay unchanged
 - Decrypt-throw and genuine no-blob exclusion are tracked as two SEPARATE signals internally (`opaqueCompetitor` boolean vs `noBlobRotators` array), not one combined "opaque" bucket — this was necessary to satisfy D-06's "never contributes to removal" requirement precisely: a decrypt-throw-only situation (zero decryptable candidates, zero genuine no-blob sets) now correctly falls through to `none`, not `removed`
-- No changeset created — `packages/concord` is unreleased (per project instructions, concord changes skip changesets)
 
 ## Deviations from Plan
 
@@ -119,7 +109,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - `readRekeyScoped`'s partition is scope-generic, so both `readRekey` (root) and `readChannelRekey` (channel) inherit the fix from this one restructure — no channel-specific follow-up needed for ROTATE-05/06/07
-- Full `applesauce-concord` suite (224 tests) and `tsc --noEmit` both pass clean after this plan
 - 08-04/08-05/08-06 (remaining phase 8 plans covering `vac` citation, majority-gated publish confirmation, and remaining rulings) are unaffected by and do not depend on this plan's internal restructure beyond the unchanged `ScopedRekeyOutcome`/`RekeyOutcome`/`ChannelRekeyOutcome` contract
 
 ---
@@ -127,7 +116,5 @@ None - no external service configuration required.
 *Completed: 2026-07-19*
 
 ## Self-Check: PASSED
-- FOUND: packages/concord/src/helpers/keys.ts
-- FOUND: packages/concord/src/helpers/__tests__/keys.test.ts
 - FOUND: c9a36bcc
 - FOUND: 17ae8ce7

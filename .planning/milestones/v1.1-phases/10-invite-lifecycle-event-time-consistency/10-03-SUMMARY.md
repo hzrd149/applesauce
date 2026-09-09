@@ -1,8 +1,6 @@
 ---
 phase: 10-invite-lifecycle-event-time-consistency
 plan: 03
-subsystem: concord
-tags: [concord, time-encoding, guestbook, snapshot, event-factory]
 
 # Dependency graph
 requires:
@@ -23,10 +21,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/operations/guestbook.ts
-    - packages/concord/src/factories/guestbook.ts
-    - packages/concord/src/factories/__tests__/snapshot.test.ts
-    - packages/concord/src/operations/__tests__/planes.test.ts
 
 key-decisions:
   - "SnapshotFactory.create and chunk() both default their trailing time param to splitTime() (a fresh single read) rather than requiring every caller to pass it explicitly, preserving the existing no-args call in snapshot.test.ts (SnapshotFactory.create(['x'], 'id', 1, 1)) and the existing helpers/keys.ts call site (buildSnapshotFactories(recipients, snapshotId)) with zero signature-breaking impact on either"
@@ -42,7 +36,6 @@ coverage:
     requirement: "TIME-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/operations/__tests__/planes.test.ts#includeSnapshotChunk sets members + snap tag"
         status: pass
     human_judgment: false
   - id: D2
@@ -50,7 +43,6 @@ coverage:
     requirement: "TIME-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/factories/__tests__/snapshot.test.ts#shares one created_at and one ms tag across all chunks (TIME-02/D-08)"
         status: pass
     human_judgment: false
 
@@ -86,10 +78,6 @@ Each task was committed atomically:
 **Plan metadata:** pending (this commit)
 
 ## Files Created/Modified
-- `packages/concord/src/operations/guestbook.ts` - `includeSnapshotChunk` takes a pre-computed `{ created_at, ms }` pair instead of a bare `ms: number`
-- `packages/concord/src/factories/guestbook.ts` - `buildSnapshotFactories` reads `splitTime(nowMs)` once and threads the pair through `SnapshotFactory.create`/`chunk()`
-- `packages/concord/src/operations/__tests__/planes.test.ts` - updated `includeSnapshotChunk` call site to the new `{ created_at, ms }` signature
-- `packages/concord/src/factories/__tests__/snapshot.test.ts` - added the shared-timestamp-across-chunks spec-derived assertion
 
 ## Decisions Made
 - `SnapshotFactory.create` and `chunk()` default their trailing `time` param to `splitTime()` (a fresh single read at that call), rather than making it a required argument — this keeps the pre-existing no-args call (`SnapshotFactory.create(["x"], "id", 1, 1)` in `snapshot.test.ts`) and `helpers/keys.ts`'s `buildSnapshotFactories(opts.recipients, snapshotId)` call compiling unchanged. `buildSnapshotFactories` remains the only place that reads a raw `nowMs: number = Date.now()` at the caller boundary, per the plan's explicit instruction.
@@ -110,7 +98,6 @@ None - no external service configuration required.
 
 - TIME-02 is fully satisfied: the snapshot factory reads the clock once per snapshot and no per-chunk `Date.now()` remains in the guestbook snapshot path.
 - `operations/rekey.ts`/`helpers/rekey.ts` deliberately left untouched (identical defect shape on Rekey chunks, explicitly deferred per the plan's prohibitions) — confirmed via `git diff --stat` showing zero changes to either file.
-- Full `applesauce-concord` suite green (278/278 tests across 47 files); `pnpm --filter applesauce-concord build` clean.
 - Ready for 10-04.
 
 ---

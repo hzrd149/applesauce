@@ -10,7 +10,6 @@ provides:
   - "cache.ts write mechanism fixed: setCachedValue/getOrComputeCachedValue write non-enumerable memos via Object.defineProperty"
   - "canonical identity-memo/carry-forward-payload/accumulated-state taxonomy prose landed in cache.ts, framed as classifying write sites"
   - "applesauce-core patch changeset disclosing the behavior change"
-affects: [05-02, 05-03, 05-04, concord-rotation-work]
 
 # Tech tracking
 tech-stack:
@@ -64,7 +63,6 @@ status: complete
 
 # Phase 5 Plan 1: Cache Write-Mechanism Fix + Taxonomy Docs Summary
 
-**Fixed the CONCORD-H01 root cause by making `cache.ts`'s two memo writes non-enumerable via `Object.defineProperty`, documented the identity-memo/carry-forward/accumulated-state write-site taxonomy in the same file, and shipped a patch changeset.**
 
 ## Performance
 
@@ -113,7 +111,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - The root-cause fix and its canonical taxonomy documentation are in place and covered by the green `applesauce-core` suite (629/629 tests).
-- Sibling plans in this phase (05-02 test coverage, 05-03 comment sweep, 05-04 concord spec-derived tests) can now build directly on this write mechanism and cite this taxonomy prose rather than restating it.
 - No carry-forward write site was touched — `EncryptedContentSymbol`'s two hand-rolled enumerable writes (`operations/tags.ts:87`, `helpers/encrypted-content.ts:117`) remain untouched, consistent with T-05-02's mitigation.
 
 ---

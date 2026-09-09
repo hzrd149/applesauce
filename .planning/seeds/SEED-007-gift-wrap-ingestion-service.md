@@ -33,17 +33,12 @@ Three independent kind-1059 subscriptions, each with its own filter:
 |------|--------|
 | `packages/common/src/models/wrapped-messages.ts:20` | `store.timeline({ kinds: [GiftWrap], "#p": [self] })` |
 | `packages/common/src/models/gift-wrap.ts:11` | `store.timeline({ kinds: [GiftWrap], "#p": [pubkey] })` |
-| `packages/concord/src/client/invite-watcher.ts:459` | `{ kinds: [GiftWrap], "#p": [this.pubkey] }` |
 
-And wrap-level dedup built **twice inside concord alone**, with near-identical
 comments:
 
-- `packages/concord/src/client/sync.ts:72` — _"Wrap-level store: dedups kind-1059 wraps
   and doubles as the NIP-77 local store."_
-- `packages/concord/src/client/community.ts:102` — _"Wrap-level store for kind-1059
   dedup + the NIP-77 negentropy local store."_
 
-So an app running concord alongside wrapped DMs today opens multiple overlapping
 `#p`-on-self 1059 subscriptions and dedups the same wraps in separate stores. This is
 the concrete cost the service removes.
 
@@ -92,32 +87,26 @@ absorbing.
 **Server-side backends** — `packages/sqlite/src/{better-sqlite3,bun,libsql,native,turso}/event-database.ts`,
 plus `packages/sqlite/src/relay.ts`
 
-**Lifecycle reference models** — `packages/concord/src/client/` (multi-class stack over
 gift-wrapped content; see [[SEED-006]]) and `NutWallet` (`packages/wallet/src/wallet/nut-wallet.ts`,
 single-class `start()`/`stop()`/`dispose()` contract; see [[SEED-005]]).
 
 ## Design Constraints Found at Capture Time
 
-1. **Kind 1059 is commonly NIP-42 gated.** `packages/concord/src/client/relay-auth.ts:5-6`
    records that relays gate kind 1059 behind NIP-42 — ditto's default is
    `AUTH_KINDS=4,1059` — and that every `authors` entry in a 1059 REQ must be a derived
    per-stream identity there. An ingestion service subscribing to 1059 inherits this:
    auth is on the critical path of the very kind it ingests, not an edge case. Relevant
    both in-browser and on a server.
-2. **Consumers want different slices of the same stream.** Concord's invite-watcher has
    a `scanUntagged` mode that widens from a narrow direct-invite filter to all
    `#p`-on-self wraps (`invite-watcher.ts:459`). A single ingestion service has to serve
    both the "give me everything addressed to me" and "give me this narrow slice"
    shapes without forcing every consumer onto the widest subscription.
-3. **Dedup already doubles as the NIP-77 negentropy local store** in concord (both
    comments above). Consolidating wrap-level stores must not break negentropy sync,
    which reads that store as its local set.
 
 ## Open Questions (for enrichment, not decided here)
 
-1. **Where does it live?** It is needed by `common` (models), `concord` (client) and
    any server backend, so `packages/core` or a new package are the plausible homes —
-   `common` would create a dependency direction concord may not want.
 2. **What does it emit?** Rumors into a `RumorStore`/`AsyncRumorStore`, or an observable
    consumers subscribe to, or both. The store-backed shape is what makes the server
    case work.

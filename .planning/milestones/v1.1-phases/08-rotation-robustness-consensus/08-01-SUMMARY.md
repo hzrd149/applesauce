@@ -2,7 +2,6 @@
 phase: 08-rotation-robustness-consensus
 plan: 01
 subsystem: auth
-tags: [concord, rekey, refounding, epoch-walk, race-convergence, vitest]
 
 # Dependency graph
 requires: []
@@ -24,15 +23,7 @@ tech-stack:
 
 key-files:
   created:
-    - packages/concord/src/client/__tests__/sync.test.ts
-    - packages/concord/src/client/__tests__/channel-sync.test.ts
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/private-channel.ts
-    - packages/concord/src/helpers/rekey.ts
-    - packages/concord/src/client/sync.ts
-    - packages/concord/src/client/channel-sync.ts
-    - packages/concord/src/helpers/__tests__/channel-rekey.test.ts
 
 key-decisions:
   - "isStrictlyLowerKey centralized in rekey.ts (not duplicated per call site) so the live latch, root-scope cascade, and channel-scope cascade provably use the identical down-only ordering"
@@ -50,13 +41,10 @@ coverage:
     requirement: "ROTATE-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/sync.test.ts#re-reads a known epoch's rekey plane; a late-arriving strictly-lower sibling cascades into N+2"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/channel-sync.test.ts#heals a held epoch to a late-arriving strictly-lower sibling and rebuilds N+2 from it"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/channel-rekey.test.ts#re-reading with a late-arriving lower sibling heals down to the CORD-06 §3 minimum (D-04 down-only re-heal)"
         status: pass
     human_judgment: false
   - id: D2
@@ -64,13 +52,10 @@ coverage:
     requirement: "ROTATE-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/sync.test.ts#re-reading the SAME (non-strictly-lower) winner again leaves a settled epoch untouched (down-only)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/channel-sync.test.ts#re-reading a held epoch with no strictly-lower sibling leaves the chain untouched"
         status: pass
       - kind: unit
-        ref: "pnpm --filter applesauce-concord test -- community.test.ts private-channel.test.ts (rekeyHandled Map regression coverage)"
         status: pass
     human_judgment: false
   - id: D3
@@ -78,10 +63,8 @@ coverage:
     requirement: "ROTATE-06"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/sync.test.ts#re-reads a known epoch's rekey plane; a late-arriving strictly-lower sibling cascades into N+2"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/channel-sync.test.ts#heals a held epoch to a late-arriving strictly-lower sibling and rebuilds N+2 from it"
         status: pass
     human_judgment: false
 
@@ -121,14 +104,6 @@ Each task was committed atomically:
 _No plan-metadata commit yet — SUMMARY.md/STATE.md/ROADMAP.md land in the final docs commit._
 
 ## Files Created/Modified
-- `packages/concord/src/helpers/rekey.ts` - added `isStrictlyLowerKey(existing, candidate)`, the shared down-only comparison
-- `packages/concord/src/client/community.ts` - `rekeyHandled` → `Map<epoch, Uint8Array>`; `checkRekey` and `refound()` use the graded latch
-- `packages/concord/src/client/private-channel.ts` - same latch change for the channel scope's `checkRekey`
-- `packages/concord/src/client/sync.ts` - `EpochResult.reReadAdopted`; `syncEpoch`'s known branch re-reads; `syncEpochs` cascades the correction
-- `packages/concord/src/client/channel-sync.ts` - new `reReadHeldChannelEpochs` backward pass wired into `syncChannelEpochs`
-- `packages/concord/src/client/__tests__/sync.test.ts` - new; 3-epoch root cascade oracle + a down-only idempotency case, hand-derived fixed-byte keys
-- `packages/concord/src/client/__tests__/channel-sync.test.ts` - new; the same two-case shape for the channel scope, driving `syncChannelEpochs` directly
-- `packages/concord/src/helpers/__tests__/channel-rekey.test.ts` - new down-only re-heal case proving `readChannelRekey` converges to the CORD-06 §3 minimum
 
 ## Decisions Made
 - Centralized `isStrictlyLowerKey` in `rekey.ts` rather than duplicating the comparison in `community.ts`/`private-channel.ts`/`sync.ts`/`channel-sync.ts` — the plan's `key_links` explicitly requires the live latch and the re-sync cascades to agree on exactly the same ordering, and a shared function is the only way to guarantee that by construction rather than by convention.
@@ -148,7 +123,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 - The down-only latch + re-read spine this plan lands is the prerequisite the plan's objective calls out: 08-03's ROTATE-05/06/07 decision-logic plans can now build on a walk that actually revisits settled epochs, rather than a `syncEpochs` that marks every non-tip epoch permanently "known".
-- No blockers. `pnpm --filter applesauce-concord test` is green (45 files / 217 tests), the full downstream build (`core`, `signers`, `common`, `loaders`, `relay`, `concord`) is green, and the concord exports snapshot is unchanged (no new public API surface — `isStrictlyLowerKey`/`reReadAdopted` are internal implementation details, not part of the rolled-up `Helpers`/top-level export contract this snapshot checks).
 
 ---
 *Phase: 08-rotation-robustness-consensus*

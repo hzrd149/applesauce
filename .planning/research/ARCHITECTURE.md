@@ -2,7 +2,6 @@
 
 **Domain:** Re-layering the low/high method families of `applesauce-relay` (TypeScript reactive Nostr SDK, RxJS-based)
 **Researched:** 2026-08-19
-**Confidence:** HIGH — every claim below was checked against the actual source in `packages/relay/src/`, `packages/loaders/src/loaders/sync-loader.ts`, `packages/concord/src/`, `packages/wallet/src/`, and `apps/examples/src/`, not restated from ROADMAP.md without verification. Discrepancies between the roadmap's own citations and source are called out explicitly where found.
 
 ## System Overview
 
@@ -239,19 +238,14 @@ return req.pipe(..., suspendableTimeout(opts?.timeout ?? 30_000, gate, { firstWh
 
 `sync-loader.ts`'s `withTimeout` (`:503-581`) independently reimplements the same "suspend across an auth phase" idea as `operators/auth-retry.ts`'s `suspendableTimeout`, and has **diverged in semantics**, not just implementation — confirmed by direct reading of both functions (see the dedicated section below).
 
-### `applesauce-concord` — nominal imports, compiler-enforced, but no release gate
 
-**Confirmed: real dependency**, `applesauce-relay: "^6.2.0"` in both `dependencies` and `devDependencies` (`packages/concord/package.json`). Unlike loaders, concord uses `import type { ... } from "applesauce-relay"` — **nominal**, not structural — across 7 files: `client.ts`, `types.ts`, `invite-watcher.ts`, `community.ts`, `invite-manager.ts`, `auth.ts`, `private-channel.ts`, `sync.ts`. Specifically:
 
 - `community.ts:32` imports `PublishOptions` directly — under 999.24, if `PublishOptions`'s field set narrows or its semantics change, any call site in `community.ts` passing an incompatible shape fails to compile (safe — the compiler catches it, unlike loaders' duck-typed risk).
-- `auth.ts:23` imports `RelayAuthHandler`, `RelayPool`, `RelayStatus`, and separately hand-writes `isOkResponse()` (`auth.ts:34-38`) to unify `Relay.authenticate()`'s real `Promise<PublishResponse>` return with `SyncAuthContext.relay.authenticate`'s looser `Promise<unknown>` — the roadmap's own 999.26 entry flags that concord's two handlers "differ in how they read the response (`isOkResponse(res) && res.ok` vs a bare `res.ok`)" and recommends reconciling this while re-layering `authenticate()`.
 - Every other file imports only `RelayAuthHandler`/`RelayPool` (unaffected by this milestone's changes) or `RelayPool` alone (`private-channel.ts`, `sync.ts`).
 
-**Because `applesauce-concord` is unreleased (`next`-tag snapshot only, confirmed by ROADMAP.md's own record and re-confirmed by the user 2026-08-19), no changeset is required for concord regardless of breakage.** But the workspace build gate (`pnpm run build`, 14/14 packages) still requires concord to compile — a `PublishOptions` or `authenticate()` signature change that concord doesn't adapt to will block the whole v7 build, not just concord's own release.
 
 ### `applesauce-wallet` — low risk, high-level-only consumer
 
-**Confirmed:** `applesauce-relay` is a peer dependency (`^6.0.3`) and dev dependency (`^6.2.2`) in `packages/wallet/package.json`; this is the **only** package the roadmap's own v7-coordination note names as depending on `applesauce-relay` besides `applesauce-relay` itself and `applesauce-concord`. Verified call sites in `packages/wallet/src/wallet/*.ts`: `.subscription(...)` (`loading.ts:141`) and `.publish(...)` (`nut-wallet.ts:251,774,865,1076`, both direct `RelayGroup.publish` and `this.pool.publish`). **No direct `.event()`, `.req()`, `.count()`, or `.negentropy()` call sites found** — wallet exclusively uses the two already-correctly-paired high-level methods. Since 999.24/999.25/999.26 are additive-or-compatible at the `subscription()`/`publish()` call-site level (the option fields these call sites might pass — none were found passing `reconnect`/`resubscribe`/`retries` explicitly), wallet's blast radius is low. `RelayStatus` is imported as a type in `nut-wallet.ts`/`types.ts` and is unaffected by any entry in this milestone.
 
 ### `apps/examples` — source-compatible, but one docs snippet needs an update
 
@@ -336,7 +330,6 @@ All findings verified by direct reading of, and `grep`/`wc` cross-checks against
 - `packages/relay/src/operators/index.ts` (barrel export, confirms `auth-retry.ts`/`complete-when.ts` are deliberately not public)
 - `packages/loaders/src/loaders/sync-loader.ts` (lines 1-230 and 362-592 read; `withTimeout` at `:503-581` read in full)
 - `packages/loaders/package.json` (confirms zero `applesauce-relay` dependency)
-- `packages/concord/package.json`, `packages/concord/src/client/auth.ts`, `packages/concord/src/client/community.ts`, and grep across all `packages/concord/src/**/*.ts` for `applesauce-relay` imports
 - `packages/wallet/package.json` and grep across `packages/wallet/src/wallet/*.ts` for relay method call sites
 - `apps/examples/src/**` grep for `reconnect:`/`resubscribe:`/`waitForAuth:`/`.sync(` usage, plus `apps/examples/src/examples/stream/viewer.tsx:250-262` read directly
 - `apps/docs/loading/relays/relays.md:350-375` read directly

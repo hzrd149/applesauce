@@ -29,7 +29,6 @@ created: 2026-08-08
 
 - **After every task commit:** Run `pnpm vitest run <changed-test-file-path>`
 - **After every plan wave:** Run `pnpm --filter applesauce-relay test` and, if `packages/loaders/` was touched, `pnpm --filter applesauce-loaders test`
-- **Before `/gsd-verify-work`:** Both full suites green. `pnpm --filter applesauce-concord test` is not required for this phase (concord is Phase 15's scope) but should stay green as a non-regression check.
 - **Max feedback latency:** 30 seconds
 
 ---
@@ -69,7 +68,6 @@ created: 2026-08-08
 
 ## Wave 0 Requirements
 
-- [x] `packages/relay/src/__tests__/auth-lifecycle-logging.test.ts` — houses D-16's `captureDebugOutput()` harness (via `withDebugCapture`, lifted from `packages/concord/src/helpers/__tests__/relays.test.ts:243-258` through the 14-03 harness), with setup/teardown discipline for `debug`'s **global** enable state
 - [x] RED→GREEN non-vacuity probes for ALOG-01 and ALOG-02, per the standing Verification Standard (D-16) — performed for the hung-signer/unresponsive-relay pair and the reconnect-invalidation pair; see `14-06-SUMMARY.md`
 - [x] Confirmed `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` asserts on the D-18 hoist (14-02's derive-once regression test, spy-`Debugger`-based)
 - Framework install: **none** — `vitest`, `vitest-websocket-mock`, and `debug` are all already present

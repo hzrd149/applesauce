@@ -19,7 +19,6 @@ Per RESEARCH.md's corrections, all line numbers below use the corrected values (
 | `packages/relay/src/negentropy.ts` | service (protocol function) | streaming | same file, `let id = nanoid()` at `:71`, module `log` const at `:26` | exact |
 | `packages/relay/src/group.ts` (`RelayGroup.sync`'s `catchError`) | service (fan-out wrapper) | event-driven | same file, `errorToPublishResponse` (`:75-81`) and the existing dropped-relay `catchError` (`:356-360`) | exact — review/adjust, not create |
 | `packages/loaders/src/loaders/sync-loader.ts` (`:611` hoist) | service (RxJS pipeline builder) | streaming | same file, every other per-relay `const` hoisted at `buildRelayStream(url)`'s top level (e.g. `timeline-loader.ts:58`'s per-call derive-once pattern) | exact |
-| new test file, `packages/relay/src/__tests__/auth-lifecycle-logging.test.ts` (or similar) | test | integration/event-driven | `packages/concord/src/helpers/__tests__/relays.test.ts:230-260` (`captureDebugOutput()`) + `packages/relay/src/__tests__/relay.test.ts` (WS mock server + real `Relay` setup) | strong (cross-package harness lift + in-package test conventions) |
 | `.changeset/relay-operation-scoped-auth-callbacks.md` (edit) | config (changelog) | — | existing changeset body, per CLAUDE.md's one-sentence style | exact |
 
 ## Pattern Assignments
@@ -45,7 +44,6 @@ export type RelayAuthContext = {
 };
 ```
 
-**Pattern to apply — exhaustive discriminated union** (D-02 requires a compile error on an unhandled verb). This repo's established idiom for exhaustiveness is a `switch` with a `never`-typed default, matching the "total progress predicate" lesson from 13-14/CR-02 (`isProgress: ProgressPredicate<T>` in `auth-retry.ts` — see below) and `validateInviteBundle`'s rule-table style (grep did not surface a literal `validateInviteBundle` symbol in `packages/concord/src` under this name at time of mapping; treat CONTEXT.md's reference as pointing at the general "rule table keyed on a closed set of string literals" idiom already used for `RelayAuthOperation` itself — the type being replaced is exactly this kind of closed union, so the replacement should preserve that same "string literal discriminant + exhaustive consumer" shape one level deeper):
 ```typescript
 export type RelayAuthWireRequest =
   | { verb: "REQ"; id: string; filters: Filter[] }
@@ -325,7 +323,6 @@ function buildRelayStream(url: string, /* ...existing params... */) {
 
 ### New test file — D-16 capture harness
 
-**Analog:** `packages/concord/src/helpers/__tests__/relays.test.ts:230-260` (`captureDebugOutput()`) + `packages/relay/src/__tests__/relay.test.ts` (WS mock + real `Relay` + real clock).
 
 **Harness to lift verbatim, adjusted namespace** (source: `relays.test.ts:230-259`):
 ```typescript
@@ -394,7 +391,6 @@ constructor(public url: string, opts?: RelayOptions) {
 **Apply to:** the `event()` timeout-vs-rejection fix — set `.error` structurally, never check `message === "Timeout"`.
 
 ### `debug` output capture in tests (D-16)
-**Source:** `packages/concord/src/helpers/__tests__/relays.test.ts:230-259`
 **Apply to:** the new `packages/relay/src/__tests__/` test file — lift `captureDebugOutput()`/`messagesOf()` verbatim, changing only `NAMESPACE`.
 
 ### Guarded state-clear before logging (D-12)
@@ -407,6 +403,5 @@ None — every file this phase touches already has an established in-package or 
 
 ## Metadata
 
-**Analog search scope:** `packages/relay/src/`, `packages/loaders/src/loaders/`, `packages/concord/src/helpers/__tests__/`, `packages/concord/src/client/__tests__/`
 **Files scanned:** `relay.ts` (targeted ranges), `types.ts` (imports + `RelayAuthOperation`/`RelayAuthContext`), `group.ts` (logger + dropped-relay site), `operators/auth-retry.ts` (config shape + existing log call), `negentropy.ts` (full), `sync-loader.ts` (`:595-615`), `relays.test.ts` (`:230-260`)
 **Pattern extraction date:** 2026-08-08

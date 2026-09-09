@@ -15,8 +15,6 @@ last_updated: 2026-09-06T21:17:53.659Z
 
 | id | phase | kind | file | line | description | status | reason | recorded_at | resolved_at |
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
-| 1 | 17 | deviation | packages/concord/src/client/admin.ts |  | Added an acknowledged registry-unregister path required for ordered revocation success | open |  | 2026-08-20T12:24:57.153Z |  |
-| 2 | 17 | deviation | packages/concord/src/client/revocation.ts |  | Moved revocation outcome helper internal to avoid accidental public exports | open |  | 2026-08-20T12:24:57.273Z |  |
 | 3 | 17 | deviation | .planning/STATE.md |  | Corrected stale 5/5 plan counter after gap-closure plan 17-06 | open |  | 2026-08-20T13:19:03.596Z |  |
 | 4 | 25 | deviation | packages/react/src/hooks/use-observable-state.ts |  | React 18 Strict Mode orphaned a render-phase observable subscription; fixed with a self-closing probe | open |  | 2026-09-03T15:30:13.352Z |  |
 | 5 | 25.4 | deviation | packages/core/src/__tests__/exports.test.ts |  | Updated the core public export snapshot for the new logger controls | open |  | 2026-09-06T20:52:40.267Z |  |
@@ -30,7 +28,6 @@ last_updated: 2026-09-06T21:17:53.659Z
     "id": 1,
     "kind": "deviation",
     "phase": "17",
-    "file": "packages/concord/src/client/admin.ts",
     "line": null,
     "description": "Added an acknowledged registry-unregister path required for ordered revocation success",
     "status": "open",
@@ -42,7 +39,6 @@ last_updated: 2026-09-06T21:17:53.659Z
     "id": 2,
     "kind": "deviation",
     "phase": "17",
-    "file": "packages/concord/src/client/revocation.ts",
     "line": null,
     "description": "Moved revocation outcome helper internal to avoid accidental public exports",
     "status": "open",

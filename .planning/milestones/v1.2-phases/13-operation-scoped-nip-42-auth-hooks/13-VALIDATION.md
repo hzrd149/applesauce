@@ -37,9 +37,7 @@ named file. Always use `pnpm vitest run <path>` from the repo root for per-file 
 - **After every plan wave:** `pnpm --filter applesauce-relay test`, plus
   `pnpm --filter applesauce-loaders test` once the loaders changes land
 - **Before `/gsd-verify-work`:** both full suites green
-- **Smoke check (cheap, non-gating):** `pnpm --filter applesauce-concord test` — Concord still reads
   `authRequiredForRead` / `authRequiredForPublish` off `RelayStatus`
-  (`packages/concord/src/client/relay-auth.ts:110,206`, `invite-watcher.ts:258,428,435`), so this
   catches accidental behavior change in the flags this phase demotes to informational.
   Not required by REQUIREMENTS.md's Verification Standard until Phase 15.
 - **Max feedback latency:** 5 seconds
@@ -79,8 +77,6 @@ remaining site, per that plan's own SUMMARY note.
 
 All rows above were confirmed green via `pnpm --filter applesauce-relay test` (231/231) and
 `pnpm --filter applesauce-loaders test` (118/118) on 2026-08-06, the day this plan closed the phase.
-The non-gating Concord smoke check (`pnpm --filter applesauce-concord test`, 559/559) also passed,
-confirming RAUTH-09's two informational flags are unaffected for Concord's existing readers
 (`relay-auth.ts:110,206`, `invite-watcher.ts:258,428,435`).
 
 ---
@@ -120,5 +116,4 @@ executor does not reach for `vi.useFakeTimers()`:
 - [x] `nyquist_compliant` set to `true` in frontmatter
 
 **Approval:** approved (2026-08-06, 13-07 — every row in the per-task verification map has an
-automated command and a confirmed green result; both minimum gates plus the non-gating Concord
 smoke check are green)

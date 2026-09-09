@@ -7,7 +7,6 @@ tags: [verification, non-vacuity, cache, pipeline, workspace-gate]
 # Dependency graph
 requires:
   - phase: 05-cache-identity-memo-fix
-    provides: "05-01's non-enumerable cache.ts fix, 05-02's cache.test.ts (6 new cases), 05-03's 35-site sweep classification, 05-04's two concord spec-derived tests (H01(a)/H01(c))"
 provides:
   - "Proof (not assumption) that all four of this phase's new tests fail when the specific defect each guards is reintroduced"
   - "Confirmed full-workspace green run (1997 tests passed, exit 0) against the recorded 1989-test pre-phase baseline"
@@ -32,17 +31,14 @@ requirements-completed: [CACHE-01, CACHE-02, CACHE-03]
 
 coverage:
   - id: D1
-    description: "Probe A: reverting cache.ts's Object.defineProperty writes to plain enumerable writes turns the memo-drop half, concord H01(a), and concord H01(c) all RED, while the carry-forward half stays GREEN"
     requirement: "CACHE-01"
     verification:
       - kind: unit
         ref: "packages/core/src/helpers/__tests__/cache.test.ts#the memo does not survive a spread with a changed field (observed FAIL under probe, PASS after restore)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#rollForward's control address matches the CORD-02 §4 formula over the new root (observed FAIL under probe, PASS after restore)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/channel-rekey.test.ts#rollForwardChannel's plane address matches the CORD-03 §1 private formula over the new key/epoch (observed FAIL under probe, PASS after restore)"
         status: pass
     human_judgment: false
   - id: D2
@@ -54,7 +50,6 @@ coverage:
         status: pass
     human_judgment: false
   - id: D3
-    description: "Full workspace suite (pnpm -r test) exits 0 with 1997 tests passed (>= 1989 baseline), delta of +8 fully attributed to 05-02's 6 new cache.test.ts cases and 05-04's 2 new concord spec-derived cases"
     requirement: "CACHE-02"
     verification:
       - kind: other
@@ -90,7 +85,6 @@ status: complete
 
 ## Accomplishments
 
-- **Probe A** (revert `cache.ts`'s two `Object.defineProperty` writes to plain enumerable `Reflect.set` writes): observed the memo-drop half of `cache.test.ts`, concord's H01(a) (`rollForward`'s control address), and H01(c) (`rollForwardChannel`'s plane address) all turn RED — exactly the three predicted failures, nothing else in either suite affected. The carry-forward half of `cache.test.ts` stayed GREEN as predicted, confirming it doesn't route through `cache.ts`. Restored via `git checkout --`, re-verified all four green, tree confirmed clean.
 - **Probe B** (empty `PRESERVE_EVENT_SYMBOLS` in `pipeline.ts`): observed the carry-forward half of `cache.test.ts` turn RED (signed event lost its plaintext hidden tags) while the memo-drop half stayed GREEN — confirming the carry-forward assertion genuinely exercises symbol preservation through the pipe, not something incidental. Restored via `git checkout --`, re-verified green, tree confirmed clean.
 - **Full workspace gate**: `pnpm -r test` exits 0 with 250 test files passed + 1 skipped (251), 1997 tests passed + 2 skipped (1999) — the recorded 1989-test pre-phase baseline plus the 8 new cases this phase's sibling plans added (6 in `cache.test.ts` from 05-02, 2 spec-derived cases in `keys.test.ts`/`channel-rekey.test.ts` from 05-04). No regressions; H02 (out of scope) did not turn anything red.
 - **D-10 sweep re-run**: `grep -rn "Reflect\.set" packages/core/src packages/common/src --include="*.ts" | grep -v __tests__` returns 35 raw hits; excluding `cache.ts:36` (a doc-comment mentioning the literal string, not a write site — matches 05-03's own documented false positive), all 34 real write sites carry a category comment (`identity memo` / `carry-forward payload` / `accumulated state`) immediately above the write, verified per-site programmatically. `operations/tags.ts:87` (the 35th, non-grep-visible object-literal site) confirmed separately commented as `carry-forward payload`.
@@ -120,7 +114,6 @@ None - plan executed exactly as written. Both probes produced the exact predicte
 
 ## Issues Encountered
 
-- Rebuilding `applesauce-core`'s `dist/` after Probe A's `cache.ts` edit was necessary for the concord suite (cross-package import via package `exports`), and after `git checkout --` restore. Probe B's `pipeline.ts` edit briefly broke `tsc` (an empty `Set([])` infers `Set<never>`, and the now-unused `EncryptedContentSymbol` import trips `noUnusedLocals`) — this only matters for the `build` script; `vitest run` on `cache.test.ts` (same-package test) runs directly against TS source without going through `tsc`, so the test observation was unaffected. Confirmed working as intended, not a defect requiring a fix, since the plan only asked for the test-level observation.
 
 ## User Setup Required
 

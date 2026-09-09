@@ -1,7 +1,6 @@
 # Phase 10: Invite Lifecycle & Event Time Consistency - Research
 
 **Researched:** 2026-07-21
-**Domain:** Nostr-adjacent protocol conformance (Concord SDK, `packages/concord/`) — invite bundle validation/revocation, clock-read consistency
 **Confidence:** HIGH (all file:line references re-read from the current tree this session; all spec quotes pulled from the live upstream raw files, not paraphrase)
 
 <user_constraints>
@@ -12,7 +11,6 @@
 **INVITE-01 — Revocation survives a lagging relay (H05)**
 - **D-01: Resolve the coordinate first, evaluate the tombstone second.** `joinByLink` must collapse the raw multi-relay union to the single newest event at the addressable coordinate **`(33301, link_signer, "")`** (newest `created_at`, ties → lowest `id` per NIP-01 addressable replacement), and only *then* decide join-vs-refuse on that one winner. The current filter-revoked-then-pick-newest inverts the replacement rule (a `vsk 9` tombstone wins only when it is the *sole* returned event).
 - **D-02: Scope the request filter to the empty `d`.** Add `"#d": [""]` to the `pool.request` filter (currently `{ kinds, authors }` only) so sibling `d`-tags cannot pollute the union.
-- **D-03: `store.replaceable` is the *pattern*, not a literal reuse.** `ConcordInviteList.bundles$` (`casts/invite-list.ts:103`) uses `store.replaceable` correctly, but `joinByLink` runs pre-join with no community store — so replicate the newest-per-coordinate collapse over the raw union rather than importing the store path.
 - **D-04: `vsk` fails closed on *malformed*, not on absence.** Revoked iff `vsk === 9`; an **absent** `vsk` stays live (CORD-05 §1's "defaults to live" convention); a **present-but-non-numeric / NaN** `vsk` is treated as revoked and refused. `getInviteBundleVsk` must therefore distinguish "tag absent" (→ live) from "tag present but unparseable" (→ deny) — today `Number("junk") → NaN !== 9 → live` is the hole. (An unknown *clean* numeric like `7` is neither malformed nor `9` and stays joinable under this ruling — acceptable; only `6`/`9` are spec vocabulary.)
 
 **INVITE-04 — `expires_at` unit (M09) — spec ruling**
@@ -20,7 +18,6 @@
 
 **TIME-01 — One clock read per event (H04)**
 - **D-06: Full single-read thread — one `splitTime(Date.now())` per event.** Success criterion 4 ("a single clock read via `splitTime()`") is met by threading one `{ created_at, ms }` pair into **both** the rumor's `created_at` stamp and the `ms` tag. This closes both defects at once: (a) the round-vs-floor skew (`Math.round` created_at vs floor `ms % 1000` → +1000ms when remainder ≥ 500), and (b) the *two separate clock reads* — `includeMs` (`operations/channel.ts:22`) and the template's `unixNow()` can straddle a second boundary even with floor (widens materially under a NIP-46 remote signer). Decomposition-only (just round→floor) was explicitly rejected because it leaves hole (b) open.
-- **D-07: The single read chooses `created_at`, not just the tag.** The fix must relocate/override where `created_at` is stamped so it comes from the *same* `splitTime` call that produces the `ms` tag — `includeMs`/`bindToChannel` currently only touch the tag. Exact mechanism (a Concord event-build choke point that reads once, stamps `created_at`, and adds the `ms` tag together, vs. threading the pair from each factory entry) is Claude's discretion, provided the invariant holds: `created_at * 1000 + ms` is one instant with zero skew.
 
 **TIME-02 — One timestamp per snapshot (M10)**
 - **D-08: Same mechanism as D-06, applied once per snapshot.** Compute a single `splitTime` pair for the whole Guestbook snapshot and thread it to **every** chunk — so all chunks share one `created_at` *and* one `ms` tag. Today `includeSnapshotChunk`/`snapshotChunk` (`operations/guestbook.ts:41`, `factories/guestbook.ts:73`) default `ms = Date.now()` per chunk and each chunk's `created_at` is its own template read; an explicitly-passed `ms` never reaches `created_at` at all. This depends on the D-06/D-07 threading and lands with it.
@@ -41,7 +38,6 @@
 - **D-13: Every derivation this phase touches gets a hand-derived spec-value test** — computed from the spec formula, never read back from the implementation under test. Concretely (per success criterion 6): the invite bundle key derivation and the invite coordinate `(33301, link_signer, "")` hand-derived from CORD-05 §2; the time decomposition asserted against hand-computed `{created_at, ms}` pairs at chosen instants — **including the ≥500ms remainder that produced H04's +1000ms skew** (e.g. `1700000000700 → {created_at: 1700000000, ms: 700}`, and the reorder repro where `…000700` must sort *before* `…001400`); a non-vacuity check per fix (the test fails without the guard). Add: a malformed-`vsk` bundle that must refuse (D-04); a non-array `channels`/`relays` that must return `undefined` (D-10); a canonical-`ms` table where `"42abc"`/`"0x10"` both order-as and fold-as malformed identically (D-09).
 
 ### Claude's Discretion
-- The exact single-clock-read plumbing mechanism (D-07) — a shared Concord event-build choke point vs. per-factory threading — provided the zero-skew invariant holds.
 - The shape of the shared `ms` parser (D-09) — return `number | null`, a discriminated result, or a guard-plus-parse pair — provided both `rumorMs` and `hasMalformedMs` route through it.
 - Error-message wording for the join refusals (malformed `vsk`, expired, unknown fragment version) and any skip logging in `refreshInviteBundles`.
 - Plan/commit sequencing, within the fixed constraint that each behavioral fix lands **with** its spec-derived test (D-13) and a failing test attributes to the fix, not a later refactor.
@@ -70,11 +66,9 @@ Reviewed but not folded: `05.1-review-followups.md` (Phase 05.1 code-review foll
 
 ## Summary
 
-This phase is pure verification-and-fix, not discovery: six defects (H05, M07, M08, M09, H04, M10, M11, L06 — INVITE-01..05, TIME-01..03) are already diagnosed in `concord-audit.md` and CONTEXT.md's D-01..D-13. Every cited file:line was re-read this session; **all of them are still accurate** (no material drift beyond a few lines) except two naming corrections below. The `store.replaceable` NIP-01 replacement rule (newest `created_at` wins, tie → lowest `id`) is implemented in `packages/core/src/event-store/event-store.ts:255,264,308,316` and is the literal rule `joinByLink` must replicate over its raw pre-join relay union. `splitTime()` is confirmed dead code (zero call sites outside its own module and tests-to-be-written). The single-clock-read choke point for TIME-01 is `includeMs`/`bindToChannel` in `operations/channel.ts:22-38` — the one function every channel-plane send funnels through — making it the natural site to relocate `created_at` stamping into. TIME-02's Guestbook snapshot case needs a **different** mechanism shape than TIME-01: chunks must share one `splitTime()` pair threaded in by the *caller* (`buildSnapshotFactories`), not each chunk computing its own read.
 
 **Two corrections to CONTEXT.md's canonical_refs (verified this session):**
 1. `getInviteBundleLocator` (the function `casts/invite-list.ts:103` calls, and the pattern D-03 must replicate) lives in **`helpers/invite-list.ts:146`**, not `helpers/invite-bundle.ts:260`. `helpers/invite-bundle.ts:261` has a *different*, unrelated function of a similar name (`getInviteBundlePointer`), used only by `casts/invite-bundle.ts`. Do not conflate the two — `getInviteBundleLocator` is the one whose `(kind, pubkey, "")` shape D-01/D-03 must reproduce inline in `joinByLink`.
-2. `packages/concord/src/helpers/__tests__/` currently has **no `stream.test.ts` and no `invite-bundle.test.ts`** — both are net-new files this phase creates, not extensions of existing suites (verified via directory listing).
 
 **A material new finding requiring attention before implementing D-05 (INVITE-04):** CORD-05 §1's `CommunityInvite` struct comment explicitly annotates `expires_at` as **"unix ms"** — text the discuss-phase session did not see (it read only §4's unannotated example). This directly contradicts the magnitude-based "seconds" reading D-05 locked in. See "Critical Finding" below — this does not reopen the locked decision, but the planner must handle it explicitly (an UPSTREAM-NOTES.md entry, mirroring the Phase 9 precedent, is the recommended vehicle, not a re-litigation of D-05).
 
@@ -88,7 +82,6 @@ This phase is pure verification-and-fix, not discovery: six defects (H05, M07, M
 |------------|-------------|----------------|-----------|
 | Invite bundle fetch + revocation resolution (INVITE-01) | Client/SDK (pre-join, no store) | Relay (data source, untrusted) | `joinByLink` runs before any `EventStore`/community engine exists; the collapse must be done by hand over the raw `pool.request` union, not via `store.replaceable` |
 | Invite bundle shape validation (INVITE-02) | Client/SDK (`validateInviteBundle`) | — | Bundle is attacker-crafted input off an untrusted relay; validation is a pure function, no I/O |
-| Invite refresh resilience (INVITE-03) | Client/SDK (`ConcordCommunity.refreshInviteBundles`) | Relay (publish target, best-effort) | Per-link try/skip is local control flow; publish failures are already independently caught per link |
 | Invite List `expires_at` unit (INVITE-04) | Client/SDK (wire encode/decode + join-time check) | — | Pure serialization-format correctness; no relay-side behavior change |
 | Fragment version rejection (INVITE-05) | Client/SDK (`decodeFragment`) | — | Local parse-time guard, no network involvement |
 | Event clock-read consistency (TIME-01/02) | Client/SDK (event-build/factory layer) | — | `created_at`/`ms` are stamped entirely client-side before signing; no server or relay role |
@@ -96,7 +89,6 @@ This phase is pure verification-and-fix, not discovery: six defects (H05, M07, M
 
 ## Standard Stack
 
-No new external dependencies. This phase is internal correctness fixes inside an already-vendored package (`packages/concord/`, unreleased, no changesets per project convention). All fixes reuse existing internal primitives:
 
 | Primitive | Location | Purpose | Why reuse, not new |
 |-----------|----------|---------|---------------------|
@@ -107,7 +99,6 @@ No new external dependencies. This phase is internal correctness fixes inside an
 
 ## Package Legitimacy Audit
 
-Not applicable — this phase installs no external packages. All fixes are internal to `packages/concord/src/` and `packages/core/src/` (read-only reference), using only primitives already present in the workspace.
 
 ## Architecture Patterns
 
@@ -296,7 +287,6 @@ export function hasMalformedMs(rumor: Rumor): boolean {
 
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
-| Newest-event-at-coordinate selection | A custom `.sort()` + `[0]` (the current bug) or a new tie-break rule | The exact NIP-01 rule already implemented at `packages/core/src/event-store/event-store.ts:255-267,308-321` (newest `created_at`, tie → lowest `id`) | A different tie-break here would let a joiner and a store-backed reader (`ConcordInviteList.bundles$`) disagree about which edition is current for the same coordinate |
 | Array-shape validation before bounding | A `try/catch` around `.length` (swallows the real error and gives inconsistent behavior on different malformed shapes) | `Array.isArray()` guard, same shape as `helpers/control.ts:210` | Explicit and matches the established project-wide fail-closed idiom from Phase 9 |
 | Millisecond-remainder decomposition | Any custom `Math.round`/`Math.floor` pairing | `splitTime()` (`helpers/stream.ts:16-18`) — already correct, already exists | Reinventing this is exactly how H04 (round-vs-floor skew) happened the first time; `splitTime` is dead code purely because nothing calls it, not because it's wrong |
 
@@ -312,12 +302,9 @@ export function hasMalformedMs(rumor: Rumor): boolean {
 
 ### Pitfall 2: The `expires_at` unit fix (D-05) touching only some sites
 **What goes wrong:** `expiresAt`/`expires_at` currently passes through unconverted at 5 distinct sites (`invite-bundle.ts` struct field, `types.ts:163,208`, `invite-manager.ts:277,292`, `community.ts:1096,1118,1142`, and the join-time check at `client.ts:454`). Converting only the write sites but leaving the join-time comparison in the old unit (or vice versa) creates a LOCAL, self-consistent-but-wrong bug that's harder to catch than today's already-consistent (both ms) state.
-**Why it happens:** The field threads through 4 different modules and 2 different type names (`ConcordInviteLink.expiresAt` vs `InviteListInvite.expires_at` vs `InviteBundle.expires_at`) with no compiler-enforced unit tag — TypeScript's `number` doesn't distinguish seconds from ms.
-**How to avoid:** Grep every occurrence of `expires_at`/`expiresAt` in `packages/concord/src/` in the same commit (verified list this session: `client/invite-manager.ts:47,71,277,292`; `client/community.ts:1096,1118,1142`; `client/client.ts:454`; `helpers/invite-bundle.ts:155,200`; `types.ts:163,208`) and update every doc comment and every read/write site atomically, per D-05's explicit "no internal seconds/ms boundary left to drift" instruction.
 **Warning signs:** Any doc comment still saying "unix ms" or "unix milliseconds" after the fix lands.
 
 ### Pitfall 3: TIME-01's fix silently not covering all rumor-build paths
-**What goes wrong:** `includeMs`/`bindToChannel` is the choke point for the seven `ConcordCommunity` channel-plane sends (`sendEvent`, `sendMessage`, `sendThread`, `replyToThread`, `react`, `editMessage`, `deleteMessage` — `client/community.ts:849-943`) and for `JoinLeaveFactory`/`KickFactory` (Guestbook single-event rumors). It does NOT cover `SnapshotFactory` (TIME-02's separate mechanism) or `operations/rekey.ts`'s `includeRekeyChunk` (same defect class, out of this phase's stated scope — see Open Questions).
 **Why it happens:** Not every `ms`-tagged event type funnels through the same function; `includeMs` is shared by three of the four families but not all four.
 **How to avoid:** After fixing `includeMs`, grep `"ms"` tag writers again (`operations/channel.ts:23`, `operations/guestbook.ts:46`, `operations/rekey.ts:33`) and confirm which now read `splitTime` transitively (channel.ts + guestbook.ts's non-snapshot single-events do; guestbook.ts's `includeSnapshotChunk` needs its own D-08 fix; rekey.ts does NOT and is out of scope per current requirements).
 **Warning signs:** A spec-derived test for `sendMessage`/`react`/etc. passes, but an equivalent test against `KickFactory` or `JoinLeaveFactory` wasn't written — TIME-01's "every event" claim needs coverage across all four families that use `includeMs`, not just channel messages.
@@ -326,7 +313,6 @@ export function hasMalformedMs(rumor: Rumor): boolean {
 
 ### The verified current `joinByLink` bug (client/client.ts:410-436)
 ```typescript
-// Source: packages/concord/src/client/client.ts:426-429 (read this session)
 const live = events
   .filter((e) => isValidInviteBundle(e) && !isInviteBundleRevoked(e))   // <-- filters tombstone OUT first
   .sort((a, b) => b.created_at - a.created_at)[0];                       // <-- then picks newest survivor
@@ -356,14 +342,12 @@ Important: `insertEventIntoDescendingList` (nostr-tools) does NOT do NIP-01 repl
 
 ### `getInviteBundleLocator` — the pattern D-01/D-03 replicate (helpers/invite-list.ts:146-159)
 ```typescript
-// Source: packages/concord/src/helpers/invite-list.ts:146-159 (read this session)
 export function getInviteBundleLocator(invite: InviteListInvite): AddressPointer {
   let relays: string[] | undefined;
   try { relays = parseInviteLink(invite.url).bootstrapRelays; } catch { relays = undefined; }
   return { kind: INVITE_BUNDLE_KIND, pubkey: getPublicKey(hexToBytes(invite.signer_sk)), identifier: "", relays };
 }
 ```
-`ConcordInviteList.bundles$` (`casts/invite-list.ts:103`) feeds this into `store.replaceable(...)`, which internally applies the exact NIP-01 rule above. `joinByLink` cannot call `store.replaceable` (no store exists pre-join — D-03), but must replicate its *outcome* by hand over the raw union.
 
 ## State of the Art
 
@@ -402,17 +386,13 @@ No externally-facing API/library versions changed — this is 100% internal-pack
 
 ## Environment Availability
 
-Not applicable — this phase has no new external tool, service, or runtime dependency. All fixes are pure TypeScript edits inside `packages/concord/src/` and are exercised by the existing `vitest run` test command (`packages/concord/package.json`'s `"test": "vitest run --passWithNoTests"`), already available in this workspace.
 
 ## Validation Architecture
 
 ### Test Framework
 | Property | Value |
 |----------|-------|
-| Framework | Vitest (workspace-standard; `packages/concord/package.json` `"test": "vitest run --passWithNoTests"`) |
 | Config file | none per-package (inherits workspace root config) |
-| Quick run command | `pnpm --filter applesauce-concord test -- <file>` or `pnpm --filter applesauce-concord vitest run <path>` |
-| Full suite command | `pnpm --filter applesauce-concord test` |
 
 ### Phase Requirements → Test Map
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
@@ -430,9 +410,6 @@ Not applicable — this phase has no new external tool, service, or runtime depe
 | TEST-01 (standing) | Every derivation above has a non-vacuity check (fails without the guard) | unit, same files | same commands | ❌ Wave 0 |
 
 ### Sampling Rate
-- **Per task commit:** `pnpm --filter applesauce-concord vitest run <touched-test-file>`
-- **Per wave merge:** `pnpm --filter applesauce-concord test`
-- **Phase gate:** Full suite green before `/gsd-verify-work`; also run `pnpm --filter applesauce-concord test` at minimum, and ideally `pnpm -r test` given Phase 5's precedent of a workspace-wide baseline check for cross-package regressions (not required here since no core/common files change, but cheap insurance).
 
 ### Wave 0 Gaps
 - [ ] `src/helpers/__tests__/stream.test.ts` — new file; covers TIME-01 decomposition/reorder + TIME-03 canonical-`ms` table (D-09, D-13)
@@ -467,15 +444,9 @@ Not applicable — this phase has no new external tool, service, or runtime depe
 ## Sources
 
 ### Primary (HIGH confidence — read directly this session, either via `Read` on the local repo or `curl`/`Read` on the live upstream spec)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/05.md` — full text, §1 (bundle struct incl. explicit "unix ms" `expires_at` annotation), §2 (coordinate `(kind 33301, link_signer, "")`, tombstone durability), §3 (fragment version rejection rationale), §4 (Invite List example incl. `expires_at: 1722400000`)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/02.md` — full text, §4 (`created_at*1000+ms` ordering basis), §5 (Guestbook coalesce rules, `ms` 0..999, snapshot chunking "one snapshot id and one timestamp"), §8 (Community List, contrasting 13-digit ms-annotated examples)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/01.md` — full text, Encoding section ("`created_at` is unix seconds, untweaked... Concord uses `["ms", <0..999>]`")
-- `packages/concord/src/helpers/stream.ts`, `helpers/invite-bundle.ts`, `helpers/invite-list.ts`, `client/client.ts`, `client/community.ts`, `client/invite-manager.ts`, `operations/channel.ts`, `operations/guestbook.ts`, `operations/rekey.ts`, `helpers/rekey.ts`, `helpers/keys.ts`, `helpers/guestbook.ts`, `helpers/control.ts`, `casts/invite-list.ts`, `types.ts` — all read directly this session for current file:line accuracy
 - `packages/core/src/event-store/event-store.ts`, `event-memory.ts`, `event-models.ts`, `packages/core/src/observable/map-events-to-timeline.ts`, `packages/core/src/helpers/time.ts`, `packages/core/src/factories/event.ts`, `packages/core/src/helpers/filter.ts` — read directly for the replaceable-collapse rule and clock-read primitives
-- `packages/concord/src/client/__tests__/client.test.ts` (esp. lines 779-849, `asyncServingPool` helper and existing `joinByLink` test) — read directly for test-pattern conventions
 
 ### Secondary (MEDIUM confidence)
-- `.planning/concord-audit.md` findings H04, H05, M07-M11, L06 — the milestone's own diagnosis, cross-checked against the live code this session (all still accurate)
 
 ### Tertiary (LOW confidence)
 - None used for factual claims — the one ambiguous point (the `expires_at` unit contradiction) is presented as a verified spec-text quote with an open recommendation, not as an unverified assumption

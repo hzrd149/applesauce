@@ -2,7 +2,6 @@
 phase: 11-messaging-wire-conformance
 plan: 03
 subsystem: messaging
-tags: [nostr, nip-59, gift-wrap, concord, key-material]
 
 # Dependency graph
 requires:
@@ -12,7 +11,6 @@ provides:
   - "WrapOptions.ephemeralSk?: Uint8Array — a caller-suppliable decoy secret key for the wrap's p tag"
   - "wrapForTarget/publishToPlane/sendEvent opts widened to forward ephemeralSk unchanged"
   - "Round-trip + non-leakage + determinism + no-key-control test coverage for the option"
-affects: [concord-nip09-deletion, concord-wire-conformance]
 
 # Tech tracking
 tech-stack:
@@ -23,14 +21,9 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/operations/gift-wrap.ts
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/helpers/__tests__/keys.test.ts
 
 key-decisions:
   - "GiftWrapOptions and rewrapSeal deliberately left untouched (D-07) — the option only reaches the app-level entry point sendEvent, not giftWrap's public signature or compaction re-wraps"
-  - "ConcordPrivateChannel (private-channel.ts) untouched — it is receive-only, no send/publish surface exists there (RESEARCH.md Pitfall 4)"
   - "getPublicKey from nostr-tools already returns a hex string — test's expected-value computation uses getPublicKey(sk) directly, no bytesToHex wrapping needed"
 
 requirements-completed: [WIRE-11]
@@ -41,10 +34,8 @@ coverage:
     requirement: "WIRE-11"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#wrapForTarget ephemeralSk round-trips to the p tag and never leaks (WIRE-11)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#wrapForTarget ephemeralSk: default path stays fresh per call, supplied key is deterministic"
         status: pass
     human_judgment: false
 
@@ -84,10 +75,6 @@ Each task was committed atomically:
 
 ## Files Created/Modified
 
-- `packages/concord/src/operations/gift-wrap.ts` - `WrapOptions.ephemeralSk?: Uint8Array` added with doc comment; `buildWrap` binds `opts.ephemeralSk ?? generateSecretKey()` to a local and derives the decoy pubkey from it
-- `packages/concord/src/helpers/keys.ts` - `wrapForTarget`'s `opts` parameter widened to carry `ephemeralSk?: Uint8Array`, forwarded into the `wrapSeal` call alongside `ephemeral`
-- `packages/concord/src/client/community.ts` - `publishToPlane` and `sendEvent` opts widened to carry `ephemeralSk?: Uint8Array`; both bodies unchanged (already forward `opts` straight through)
-- `packages/concord/src/helpers/__tests__/keys.test.ts` - two new `it()` blocks covering round-trip, non-leakage, no-key-supplied freshness control, and determinism; `getPublicKey` added to the existing `applesauce-core/helpers/keys` import
 
 ## Decisions Made
 

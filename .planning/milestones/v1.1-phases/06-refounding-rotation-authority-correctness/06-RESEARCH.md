@@ -1,14 +1,11 @@
 # Phase 6: Refounding Rotation & Authority Correctness - Research
 
 **Researched:** 2026-07-16
-**Domain:** Nostr-based encrypted-community protocol (Concord) — epoch-scoped key derivation, memberlist folding, authority/rank enforcement
 **Confidence:** HIGH
 
 ## Summary
 
-This is a correctness-fix phase against an already-detailed CONTEXT.md (D-01..D-11 locked). The job was to ground those decisions against the upstream Concord spec (`concord-protocol/concord`, `02.md`/`04.md`/`06.md`) rather than the audit's paraphrase, and to re-verify the file:line anchors. **Every anchor CONTEXT.md cites was re-verified against the current tree and is accurate** (see the anchor table below — no drift). **Every spec sentence CONTEXT.md leans on was fetched verbatim from the upstream raw `.md` files and confirms the decision as written — zero Spec Conflicts.** The address-derivation formula for TEST-01 is now pinned precisely enough to hand-write expected values for control, guestbook, and (root) rekey addresses without calling any function under test — see "Pinned Spec Formulas" below.
 
-The two "Claude's Discretion" questions are resolved by reading the plane-routing code end to end: (a) the spec places **no plane restriction** on what counts as "observed" — control, guestbook, and channel (public and private) activity are all spec-legitimate signals of presence — so the only defect is the *epoch* scoping, not the *plane* scoping; the practical fix therefore targets the type-keyed community-plane stores (control/guestbook/dissolved/rekey), not channel stores. (b) Private channels are **provably structurally independent** of `community_root`/`root_epoch` (their message-plane key derives solely from the channel's own `key`/`epoch`), so D-02's per-epoch store-keying change has **zero blast radius** on `private-channel.ts` — confirmed by reading `deriveChannelKeys`/`ConcordPrivateChannel` end to end. Public channels *do* share the root_epoch address-rotation exposure structurally, but touching their store semantics collides with Phase 7's channel-keying territory and would change continuous-chat-history UX; recommend leaving `planeStoreKey`'s `"channel"` branch untouched in Phase 6 and flagging the public-channel/observed edge case as a residual, Phase-7-adjacent gap (not a phase-6 blocker).
 
 **Primary recommendation:** Implement D-01 through D-11 exactly as locked; use the pinned formulas below verbatim as TEST-01 oracles; scope D-02's per-epoch store-keying to `planeStoreKey`'s community-plane branch (`"control"|"guestbook"|"dissolved"|"rekey"`) only, leaving the `"channel"` branch (public and private) untouched this phase.
 
@@ -25,26 +22,20 @@ The two "Claude's Discretion" questions are resolved by reading the plane-routin
 
 ## Pinned Spec Formulas (TEST-01 oracles)
 
-All quotes below are verbatim from the upstream raw spec files fetched this session (`https://raw.githubusercontent.com/concord-protocol/concord/main/{02,04,06}.md`). Each formula is followed by the exact local `crypto.ts` call that reproduces it **by hand**, i.e. the call a spec-derived test must use instead of `rollForward`/`deriveConcordKeys`/`readRekey`.
 
 ### 1. `group_key` primitive (CORD-02 §4)
 
 > `group_key(label, secret, id, epoch): seed = hkdf(secret, label, id, epoch); sk = scalar_normalize(seed); pk = xonly_pubkey(sk)`
 
-Local: `groupKey(label, secret, id?, epoch?)` in `packages/concord/src/helpers/crypto.ts:86-97`. `[VERIFIED: upstream 02.md via WebFetch, cross-checked against crypto.ts's own doc comment which cites "A.2 group_key"]`
 
 ### 2. Control Plane address
 
-> `control_pk = group_key("concord/control", community_root, community_id, epoch).pk`
 > "Rotating the epoch rotates the `pk`, keeping a plane's traffic unlinkable across epochs." (CORD-02 §4)
 
-Hand-compute: `controlGroupKey(newRootBytes, communityIdBytes, newEpoch).pk` (`crypto.ts:123-125`, label `"concord/control"`). Already the pattern used at `keys.test.ts:191-213` (H01(a) probe) — extend the SAME pattern to guestbook/rekey below. `[VERIFIED: upstream 02.md]`
 
 ### 3. Guestbook Plane address
 
-> `guestbook_pk = group_key("concord/guestbook", community_root, community_id, epoch).pk`
 
-Hand-compute: `guestbookGroupKey(newRootBytes, communityIdBytes, newEpoch).pk` (`crypto.ts:127-130`, label `"concord/guestbook"`). No existing test covers this address — **this is the D-10/D-11 gap to fill.** `[VERIFIED: upstream 02.md]`
 
 ### 4. Guestbook epoch-seeding + forward-observation rule (CORD-02 §5) — the ROTATE-04 crux
 
@@ -57,13 +48,10 @@ Hand-compute: `guestbookGroupKey(newRootBytes, communityIdBytes, newEpoch).pk` (
 
 ### 5. Base-rekey (root Refounding) listen address — the "rekey" address in D-10
 
-> "group_key(\"concord/base-rekey-pseudonym\", prior_community_root, community_id, root_epoch + 1).pk"
 
-Hand-compute: `baseRekeyGroupKey(priorRootBytes, communityIdBytes, newEpoch).pk` (`crypto.ts:143-145`, label `"concord/base-rekey-pseudonym"`; `newEpoch = oldEpoch + 1`). **Important: this addresses on the PRIOR root, not the new one** (unlike control/guestbook, which address on the NEW root) — a spec-derived test must not accidentally pass the new root here. This is `ConcordKeys.nextBaseRekey.key.pk` in the local type. `[VERIFIED: upstream 06.md]`
 
 ### 6. Channel-rekey listen address (context, not this phase's direct target but touched by `refound()`'s bundled channel rekeys)
 
-> "group_key(\"concord/rekey-pseudonym\", community_root, channel_id, channel_epoch + 1).pk"
 
 Hand-compute: `channelRekeyGroupKey(priorRootBytes, channelIdBytes, newEpoch).pk` (`crypto.ts:138-140`). `[VERIFIED: upstream 06.md]`
 
@@ -106,7 +94,6 @@ All anchors below were re-read against the current working tree this session (no
 | `readRekey` root caller (omits `canRemoveSelf`) | `helpers/keys.ts:397-427` | ✅ Exact match | Builds `ScopedHeld` at `406-412` with no `canRemoveSelf` key at all |
 | `readChannelRekey` (correct precedent) | `helpers/keys.ts:642-673` | ✅ Exact match | Takes `canRemoveSelf?` as an explicit 6th param and threads it into `ScopedHeld` |
 | `rollForward` | `helpers/keys.ts:258-274` | ✅ (CONTEXT cited 265-273, the body; function itself is 258-274) | |
-| `deriveConcordKeys` | `helpers/keys.ts:164-189` (CONTEXT cited 179-186, the plane-building section) | ✅ | |
 | `resolveStanding` | `helpers/permissions.ts:38-59` | ✅ Exact match | |
 | `canActOn` | `helpers/permissions.ts:61-66` | ✅ Exact match | |
 | `refoundAuthority` | `helpers/permissions.ts:75-80` | ✅ Exact match | Bare `BAN` bit check confirmed, zero rank comparison — matches H03 |
@@ -114,7 +101,6 @@ All anchors below were re-read against the current working tree this session (no
 | `keys.test.ts:191` H01(a) probe | `helpers/__tests__/keys.test.ts:191-213` | ✅ Exact match | The pattern to extend per D-11 (see "Test pattern to extend" below) |
 | `channel-rekey.test.ts:92` H01(c) probe | `helpers/__tests__/channel-rekey.test.ts:92-118` | ✅ Exact match | Sibling pattern (channel plane, not this phase's direct target) |
 | `community.test.ts` refound tests | `client/__tests__/community.test.ts:347, 451, 515` | ✅ Exact match (all three `it(...)` blocks confirmed at those lines) | None currently assert excluding a higher-ranked member or observed-readmission — confirmed gap |
-| `admin.hasPerm(member, perm, targetPosition)` | `client/admin.ts:365-366` | ✅ (not in CONTEXT.md's list, found this session) | `canDo`/`hasPerm` both delegate through `standingOf` + `canActOn` semantics — this is the exact primitive `readRekey`'s new `canRemoveSelf` predicate should be built from at the `ConcordCommunity` call site |
 
 ## Resolved Discretion Questions
 
@@ -128,10 +114,8 @@ All anchors below were re-read against the current working tree this session (no
 
 ### (b) Does the per-epoch store-key change disturb private-channel routing?
 
-**No — confirmed structurally independent.** Read `deriveChannelKeys` (`helpers/keys.ts:557-592`) and `ConcordPrivateChannel` (`client/private-channel.ts`) end to end:
 
 - A private channel's message-plane key derives **solely** from the channel's own `key`/`epoch` (`channelGroupKey(hexToBytes(channel.key), channelId, channel.epoch)`, `keys.ts:570`) — `community_root`/`root_epoch` never enter this derivation. CORD-03's private formula (confirmed via the local doc comment and crypto.ts's frozen labels) is independent of the community root by design.
-- `ConcordPrivateChannel` owns its own store (`channel:<id>`, assigned once via `ConcordCommunity.spawnPrivateChannel` → `this.storeFor(`channel:${channelKey.id}`)`, `community.ts:584`), its own epoch counter (`channelKey.epoch`, bumped only by `rotateChannel`/`readChannelRekey`, never by a root Refounding), and its own rekey read path (`readChannelRekey`, already correctly wired with `canRemoveSelf` per D-08's precedent).
 - The only thing a root Refounding does to a private channel is call `refreshForCommunityEpoch()` (`private-channel.ts:131-134`), which re-derives the channel's **rekey listen address** (because `channelRekeyGroupKey` DOES key on a community root — see formula 6 above) — it does not touch the channel's **message plane** or its store.
 
 **Conclusion:** D-02's per-epoch store-keying change should touch `client/sync.ts` (`planeStoreKey`) and `client/community.ts` (`rewireState`, `storeFor` call sites for the four community planes) only. Zero changes needed in `client/private-channel.ts` or `helpers/keys.ts`'s channel-scoped functions. This confirms the CONTEXT.md boundary note ("channels have their own sub-engine lifecycle... defer channel epoch-keying to Phase 7") is not just a scoping preference but a structural fact.
@@ -148,11 +132,9 @@ All anchors below were re-read against the current working tree this session (no
 | D-07/D-08 (receive-path fail-closed, root path supplies `canRemoveSelf`) | Same CORD-06 §3 sentence | ✅ Same as above |
 | D-09 (rank semantics, `canActOn` reuse) | CORD-04 §2/§3 (owner position 0 supreme/unremovable; strict `<`; roleless "effectively last") | ✅ Verbatim match; roleless's *numeric* sentinel (`0xffffffff`) is an implementation choice consistent with, but not dictated by, spec prose — noted above, not a conflict |
 
-The audit's paraphrase (`concord-audit.md`) was faithful on every point checked this session — no correction to the audit register is needed for this phase's findings.
 
 ## Standard Stack
 
-No new external dependencies. This phase modifies existing `packages/concord/src/{helpers,models,client}` TypeScript against already-vendored primitives (`@noble/hashes`, `@noble/curves`, `applesauce-core`). No `Package Legitimacy Audit` section is required — no packages are being installed.
 
 ## Architecture Patterns
 
@@ -233,7 +215,6 @@ The exact 4-line probe shape at `keys.test.ts:191-213` (H01(a)) — reproduce fo
 // Source: local precedent, keys.test.ts:191-213, adapted for guestbook
 it("rollForward's guestbook address matches the CORD-02 §5 formula over the new root", async () => {
   const { material, ownerPub } = await genesis();
-  const keys = deriveConcordKeys(material, []); // ARM THE MEMO — see keys.test.ts:194 comment
   const newRoot = generateSecretKey();
   const newEpoch = material.root_epoch + 1;
   const expected = guestbookGroupKey(newRoot, hexToBytes(material.community_id), newEpoch);
@@ -244,7 +225,6 @@ it("rollForward's guestbook address matches the CORD-02 §5 formula over the new
 
 // Rekey analog: assert against baseRekeyGroupKey(newRootBytes, cidBytes, newEpoch+1).pk
 // on rolled.nextBaseRekey.key.pk — note nextBaseRekey addresses newEpoch+1, not newEpoch;
-// confirm against ConcordKeys.nextBaseRekey's own doc comment (keys.ts:67-68) before writing.
 ```
 
 ### Anti-Patterns to Avoid
@@ -271,8 +251,6 @@ it("rollForward's guestbook address matches the CORD-02 §5 formula over the new
 **Warning signs:** A test asserting `rolled.nextBaseRekey.key.pk === baseRekeyGroupKey(newRoot, cid, newEpoch).pk` (wrong root) will fail loudly — good, that's a real bug; but a test that never asserts the address at all (only checks types) would miss it silently.
 
 ### Pitfall 2: Forgetting to "arm the memo" before asserting a spread-survival regression
-**What goes wrong:** `keys.test.ts:194`'s own comment names this exactly — if the test doesn't call `deriveConcordKeys(material, [])` (or equivalent) BEFORE `rollForward`, there's no memo on `material` for the spread to (correctly, post-05.1) drop, and the assertion trivially passes even against a reintroduced H01-class bug.
-**Why it happens:** The memo is lazily computed on first access; a fresh `material` object has no `Symbol.for("concord-base-keys")` on it yet.
 **How to avoid:** Always derive keys once from the pre-roll material first, exactly as `keys.test.ts:194`'s comment instructs.
 **Warning signs:** A "spread guard" test that passes both before AND after reverting the Phase-5.1 `defineCachedValue` fix is vacuous — sanity-check by temporarily reverting the enumerable/non-enumerable write and confirming the new test goes RED (the plan's non-vacuity discipline, per PROJECT.md's D-13 note).
 
@@ -316,7 +294,6 @@ See "Architecture Patterns" above for the two outrank-loop/canRemoveSelf snippet
 
 ## Environment Availability
 
-Skipped — this phase is pure TypeScript source changes against packages already in the workspace (`applesauce-concord`, `applesauce-core`); no new external tool/service dependency.
 
 ## Validation Architecture
 
@@ -326,31 +303,21 @@ Skipped — this phase is pure TypeScript source changes against packages alread
 |----------|-------|
 | Framework | Vitest (root `vitest.config.ts`, workspace-wide) |
 | Config file | `/home/robert/Projects/applesauce/vitest.config.ts` |
-| Quick run command | `pnpm --filter applesauce-concord test -- helpers/__tests__/keys.test.ts helpers/__tests__/guestbook.test.ts client/__tests__/community.test.ts` |
-| Full suite command | `pnpm --filter applesauce-concord test` (per PROJECT.md's stated verification minimum for this package) |
 
 ### Phase Requirements → Test Map
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|---------------------|--------------|
-| ROTATE-01 | `rollForward(...).control.pk` / `.guestbook.pk` match CORD-02 §4/§5 formula over the new root | unit, spec-derived | `pnpm --filter applesauce-concord test -- keys.test.ts -t "guestbook address"` | ❌ guestbook probe — Wave 0 gap; control probe (H01(a)) already exists at `keys.test.ts:191` |
-| ROTATE-02 | The epoch walk addresses each held epoch distinctly (base-rekey address hand-derived) | unit, spec-derived | `pnpm --filter applesauce-concord test -- keys.test.ts -t "rekey address"` | ❌ base-rekey probe — Wave 0 gap |
-| ROTATE-04 | A Refounding removes excluded members from the Complete Memberlist; prior-epoch entries/observations do not resurrect them | integration | `pnpm --filter applesauce-concord test -- guestbook.test.ts community.test.ts -t "observed"` | ❌ observed-re-admission-across-refounding test is the H02 gap named in CONTEXT.md's `<canonical_refs>` — Wave 0 gap |
-| AUTH-01 | `readRekey`'s root path denies removal when `canRemoveSelf` is absent/false | unit | `pnpm --filter applesauce-concord test -- keys.test.ts -t "outrank"` | ❌ root-path outrank-removal test — Wave 0 gap (channel analog exists at `channel-rekey.test.ts:206`) |
-| AUTH-02 | `refound()` rejects excluding a target the caller does not outrank | integration | `pnpm --filter applesauce-concord test -- community.test.ts -t "outrank"` | ❌ Wave 0 gap — no current `community.test.ts` case covers excluding a higher-ranked member |
 | TEST-01 (standing, this phase's slice) | Every new/extended derivation asserts against an independently-derived spec value (D-10/D-11) | unit, spec-derived | Same as ROTATE-01/02 above | Partial — the pattern exists (control, channel-plane); guestbook + base-rekey extensions are the gap |
 
 ### Sampling Rate
 
 - **Per task commit:** the quick-run command scoped to the touched test files
-- **Per wave merge:** `pnpm --filter applesauce-concord test`
-- **Phase gate:** full `applesauce-concord` suite green (plus `applesauce-core` if any shared helper is touched, though this phase should not need to) before `/gsd-verify-work`
 
 ### Wave 0 Gaps
 
 - [ ] `helpers/__tests__/keys.test.ts` — add the guestbook + base-rekey spec-derived probes (D-10/D-11), following the exact `keys.test.ts:191-213` pattern
 - [ ] `helpers/__tests__/guestbook.test.ts` — add the observed-re-admission-across-refounding test (the H02 gap explicitly named in CONTEXT.md)
-- [ ] `client/__tests__/community.test.ts` — add (1) a root-path outrank-on-removal test (AUTH-01, mirroring `channel-rekey.test.ts:206-237`'s shape) and (2) a `refound()` send-path outrank-rejection test (AUTH-02, mirroring `rotateChannel`'s existing coverage if any — confirm during planning whether `rotateChannel`'s outrank test exists as a template; the changeset referenced in CONTEXT.md ("the already-shipped `concord-channel-rekey-outrank` changeset") implies one does)
 - [ ] Open Question 1's regression test (public-channel-observed-post-exclusion) — decide during planning whether this is in-scope for Phase 6 or explicitly deferred with a comment
 
 ## Security Domain
@@ -361,7 +328,6 @@ Skipped — this phase is pure TypeScript source changes against packages alread
 |-----------------|---------|---------------------|
 | V2 Authentication | No | Out of scope — Nostr signer identity is assumed authenticated upstream of this package |
 | V4 Access Control | Yes | `canActOn`/`canDo`/`hasPerm` (`permissions.ts`) — reuse, do not hand-roll (this phase's core AUTH-01/02 work) |
-| V6 Cryptography | Yes (frozen, do-not-modify) | `crypto.ts`'s `group_key`/HKDF derivations are spec-frozen per its own header comment ("Everything Concord addresses on the wire derives from... changing any labeled byte would re-address every prior event") — this phase must call these primitives, never alter them |
 
 ### Known Threat Patterns for this stack
 
@@ -375,15 +341,9 @@ Skipped — this phase is pure TypeScript source changes against packages alread
 ## Sources
 
 ### Primary (HIGH confidence)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/02.md` — CORD-02 §4 (address formula), §5 (Guestbook epoch-riding, snapshot semantics, forward observation, Complete Memberlist definition) — fetched twice this session (broad pass + narrow "plane restriction?" pass)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/06.md` — CORD-06 §2 (rekey wire format, blob layout, locator formula, scopes), §3 ("in both the Rotator must strictly outrank every removed target"), base-rekey/channel-rekey address formulas, prior-root sealing rationale
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/04.md` — CORD-04 §2 (owner position 0, supreme/unremovable, Grant/Role definitions), §3 (rank comparison, strict outrank, position ordering, effective permissions)
-- `https://raw.githubusercontent.com/concord-protocol/concord/main/examples.md` — checked for worked test vectors; confirmed none exist (explicit disclaimer: "Examples are illustrative, not verifiable test vectors")
-- Local source, read in full this session: `packages/concord/src/helpers/crypto.ts`, `helpers/keys.ts`, `helpers/guestbook.ts`, `helpers/permissions.ts`, `models/community.ts`, `client/sync.ts`, `client/community.ts`, `client/private-channel.ts`
 - Local tests, read this session: `helpers/__tests__/keys.test.ts` (lines 150-249), `helpers/__tests__/channel-rekey.test.ts` (lines 60-239), `client/__tests__/community.test.ts` (relevant `refound` blocks)
 
 ### Secondary (MEDIUM confidence)
-- `.planning/concord-audit.md` — CONCORD-H01/H02/H03 findings, cross-checked against upstream spec this session and found faithful on every point checked
 
 ### Tertiary (LOW confidence)
 - None — every claim in this document is either `[VERIFIED]` against the upstream spec + local code, or explicitly flagged `[ASSUMED]` in the Assumptions Log

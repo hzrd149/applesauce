@@ -24,7 +24,6 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 <details>
 <summary>✅ v1.1 first-fixes (Phases 5–12.3) — SHIPPED 2026-08-04</summary>
 
-Brought `applesauce-concord` into conformance with the CORD-01..07 protocol specs — all 43 findings from the 2026-07-15 audit closed, plus the shared `applesauce-core` cache defect that caused three of them. 54/54 requirements satisfied; 12/12 phases verified. Full phase details, success criteria, and spec citations: [`milestones/v1.1-ROADMAP.md`](milestones/v1.1-ROADMAP.md). Requirements: [`milestones/v1.1-REQUIREMENTS.md`](milestones/v1.1-REQUIREMENTS.md). Audit: [`milestones/v1.1-MILESTONE-AUDIT.md`](milestones/v1.1-MILESTONE-AUDIT.md).
 
 - [x] Phase 5: Cache Identity Memo Fix (14/14 plans) — completed 2026-07-29
 - [x] Phase 5.1: Symbol Propagation Redesign (INSERTED) (13/13 plans) — completed 2026-07-16
@@ -35,8 +34,6 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 - [x] Phase 10: Invite Lifecycle & Event Time Consistency (6/6 plans) — completed 2026-07-21
 - [x] Phase 11: Messaging Wire Conformance (6/6 plans) — completed 2026-07-29
 - [x] Phase 12: Document & Caps Conformance (11/11 plans) — completed 2026-08-01
-- [x] Phase 12.1: Concord Sync Skips Ephemeral Kind 21059 (INSERTED) (1/1 plan) — completed 2026-07-22
-- [x] Phase 12.2: Concord Sync Debug Logging (INSERTED) (4/4 plans) — completed 2026-07-22
 - [x] Phase 12.3: Transport-Only Extra Relays (INSERTED) (14/14 plans) — completed 2026-07-25
 
 **Breaking changes shipped:** `ChannelMetadata.voice` removed (CORD-03 §2 and CORD-07 §1 both state no per-channel voice flag exists); `ChannelMetadata.key`/`.epoch` removed (client-tracked keying must not ride folded edition metadata).
@@ -48,11 +45,9 @@ Brought `applesauce-concord` into conformance with the CORD-01..07 protocol spec
 <details>
 <summary>✅ v1.2 operation-scoped-relay-auth (Phases 13–15) — SHIPPED 2026-08-19</summary>
 
-Moved NIP-42 authentication out of ambient, relay-wide cached state and into the operation that actually receives `auth-required:`, made a single auth attempt's lifecycle legible in debug output, and migrated Concord's stream auth off its client-wide registry driver onto per-operation handlers owned by each community and private-channel engine. 16/16 requirements satisfied; 3/3 phases verified; all three Nyquist-compliant. Full phase details, success criteria and decisions: [`milestones/v1.2-ROADMAP.md`](milestones/v1.2-ROADMAP.md). Requirements: [`milestones/v1.2-REQUIREMENTS.md`](milestones/v1.2-REQUIREMENTS.md). Audit: [`milestones/v1.2-MILESTONE-AUDIT.md`](milestones/v1.2-MILESTONE-AUDIT.md).
 
 - [x] Phase 13: Operation-Scoped NIP-42 Auth Hooks (14/14 plans, 3 verification rounds) — completed 2026-08-07
 - [x] Phase 14: Auth Lifecycle Debug Logging (9/9 plans) — completed 2026-08-11
-- [x] Phase 15: Concord Stream-Auth Cleanup (14/14 plans, gap closure 15-09..15-14) — completed 2026-08-18
 
 **Breaking changes shipped:** none published — v1.2 ships no npm release. Its `applesauce-relay` and `applesauce-loaders` changesets are held for **v7.0.0**, which also carries the relay/auth re-layering cluster (999.23–999.28).
 
@@ -69,7 +64,6 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 **Hard sequencing.** Phase 16 (the amended D-01) gates every other phase — four requirement clusters cite it directly. Phase 18 (EVENT) lands before Phase 22 (REQ) so the pattern proves on the smaller surface first. Phase 19 (COUNT high-level) lands before Phase 23 (COUNT isolation), which consumes its re-shaped response type. Phase 21 (GROUP) lands before Phase 22 (REQ) — both touch `group.ts`'s `request()`/`subscription()` bodies and the same suspendable clock. Two dependencies came from research rather than the original backlog: Phase 24 (SYNC) needs both Phase 18 and Phase 22, since `Relay.sync()` calls `event()`/`req()` directly, bypassing their high-level siblings; and Phase 20 (AUTH) must close any new terminal auth error class in the same phase that adds it, since `applesauce-loaders`' duck-typed `RELAY_AUTH_ERROR_NAMES` breaks silently rather than at compile time.
 
 - [x] **Phase 16: Method Layering Foundation & TypeScript 7** - Amend D-01's throw-as-signal rule everywhere it's cited and land the workspace on TypeScript 7 before anything else builds under it
-- [x] **Phase 17: Correctness Fixes & Concord Residuals** - Independent relay/sqlite/NIP-29 bug fixes plus two Concord auth/publish-honesty gaps, none gated by the re-layering (completed 2026-08-20)
 - [x] **Phase 18: EVENT Family Re-layer** - `event()` sends once and throws; `publish()` becomes sole owner of the auth retry loop (completed 2026-08-20)
 - [x] **Phase 19: COUNT Becomes the High-Level Member** - `count()` gains `reconnect`/`retries`/`timeout` and a validated NIP-45 response shape with an HLL merge helper (completed 2026-08-21)
 - [x] **Phase 20: AUTH Family Re-layer** - `authenticate()` acquires and re-verifies a challenge instead of racing a stale one under a slow signer (completed 2026-08-31)
@@ -78,12 +72,7 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 23: Group count() Isolation** - One dead relay costs its own count, not every relay's, and counts accumulate progressively (completed 2026-09-02)
 - [x] **Phase 24: Negentropy & Sync Re-layer** - Multi-round reconciliation reaches the wire; `sync()` owns one coherent auth/clock/concurrency policy across both directions (completed 2026-09-02)
 - [x] **Phase 25: Ecosystem Riders — React 19 & @snort/worker-relay v2** - `applesauce-react`'s first rendering tests, and `apps/examples` on worker-relay v2, both independent of the relay work (completed 2026-09-03)
-- [x] **Phase 25.1: Concord Media Epoch-Key Decryption Audit** - Verify historical media uses epoch-correct key material across rotations (completed 2026-09-04)
-- [x] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks (completed 2026-09-06)
-- [x] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data (completed 2026-09-06)
 - [x] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite (completed 2026-09-06)
-- [ ] **Phase 25.5: Remove Concord Package and Active Integrations (INSERTED)** - Remove Concord code, docs, examples, release metadata, and other active repository references before release coordination
-- [ ] **Phase 26: Release Coordination — v7.0.0** - Every remaining publishable package reaches 7.0.0, verified by a changeset dry run after Concord is removed
 
 ## Phase Details
 
@@ -110,9 +99,7 @@ Plans:
 - [x] 16-06-PLAN.md — Remove the retired compiler option from signers through wallet
 - [x] 16-07-PLAN.md — Resolve the compiler graph and run full workspace acceptance gates
 
-### Phase 17: Correctness Fixes & Concord Residuals
 
-**Goal**: Five independent, low-risk defects — a relay-controlled prototype-chain lookup, an all-or-nothing SQLite peer dependency, a lossy NIP-29 address round-trip, and two Concord auth/publish-honesty gaps — are fixed without waiting on any of the re-layering work.
 **Depends on**: Nothing (independent of the layering work; can run any time)
 **Requirements**: FIX-01, FIX-02, FIX-03, RESID-01, RESID-02
 **Success Criteria** (what must be TRUE):
@@ -130,7 +117,6 @@ Plans:
 - [x] 17-01-PLAN.md — Make CLOSED-prefix classification prototype-safe through public retry behavior
 - [x] 17-02-PLAN.md — Mark all SQLite backend peers optional and prove the packed consumer boundary
 - [x] 17-03-PLAN.md — Preserve complete normalized group-pointer relay endpoints
-- [x] 17-04-PLAN.md — Prevent transient AUTH diagnostics from entering fatal Concord UI state
 - [x] 17-05-PLAN.md — Enforce honest, ordered invite-revocation publication results
 - [x] 17-06-PLAN.md — Fail closed when required admin publication is not configured
 
@@ -327,7 +313,6 @@ Plans:
 - [x] 25-02-PLAN.md — Complete hook/provider lifecycle suite and React 18/19 CI matrix
 - [x] 25-03-PLAN.md — Worker-relay v2 migration with UI/runtime contract preservation
 
-### Phase 25.5: Remove Concord package and all active repository integrations (INSERTED)
 
 **Goal:** The checked-out repository contains no active or historical trace of the retired community package while the remaining workspace and folded Phase 05.1 fixes stay correct.
 **Requirements**: TBD
@@ -364,16 +349,13 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 25.4-02-PLAN.md — Relay real-output capture and auth logging migration
-- [x] 25.4-03-PLAN.md — Concord public logger types and capture migration
 - [x] 25.4-04-PLAN.md — Signers, wallet, and wallet-connect declaration migration
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 25.4-05-PLAN.md — Residual manifest cleanup, lockfile regeneration, and workspace proof
 
-### Phase 25.3: Concord Invite-Bundle Rule-Table Hardening (INSERTED)
 
-**Goal:** Strengthen Concord's invite-bundle rule tables and projections so field types and optional-field carry-forward are enforced structurally, and corrupt self-authored invite data fails safely.
 **Requirements**: CONC-F1
 **Depends on:** Phase 25.2
 **Plans:** 3/3 plans complete
@@ -384,9 +366,7 @@ Plans:
 - [x] 25.3-02-PLAN.md — Add closed persisted-entry validation while preserving the open Invite List document
 - [x] 25.3-03-PLAN.md — Quarantine corrupt entries with typed diagnostics, prior-state retention, and explicit-write recovery
 
-### Phase 25.2: Concord Rotation Robustness Residuals (INSERTED)
 
-**Goal:** Resolve Concord's remaining rotation robustness risks around multi-chunk relay coverage, live convergence, partial publication, swallowed errors, and rotation citation pinning.
 **Requirements**: CONC-F2
 **Depends on:** Phase 25.1
 **Plans:** 7/7 plans complete
@@ -415,9 +395,7 @@ Plans:
 - [x] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
 - [x] 25.2-07-PLAN.md — Crash-safe Refounding resume and cleanup-boundary integration coverage
 
-### Phase 25.1: Concord Media Epoch-Key Decryption Audit (INSERTED)
 
-**Goal:** Audit Concord media encryption and decryption across epoch rotations, confirming historical media resolves the correct key material and fixing any verified defect.
 **Requirements**: TBD
 **Depends on:** Phase 25
 **Plans:** 3/3 plans complete
@@ -437,13 +415,10 @@ Plans:
 
 ### Phase 26: Release Coordination — v7.0.0
 
-**Goal**: The v7.0.0 major publishes exactly what it is supposed to — all thirteen remaining publishable packages and v1.2's held changesets — verified by a dry run after Concord and its release metadata are removed in Phase 25.5.
-**Depends on**: Phases 16–25.5 (every intended v7.0.0 change and the Concord monorepo removal must be finalized before the release can be verified and cut)
 **Requirements**: REL-01, REL-03, REL-04
 **Success Criteria** (what must be TRUE):
 
   1. A `changeset status --verbose --since=master` dry run shows all thirteen remaining publishable packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
-  2. The release dry run contains no `applesauce-concord` package, dependency, changeset, or publish entry after Phase 25.5 removes it from the monorepo.
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
@@ -466,15 +441,11 @@ Plans:
 | 10. Invite Lifecycle & Event Time Consistency | v1.1 | 6/6 | Complete | 2026-07-21 |
 | 11. Messaging Wire Conformance | v1.1 | 6/6 | Complete | 2026-07-29 |
 | 12. Document & Caps Conformance | v1.1 | 11/11 | Complete | 2026-08-01 |
-| 12.1 Concord Sync Skips Ephemeral Kind 21059 (INSERTED) | v1.1 | 1/1 | Complete | 2026-07-22 |
-| 12.2 Concord Sync Debug Logging (INSERTED) | v1.1 | 4/4 | Complete | 2026-07-22 |
 | 12.3 Transport-Only Extra Relays (INSERTED) | v1.1 | 14/14 | Complete | 2026-07-25 |
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
-| 15. Concord Stream-Auth Cleanup | v1.2 | 14/14 | Complete    | 2026-08-18 |
 
 | 16. Method Layering Foundation & TypeScript 7 | v7.0.0 | 7/7 | Complete | 2026-08-20 |
-| 17. Correctness Fixes & Concord Residuals | v7.0.0 | 6/6 | In Progress | - |
 | 18. EVENT Family Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 19. COUNT Becomes the High-Level Member | v7.0.0 | 3/3 | Complete | 2026-08-21 |
 | 20. AUTH Family Re-layer | v7.0.0 | 4/4 | Complete | 2026-08-31 |
@@ -483,11 +454,7 @@ Plans:
 | 23. Group count() Isolation | v7.0.0 | 0/TBD | Not started | - |
 | 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
-| 25.1 Concord Media Epoch-Key Decryption Audit | v7.0.0 | 0/TBD | Not started | - |
-| 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 7/7 | Complete | 2026-09-06 |
-| 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 3/3 | Complete | 2026-09-06 |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
-| 25.5 Remove Concord Package and Active Integrations | v7.0.0 | 0/TBD | Not started | - |
 | 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
 
 **Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
@@ -525,13 +492,6 @@ Plans:
 
 Two consequences for planning v7:
 
-- **The tooling does not guarantee this automatically.** After Phase 25.5 removes Concord, `.changeset/config.json` will contain thirteen packages in one `linked` group, but each intended package still needs an explicit changeset or real dependency cascade. Phase 26 verifies the complete set with a dry run before cutting.
 - **The dependency-cascade analysis stops being the deciding factor.** Only `applesauce-wallet` depends on `applesauce-relay` (`^6.0.3`); `applesauce-loaders` deliberately carries **no** relay dependency (D-06 — it mirrors the types structurally). Under lockstep majors that narrowness no longer limits the release, though it does still mean very few packages need *code* changes.
 
 **Corollary — non-breaking work can ride along.** Since every package is being republished anyway, v7 is the cheapest moment to land ecosystem bumps that would otherwise justify their own major: SEED-002 (TypeScript 7), SEED-003 (React 19 while keeping 18), SEED-004 (`@snort/worker-relay` v2). Flagged at the v1.2 close as v7 candidates; this makes the case stronger, not weaker.
-
-**`applesauce-concord` has never had an official release — the changeset exemption is correct.** It publishes only as **snapshot** versions: `scripts/snapshot-release.mjs` runs `pnpm publish --tag next`, entirely separate from the `release` script's `changeset publish`. So concord exists on npm only under the `next` dist-tag, never as a stable `latest`. Its `version: 6.2.0` and its membership in the changesets `linked` group describe what *would* happen at an official release, not what has happened. (Confirmed by hzrd149, 2026-08-19.)
-
-This means v1.2's convention — concord is unreleased and needs no changesets — holds, and Phase 15's removals (`authenticateStreamKeys`, `version$`, `ensureAuth()`, `autoAuthenticate`, the deleted `relay-auth.ts`) need no changelog entry: no stable consumer ever had them, and anyone on a `next` snapshot is tracking unstable by definition.
-
-**RESOLVED — Concord leaves this monorepo before v7 (user, 2026-09-09).** Phase 25.5 removes the package and all active integrations, including its linked-group entry and pending changesets. Phase 26 then coordinates only the thirteen remaining publishable packages; the separate Concord repository owns its future releases.

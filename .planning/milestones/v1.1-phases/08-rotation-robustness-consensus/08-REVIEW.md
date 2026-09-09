@@ -4,14 +4,6 @@ reviewed: 2026-07-19T15:10:54Z
 depth: standard
 files_reviewed: 8
 files_reviewed_list:
-  - packages/concord/src/client/channel-sync.ts
-  - packages/concord/src/client/community.ts
-  - packages/concord/src/client/private-channel.ts
-  - packages/concord/src/client/sync.ts
-  - packages/concord/src/helpers/keys.ts
-  - packages/concord/src/helpers/permissions.ts
-  - packages/concord/src/helpers/rekey.ts
-  - packages/concord/src/operations/rekey.ts
 findings:
   critical: 1
   warning: 3
@@ -54,10 +46,8 @@ live path being unable to down-heal an already-adopted epoch) are also called ou
 
 ### CR-01: Transient decrypt failure causes false removal when a competing no-blob rotation exists
 
-> **RESOLVED** in commit `920676ee` — added a separate `decryptThrew` flag in `readRekeyScoped`; when set with no decryptable winner, the fold returns `{ kind: "none" }` before the removal loop, so a transient decrypt-throw defers even beside an outranking no-blob removal set. Spec-derived regression test added (fails without the fix, passes with it); full concord suite 233/233 green.
 
 
-**File:** `packages/concord/src/helpers/keys.ts:560-603` (`readRekeyScoped`)
 **Issue:**
 The fold's stated invariant (D-06, restated in the function docstring) is that a
 blob found at our own locator whose *decrypt threw* is "positive evidence we ARE in
@@ -121,7 +111,6 @@ return { kind: "none" };
 
 ### WR-01: Multi-chunk rekey can pass the majority gate yet leave no relay holding a complete rotation
 
-**File:** `packages/concord/src/client/community.ts:1276-1286` (`refound` / `requireMajority`)
 **Issue:**
 `requireMajority` gates each wrap **independently** against a strict majority of the
 configured relay set. A rotation with more than `REKEY_BLOBS_PER_EVENT` (120)
@@ -142,7 +131,6 @@ rotation as one batch before evaluating the threshold.
 
 ### WR-02: Live path cannot down-heal an already-adopted epoch — racing rotations can diverge permanently until re-sync
 
-**File:** `packages/concord/src/client/community.ts:792-800` (`checkRekey`) and `packages/concord/src/client/private-channel.ts:287-300`
 **Issue:**
 The down-only latch comment promises a "settled epoch can heal DOWN but never
 re-fork UP," and `checkRekey` implements the down-heal via `isStrictlyLowerKey`.
@@ -156,7 +144,6 @@ before the lower `R_N'` wrap arrives, and node B adopts `R_N'`, the two nodes ar
 permanently split (different `community_root` ⇒ mutually unreadable planes) until a
 full `syncEpochs` re-walk (only run once, in `start()`, which is guarded by
 `this.started`). The re-read cascade in `sync.ts` heals this, but there is no live
-trigger to invoke it after adoption. Same shape in `ConcordPrivateChannel.checkRekey`.
 
 **Fix:** Either (a) evaluate all present candidates for the *current* epoch before
 adopting and re-run the fold when a strictly-lower sibling for the just-adopted epoch
@@ -166,7 +153,6 @@ whose `newEpoch <= current root_epoch` and strictly-lower key is observed live.
 
 ### WR-03: `refound` publishes and gates rekey wraps before confirming any are complete, leaving partial rotations on relays on abort
 
-**File:** `packages/concord/src/client/community.ts:1285-1286`
 **Issue:**
 `requireMajority` throws mid-loop the moment one wrap misses majority, but earlier
 wraps (and the failing wrap's partial acks) have already been published. For a
@@ -182,7 +168,6 @@ a complete, discoverable rotation.
 
 ### IN-01: Best-effort compaction/snapshot publishes swallow all errors silently
 
-**File:** `packages/concord/src/client/community.ts:1289-1290`
 **Issue:** `this.pool.publish(relays, wrap).catch(() => {})` discards every error for
 compaction and snapshot wraps. These are documented as non-gating, but a total
 compaction failure means members re-sync from genesis with no diagnostic. Consider
@@ -191,7 +176,6 @@ logging convention used elsewhere in this file (e.g. line 1056, 1099).
 
 ### IN-02: `groupRotations` captures `vac` from the first-arriving chunk only
 
-**File:** `packages/concord/src/helpers/rekey.ts:216-218, 249`
 **Issue:** The set's `vac` is captured from whichever chunk created the bucket, and
 the docstring notes cross-chunk `vac` agreement is out of scope. This is safe today
 because all chunks are correlated by the rotator's real seal-signer pubkey and

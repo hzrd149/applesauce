@@ -18,7 +18,6 @@ Applesauce is a reactive Nostr SDK for TypeScript/JavaScript built on RxJS and a
 │   Actions & Commands Layer                                  │
 │   Create/sign events, perform user actions                  │
 │   `packages/actions/`, `packages/signers/`                  │
-│   `packages/accounts/`, `packages/concord/`                 │
 └──────────────────┬──────────────────────────────────────────┘
                    │
 ┌──────────────────▼──────────────────────────────────────────┐
@@ -282,10 +281,7 @@ Applesauce is a reactive Nostr SDK for TypeScript/JavaScript built on RxJS and a
 - Usage: `const value = useObservable(observable)` in React component
 - Flow: Hook subscribes to observable → component receives value → re-renders on change
 
-**Concord Client (Encrypted Group):**
-- Location: `packages/concord/src/client/`
 - Purpose: Manage encrypted group protocols (CORD)
-- Usage: `new ConcordClient(store, signers)` → `.createGroup()` → manage members
 
 ## Architectural Constraints
 

@@ -331,7 +331,6 @@ Update:
 - `apps/docs/loading/relays/relays.md`: discriminate received/sent/send-failed; remove “Upload complete” success claim.
 - `apps/docs/loading/relays/pool.md`: GroupSyncMessage and relay-failed handling; remove obsolete direction string example if inconsistent with enum.
 - all `apps/examples` `.sync()` consumers: filter `received`; SEND UI counts both outcomes; callback negentropy examples subscribe.
-- `sync-loader.ts` mirror and tests; any Concord consumers inherit loader event stream unchanged.
 - ROADMAP criterion 3 and SYNC-03: replace operation clock with explicit cancellable/no-built-in-timeout lifetime.
 - Phase 13 WR-04/WR-05 residual records and Phase 18/22 temporary sync dispositions.
 - pending `.changeset` claims involving auth/group sync, plus two relay major and one loader patch changesets required by D-26.

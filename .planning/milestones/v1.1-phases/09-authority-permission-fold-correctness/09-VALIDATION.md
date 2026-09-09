@@ -18,19 +18,12 @@ created: 2026-07-19
 
 | Property | Value |
 |----------|-------|
-| **Framework** | Vitest (workspace-root `vitest.config.ts`; no per-package override in `packages/concord/`) |
 | **Config file** | `vitest.config.ts` (repo root) |
-| **Quick run command** | `pnpm --filter applesauce-concord test -- <touched-test-file>` |
-| **Full suite command** | `pnpm --filter applesauce-concord test` |
-| **Estimated runtime** | ~30 s full concord suite; targeted single-file run ~2–5 s |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `pnpm --filter applesauce-concord test -- <touched-test-file>` (targeted, fast)
-- **After every plan wave:** Run `pnpm --filter applesauce-concord test` (full concord suite)
-- **Before `/gsd-verify-work`:** Full concord suite green **and** `pnpm run build` (workspace) — matches the Phase 6–8 gate pattern (this is plan 09-05 Task 3)
 - **Max feedback latency:** ~30 seconds
 
 ---
@@ -39,16 +32,6 @@ created: 2026-07-19
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 09-01-01 | 01 | 1 | AUTH-03 | T-09-01 | A Grant at eid ≠ `grantLocator(cid, member)` (forged coordinate) is dropped on the read path | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts` | ✅ extend `control.test.ts` (banlist-coordinate analog `:60-87`) | ⬜ pending |
-| 09-01-02 | 01 | 1 | AUTH-04 | T-09-02 | A non-array / non-string `role_ids` is skipped via `continue`; `foldControl` never throws; empty `[]` still folds as revoke | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts` | ✅ new case in `control.test.ts` | ⬜ pending |
-| 09-01-03 | 01 | 1 | AUTH-07 | T-09-03 | A junior `MANAGE_ROLES` holder cannot revoke/demote a senior; self-target & owner exempt | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts` | ✅ new case in `control.test.ts` | ⬜ pending |
-| 09-02-01 | 02 | 2 | AUTH-06 | T-09-04 | `Role.position` NaN / float / `undefined` / `0xffffffff` sentinel rejected before conferring bits | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts` | ✅ new case in `control.test.ts` | ⬜ pending |
-| 09-02-02 | 02 | 2 | D-14 | T-09-06 | Read-path banlist honors a pk only when signer strictly outranks it (per-entry rank gate) | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/control.test.ts` | ✅ extend `control.test.ts` | ⬜ pending |
-| 09-03-01 | 03 | 1 | AUTH-08 | T-09-05 | `verifyVac` predicate threaded into `foldMembers`; Kick branch gated at all 3 call-sites (impl) | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/guestbook.test.ts` | ✅ wiring covered by 09-03-02 assertion | ⬜ pending |
-| 09-03-02 | 03 | 1 | AUTH-08 | T-09-05 | Missing / wrong-coordinate `vac` dropped; demoted actor's Kick dropped by current roster (`vacVerifier(state, PERM.KICK)`, pure over folded state) | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/guestbook.test.ts` | ✅ extend `guestbook.test.ts` | ⬜ pending |
-| 09-03-03 | 03 | 1 | D-14 | T-09-07 | Owner (`position === 0`) never removed by `members.delete(banned)` regardless of signer rank | unit | `pnpm --filter applesauce-concord test -- helpers/__tests__/guestbook.test.ts` | ✅ extend `guestbook.test.ts` | ⬜ pending |
-| 09-04-01 | 04 | 1 | AUTH-05 | T-09-... | `kick()` throws locally pre-publish when caller lacks the bit or rank | unit/integration | `pnpm --filter applesauce-concord test -- client/__tests__/community.test.ts` | ✅ extend `community.test.ts` | ⬜ pending |
-| 09-04-02 | 04 | 1 | AUTH-05 | T-09-... | `ban()` throws locally pre-publish when caller lacks the bit or rank | unit/integration | `pnpm --filter applesauce-concord test -- client/__tests__/community.test.ts` | ✅ extend `community.test.ts` / admin tests | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 *TEST-01 (standing) is cross-cutting: every row above pairs its fix with an independently hand-derived CORD-04 spec value plus a non-vacuity check (see § Non-Vacuity below).*

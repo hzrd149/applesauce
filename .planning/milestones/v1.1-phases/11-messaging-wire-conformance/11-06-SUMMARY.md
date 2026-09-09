@@ -2,7 +2,6 @@
 phase: 11-messaging-wire-conformance
 plan: 06
 subsystem: messaging
-tags: [concord, nostr, receive-funnel, voice-presence, wire-conformance, vitest]
 
 # Dependency graph
 requires:
@@ -12,7 +11,6 @@ provides:
   - "Kind 23313 voice presence now reaches consumers via both receive funnels (community.ts and private-channel.ts route()) instead of being silently dropped"
   - "Two behavioral WIRE-02 tests in community.test.ts proving delivery and the surviving CORD-03 anti-replay binding guard"
   - "One behavioral WIRE-02 test in private-channel.test.ts proving the symmetric sub-engine funnel also delivers 23313"
-affects: [phase-12, concord-audit-followups]
 
 # Tech tracking
 tech-stack:
@@ -24,12 +22,6 @@ tech-stack:
 key-files:
   created: []
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/private-channel.ts
-    - packages/concord/src/client/sync.ts
-    - packages/concord/src/__tests__/roundtrip.test.ts
-    - packages/concord/src/client/__tests__/community.test.ts
-    - packages/concord/src/client/__tests__/private-channel.test.ts
 
 key-decisions:
   - "Both engines' now-unused VOICE_PRESENCE_KIND imports removed while the constant and its helpers/index.ts re-export were deliberately left intact — it remains the public surface a consumer needs to filter for presence"
@@ -47,20 +39,16 @@ coverage:
     requirement: "WIRE-02"
     verification:
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#wire conformance > WIRE-02: voice presence (kind 23313) is readable from the channel store and matches examples.md §2.8 (non-vacuous)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/community.test.ts#wire conformance > WIRE-02: a voice-presence rumor bound to a DIFFERENT channel is dropped by the anti-replay binding guard (non-vacuous)"
         status: pass
       - kind: unit
-        ref: "packages/concord/src/client/__tests__/private-channel.test.ts#ConcordPrivateChannel (DI, served wraps) > delivers a kind-23313 voice-presence rumor into the injected store alongside a chat control (WIRE-02, non-vacuous)"
         status: pass
     human_judgment: false
   - id: D2
     description: "Four stale comments claiming the funnel filters voice presence corrected; no comment in the package still makes that claim"
     verification:
       - kind: other
-        ref: "grep -rIn 'voice presence (not chat)|voice-presence filters' packages/concord/src -> 0 matches"
         status: pass
     human_judgment: false
 
@@ -100,12 +88,6 @@ Each task was committed atomically:
 **Plan metadata:** (this commit)
 
 ## Files Created/Modified
-- `packages/concord/src/client/community.ts` - deleted the kind-23313 early-return in `route()`, removed the unused `VOICE_PRESENCE_KIND` import, corrected the `route()` doc comment and inline guard comment
-- `packages/concord/src/client/private-channel.ts` - same symmetric deletion, import removal, and comment corrections in its own `route()`
-- `packages/concord/src/client/sync.ts` - corrected `SyncContext.route`'s doc comment to drop the voice-presence-filter clause
-- `packages/concord/src/__tests__/roundtrip.test.ts` - reworded the file header's §9 deferral note to point at the new receive-path tests and clarify only CORD-07's broker/media/rendezvous transport (FUT-02) remains deferred
-- `packages/concord/src/client/__tests__/community.test.ts` - added two `wire conformance` cases (presence delivery + anti-replay control) and the `VOICE_PRESENCE_JOINED_EXAMPLE`/`VOICE_PRESENCE_LEFT_EXAMPLE`/`bindToChannel` imports they need
-- `packages/concord/src/client/__tests__/private-channel.test.ts` - added one case proving the sub-engine's own funnel delivers 23313, plus the fixture imports it needs
 
 ## Decisions Made
 - Left `helpers/voice.ts`'s `VOICE_PRESENCE_KIND` constant and its `helpers/index.ts` re-export untouched — only the two now-dead client-file imports were removed, per the plan's explicit instruction and T-11-18's mitigation
@@ -135,7 +117,6 @@ None - no external service configuration required.
 ## Next Phase Readiness
 
 - WIRE-02 is fully closed; all of WIRE-01/02/03/04/05/11 for Phase 11 are now Complete
-- `pnpm --filter applesauce-concord build` and `pnpm --filter applesauce-concord test` (495/495) both exit 0; `pnpm test` (workspace) exits 0 with 2370 passed / 2 skipped
 - Unfiltered `pnpm build` still fails on the same 9 pre-existing, unrelated `apps/examples` `StoredEvent`/`NostrEvent` sig-mismatch files documented in `deferred-items.md` since Phase 11-02 — confirmed unchanged by this plan's work, not a regression
 - This is the last plan of Phase 11 — phase-level verification is next
 

@@ -1,8 +1,6 @@
 ---
 phase: 06-refounding-rotation-authority-correctness
 plan: 03
-subsystem: concord
-tags: [nostr, concord, authority, rank, elevation-of-privilege, fail-closed, refounding, rekey]
 
 # Dependency graph
 requires:
@@ -26,22 +24,11 @@ tech-stack:
 
 key-files:
   created:
-    - .changeset/concord-refound-outrank-send.md
-    - .changeset/concord-rekey-outrank-receive-failclosed.md
   modified:
-    - packages/concord/src/client/community.ts
-    - packages/concord/src/client/sync.ts
-    - packages/concord/src/client/channel-sync.ts
-    - packages/concord/src/client/private-channel.ts
-    - packages/concord/src/helpers/keys.ts
-    - packages/concord/src/client/__tests__/community.test.ts
-    - packages/concord/src/helpers/__tests__/keys.test.ts
-    - packages/concord/src/helpers/__tests__/channel-rekey.test.ts
 
 key-decisions:
   - "D-05/D-06: refound() gained a per-target `this.canDo(PERM.BAN, this.standingOf(target).position)` outrank loop, positioned after the refoundAuthority(state) check and before buildRefounding/any publish, mirroring rotateChannel's existing loop verbatim (swap MANAGE_CHANNELS -> BAN)."
   - "D-07/D-08/D-09: readRekeyScoped:508's removal branch changed from `(!held.canRemoveSelf || held.canRemoveSelf(set.rotator))` (default-permit) to `held.canRemoveSelf?.(set.rotator) === true` (fail-closed); readRekey gained a trailing canRemoveSelf? param threaded into its root ScopedHeld, mirroring readChannelRekey; both call sites (checkRekey, syncEpoch) now supply it via admin.hasPerm/canActOn with PERM.BAN — no new rank logic."
-  - "Rule 1 auto-fix (out-of-plan-file, in-scope-of-change): the shared readRekeyScoped fail-closed guard also gates the channel scope, since readChannelRekey delegates to the same function. Two pre-existing channel-rekey.test.ts removal assertions omitted canRemoveSelf entirely and needed a truthful predicate to keep passing. More significantly, channel-sync.ts's sync-WALK call to readChannelRekey never threaded canRemoveSelf at all (only private-channel.ts's LIVE checkRekey path did) — under the old default-permit guard this was silently masked, but under fail-closed it would have permanently broken walk-time channel-removal detection. Fixed by adding `ChannelSyncContext.canRemoveSelf` and threading the already-existing `ConcordPrivateChannelOptions.canRemoveSelf` predicate through `syncContext()` — no new rank logic invented, purely a thread-through of an existing, already-correct predicate to the one call site missing it."
 
 requirements-completed: [AUTH-01, AUTH-02]
 
@@ -51,7 +38,6 @@ coverage:
     requirement: "AUTH-02"
     verification:
       - kind: integration
-        ref: "packages/concord/src/client/__tests__/community.test.ts#refound() rejects excluding a target the caller does not outrank, and publishes nothing (AUTH-02)"
         status: pass
     human_judgment: false
   - id: D2
@@ -59,14 +45,11 @@ coverage:
     requirement: "AUTH-01"
     verification:
       - kind: unit
-        ref: "packages/concord/src/helpers/__tests__/keys.test.ts#readRekey's root path honors removal only from an outranking rotator, and denies it when canRemoveSelf is absent (AUTH-01)"
         status: pass
     human_judgment: false
   - id: D3
-    description: "Both readRekey call sites (checkRekey/community.ts, syncEpoch/sync.ts) supply canRemoveSelf built from the existing hasPerm/canActOn primitives over PERM.BAN, and the shared fail-closed guard's cascade into the channel scope (channel-sync.ts's walk path) is proven by the updated existing test suite, with the full applesauce-concord suite (202 tests) green"
     verification:
       - kind: unit
-        ref: "pnpm --filter applesauce-concord test"
         status: pass
     human_judgment: false
 
@@ -94,9 +77,7 @@ status: complete
 - `readRekey` gained a trailing optional `canRemoveSelf?: (rotator: string) => boolean` parameter threaded into its root `ScopedHeld`, mirroring `readChannelRekey`'s existing 6th parameter.
 - The misleading `ScopedHeld.canRemoveSelf` docstring (`keys.ts:451-458`) no longer states the root-path omission is intentional; it now documents that the predicate is REQUIRED to honor a removal (CORD-06 §3 "in both").
 - Both `readRekey` call sites now supply `canRemoveSelf`: `community.ts`'s `checkRekey` via `this.admin.hasPerm(rotator, PERM.BAN, this.standingOf(this.pubkey).position)` (mirroring `spawnPrivateChannel`'s existing precedent); `sync.ts`'s `syncEpoch` via `canActOn(resolveStanding(rotator, ...), resolveStanding(ctx.self, ...), PERM.BAN)` (no admin instance available there).
-- **Rule 1 deviation, discovered during full-suite verification:** the shared `readRekeyScoped` fail-closed change also gates the channel scope (`readChannelRekey` delegates to the same function). Two pre-existing `channel-rekey.test.ts` removal assertions that omitted `canRemoveSelf` broke and were updated with a truthful predicate. More significantly, `channel-sync.ts`'s sync-WALK call to `readChannelRekey` never threaded `canRemoveSelf` at all — only `private-channel.ts`'s LIVE `checkRekey` path did. Under the old default-permit guard this asymmetry was silently masked; under fail-closed it would have permanently broken walk-time channel-removal detection (a member removed while a client was offline would never register as removed once the client reconnects and walks forward). Fixed by adding `ChannelSyncContext.canRemoveSelf` and threading the already-existing `ConcordPrivateChannelOptions.canRemoveSelf` predicate through `syncContext()` — no new rank logic invented, purely closing a thread-through gap.
 - New tests: a send-path outrank-rejection test (`community.test.ts`, a non-owner BAN holder at position 5 excluding the owner at position 0 is rejected and publishes nothing) and a root-path receive test (`keys.test.ts`, three outcomes: outranking rotator removes, non-outranking rotator does not, absent predicate does not).
-- Full `applesauce-concord` suite: 202 tests green (was 200 before this plan; +2 new tests), 43 test files, `tsc` build clean.
 
 ## Task Commits
 
@@ -109,16 +90,6 @@ _No separate plan-metadata commit needed beyond this SUMMARY/STATE update — se
 
 ## Files Created/Modified
 
-- `packages/concord/src/client/community.ts` - `refound()`'s per-target BAN outrank loop; `checkRekey`'s new `canRemoveSelf` argument
-- `packages/concord/src/client/sync.ts` - `syncEpoch`'s new `canRemoveSelf` built from `canActOn`/`resolveStanding`/`PERM.BAN`; import of `canActOn` and `PERM`
-- `packages/concord/src/client/channel-sync.ts` - `ChannelSyncContext.canRemoveSelf` field; `syncRekeyAndAdvance` now passes it to `readChannelRekey` (Rule 1 fix)
-- `packages/concord/src/client/private-channel.ts` - `syncContext()` now threads `this.opts.canRemoveSelf` into the walk context (Rule 1 fix)
-- `packages/concord/src/helpers/keys.ts` - `readRekeyScoped`'s fail-closed removal guard; `readRekey`'s new `canRemoveSelf?` parameter threaded into its root `ScopedHeld`; rewritten `ScopedHeld.canRemoveSelf` docstring
-- `packages/concord/src/client/__tests__/community.test.ts` - new AUTH-02 send-path outrank-rejection test
-- `packages/concord/src/helpers/__tests__/keys.test.ts` - new AUTH-01 root-path outrank test; updated the pre-existing "excluded member is removed" test to supply a truthful `canRemoveSelf`
-- `packages/concord/src/helpers/__tests__/channel-rekey.test.ts` - updated two pre-existing removal assertions to supply a truthful `canRemoveSelf` (Rule 1 fix)
-- `.changeset/concord-refound-outrank-send.md` - patch changeset (created)
-- `.changeset/concord-rekey-outrank-receive-failclosed.md` - patch changeset (created)
 
 ## Decisions Made
 
@@ -132,11 +103,8 @@ _No separate plan-metadata commit needed beyond this SUMMARY/STATE update — se
 ### Auto-fixed Issues
 
 **1. [Rule 1 - Bug] Channel-scope readChannelRekey callers broke under the shared fail-closed guard**
-- **Found during:** Task 2, full-suite verification (`pnpm --filter applesauce-concord test`)
 - **Issue:** `readRekeyScoped` is shared between the root path (`readRekey`) and the channel path (`readChannelRekey`). Making its removal branch fail-closed (D-07) is correct for both scopes per CORD-06 §3's "in both," but two pre-existing `channel-rekey.test.ts` tests asserted `removed` while calling `readChannelRekey` with no `canRemoveSelf` argument at all, and `channel-sync.ts`'s sync-WALK call site (`syncRekeyAndAdvance`) never threaded `canRemoveSelf` either — unlike `private-channel.ts`'s LIVE `checkRekey`, which already correctly passed `this.opts.canRemoveSelf`. Under the old default-permit guard this walk-vs-live asymmetry was invisible; under fail-closed it would have silently and permanently broken legitimate channel-removal detection during the initial sync walk.
 - **Fix:** Added `ChannelSyncContext.canRemoveSelf?: (rotator: string) => boolean`, threaded `this.opts.canRemoveSelf` into it from `private-channel.ts`'s `syncContext()`, and passed `ctx.canRemoveSelf` into `channel-sync.ts`'s `readChannelRekey` call. Updated the two `channel-rekey.test.ts` removal assertions to pass `isOwner` (the owner strictly outranks everyone, so the predicate is truthful) as `canRemoveSelf`.
-- **Files modified:** `packages/concord/src/client/channel-sync.ts`, `packages/concord/src/client/private-channel.ts`, `packages/concord/src/helpers/__tests__/channel-rekey.test.ts`
-- **Verification:** Full `applesauce-concord` suite (202 tests) green; `tsc` build clean.
 - **Committed in:** `20778b27` (Task 2 commit)
 
 ---
@@ -146,7 +114,6 @@ _No separate plan-metadata commit needed beyond this SUMMARY/STATE update — se
 
 ## Issues Encountered
 
-None beyond the deviation above. Both tasks' scoped test runs and the full `applesauce-concord` suite passed after the deviation fix; `tsc` (`pnpm --filter applesauce-concord build`) compiled cleanly throughout with no type errors.
 
 ## User Setup Required
 
@@ -164,15 +131,5 @@ None - no external service configuration required.
 
 ## Self-Check: PASSED
 
-- FOUND: packages/concord/src/client/community.ts
-- FOUND: packages/concord/src/client/sync.ts
-- FOUND: packages/concord/src/client/channel-sync.ts
-- FOUND: packages/concord/src/client/private-channel.ts
-- FOUND: packages/concord/src/helpers/keys.ts
-- FOUND: packages/concord/src/client/__tests__/community.test.ts
-- FOUND: packages/concord/src/helpers/__tests__/keys.test.ts
-- FOUND: packages/concord/src/helpers/__tests__/channel-rekey.test.ts
-- FOUND: .changeset/concord-refound-outrank-send.md
-- FOUND: .changeset/concord-rekey-outrank-receive-failclosed.md
 - FOUND: commit 996c6130 (Task 1)
 - FOUND: commit 20778b27 (Task 2)

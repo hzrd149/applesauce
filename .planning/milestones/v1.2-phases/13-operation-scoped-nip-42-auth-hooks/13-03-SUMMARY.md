@@ -151,7 +151,6 @@ Each task was committed atomically:
 ## Issues Encountered
 
 - **Acceptance criterion `grep -c 'applesauce-relay' packages/loaders/src/loaders/sync-loader.ts` returns 0 is unsatisfiable as literally written.** The pre-existing baseline file (before this plan touched it) already contains 3 occurrences of the substring `applesauce-relay` in doc comments (`SyncAuthRequirement`'s "Structurally matches applesauce-relay's `AuthRequirement`", and `SyncLoaderRelay`/`SyncLoaderPool`'s "structurally satisfied by applesauce-relay's ..."). The plan's own Task 1 action text explicitly instructs writing MORE such comments for the new types ("carrying the same 'structurally matches applesauce-relay's ...' doc-comment convention"), which necessarily adds more occurrences, not fewer. I treated this as a plan-authoring imprecision — the actual D-06 invariant this check is meant to enforce is "no source-level dependency" (no `import` statement, no `package.json` dependency entry), which I verified directly: zero `import` lines referencing `applesauce-relay`, and `grep -c 'applesauce-relay' packages/loaders/package.json` returns 0. I did not delete the existing (or new) documentation comments just to force a literal substring match to 0, since the plan's own text requires writing them. The plan-level `<verification>` section repeats the identical unsatisfiable check for the same reason.
-- The full `pnpm --filter applesauce-concord build` fails in this worktree with 62 pre-existing module-resolution errors (`applesauce-common`/`applesauce-relay` subpath exports unresolved because those packages' `dist/` hasn't been built in this fresh worktree checkout). Confirmed none of these errors reference `sync-loader.ts`, `SyncMethodOptions`, or any symbol this plan touches — this is the same pre-existing monorepo build-order artifact 13-01's summary already documented, not a regression introduced here. Not fixed, out of this plan's scope (`packages/loaders/` only).
 
 ## User Setup Required
 
@@ -159,7 +158,6 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- `SyncLoader`'s auth surface (`onAuthRequired`/`authTimeout`/`authRetries`, `SyncAuthContext`/`SyncAuthHandler`) is stable and ready for Phase 15's Concord engines to consume through a `RelayPool`-backed loader.
 - The stall-guard suspension and fallback-gate mechanisms are self-contained to `sync-loader.ts` and require no further wiring from other Phase 13 plans — this plan's file scope (`packages/loaders/`) does not overlap with 13-02's `packages/relay/` work happening in parallel.
 - No blockers. `RELAY_AUTH_ERROR_NAMES`'s three strings (`AuthRequiredError`, `AuthHandlerError`, `AuthTimeoutError`) must stay in sync with `packages/relay/src/relay.ts`'s pinned `.name` values — both sides now carry a cross-referencing comment recording the coupling.
 
