@@ -24,7 +24,6 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 <details>
 <summary>✅ v1.1 first-fixes (Phases 5–12.3) — SHIPPED 2026-08-04</summary>
 
-
 - [x] Phase 5: Cache Identity Memo Fix (14/14 plans) — completed 2026-07-29
 - [x] Phase 5.1: Symbol Propagation Redesign (INSERTED) (13/13 plans) — completed 2026-07-16
 - [x] Phase 6: Refounding Rotation & Authority Correctness (3/3 plans) — completed 2026-07-16
@@ -44,7 +43,6 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 
 <details>
 <summary>✅ v1.2 operation-scoped-relay-auth (Phases 13–15) — SHIPPED 2026-08-19</summary>
-
 
 - [x] Phase 13: Operation-Scoped NIP-42 Auth Hooks (14/14 plans, 3 verification rounds) — completed 2026-08-07
 - [x] Phase 14: Auth Lifecycle Debug Logging (9/9 plans) — completed 2026-08-11
@@ -98,7 +96,6 @@ Plans:
 - [x] 16-05-PLAN.md — Remove the retired compiler option from core through relay
 - [x] 16-06-PLAN.md — Remove the retired compiler option from signers through wallet
 - [x] 16-07-PLAN.md — Resolve the compiler graph and run full workspace acceptance gates
-
 
 **Depends on**: Nothing (independent of the layering work; can run any time)
 **Requirements**: FIX-01, FIX-02, FIX-03, RESID-01, RESID-02
@@ -313,7 +310,6 @@ Plans:
 - [x] 25-02-PLAN.md — Complete hook/provider lifecycle suite and React 18/19 CI matrix
 - [x] 25-03-PLAN.md — Worker-relay v2 migration with UI/runtime contract preservation
 
-
 **Goal:** The checked-out repository contains no active or historical trace of the retired community package while the remaining workspace and folded Phase 05.1 fixes stay correct.
 **Requirements**: TBD
 **Depends on:** Phase 25
@@ -327,7 +323,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 25.5-02-PLAN.md — Delete package-only history and surgically scrub shared records
+- [x] 25.5-02-PLAN.md — Delete package-only history and surgically scrub shared records
 
 **Wave 3** *(blocked on Waves 1–2 completion)*
 
@@ -355,7 +351,6 @@ Plans:
 
 - [x] 25.4-05-PLAN.md — Residual manifest cleanup, lockfile regeneration, and workspace proof
 
-
 **Requirements**: CONC-F1
 **Depends on:** Phase 25.2
 **Plans:** 3/3 plans complete
@@ -365,7 +360,6 @@ Plans:
 - [x] 25.3-01-PLAN.md — Structurally bind all bundle rule tables to field types, optionality, and closed projection
 - [x] 25.3-02-PLAN.md — Add closed persisted-entry validation while preserving the open Invite List document
 - [x] 25.3-03-PLAN.md — Quarantine corrupt entries with typed diagnostics, prior-state retention, and explicit-write recovery
-
 
 **Requirements**: CONC-F2
 **Depends on:** Phase 25.1
@@ -394,7 +388,6 @@ Plans:
 
 - [x] 25.2-06-PLAN.md — Public rotation diagnostics export and release contract
 - [x] 25.2-07-PLAN.md — Crash-safe Refounding resume and cleanup-boundary integration coverage
-
 
 **Requirements**: TBD
 **Depends on:** Phase 25

@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 25.5
 current_phase_name: repository-extraction-cleanup
 status: executing
-stopped_at: Completed 25.5-01-PLAN.md
-last_updated: "2026-09-09T16:16:00.874Z"
+stopped_at: Completed 25.5-02-PLAN.md
+last_updated: "2026-09-09T16:24:45.623Z"
 last_activity: 2026-09-09
 last_activity_desc: Phase 25.5 execution started
 progress:
-  total_phases: 16
-  completed_phases: 14
-  total_plans: 83
-  completed_plans: 80
-  percent: 88
+  total_phases: 11
+  completed_phases: 10
+  total_plans: 61
+  completed_plans: 61
+  percent: 91
 ---
 
 # Project State
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 25.5 (repository-extraction-cleanup) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-09-09 — Phase 25.5 execution started
 
-Progress: [██████████] 72/72 plans ([██████████] 96%)
+Progress: [██████████] 72/72 plans ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -174,6 +174,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.4 P04 | 2min | 3 tasks | 10 files |
 | Phase 25.4 P05 | 10min | 2 tasks | 6 files |
 | Phase 25.5 P01 | 4m | 2 tasks | 162 files |
+| Phase 25.5 P02 | 8m | 2 tasks | 450 files |
 
 ## Accumulated Context
 
@@ -390,6 +391,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: 25.4-05: Define DEBUG-01 at workspace-owned direct/importer production dependencies and preserve unrelated third-party transitive debug records.
 - [Phase ?]: 25.4-05: Treat ambient debug.Debugger annotations as declaration leaks even without explicit imports.
 - [Phase ?]: Retain the already-landed wallet lock and falsy app-data fixes without duplicate edits
+- [Phase ?]: Deleted only package-owned historical trees and surgically removed matching lines from shared records
+- [Phase ?]: Removed the obsolete Phase 05.1 follow-up record after Plan 01 verified its open outcomes
 
 ### Pending Todos
 
@@ -503,8 +506,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-09T16:16:00.849Z
-Stopped at: Completed 25.5-01-PLAN.md
+Last session: 2026-09-09T16:24:45.599Z
+Stopped at: Completed 25.5-02-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
