@@ -315,7 +315,7 @@ Plans:
 **Goal:** The checked-out repository contains no active Concord package trace while the remaining workspace and folded Phase 05.1 fixes stay correct; removal from reachable Git history is deferred to Phase 26's squash merge.
 **Requirements**: D-01, D-05, D-08, D-09
 **Depends on:** Phase 25
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed
 
 Plans:
 
@@ -325,7 +325,7 @@ Plans:
 
 **Wave 2** *(gap closure; blocked on Wave 1 completion)*
 
-- [ ] 25.5-04-PLAN.md — Re-run the release proof from a captured baseline and close checkout-only residue gaps
+- [x] 25.5-04-PLAN.md — Re-run the release proof from a captured baseline and close checkout-only residue gaps
 
 ### Phase 25.4: Replace the debug Dependency (INSERTED)
 

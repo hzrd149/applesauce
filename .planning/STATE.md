@@ -4,16 +4,16 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 25.5
 current_phase_name: repository-extraction-cleanup
-status: verifying
-stopped_at: Phase 25.5 context gathered
-last_updated: "2026-09-09T17:34:30.264Z"
+status: executing
+stopped_at: Completed 25.5-04-PLAN.md
+last_updated: "2026-09-09T18:23:45.529Z"
 last_activity: 2026-09-09
 last_activity_desc: Phase 25.5 execution started
 progress:
   total_phases: 12
   completed_phases: 11
-  total_plans: 62
-  completed_plans: 62
+  total_plans: 63
+  completed_plans: 63
   percent: 92
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 25.5 (repository-extraction-cleanup) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-09-09 — Phase 25.5 execution started
 
 Progress: [██████████] 72/72 plans ([██████████] 100%)
@@ -176,6 +176,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.5 P01 | 4m | 2 tasks | 162 files |
 | Phase 25.5 P02 | 8m | 2 tasks | 450 files |
 | Phase 25.5 P03 | 5 min | 2 tasks | 10 files |
+| Phase 25.5 P04 | 9min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -394,6 +395,7 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Retain the already-landed wallet lock and falsy app-data fixes without duplicate edits
 - [Phase ?]: Deleted only package-owned historical trees and surgically removed matching lines from shared records
 - [Phase ?]: Removed the obsolete Phase 05.1 follow-up record after Plan 01 verified its open outcomes
+- [Phase ?]: Phase 25.5 validates only the checked-out repository; reachable Git history remains Phase 26 squash-merge work
 
 ### Pending Todos
 
@@ -507,9 +509,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-09T17:34:30.235Z
-Stopped at: Phase 25.5 context gathered
-Resume file: .planning/phases/25.5-repository-extraction-cleanup/25.5-CONTEXT.md
+Last session: 2026-09-09T18:23:45.503Z
+Stopped at: Completed 25.5-04-PLAN.md
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
