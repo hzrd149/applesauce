@@ -9,6 +9,10 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
+**Phase 25.5 complete (2026-09-09).** The checked-out repository has no active Concord package
+surface, the remaining workspace passes the release gate, and reachable-history cleanup is reserved
+for Phase 26's squash merge.
+
 protocol field types, persisted Invite List entries cross a closed validation boundary, and corrupt
 self-authored entries are quarantined per source without erasing valid state or triggering repair
 
@@ -222,6 +226,7 @@ follow-ups todo; and eight still-dormant seeds.
 - ✓ A single NIP-42 auth attempt is legible from debug output alone — challenge, signing, AUTH sent, result, and why it failed — with outcomes attributable to the operation that triggered them — v1.2 (Phase 14, ALOG-01/02). Proven against real captured `debug` output, not implementation strings
 - ✓ Every `Debugger` in `packages/loaders/` is derived once per lifetime, never on a path a reactive pipeline can re-enter — v1.2 (Phase 14, ALOG-03; closes SEED-001). Restated from the original wording, which tested for a pattern that does not exist in this monorepo and so passed vacuously
 - ✓ React 19 workspace support retains the React 18 consumer contract, and both OPFS examples run on `@snort/worker-relay` v2 without destructive migration — v7.0.0 (Phase 25, ECO-02/03)
+- ✓ The extracted checkout is free of active Concord package surfaces and remains release-ready, with Git-history cleanup deferred to the Phase 26 squash merge — v7.0.0 (Phase 25.5, D-01/D-05/D-08/D-09)
 
 ### Active
 
@@ -330,6 +335,8 @@ reproduction is not.*
 verified, suite at 2,647 passing. Two code-review findings were closed as gap plans (14-08, 14-09);
 
 *Last updated: 2026-08-19 after the v1.2 operation-scoped-relay-auth milestone. Full evolution review completed: "What This Is" and Core Value re-checked and unchanged (v1.2 restructured how auth reaches an operation, not what the SDK is); all v1.2 requirements moved to Validated; Current State rewritten with the v7 release constraint; the next milestone recorded as v7.0.0 relay/auth re-layering with 999.23 flagged as the required first phase.*
+
+*Last updated: 2026-09-09 after Phase 25.5 repository extraction cleanup; Phase 26 owns the release squash and reachable-history cleanup.*
 
 
 *Prior: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration).*
