@@ -82,8 +82,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### Release
 
-- [ ] **REL-01**: **[research]** Every package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit per-package checklist verified by a dry run, not an assumption that one major changeset sweeps all fourteen
-- [ ] **REL-02**: `applesauce-concord` publishes as `7.0.0` to `latest` — its first official stable release, with a changelog that starts from zero rather than explaining removals from `next`-tagged snapshots
+- [ ] **REL-01**: **[research]** Every remaining publishable package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit thirteen-package checklist verified by a dry run
 - [ ] **REL-03**: v1.2's held `applesauce-relay` and `applesauce-loaders` changesets ship in this release
 - [ ] **REL-04**: Each changeset file describes exactly one change in a single sentence, per the repo's changeset convention
 
@@ -174,7 +173,6 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | RESID-03 | Phase 24 | Complete |
 | RESID-04 | Phase 18 | Gaps Found |
 | REL-01 | Phase 26 | Pending |
-| REL-02 | Phase 26 | Pending |
 | REL-03 | Phase 26 | Pending |
 | REL-04 | Phase 26 | Pending |
 | ECO-01 | Phase 16 | Complete |

@@ -82,7 +82,8 @@ Moved NIP-42 authentication out of ambient, relay-wide cached state and into the
 - [x] **Phase 25.2: Concord Rotation Robustness Residuals** - Close remaining multi-chunk publication, convergence, error, and citation risks (completed 2026-09-06)
 - [x] **Phase 25.3: Concord Invite-Bundle Rule-Table Hardening** - Make validation and projection guardrails structural and fail safely on corrupt own-list data (completed 2026-09-06)
 - [x] **Phase 25.4: Replace the `debug` Dependency** - Replace the cross-package logger dependency before republishing the suite (completed 2026-09-06)
-- [ ] **Phase 26: Release Coordination — v7.0.0** - Every intended package reaches 7.0.0, verified by a changeset dry run, with Concord's first stable release
+- [ ] **Phase 25.5: Remove Concord Package and Active Integrations (INSERTED)** - Remove Concord code, docs, examples, release metadata, and other active repository references before release coordination
+- [ ] **Phase 26: Release Coordination — v7.0.0** - Every remaining publishable package reaches 7.0.0, verified by a changeset dry run after Concord is removed
 
 ## Phase Details
 
@@ -326,6 +327,27 @@ Plans:
 - [x] 25-02-PLAN.md — Complete hook/provider lifecycle suite and React 18/19 CI matrix
 - [x] 25-03-PLAN.md — Worker-relay v2 migration with UI/runtime contract preservation
 
+### Phase 25.5: Remove Concord package and all active repository integrations (INSERTED)
+
+**Goal:** The checked-out repository contains no active or historical trace of the retired community package while the remaining workspace and folded Phase 05.1 fixes stay correct.
+**Requirements**: TBD
+**Depends on:** Phase 25
+**Plans:** 0/3 plans executed
+
+Plans:
+
+**Wave 1**
+
+- [ ] 25.5-01-PLAN.md — Preserve review fixes and remove active package integrations
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 25.5-02-PLAN.md — Delete package-only history and surgically scrub shared records
+
+**Wave 3** *(blocked on Waves 1–2 completion)*
+
+- [ ] 25.5-03-PLAN.md — Run full workspace gates and self-erase all final residue
+
 ### Phase 25.4: Replace the debug Dependency (INSERTED)
 
 **Goal:** Replace the cross-package `debug` dependency with a simpler compatible implementation before the coordinated v7 publish.
@@ -415,13 +437,13 @@ Plans:
 
 ### Phase 26: Release Coordination — v7.0.0
 
-**Goal**: The v7.0.0 major publishes exactly what it is supposed to — all fourteen packages, v1.2's held changesets, and Concord's first official stable release — verified by a dry run rather than assumed from the `linked` config.
-**Depends on**: Phases 16–25.4 (every package's intended v7.0.0 change must be finalized before the release can be verified and cut)
-**Requirements**: REL-01, REL-02, REL-03, REL-04
+**Goal**: The v7.0.0 major publishes exactly what it is supposed to — all thirteen remaining publishable packages and v1.2's held changesets — verified by a dry run after Concord and its release metadata are removed in Phase 25.5.
+**Depends on**: Phases 16–25.5 (every intended v7.0.0 change and the Concord monorepo removal must be finalized before the release can be verified and cut)
+**Requirements**: REL-01, REL-03, REL-04
 **Success Criteria** (what must be TRUE):
 
-  1. A `changeset status --verbose --since=master` dry run shows all fourteen packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
-  2. `applesauce-concord` publishes to the `latest` npm dist-tag as `7.0.0`, with a changelog that starts from a stable baseline rather than explaining removals from `next` snapshots.
+  1. A `changeset status --verbose --since=master` dry run shows all thirteen remaining publishable packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
+  2. The release dry run contains no `applesauce-concord` package, dependency, changeset, or publish entry after Phase 25.5 removes it from the monorepo.
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
@@ -465,9 +487,10 @@ Plans:
 | 25.2 Concord Rotation Robustness Residuals | v7.0.0 | 7/7 | Complete | 2026-09-06 |
 | 25.3 Concord Invite-Bundle Rule-Table Hardening | v7.0.0 | 3/3 | Complete | 2026-09-06 |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
+| 25.5 Remove Concord Package and Active Integrations | v7.0.0 | 0/TBD | Not started | - |
 | 26. Release Coordination — v7.0.0 | v7.0.0 | 0/TBD | Not started | - |
 
-**Totals:** 19 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 15 phases (Phases 16–26, including 25.1–25.4); release coordination remains last.
+**Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
 
 ## Backlog
 
@@ -479,6 +502,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with $gsd-review-backlog when ready)
 
 ## v7 release coordination
@@ -501,7 +525,7 @@ Plans:
 
 Two consequences for planning v7:
 
-- **The tooling already enforces this — do not hand-write eleven changesets.** `.changeset/config.json` puts all fourteen packages in a single `linked` group, so one `major` changeset on any member bumps every member to the same major. Write the changeset against the package that actually changed and let changesets carry the rest. (Worth confirming the intended behavior on a dry run before cutting, since `linked` groups and `updateInternalDependencies: "minor"` interact.)
+- **The tooling does not guarantee this automatically.** After Phase 25.5 removes Concord, `.changeset/config.json` will contain thirteen packages in one `linked` group, but each intended package still needs an explicit changeset or real dependency cascade. Phase 26 verifies the complete set with a dry run before cutting.
 - **The dependency-cascade analysis stops being the deciding factor.** Only `applesauce-wallet` depends on `applesauce-relay` (`^6.0.3`); `applesauce-loaders` deliberately carries **no** relay dependency (D-06 — it mirrors the types structurally). Under lockstep majors that narrowness no longer limits the release, though it does still mean very few packages need *code* changes.
 
 **Corollary — non-breaking work can ride along.** Since every package is being republished anyway, v7 is the cheapest moment to land ecosystem bumps that would otherwise justify their own major: SEED-002 (TypeScript 7), SEED-003 (React 19 while keeping 18), SEED-004 (`@snort/worker-relay` v2). Flagged at the v1.2 close as v7 candidates; this makes the case stronger, not weaker.
@@ -510,4 +534,4 @@ Two consequences for planning v7:
 
 This means v1.2's convention — concord is unreleased and needs no changesets — holds, and Phase 15's removals (`authenticateStreamKeys`, `version$`, `ensureAuth()`, `autoAuthenticate`, the deleted `relay-auth.ts`) need no changelog entry: no stable consumer ever had them, and anyone on a `next` snapshot is tracking unstable by definition.
 
-**Open — is v7 concord's first official release?** This is the decision to make, not the changeset one. Concord sits in the `linked` group and is absent from `ignore`, so a `changeset version` run bumps it to 7.0.0 and `changeset publish` pushes it to `latest` alongside everything else. Either that is intended — v7 is when concord goes stable — or concord must be held back deliberately (adding it to `ignore`, or keeping it out of the release run). Decide before cutting, because the default behaviour publishes it. If v7 *is* its first stable release, its changelog starts from zero rather than needing to explain removals from snapshots.
+**RESOLVED — Concord leaves this monorepo before v7 (user, 2026-09-09).** Phase 25.5 removes the package and all active integrations, including its linked-group entry and pending changesets. Phase 26 then coordinates only the thirteen remaining publishable packages; the separate Concord repository owns its future releases.
