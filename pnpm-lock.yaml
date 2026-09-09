@@ -127,9 +127,6 @@ importers:
       applesauce-common:
         specifier: ^6.2.0
         version: link:../../packages/common
-      applesauce-concord:
-        specifier: ^6.2.0
-        version: link:../../packages/concord
       applesauce-content:
         specifier: ^6.2.0
         version: link:../../packages/content
@@ -429,50 +426,6 @@ importers:
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
-
-  packages/concord:
-    dependencies:
-      '@noble/curves':
-        specifier: ^2.2.0
-        version: 2.2.0
-      '@noble/hashes':
-        specifier: ^2.2.0
-        version: 2.2.0
-      '@scure/base':
-        specifier: ^2.2.0
-        version: 2.2.0
-      applesauce-common:
-        specifier: ^6.2.0
-        version: link:../common
-      applesauce-core:
-        specifier: ^6.2.0
-        version: link:../core
-      rxjs:
-        specifier: ^7.8.2
-        version: 7.8.2
-    devDependencies:
-      '@hirez_io/observer-spy':
-        specifier: ^2.2.0
-        version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
-      rimraf:
-        specifier: ^6.0.1
-        version: 6.1.3
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: ^4.0.15
-        version: 4.1.10(@types/node@22.20.1)(@vitest/browser-playwright@4.1.10)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@8.1.5(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
-    optionalDependencies:
-      applesauce-loaders:
-        specifier: ^6.2.0
-        version: link:../loaders
-      applesauce-relay:
-        specifier: ^6.2.0
-        version: link:../relay
-      applesauce-signers:
-        specifier: ^6.2.0
-        version: link:../signers
 
   packages/content:
     dependencies:
