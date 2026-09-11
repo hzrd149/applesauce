@@ -1,8 +1,9 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
 import { type Filter } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { concatMap, concatWith, defer, EMPTY, finalize, from, map, Observable, share, switchMap, takeUntil, takeWhile, throwError } from "rxjs";
+import { concatMap, concatWith, defer, EMPTY, finalize, from, map, NEVER, Observable, share, switchMap, takeUntil, takeWhile, throwError } from "rxjs";
 
+import { fromAbortSignal } from "./helpers/abort.js";
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";
 import { MultiplexWebSocket, NegentropyOptions, NegentropyRound } from "./types.js";
 
@@ -59,25 +60,13 @@ export function negentropySync(
   opts?: NegentropyOptions,
 ): Observable<NegentropyRound> {
   const id = opts?.id ?? nanoid();
-  const abort$ = new Observable<void>((subscriber) => {
-    if (!opts?.signal) return;
-    if (opts.signal.aborted) {
-      subscriber.next();
-      subscriber.complete();
-      return;
-    }
-    const abort = () => {
-      subscriber.next();
-      subscriber.complete();
-    };
-    opts.signal.addEventListener("abort", abort);
-    return () => opts.signal?.removeEventListener("abort", abort);
-  });
+  const abort$ = opts?.signal ? fromAbortSignal(opts.signal) : NEVER;
 
   return defer(() => {
     if (opts?.signal?.aborted) return EMPTY;
     const state = new Negentropy(storage, opts?.frameSizeLimit);
     let terminalRoundSeen = false;
+
     return from(state.initiate<string>()).pipe(
       switchMap((initial) =>
         socket

@@ -214,4 +214,52 @@ describe("sync scheduler", () => {
     expect(spy.getValues()).toEqual([]);
     expect(spy.receivedError()).toBe(false);
   });
+
+  it("batches missing ids into REQs of batchSize", async () => {
+    const ids = Array.from({ length: 5 }, (_, n) => event(400 + n).id);
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [], need: ids }));
+    const req = vi.spyOn(relay, "req").mockReturnValue(of({ type: "EOSE", from: relay.url, id: "batch" }));
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { batchSize: 2 }));
+    await spy.onComplete();
+
+    expect(req.mock.calls.map(([filters]) => filters)).toEqual([
+      { ids: ids.slice(0, 2) },
+      { ids: ids.slice(2, 4) },
+      { ids: ids.slice(4) },
+    ]);
+  });
+
+  it("requests missing ids in batches of 500 by default", async () => {
+    const ids = Array.from({ length: 501 }, (_, n) => event(1000 + n).id);
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [], need: ids }));
+    const req = vi.spyOn(relay, "req").mockReturnValue(of({ type: "EOSE", from: relay.url, id: "batch" }));
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE));
+    await spy.onComplete();
+
+    expect(req.mock.calls.map(([filters]) => (filters as { ids: string[] }).ids.length)).toEqual([500, 1]);
+  });
+
+  it("emits every event a batched REQ returns", async () => {
+    const events = Array.from({ length: 3 }, (_, n) => event(600 + n));
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [], need: events.map(({ id }) => id) }));
+    const messages = events.map((value) => ({ type: "EVENT" as const, from: relay.url, id: "batch", event: value }));
+    vi.spyOn(relay, "req").mockReturnValue(of(...messages, { type: "EOSE" as const, from: relay.url, id: "batch" }));
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE));
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual(
+      events.map((value) => ({ type: "received", from: "wss://sync-test/", event: value })),
+    );
+  });
+
+  it("rejects invalid batchSize before starting protocol work", async () => {
+    const negotiate = vi.spyOn(relay, "negentropy");
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { batchSize: 0 }), { expectErrors: true });
+    await spy.onError();
+    expect(spy.getError()).toBeInstanceOf(RangeError);
+    expect(negotiate).not.toHaveBeenCalled();
+  });
 });

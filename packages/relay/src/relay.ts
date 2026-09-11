@@ -1,4 +1,4 @@
-import { IAsyncEventStoreActions, IEventStoreActions, logger } from "applesauce-core";
+import { logger } from "applesauce-core";
 import { addSeenRelay } from "applesauce-core/helpers/relays";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
@@ -22,9 +22,11 @@ import {
   identity,
   ignoreElements,
   isObservable,
+  last,
   lastValueFrom,
   map,
   merge,
+  mergeAll,
   mergeMap,
   MonoTypeOperatorFunction,
   NEVER,
@@ -50,10 +52,11 @@ import {
   throwError,
   timeout,
   timer,
-  toArray,
 } from "rxjs";
 import { webSocket, WebSocketSubject, WebSocketSubjectConfig } from "rxjs/webSocket";
 
+import { buildStorageFromFilter, buildStorageVector, negentropySync } from "./negentropy.js";
+import { fromAbortSignal } from "./helpers/abort.js";
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./helpers/count.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
@@ -255,6 +258,28 @@ function parseClosedError(reason: string): RelayClosedError | null {
  */
 export function isReqProgress(message: RelayReqMessage): boolean {
   return message.type !== "OPEN";
+}
+
+/** Whether an error terminates a whole operation rather than just one of its parts */
+function isTerminalAuthError(error: unknown): boolean {
+  return error instanceof AuthRequiredError || error instanceof AuthHandlerError || error instanceof AuthTimeoutError;
+}
+
+/** Alternates two arrays so a bounded scheduler starts work from both before either can saturate it */
+function interleave<T>(a: T[], b: T[]): T[] {
+  const result: T[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (i < a.length) result.push(a[i]);
+    if (i < b.length) result.push(b[i]);
+  }
+  return result;
+}
+
+/** Splits an array into consecutive batches of at most `size` items */
+function chunk<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size));
+  return batches;
 }
 
 /** A dummy filter that will return empty results */
@@ -1400,13 +1425,10 @@ export class Relay {
     const id = opts?.id ?? nanoid();
     const interaction = defer(async () => {
       if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
-      const { buildStorageVector, buildStorageFromFilter } = await import("./negentropy.js");
       return Array.isArray(store) ? buildStorageVector(store) : buildStorageFromFilter(store, filter);
     }).pipe(
       switchMap((storage) =>
-        defer(() => import("./negentropy.js")).pipe(
-          switchMap(({ negentropySync }) => negentropySync(storage, this.socket, filter, { ...opts, id })),
-        ),
+      	negentropySync(storage, this.socket, filter, { ...opts, id })
       ),
       catchError((error) => {
         if (error instanceof Error && error.name === "NegentropyError") {
@@ -1684,6 +1706,9 @@ export class Relay {
     const concurrency = opts?.concurrency ?? 4;
     if (!Number.isFinite(concurrency) || !Number.isInteger(concurrency) || concurrency <= 0)
       return throwError(() => new RangeError("concurrency must be a finite positive integer"));
+    const batchSize = opts?.batchSize ?? 500;
+    if (!Number.isFinite(batchSize) || !Number.isInteger(batchSize) || batchSize <= 0)
+      return throwError(() => new RangeError("batchSize must be a finite positive integer"));
     const fromRelay = normalizeURL(this.url);
 
     const getEvents = async (ids: string[]) => {
@@ -1709,208 +1734,101 @@ export class Relay {
       describeRequest: () => RelayAuthWireRequest,
     ): Observable<T> =>
       source.pipe(
+        // Restate an auth-required rejection as a value, since that is what the auth operator consumes
         catchError((error) =>
           error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
         ),
+        // Run the auth phase, then resubscribe. The gate and counter are shared, so one sync spends one auth budget
         this.authRetryOperator(describeRequest, authOptions, authGate, () => false, authCounter),
       );
 
-    return new Observable<SyncMessage>((observer) => {
-      type Lane = "send" | "receive";
-      type Task = { lane: Lane; run: () => Promise<SyncMessage[]> };
-      type AttemptState = {
-        controller: AbortController;
-        cancelled$: Observable<void>;
-        queues: Record<Lane, Task[]>;
-        nextLane: Lane;
-        active: number;
-        negotiationDone: boolean;
-      };
-      let stopped = false;
-      let negotiationSub: Subscription | undefined;
-      let attempt: AttemptState | undefined;
-      const cancellationFor = (controller: AbortController) => new Observable<void>((subscriber) => {
-        if (controller.signal.aborted) {
-          subscriber.next();
-          subscriber.complete();
-          return;
-        }
-        const abort = () => {
-          subscriber.next();
-          subscriber.complete();
-        };
-        controller.signal.addEventListener("abort", abort, { once: true });
-        return () => controller.signal.removeEventListener("abort", abort);
-      });
-      const startAttempt = (): AttemptState => {
-        if (attempt) {
-          attempt.queues.send.length = 0;
-          attempt.queues.receive.length = 0;
-          attempt.controller.abort();
-        }
-        const controller = new AbortController();
-        attempt = {
-          controller,
-          cancelled$: cancellationFor(controller),
-          queues: { send: [], receive: [] },
-          nextLane: "send",
-          active: 0,
-          negotiationDone: false,
-        };
-        return attempt;
-      };
-      const discardAttempt = () => {
-        const discarded = attempt;
-        attempt = undefined;
-        if (!discarded) return;
-        discarded.queues.send.length = 0;
-        discarded.queues.receive.length = 0;
-        discarded.controller.abort();
-      };
-      const cleanup = () => {
-        if (stopped) return;
-        stopped = true;
-        if (attempt) {
-          attempt.queues.send.length = 0;
-          attempt.queues.receive.length = 0;
-          attempt.controller.abort();
-        }
-        negotiationSub?.unsubscribe();
-      };
-      const onCallerAbort = () => {
-        if (stopped) return;
-        cleanup();
-        observer.complete();
-      };
-      opts?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+    // Writes to the caller's store if they gave a writable one, applied fresh per transfer for its own dedupe state
+    const toStore: MonoTypeOperatorFunction<NostrEvent> = "add" in store ? mapEventsToStore(store) : identity;
 
-      const fail = (error: unknown) => {
-        if (stopped) return;
-        cleanup();
-        observer.error(error);
-      };
-      const maybeComplete = (state: AttemptState) => {
-        if (attempt === state && !stopped && state.negotiationDone && state.active === 0 && state.queues.send.length === 0 && state.queues.receive.length === 0) {
-          stopped = true;
-          opts?.signal?.removeEventListener("abort", onCallerAbort);
-          observer.complete();
-        }
-      };
-      const takeTask = (state: AttemptState): Task | undefined => {
-        const preferred = state.queues[state.nextLane];
-        const alternate: Lane = state.nextLane === "send" ? "receive" : "send";
-        const task = preferred.shift() ?? state.queues[alternate].shift();
-        if (task) state.nextLane = task.lane === "send" ? "receive" : "send";
-        return task;
-      };
-      const drain = (state: AttemptState) => {
-        while (attempt === state && !stopped && state.active < concurrency) {
-          const task = takeTask(state);
-          if (!task) break;
-          state.active += 1;
-          void task.run().then(
-            (messages) => {
-              if (attempt === state && !stopped) for (const message of messages) observer.next(message);
-            },
-            (error) => {
-              if (attempt === state) fail(error);
-            },
-          ).finally(() => {
-            state.active -= 1;
-            drain(state);
-            maybeComplete(state);
-          });
-        }
-        maybeComplete(state);
-      };
-      const enqueue = (state: AttemptState, task: Task) => {
-        state.queues[task.lane].push(task);
-      };
+    // One SEND transfer: write one event the relay is missing and report how it went
+    const sendTask = (eventId: string): Observable<SyncMessage> =>
+      // Read the event out of the store per subscription. The lookup stays async so a transfer promoted out of the
+      // queue claims its slot before it writes, keeping in-flight work at the bound
+      defer(() => getEvents([eventId])).pipe(
+        // Swap the event for its write, or drop this transfer if the store no longer holds it
+        mergeMap(([event]) =>
+          !event
+            ? EMPTY
+            : withSyncAuth(
+                // Defer so an auth retry writes a fresh EVENT frame instead of rejoining the refused one
+                defer(() => this.event(event)),
+                () => ({ verb: "EVENT", event }),
+              ).pipe(
+                // Wait for the relay's final verdict on this event
+                last(),
+                // Restate that verdict as the outcome message the caller sees
+                map<PublishResponse, SyncMessage>((response) => {
+                  if (!response.ok)
+                    return {
+                      type: "send-failed",
+                      from: fromRelay,
+                      event,
+                      error: response.error ?? new RelayEventVerdictError(response.message ?? "Relay rejected event"),
+                      response,
+                    };
 
-      if (opts?.signal?.aborted) {
-        onCallerAbort();
-        return cleanup;
-      }
+                  addSeenRelay(event, this.url);
+                  return { type: "sent", from: fromRelay, event, response };
+                }),
+                // Report every other failure as an outcome so one bad event never ends the sync; a relay that closes
+                // without an OK arrives here as last()'s EmptyError. Only terminal auth failures are rethrown
+                catchError((error) =>
+                  isTerminalAuthError(error)
+                    ? throwError(() => error)
+                    : of({ type: "send-failed", from: fromRelay, event, error } satisfies SyncMessage),
+                ),
+              ),
+        ),
+      );
 
-      negotiationSub = defer(() => {
-        const state = startAttempt();
-        const id = nanoid();
-        return withSyncAuth(
-          this.negentropy(store, filters, { id, signal: state.controller.signal }),
-          () => ({ verb: "NEG-OPEN", id, filter: filters }),
-        ).pipe(map((round) => ({ round, state })));
-      })
-        .pipe(
-          catchError((error) => {
-            if (isReconnectableTransportError(error)) discardAttempt();
-            return throwError(() => error);
-          }),
-          this.customConnectionRetryOperator(opts?.reconnect),
-        )
-        .subscribe({
-        next: ({ round: { have, need }, state }) => {
-          if (attempt !== state) return;
-          if (direction & SyncDirection.SEND) {
-            for (const eventId of have) enqueue(state, {
-              lane: "send",
-              run: async () => {
-                const [event] = await getEvents([eventId]);
-                if (!event) return [];
-                try {
-                  const response = await lastValueFrom(
-                    withSyncAuth(defer(() => this.event(event)), () => ({ verb: "EVENT", event })).pipe(takeUntil(state.cancelled$)),
-                  );
-                  if (response.ok) {
-                    addSeenRelay(event, this.url);
-                    return [{ type: "sent", from: fromRelay, event, response }];
-                  }
-                  return [{ type: "send-failed", from: fromRelay, event, error: response.error ?? new RelayEventVerdictError(response.message ?? "Relay rejected event"), response }];
-                } catch (error) {
-                  if (error instanceof AuthRequiredError || error instanceof AuthHandlerError || error instanceof AuthTimeoutError) throw error;
-                  return [{ type: "send-failed", from: fromRelay, event, error }];
-                }
-              },
-            });
-          }
-          if (direction & SyncDirection.RECEIVE) {
-            for (const eventId of need) enqueue(state, {
-              lane: "receive",
-              run: async () => {
-                const requestId = nanoid();
-                const events = await lastValueFrom(
-                  withSyncAuth(
-                    defer(() => this.req({ ids: [eventId] }, { id: requestId })),
-                    () => ({ verb: "REQ", id: requestId, filters: [{ ids: [eventId] }] }),
-                  ).pipe(
-                    takeWhile((message) => message.type !== "EOSE"),
-                    filter((message) => message.type === "EVENT"),
-                    map((message) => message.event),
-                    Reflect.has(store, "add")
-                      ? mapEventsToStore(store as unknown as IEventStoreActions | IAsyncEventStoreActions)
-                      : identity,
-                    toArray(),
-                    takeUntil(state.cancelled$),
-                  ),
-                );
-                return events.map((event) => ({ type: "received", from: fromRelay, event }));
-              },
-            });
-          }
-          drain(state);
-        },
-        complete: () => {
-          if (!attempt) return;
-          attempt.negotiationDone = true;
-          maybeComplete(attempt);
-        },
-        error: fail,
-      });
+    // One RECEIVE transfer: request a batch of events the local store is missing and report what came back
+    const receiveTask = (ids: string[]): Observable<SyncMessage> =>
+      // Defer the request so an auth retry sends a fresh REQ under its own id
+      defer(() => {
+        const requestId = nanoid();
+        return withSyncAuth(this.req({ ids }, { id: requestId }), () => ({
+          verb: "REQ",
+          id: requestId,
+          filters: [{ ids }],
+        }));
+      }).pipe(
+        // The relay has nothing further for this id once it sends EOSE
+        takeWhile((message) => message.type !== "EOSE"),
+        // Keep only the events, dropping req()'s own OPEN bookkeeping message
+        filter((message) => message.type === "EVENT"),
+        // Unwrap the event out of its REQ message
+        map((message) => message.event),
+        // Write it to the caller's store as it arrives, rather than batching until EOSE
+        toStore,
+        // Restate it as the outcome message the caller sees
+        map((event) => ({ type: "received", from: fromRelay, event }) satisfies SyncMessage),
+      );
 
-      return () => {
-        opts?.signal?.removeEventListener("abort", onCallerAbort);
-        cleanup();
-      };
+    // Negotiate which event ids each side is missing. Deferred so a transport reconnect starts a fresh negotiation
+    // under a new id, while an auth retry inside withSyncAuth reuses this one
+    return defer(() => {
+      const id = nanoid();
+      return withSyncAuth(this.negentropy(store, filters, { id }), () => ({ verb: "NEG-OPEN", id, filter: filters }));
     }).pipe(
+      // Expand each round into its transfers: one per event to send, one per batch of ids to request. The two lanes
+      // are interleaved so one direction cannot starve the other
+      mergeMap(({ have, need }) =>
+        interleave(
+          direction & SyncDirection.SEND ? have.map(sendTask) : [],
+          direction & SyncDirection.RECEIVE ? chunk(need, batchSize).map(receiveTask) : [],
+        ),
+      ),
+      // Run transfers under one bound across both lanes, queueing the rest. Negotiation is never held up by that queue
+      mergeAll(concurrency),
+      // Renegotiate after a dropped connection. Transfers subscribe below here, so all their work is torn down first
+      this.customConnectionRetryOperator(opts?.reconnect),
+      // Let the caller stop the sync, completing it rather than erroring it
+      opts?.signal ? takeUntil(fromAbortSignal(opts.signal)) : identity,
       // Only create one upstream subscription
       share(),
     );

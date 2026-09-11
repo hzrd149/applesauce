@@ -162,8 +162,13 @@ export type RelayCountOptions = RelayAuthOptions & {
 
 /** High-level sync policy. Lifetime remains caller-owned through cancellation or composed RxJS operators. */
 export type RelaySyncOptions = RelayAuthOptions & {
+  /** Retry count or config for reconnecting after a dropped connection */
   reconnect?: boolean | number | Parameters<typeof retry>[0];
+  /** Maximum number of EVENT uploads and REQ batches in flight at once (default 4) */
   concurrency?: number;
+  /** Maximum number of missing event ids requested in a single REQ (default 500) */
+  batchSize?: number;
+  /** Stops the sync when aborted, completing it rather than erroring it */
   signal?: AbortSignal;
 };
 
@@ -266,9 +271,9 @@ export type RelayInformation = CoreRelayInformation & {
 
 /** A read only event store for negentropy sync */
 export type NegentropyReadStore = IEventStoreRead | IAsyncEventStoreRead | NostrEvent[];
-/** A writeable event store for negentropy sync */
-export type NegentropyWriteStore =
-  (IAsyncEventStoreRead & IAsyncEventStoreActions) | (IEventStoreRead & IAsyncEventStoreActions);
+/** A writeable event store for negentropy sync. Events received during a sync are added to it */
+export type NegentropyWriteStore = (IEventStoreRead | IAsyncEventStoreRead) &
+  (IEventStoreActions | IAsyncEventStoreActions);
 
 /** An event store that can be used for negentropy sync */
 export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;

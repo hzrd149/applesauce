@@ -19,7 +19,7 @@ rounds.subscribe(({ have, need }) => [have, need] satisfies string[][]);
 const options: NegentropyOptions = { id: "sync", frameSizeLimit: 60_000, signal: new AbortController().signal };
 relay.negentropy(events, {}, options);
 
-const relayResults: Observable<SyncMessage> = relay.sync(events, {}, SyncDirection.BOTH, { concurrency: 4 });
+const relayResults: Observable<SyncMessage> = relay.sync(events, {}, SyncDirection.BOTH, { concurrency: 4, batchSize: 500 });
 const groupResults: Observable<GroupSyncMessage> = group.sync(events, {}, SyncDirection.BOTH);
 const poolResults: Observable<GroupSyncMessage> = pool.sync([], events, {}, SyncDirection.BOTH);
 void relayResults;
@@ -47,3 +47,5 @@ pool.negentropy([], events, {});
 relay.sync(events, {}, SyncDirection.BOTH, { timeout: 1_000 });
 // @ts-expect-error concurrency must be numeric; runtime validates its positive finite integer value
 relay.sync(events, {}, SyncDirection.BOTH, { concurrency: "4" });
+// @ts-expect-error batchSize must be numeric; runtime validates its positive finite integer value
+relay.sync(events, {}, SyncDirection.BOTH, { batchSize: "500" });
