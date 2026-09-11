@@ -1122,7 +1122,11 @@ export class Relay {
   }
 
   /** Compose fresh raw REQ attempts while retaining lifecycle messages for high-level consumers. */
-  [RELAY_REQ_LIFECYCLE](filters: FilterInput, opts?: RelaySubscriptionOptions, gate = new AuthPhaseGate()): Observable<RelayReqMessage> {
+  [RELAY_REQ_LIFECYCLE](
+    filters: FilterInput,
+    opts?: RelaySubscriptionOptions,
+    gate = new AuthPhaseGate(),
+  ): Observable<RelayReqMessage> {
     const id = opts?.id ?? nanoid();
     const repeatAfterClosed = { value: false };
     const authCounter = { consecutive: 0 };
@@ -1266,10 +1270,14 @@ export class Relay {
       // countTimeout defaults to 10 seconds, suspends during auth, and expires terminally outside retry.
       opts?.timeout === false
         ? identity
-        : suspendableTimeout<RelayCountResponse>(opts?.timeout === true ? this.countTimeout : (opts?.timeout ?? this.countTimeout), gate, {
-            firstWhen: () => true,
-            with: () => throwError(() => new RelayCountTimeoutError(this.url)),
-          }),
+        : suspendableTimeout<RelayCountResponse>(
+            opts?.timeout === true ? this.countTimeout : (opts?.timeout ?? this.countTimeout),
+            gate,
+            {
+              firstWhen: () => true,
+              with: () => throwError(() => new RelayCountTimeoutError(this.url)),
+            },
+          ),
       share(),
     );
   }
@@ -1303,10 +1311,7 @@ export class Relay {
           return messages;
         });
 
-        return merge(this.watchTower, control).pipe(
-          takeUntil(messages.pipe(ignoreElements(), endWith(true))),
-          take(1),
-        );
+        return merge(this.watchTower, control).pipe(takeUntil(messages.pipe(ignoreElements(), endWith(true))), take(1));
       }),
     );
   }
@@ -1388,19 +1393,13 @@ export class Relay {
   }
 
   /** Negentropy sync event ids with the relay and an event store */
-  negentropy(
-    store: NegentropyReadStore,
-    filter: Filter,
-    opts?: NegentropyOptions,
-  ): Observable<NegentropyRound> {
+  negentropy(store: NegentropyReadStore, filter: Filter, opts?: NegentropyOptions): Observable<NegentropyRound> {
     const id = opts?.id ?? nanoid();
     const interaction = defer(async () => {
       if ((await this.getSupported())?.includes(77) === false) throw new Error("Relay does not support NIP-77");
       return Array.isArray(store) ? buildStorageVector(store) : buildStorageFromFilter(store, filter);
     }).pipe(
-      switchMap((storage) =>
-      	negentropySync(storage, this.socket, filter, { ...opts, id })
-      ),
+      switchMap((storage) => negentropySync(storage, this.socket, filter, { ...opts, id })),
       catchError((error) => {
         if (error instanceof Error && error.name === "NegentropyError") {
           const parsed = parseClosedError(error.message);
@@ -1419,11 +1418,7 @@ export class Relay {
       const retries = opts?.challengeRetries ?? 1;
       if (!Number.isFinite(retries) || !Number.isInteger(retries) || retries < 0)
         throw new RangeError("challengeRetries must be a finite non-negative integer");
-      if (
-        opts?.timeout !== undefined &&
-        opts.timeout !== false &&
-        (!Number.isFinite(opts.timeout) || opts.timeout < 0)
-      )
+      if (opts?.timeout !== undefined && opts.timeout !== false && (!Number.isFinite(opts.timeout) || opts.timeout < 0))
         throw new RangeError("timeout must be false or a finite non-negative duration");
       const cancel$ = new Subject<void>();
       let abandoned = false;
@@ -1478,12 +1473,16 @@ export class Relay {
           if (abandoned) return await cancellation;
 
           this.authLog(`Signing AUTH event for challenge ${truncateForLog(challenge)}, waiting on signer`);
-          const event = await bounded(Promise.resolve().then(() => signer.signEvent(makeAuthEvent(this.url, challenge))));
+          const event = await bounded(
+            Promise.resolve().then(() => signer.signEvent(makeAuthEvent(this.url, challenge))),
+          );
           if (abandoned) return await cancellation;
 
           if (this.challenge !== challenge) {
             changes += 1;
-            this.authLog(`AUTH challenge changed after signing; discarding candidate and re-signing (${changes}/${retries})`);
+            this.authLog(
+              `AUTH challenge changed after signing; discarding candidate and re-signing (${changes}/${retries})`,
+            );
             if (changes > retries) throw new RelayAuthChallengeChangedError(this.url);
             continue;
           }
@@ -1616,10 +1615,14 @@ export class Relay {
     // symbol key so this method's own operation clock (below) can suspend across req()'s auth phase
     const gate = new AuthPhaseGate();
 
-    const req = this[RELAY_REQ_LIFECYCLE](filters, {
-      ...opts,
-      reconnect: opts?.reconnect ?? this.requestReconnect,
-    }, gate);
+    const req = this[RELAY_REQ_LIFECYCLE](
+      filters,
+      {
+        ...opts,
+        reconnect: opts?.reconnect ?? this.requestReconnect,
+      },
+      gate,
+    );
 
     return req.pipe(
       // Add completion condition

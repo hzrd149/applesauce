@@ -221,7 +221,9 @@ describe("group failure forwarding", () => {
     fail("wss://relay1.example.com/");
     const maps = new BehaviorSubject({ "wss://relay2.example.com/": { kinds: [1] } });
     const pending = pool.relay("wss://relay2.example.com/");
-    vi.spyOn(pending, RELAY_REQ_LIFECYCLE).mockReturnValue(new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }));
+    vi.spyOn(pending, RELAY_REQ_LIFECYCLE).mockReturnValue(
+      new BehaviorSubject<any>({ type: "OPEN", from: pending.url, id: "x", filters: [] }),
+    );
     const spy = subscribeSpyTo(pool.subscriptionMap(maps), { expectErrors: true });
     maps.next({ "wss://relay1.example.com/": { kinds: [1] } });
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);

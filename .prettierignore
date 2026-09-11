@@ -2,3 +2,4 @@ dist
 pnpm-lock.yaml
 apps/docs/.vitepress/cache
 .planning/
+.agents/

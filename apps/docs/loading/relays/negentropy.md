@@ -38,9 +38,7 @@ relay.sync(eventStore, filter).subscribe((message) => {
 For low-level work across several relays, create one raw stream per relay:
 
 ```typescript
-const streams = urls.map((url) =>
-  pool.relay(url).negentropy(eventStore, filter),
-);
+const streams = urls.map((url) => pool.relay(url).negentropy(eventStore, filter));
 
 merge(...streams).subscribe(({ have, need }) => {
   console.log({ have, need });
@@ -54,15 +52,18 @@ Negentropy has no built-in timeout policy. Cancel with an `AbortSignal` or compo
 ```typescript
 const controller = new AbortController();
 
-relay.negentropy(eventStore, filter, {
-  signal: controller.signal,
-}).subscribe(handleRound);
+relay
+  .negentropy(eventStore, filter, {
+    signal: controller.signal,
+  })
+  .subscribe(handleRound);
 
 controller.abort();
 ```
 
 ```typescript
-relay.negentropy(eventStore, filter)
+relay
+  .negentropy(eventStore, filter)
   .pipe(takeUntil(timer(30_000)))
   .subscribe(handleRound);
 ```

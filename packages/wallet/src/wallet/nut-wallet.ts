@@ -11,7 +11,14 @@ import {
   Wallet as CashuWallet,
 } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
-import { ChainableObservable, logger as baseLogger, chainable, EventStore, type Debugger, type EventSigner } from "applesauce-core";
+import {
+  ChainableObservable,
+  logger as baseLogger,
+  chainable,
+  EventStore,
+  type Debugger,
+  type EventSigner,
+} from "applesauce-core";
 import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import {

@@ -69,12 +69,8 @@ describe("sync scheduler", () => {
   it("schedules RECEIVE fairly while SEND remains blocked and drains before completion", async () => {
     const events = Array.from({ length: 5 }, (_, n) => event(n + 10));
     const sends = events.map(() => new Subject<any>());
-    const req = vi.spyOn(relay, "req").mockReturnValue(
-      of({ type: "EOSE", from: relay.url, id: "receive" }),
-    );
-    vi.spyOn(relay, "negentropy").mockReturnValue(
-      of({ have: events.map(({ id }) => id), need: [event(99).id] }),
-    );
+    const req = vi.spyOn(relay, "req").mockReturnValue(of({ type: "EOSE", from: relay.url, id: "receive" }));
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: events.map(({ id }) => id), need: [event(99).id] }));
     vi.spyOn(relay, "event").mockImplementation((value) => sends[events.findIndex(({ id }) => id === value.id)]);
 
     const spy = subscribeSpyTo(relay.sync(events, {}, SyncDirection.BOTH));
@@ -95,7 +91,9 @@ describe("sync scheduler", () => {
     const rounds = new Subject<{ have: string[]; need: string[] }>();
     const blocked = new Subject<any>();
     const secondResult = new Subject<any>();
-    const send = vi.spyOn(relay, "event").mockImplementation((value) => value.id === first.id ? blocked : secondResult);
+    const send = vi
+      .spyOn(relay, "event")
+      .mockImplementation((value) => (value.id === first.id ? blocked : secondResult));
     vi.spyOn(relay, "negentropy").mockReturnValue(rounds);
 
     const spy = subscribeSpyTo(relay.sync([first, second], {}, SyncDirection.SEND, { concurrency: 2 }));
@@ -115,11 +113,12 @@ describe("sync scheduler", () => {
   it("discards queued and in-flight work before reconnecting", async () => {
     const first = event(111);
     const queued = event(112);
-    const attempts = [new Subject<{ have: string[]; need: string[] }>(), new Subject<{ have: string[]; need: string[] }>()];
+    const attempts = [
+      new Subject<{ have: string[]; need: string[] }>(),
+      new Subject<{ have: string[]; need: string[] }>(),
+    ];
     const staleSend = new Subject<any>();
-    const negotiate = vi.spyOn(relay, "negentropy")
-      .mockReturnValueOnce(attempts[0])
-      .mockReturnValueOnce(attempts[1]);
+    const negotiate = vi.spyOn(relay, "negentropy").mockReturnValueOnce(attempts[0]).mockReturnValueOnce(attempts[1]);
     const send = vi.spyOn(relay, "event").mockReturnValue(staleSend);
     const spy = subscribeSpyTo(
       relay.sync([first, queued], {}, SyncDirection.SEND, { concurrency: 1, reconnect: { count: 1, delay: 0 } }),
@@ -143,19 +142,17 @@ describe("sync scheduler", () => {
 
   it("emits only the replacement attempt outcome for repeated work", async () => {
     const value = event(121);
-    const attempts = [new Subject<{ have: string[]; need: string[] }>(), new Subject<{ have: string[]; need: string[] }>()];
+    const attempts = [
+      new Subject<{ have: string[]; need: string[] }>(),
+      new Subject<{ have: string[]; need: string[] }>(),
+    ];
     const staleSend = new Subject<any>();
     const currentSend = new Subject<any>();
-    const negotiate = vi.spyOn(relay, "negentropy")
-      .mockReturnValueOnce(attempts[0])
-      .mockReturnValueOnce(attempts[1]);
-    const send = vi.spyOn(relay, "event")
-      .mockReturnValueOnce(staleSend)
-      .mockReturnValueOnce(currentSend);
-    const spy = subscribeSpyTo(
-      relay.sync([value], {}, SyncDirection.SEND, { reconnect: { count: 1, delay: 0 } }),
-      { expectErrors: true },
-    );
+    const negotiate = vi.spyOn(relay, "negentropy").mockReturnValueOnce(attempts[0]).mockReturnValueOnce(attempts[1]);
+    const send = vi.spyOn(relay, "event").mockReturnValueOnce(staleSend).mockReturnValueOnce(currentSend);
+    const spy = subscribeSpyTo(relay.sync([value], {}, SyncDirection.SEND, { reconnect: { count: 1, delay: 0 } }), {
+      expectErrors: true,
+    });
 
     attempts[0].next({ have: [value.id], need: [] });
     await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
@@ -171,9 +168,7 @@ describe("sync scheduler", () => {
     currentSend.complete();
     await spy.onComplete();
 
-    expect(spy.getValues()).toEqual([
-      expect.objectContaining({ type: "sent", event: value }),
-    ]);
+    expect(spy.getValues()).toEqual([expect.objectContaining({ type: "sent", event: value })]);
   });
 
   it("rejects invalid concurrency before starting protocol work", async () => {
@@ -192,7 +187,11 @@ describe("sync scheduler", () => {
     vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [first.id, second.id], need: [] }));
     vi.spyOn(relay, "event")
       .mockReturnValueOnce(of(negative))
-      .mockReturnValueOnce(defer(() => { throw thrown; }));
+      .mockReturnValueOnce(
+        defer(() => {
+          throw thrown;
+        }),
+      );
 
     const spy = subscribeSpyTo(relay.sync([first, second], {}, SyncDirection.SEND));
     await spy.onComplete();

@@ -33,14 +33,42 @@ function createLockedGroupsBookmark(hiddenTags: string[][]): NostrEvent {
 
 describe("Group pointer utilities", () => {
   const cases: Array<[string, GroupPointer, GroupPointer]> = [
-    ["bare secure host", { relay: "relay.example.com", id: "group123" }, { relay: "wss://relay.example.com/", id: "group123" }],
-    ["explicit secure host", { relay: "wss://relay.example.com", id: "group123" }, { relay: "wss://relay.example.com/", id: "group123" }],
-    ["insecure host", { relay: "ws://relay.example.com", id: "group123" }, { relay: "ws://relay.example.com/", id: "group123" }],
-    ["explicit port", { relay: "wss://relay.example.com:8443", id: "group123" }, { relay: "wss://relay.example.com:8443/", id: "group123" }],
-    ["localhost port", { relay: "ws://localhost:4869", id: "group123" }, { relay: "ws://localhost:4869/", id: "group123" }],
+    [
+      "bare secure host",
+      { relay: "relay.example.com", id: "group123" },
+      { relay: "wss://relay.example.com/", id: "group123" },
+    ],
+    [
+      "explicit secure host",
+      { relay: "wss://relay.example.com", id: "group123" },
+      { relay: "wss://relay.example.com/", id: "group123" },
+    ],
+    [
+      "insecure host",
+      { relay: "ws://relay.example.com", id: "group123" },
+      { relay: "ws://relay.example.com/", id: "group123" },
+    ],
+    [
+      "explicit port",
+      { relay: "wss://relay.example.com:8443", id: "group123" },
+      { relay: "wss://relay.example.com:8443/", id: "group123" },
+    ],
+    [
+      "localhost port",
+      { relay: "ws://localhost:4869", id: "group123" },
+      { relay: "ws://localhost:4869/", id: "group123" },
+    ],
     ["bracketed IPv6", { relay: "wss://[::1]:7447", id: "group123" }, { relay: "wss://[::1]:7447/", id: "group123" }],
-    ["path and query", { relay: "wss://relay.example.com/socket?token=abc", id: "group123" }, { relay: "wss://relay.example.com/socket?token=abc", id: "group123" }],
-    ["apostrophe id", { relay: "wss://relay.example.com", id: "room'with'apostrophes" }, { relay: "wss://relay.example.com/", id: "room'with'apostrophes" }],
+    [
+      "path and query",
+      { relay: "wss://relay.example.com/socket?token=abc", id: "group123" },
+      { relay: "wss://relay.example.com/socket?token=abc", id: "group123" },
+    ],
+    [
+      "apostrophe id",
+      { relay: "wss://relay.example.com", id: "room'with'apostrophes" },
+      { relay: "wss://relay.example.com/", id: "room'with'apostrophes" },
+    ],
     ["default id", { relay: "wss://relay.example.com", id: "" }, { relay: "wss://relay.example.com/", id: "_" }],
   ];
 

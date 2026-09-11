@@ -102,8 +102,7 @@ pool.request(relays, { kinds: [1], limit: 50 }, { timeout: 5000 }).subscribe({
   next: (event) => console.log(event.id),
   error(error) {
     if (error instanceof RelayGroupError) {
-      for (const [url, outcome] of Object.entries(error.outcomes))
-        console.error(url, outcome.error);
+      for (const [url, outcome] of Object.entries(error.outcomes)) console.error(url, outcome.error);
     }
   },
   complete: () => console.log("Request complete"),
@@ -208,9 +207,7 @@ Snapshots are progressive and cumulative; missing entries are still pending. Poo
 import { estimateHllCardinality, mergeHllRegisters } from "applesauce-relay";
 
 pool.count(relays, filter, "union").subscribe((outcomes) => {
-  const sketches = Object.values(outcomes).flatMap((o) =>
-    o.ok && o.value.hll ? [o.value.hll] : [],
-  );
+  const sketches = Object.values(outcomes).flatMap((o) => (o.ok && o.value.hll ? [o.value.hll] : []));
   if (sketches.length) {
     const merged = mergeHllRegisters(sketches);
     console.log(estimateHllCardinality(merged));

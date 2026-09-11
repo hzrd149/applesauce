@@ -57,7 +57,12 @@ describe("negentropySync", () => {
     const wireCounts: number[] = [];
 
     const done = new Promise<void>((resolve, reject) => {
-      negentropySync(buildStorageVector(local), socket, { kinds: [1] }, { id: "multi", frameSizeLimit: 4096 }).subscribe({
+      negentropySync(
+        buildStorageVector(local),
+        socket,
+        { kinds: [1] },
+        { id: "multi", frameSizeLimit: 4096 },
+      ).subscribe({
         next: () => wireCounts.push(socket.sent.filter((message) => message[0] === "NEG-MSG").length),
         error: reject,
         complete: resolve,

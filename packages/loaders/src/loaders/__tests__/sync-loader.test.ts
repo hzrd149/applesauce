@@ -4,10 +4,7 @@ import { Filter } from "applesauce-core/helpers/filter";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
 import { asyncScheduler, lastValueFrom, NEVER, Observable, of, scheduled, Subject, toArray } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import {
-  RelayAuthChallengeChangedError,
-  RelayAuthChallengeTimeoutError,
-} from "../../../../relay/src/relay.js";
+import { RelayAuthChallengeChangedError, RelayAuthChallengeTimeoutError } from "../../../../relay/src/relay.js";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import {
@@ -812,16 +809,23 @@ describe("createSyncLoader", () => {
   it("maps only received sync results to loader events", async () => {
     const eventStore = new EventStore();
     const a = user.note("received");
-    const sync = vi.fn().mockReturnValue(
-      of(
-        { type: "sent", from: "wss://relay/", event: a, response: { ok: true, from: "wss://relay/" } },
-        { type: "send-failed", from: "wss://relay/", event: a, error: new Error("rejected") },
-        { type: "relay-failed", from: "wss://other/", error: new Error("offline") },
-        { type: "received", from: "wss://relay/", event: a },
-      ),
-    );
+    const sync = vi
+      .fn()
+      .mockReturnValue(
+        of(
+          { type: "sent", from: "wss://relay/", event: a, response: { ok: true, from: "wss://relay/" } },
+          { type: "send-failed", from: "wss://relay/", event: a, error: new Error("rejected") },
+          { type: "relay-failed", from: "wss://other/", error: new Error("offline") },
+          { type: "received", from: "wss://relay/", event: a },
+        ),
+      );
     const request = vi.fn().mockReturnValue(of());
-    const loader = createSyncLoader({ eventStore, request, getSupported: vi.fn().mockResolvedValue([77]), sync: sync as any });
+    const loader = createSyncLoader({
+      eventStore,
+      request,
+      getSupported: vi.fn().mockResolvedValue([77]),
+      sync: sync as any,
+    });
 
     const events = await collect(loader({ relays: ["wss://relay/"], filter }).events$);
 
@@ -845,11 +849,12 @@ describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetim
     try {
       const eventStore = new EventStore();
       const request = vi.fn().mockReturnValue(NEVER);
-      const sync = vi.fn().mockImplementation((_url: unknown, _filter: unknown, opts: SyncMethodOptions) =>
-        new Observable((observer) => {
-          void opts.onAuthRequired?.(authContext());
-          observer.error(new Error("transport failed"));
-        }),
+      const sync = vi.fn().mockImplementation(
+        (_url: unknown, _filter: unknown, opts: SyncMethodOptions) =>
+          new Observable((observer) => {
+            void opts.onAuthRequired?.(authContext());
+            observer.error(new Error("transport failed"));
+          }),
       );
       const loader = createSyncLoader({ eventStore, request, getSupported: vi.fn().mockResolvedValue([77]), sync });
       const statuses: SyncLoaderStatus[] = [];

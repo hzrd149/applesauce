@@ -48,7 +48,11 @@ try {
   });
 
   for (const peer of Object.keys(expectedPeers).filter((name) => name !== "better-sqlite3")) {
-    assert.throws(() => readFileSync(join(consumer, "node_modules", peer, "package.json")), undefined, `${peer} was installed`);
+    assert.throws(
+      () => readFileSync(join(consumer, "node_modules", peer, "package.json")),
+      undefined,
+      `${peer} was installed`,
+    );
   }
   execFileSync("node", ["--input-type=module", "--eval", 'await import("applesauce-sqlite/better-sqlite3")'], {
     cwd: consumer,

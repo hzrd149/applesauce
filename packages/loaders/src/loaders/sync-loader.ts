@@ -645,7 +645,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
               toMessages(
                 withTimeout(sync(url, filter, relayMethodOptions)).pipe(
                   rxFilter((message) => message.type === "received" || !("type" in message)),
-                  map((message) => message.type === "received" ? message.event : message as unknown as NostrEvent),
+                  map((message) => (message.type === "received" ? message.event : (message as unknown as NostrEvent))),
                 ),
               ).pipe(
                 catchError((error) => {

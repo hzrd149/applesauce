@@ -37,7 +37,13 @@ describe("RelayGroupError", () => {
   });
 
   it("errors after an event when every live relay later fails", () => {
-    const streams = [new Observable<any>((subscriber) => { subscriber.next({ type: "EVENT", from: "wss://a.test", id: "x", event: { id: "x" } }); subscriber.error(new Error("a")); }), throwError(() => new Error("b"))];
+    const streams = [
+      new Observable<any>((subscriber) => {
+        subscriber.next({ type: "EVENT", from: "wss://a.test", id: "x", event: { id: "x" } });
+        subscriber.error(new Error("a"));
+      }),
+      throwError(() => new Error("b")),
+    ];
     const relays = streams.map((stream, index) => {
       return {
         url: `wss://${index}.test`,
@@ -45,7 +51,9 @@ describe("RelayGroupError", () => {
         req: vi.fn(() => stream),
       } as unknown as Relay;
     });
-    const spy = subscribeSpyTo(new RelayGroup(relays).request({ kinds: [1] }, { eventStore: null }), { expectErrors: true });
+    const spy = subscribeSpyTo(new RelayGroup(relays).request({ kinds: [1] }, { eventStore: null }), {
+      expectErrors: true,
+    });
     expect(spy.getValues()).toHaveLength(1);
     expect(spy.getError()).toBeInstanceOf(RelayGroupError);
   });
@@ -261,7 +269,6 @@ describe("whole-operation timeout", () => {
     vi.advanceTimersByTime(60_000);
     expect(indefinite.receivedError()).toBe(false);
     indefinite.unsubscribe();
-
   });
 
   it("uses one gate for all relays and pauses until overlapping auth phases end", () => {

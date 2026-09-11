@@ -64,11 +64,7 @@ describe("getWalletMints / getWalletPrivateKey / getWalletRelays", () => {
   });
 
   it("clears every decrypted cache when locking", async () => {
-    const wallet = await WalletFactory.create(
-      ["https://mint.example"],
-      generateSecretKey(),
-      ["wss://relay.example/"],
-    )
+    const wallet = await WalletFactory.create(["https://mint.example"], generateSecretKey(), ["wss://relay.example/"])
       .as(user)
       .sign();
 

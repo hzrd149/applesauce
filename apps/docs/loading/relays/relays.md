@@ -306,12 +306,14 @@ setTimeout(() => {
 ### How to use it
 
 ```typescript
-relay.count({ kinds: [1] }, "my-count", {
-  reconnect: true,
-  retries: 2,
-  timeout: 5_000,
-  onAuthRequired,
-}).subscribe({ next: console.log, error: console.error });
+relay
+  .count({ kinds: [1] }, "my-count", {
+    reconnect: true,
+    retries: 2,
+    timeout: 5_000,
+    onAuthRequired,
+  })
+  .subscribe({ next: console.log, error: console.error });
 ```
 
 `timeout` is one whole-request deadline across readiness, retry, and backoff. It defaults to 10 seconds and pauses during active authentication. `false` disables it; `true` selects the relay default. `retries` takes precedence over the `reconnect` alias and accepts boolean, number, or RxJS retry configuration forms.

@@ -56,7 +56,6 @@ import {
   RelayStatus,
 } from "./types.js";
 
-
 /** Aggregate failure raised by high-level group requests and subscriptions. */
 export class RelayGroupError extends AggregateError {
   readonly outcomes: Readonly<Record<string, RelayOutcome<never>>>;
@@ -235,10 +234,7 @@ export class RelayGroup {
         }
         const current = order.filter((url) => states.has(url));
         if (current.every((url) => states.get(url)?.status === "failed")) {
-          finish(
-            "error",
-            new RelayGroupError(current.map((url) => [url, states.get(url)?.error] as const)),
-          );
+          finish("error", new RelayGroupError(current.map((url) => [url, states.get(url)?.error] as const)));
           return;
         }
         if (
@@ -286,8 +282,7 @@ export class RelayGroup {
               next: (message) => {
                 if (settled || !states.has(url)) return;
                 if (message.type === "EVENT") states.set(url, { status: "live" });
-                else if (message.type === "EOSE")
-                  states.set(url, { status: mode === "request" ? "eose" : "live" });
+                else if (message.type === "EOSE") states.set(url, { status: mode === "request" ? "eose" : "live" });
                 subscriber.next(message);
                 decide();
                 if (!settled) messages.next(message);
@@ -500,7 +495,12 @@ export class RelayGroup {
         for (const entry of active.values()) entry.sub.unsubscribe();
       };
     }).pipe(
-      share({ connector: () => new ReplaySubject<InternalValue>(1), resetOnComplete: false, resetOnError: false, resetOnRefCountZero: true }),
+      share({
+        connector: () => new ReplaySubject<InternalValue>(1),
+        resetOnComplete: false,
+        resetOnError: false,
+        resetOnRefCountZero: true,
+      }),
     );
 
     return operation.pipe(filter((value): value is RelayCountOutcomes => value !== EMPTY_RETRACTION));
@@ -545,28 +545,30 @@ export class RelayGroup {
           }
 
           for (const [url, relay, token] of additions) {
-            const subscription = defer(() => from(relay.getSupported())).pipe(
-              switchMap((supported) => {
-                if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77");
-                return relay.sync(store, filter, direction, opts);
-              }),
-              catchError((error) => {
-                const reason = RELAY_AUTH_ERROR_NAMES.has(error?.name)
-                  ? `an auth failure (${error.name})`
-                  : error?.message || "an unknown error";
-                this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, error);
-                return of({ type: "relay-failed", from: url, error } satisfies GroupSyncMessage);
-              }),
-            ).subscribe({
-              next: (message) => {
-                if (active.get(url)?.token === token) subscriber.next(message);
-              },
-              complete: () => {
-                if (active.get(url)?.token !== token) return;
-                active.delete(url);
-                finishIfIdle();
-              },
-            });
+            const subscription = defer(() => from(relay.getSupported()))
+              .pipe(
+                switchMap((supported) => {
+                  if (!supported?.includes(77)) throw new Error("Relay does not support NIP-77");
+                  return relay.sync(store, filter, direction, opts);
+                }),
+                catchError((error) => {
+                  const reason = RELAY_AUTH_ERROR_NAMES.has(error?.name)
+                    ? `an auth failure (${error.name})`
+                    : error?.message || "an unknown error";
+                  this.log(`Dropped relay ${relay.url} from group sync: ${reason}`, error);
+                  return of({ type: "relay-failed", from: url, error } satisfies GroupSyncMessage);
+                }),
+              )
+              .subscribe({
+                next: (message) => {
+                  if (active.get(url)?.token === token) subscriber.next(message);
+                },
+                complete: () => {
+                  if (active.get(url)?.token !== token) return;
+                  active.delete(url);
+                  finishIfIdle();
+                },
+              });
             if (active.get(url)?.token === token) active.get(url)!.subscription = subscription;
             else subscription.unsubscribe();
           }

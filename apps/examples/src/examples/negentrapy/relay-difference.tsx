@@ -45,9 +45,7 @@ const syncIdsFromRelay = async (relay: string, filter: Filter, signal: AbortSign
 
   const eventIds: string[] = [];
   await lastValueFrom(
-    relayInstance.negentropy([], filter, { signal }).pipe(
-      tap(({ need }) => eventIds.push(...need)),
-    ),
+    relayInstance.negentropy([], filter, { signal }).pipe(tap(({ need }) => eventIds.push(...need))),
     { defaultValue: undefined },
   );
   return eventIds;

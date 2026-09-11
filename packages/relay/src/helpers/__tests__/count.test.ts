@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { estimateHllCardinality, mergeHllRegisters, parseRelayCountResponse, RelayCountResponseError } from "../count.js";
+import {
+  estimateHllCardinality,
+  mergeHllRegisters,
+  parseRelayCountResponse,
+  RelayCountResponseError,
+} from "../count.js";
 
 const sketch = (values: number[]) => values.map((value) => value.toString(16).padStart(2, "0")).join("");
 
 describe("NIP-45", () => {
   it("validates and safely copies COUNT responses", () => {
-    const source = JSON.parse(`{"count":0,"approximate":false,"hll":"${"AA".repeat(256)}","__proto__":{"polluted":true},"future":1}`);
+    const source = JSON.parse(
+      `{"count":0,"approximate":false,"hll":"${"AA".repeat(256)}","__proto__":{"polluted":true},"future":1}`,
+    );
     const result = parseRelayCountResponse(source);
     expect(result).toMatchObject({ count: 0, approximate: false, hll: "aa".repeat(256), future: 1 });
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
@@ -13,7 +20,17 @@ describe("NIP-45", () => {
     expect((result as any).polluted).toBeUndefined();
   });
 
-  it.each([null, [], {}, { count: -1 }, { count: 1.5 }, { count: "1" }, { count: Number.MAX_SAFE_INTEGER + 1 }, { count: 1, approximate: 1 }, { count: 1, hll: "00" }])("rejects malformed response %j", (value) => {
+  it.each([
+    null,
+    [],
+    {},
+    { count: -1 },
+    { count: 1.5 },
+    { count: "1" },
+    { count: Number.MAX_SAFE_INTEGER + 1 },
+    { count: 1, approximate: 1 },
+    { count: 1, hll: "00" },
+  ])("rejects malformed response %j", (value) => {
     expect(() => parseRelayCountResponse(value)).toThrow(RelayCountResponseError);
   });
 

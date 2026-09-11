@@ -19,7 +19,10 @@ rounds.subscribe(({ have, need }) => [have, need] satisfies string[][]);
 const options: NegentropyOptions = { id: "sync", frameSizeLimit: 60_000, signal: new AbortController().signal };
 relay.negentropy(events, {}, options);
 
-const relayResults: Observable<SyncMessage> = relay.sync(events, {}, SyncDirection.BOTH, { concurrency: 4, batchSize: 500 });
+const relayResults: Observable<SyncMessage> = relay.sync(events, {}, SyncDirection.BOTH, {
+  concurrency: 4,
+  batchSize: 500,
+});
 const groupResults: Observable<GroupSyncMessage> = group.sync(events, {}, SyncDirection.BOTH);
 const poolResults: Observable<GroupSyncMessage> = pool.sync([], events, {}, SyncDirection.BOTH);
 void relayResults;

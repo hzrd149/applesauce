@@ -55,7 +55,8 @@ export function parseRelayCountResponse(value: unknown): RelayCountResponse {
     throw new RelayCountResponseError("COUNT response hll must be a string");
 
   const result: Record<string, unknown> = {};
-  for (const key of Object.keys(source)) Object.defineProperty(result, key, { value: source[key], enumerable: true, writable: true, configurable: true });
+  for (const key of Object.keys(source))
+    Object.defineProperty(result, key, { value: source[key], enumerable: true, writable: true, configurable: true });
   result.count = source.count;
   if (typeof source.approximate === "boolean") result.approximate = source.approximate;
   if (typeof source.hll === "string") result.hll = encodeHll(decodeHll(source.hll));

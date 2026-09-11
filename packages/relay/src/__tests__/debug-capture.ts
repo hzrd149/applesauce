@@ -1,9 +1,4 @@
-import {
-  enableLoggerNamespaces,
-  getLoggerNamespaces,
-  getLoggerSink,
-  setLoggerSink,
-} from "applesauce-core";
+import { enableLoggerNamespaces, getLoggerNamespaces, getLoggerSink, setLoggerSink } from "applesauce-core";
 import { format } from "node:util";
 
 // Test-support module (not a `.test.ts` file), mirroring `fake-user.ts`'s placement convention.

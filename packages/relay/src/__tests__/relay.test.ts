@@ -115,7 +115,10 @@ describe("req", () => {
 
   it("surfaces Observable filter failures without sending a REQ", async () => {
     const cause = new Error("filter stream failed");
-    const spy = subscribeSpyTo(relay.req(() => throwError(() => cause), { id: "sub1" }), { expectErrors: true });
+    const spy = subscribeSpyTo(
+      relay.req(() => throwError(() => cause), { id: "sub1" }),
+      { expectErrors: true },
+    );
 
     expect(spy.getError()).toBe(cause);
     expect(server.messages.filter((message: any) => message[0] === "REQ")).toHaveLength(0);
@@ -267,9 +270,12 @@ describe("req", () => {
 
   it("should reconnect when the websocket errors and reconnect is enabled", async () => {
     relay.reconnectTimer = () => timer(0);
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", reconnect: { count: 1, delay: 0 } }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", reconnect: { count: 1, delay: 0 } }),
+      {
+        expectErrors: true,
+      },
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
@@ -1202,7 +1208,6 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     void promise.finally(() => (settled = true));
     expect(settled).toBe(false);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
-
   });
 
   it("RAUTH-06: auth() stays raw when the relay answers auth-required", async () => {
@@ -1293,10 +1298,9 @@ describe("request", () => {
       attempts += 1;
       return throwError(() => cause);
     });
-    const spy = subscribeSpyTo(
-      source.pipe((relay as any).customConnectionRetryOperator({ count: 2, delay: 0 })),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(source.pipe((relay as any).customConnectionRetryOperator({ count: 2, delay: 0 })), {
+      expectErrors: true,
+    });
 
     expect(spy.getError()).toBe(cause);
     expect(attempts).toBe(1);
@@ -1309,10 +1313,9 @@ describe("request", () => {
       attempts += 1;
       return attempts === 1 ? throwError(() => close) : of("connected");
     });
-    const spy = subscribeSpyTo(
-      source.pipe((relay as any).customConnectionRetryOperator({ count: 1, delay: 0 })),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(source.pipe((relay as any).customConnectionRetryOperator({ count: 1, delay: 0 })), {
+      expectErrors: true,
+    });
 
     await spy.onComplete();
     expect(spy.getValues()).toEqual(["connected"]);
@@ -1421,10 +1424,7 @@ describe("request", () => {
   });
 
   it("keeps the request lifetime active after an early event", async () => {
-    const spy = subscribeSpyTo(
-      relay.request({ kinds: [1] }, { id: "sub1", timeout: 40 }),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(relay.request({ kinds: [1] }, { id: "sub1", timeout: 40 }), { expectErrors: true });
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["EVENT", "sub1", mockEvent]);
@@ -1524,7 +1524,9 @@ describe("subscription", () => {
 
 describe("operation-scoped REQ auth (13-02)", () => {
   it("RAUTH-02: a fresh REQ is sent immediately while an earlier, unrelated REQ is auth-blocked", async () => {
-    const specA = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "a", authTimeout: 30 }), { expectErrors: true });
+    const specA = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "a", authTimeout: 30 }), {
+      expectErrors: true,
+    });
     await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
 
     // "a" is told auth is required — the old pre-block would have made every OTHER REQ wait behind this
@@ -1542,9 +1544,12 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
   it("RAUTH-01: invokes onAuthRequired with the full operation-local context", async () => {
     const onAuthRequired = vi.fn().mockResolvedValue(undefined);
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 50 }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 50 }),
+      {
+        expectErrors: true,
+      },
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["AUTH", "challenge-xyz"]);
@@ -1636,7 +1641,9 @@ describe("operation-scoped REQ auth (13-02)", () => {
       if (!relay.isAuthenticated(user.pubkey)) await relay.authenticate(user);
     });
 
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 2 }));
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 2 }),
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["AUTH", "challenge-1"]);
@@ -1666,9 +1673,12 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
   it("RAUTH-03: authRetries:0 exhausts immediately without invoking the handler or retrying", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 0 }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authRetries: 0 }),
+      {
+        expectErrors: true,
+      },
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -1684,9 +1694,12 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
   it("RAUTH-04: a short authTimeout errors with AuthTimeoutError when the requirement is never satisfied", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 30 }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: 30 }),
+      {
+        expectErrors: true,
+      },
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -1700,7 +1713,9 @@ describe("operation-scoped REQ auth (13-02)", () => {
   it("RAUTH-04: authTimeout:false waits past a short window and still retries once satisfied out of band", async () => {
     const onAuthRequired = vi.fn(); // no-op — auth happens out of band, not through this handler
 
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: false }));
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, authTimeout: false }),
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -1793,9 +1808,12 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
   it("RAUTH-06: waitForAuth:false never invokes the handler and errors with AuthRequiredError", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", waitForAuth: false, onAuthRequired }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", waitForAuth: false, onAuthRequired }),
+      {
+        expectErrors: true,
+      },
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -1808,7 +1826,9 @@ describe("operation-scoped REQ auth (13-02)", () => {
 
   it("D-03: a non-auth CLOSED prefix still throws RelayClosedError immediately, without invoking the handler", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired }), {
+      expectErrors: true,
+    });
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "restricted: not allowed"]);
@@ -1923,7 +1943,9 @@ describe("operation-scoped REQ auth (13-02)", () => {
   });
 
   it("RAUTH-09: authRequiredForRead$ flips true when a REQ receives auth-required", async () => {
-    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), { expectErrors: true });
+    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), {
+      expectErrors: true,
+    });
 
     const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
     expect(flagSpy.getLastValue()).toBe(false);
@@ -2018,7 +2040,9 @@ describe("operation-scoped REQ auth gap closure (13-09, CR-02/WR-01)", () => {
     // event()).
     const onAuthRequired = vi.fn();
 
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, waitForAuth: [] }));
+    const spy = subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", onAuthRequired, waitForAuth: [] }),
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
@@ -2119,9 +2143,7 @@ describe("authenticate", () => {
   );
 
   it("allows a zero timeout and expires before writing AUTH", async () => {
-    await expect(relay.authenticate(signer, { timeout: 0 })).rejects.toBeInstanceOf(
-      RelayAuthChallengeTimeoutError,
-    );
+    await expect(relay.authenticate(signer, { timeout: 0 })).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
     expect(server.messages).toEqual([]);
   });
 
@@ -2153,9 +2175,7 @@ describe("authenticate", () => {
     const promise = relay.authenticate(signer, { timeout: 500 });
     await expect(server.connected).resolves.toBeDefined();
     server.send(["AUTH", "challenge-string"]);
-    await vi.waitFor(() =>
-      expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1),
-    );
+    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1));
     const auth = server.messages.find((message: any) => message[0] === "AUTH") as ["AUTH", NostrEvent];
     server.send(["OK", auth[1].id, true, ""]);
 
@@ -2238,9 +2258,7 @@ describe("authenticate", () => {
     relay.challenge$.next("challenge-two");
     releaseFirst();
 
-    await vi.waitFor(() =>
-      expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1),
-    );
+    await vi.waitFor(() => expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1));
     const auth = server.messages.find((message: any) => message[0] === "AUTH") as ["AUTH", NostrEvent];
     expect(auth[1].tags).toContainEqual(["challenge", "challenge-two"]);
     expect(server.messages.filter((message: any) => message[0] === "AUTH")).toHaveLength(1);
@@ -2262,9 +2280,7 @@ describe("authenticate", () => {
     await expect(server.connected).resolves.toBeDefined();
     server.send(["AUTH", "challenge-1"]);
 
-    await expect(promise).rejects.toBeInstanceOf(
-      RelayAuthChallengeChangedError,
-    );
+    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeChangedError);
     expect(signEvent).toHaveBeenCalledTimes(2);
     expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
   });
@@ -2429,7 +2445,9 @@ describe("multi-user authentication", () => {
   });
 
   it("should wait for all pubkeys in an array to authenticate before retrying a REQ", async () => {
-    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", waitForAuth: [userA.pubkey, userB.pubkey] }));
+    subscribeSpyTo(
+      relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", waitForAuth: [userA.pubkey, userB.pubkey] }),
+    );
 
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["AUTH", "challenge-string"]);
@@ -2578,9 +2596,12 @@ describe("count", () => {
 
   it("should reconnect and resend once after an unclean close", async () => {
     relay.reconnectTimer = () => timer(50);
-    const spy = subscribeSpyTo(relay.count({ kinds: [1] }, "count1", { retries: { count: 1, delay: 50 }, timeout: false }), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      relay.count({ kinds: [1] }, "count1", { retries: { count: 1, delay: 50 }, timeout: false }),
+      {
+        expectErrors: true,
+      },
+    );
     await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
 
     server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
@@ -2649,9 +2670,12 @@ describe("count", () => {
     const noRetry = subscribeSpyTo(relay.count({ kinds: [1] }, "a", { retries: false, timeout: false }), {
       expectErrors: true,
     });
-    const retryOnce = subscribeSpyTo(relay.count({ kinds: [2] }, "b", { retries: { count: 1, delay: 50 }, timeout: false }), {
-      expectErrors: true,
-    });
+    const retryOnce = subscribeSpyTo(
+      relay.count({ kinds: [2] }, "b", { retries: { count: 1, delay: 50 }, timeout: false }),
+      {
+        expectErrors: true,
+      },
+    );
     await expect(server).toReceiveMessage(["COUNT", "a", { kinds: [1] }]);
     await expect(server).toReceiveMessage(["COUNT", "b", { kinds: [2] }]);
     const initialFrames = server.messages.slice();
@@ -2719,7 +2743,9 @@ describe("count", () => {
 
 describe("operation-scoped COUNT auth (13-04)", () => {
   it("RAUTH-02: a fresh COUNT is sent immediately while an earlier, unrelated REQ is auth-blocked", async () => {
-    const reqSpy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "a", authTimeout: 30 }), { expectErrors: true });
+    const reqSpy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "a", authTimeout: 30 }), {
+      expectErrors: true,
+    });
     await expect(server).toReceiveMessage(["REQ", "a", { kinds: [1] }]);
 
     // "a" is told auth is required — the old pre-block would have made a fresh COUNT wait behind this
@@ -3395,11 +3421,15 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
     // An earlier REQ is told auth is required — the old pre-block would have made a fresh negentropy
     // negotiation wait behind this flag. Non-vacuity: this assertion was observed RED (no NEG-OPEN
     // ever arrives) against the pre-task negentropy()'s ambient waitForAuth() wrapper.
-    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), { expectErrors: true });
+    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), {
+      expectErrors: true,
+    });
     await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
     server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
 
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { authTimeout: 30 }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { authTimeout: 30 }), {
+      expectErrors: true,
+    });
 
     // The negotiation must send NEG-OPEN immediately, before any AUTH frame is ever sent
     const negOpenMsg = (await server.nextMessage) as any[];
@@ -3410,7 +3440,7 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
     await spy.onError();
   });
 
-  it('RAUTH-01/RAUTH-03: invokes onAuthRequired for sync negotiation and resends after authentication', async () => {
+  it("RAUTH-01/RAUTH-03: invokes onAuthRequired for sync negotiation and resends after authentication", async () => {
     // Simulates out-of-band authentication landing on this connection (this suite's established
     // convention, e.g. 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip —
     // negentropy() never subscribes watchTower, so a real AUTH challenge is never observed by
@@ -3418,7 +3448,9 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
     const onAuthRequired = vi.fn(() => {
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), {
+      expectErrors: true,
+    });
 
     const negOpen1 = (await server.nextMessage) as any[];
     expect(negOpen1[0]).toBe("NEG-OPEN");
@@ -3446,7 +3478,9 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
     const onAuthRequired = vi.fn(() => {
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), {
+      expectErrors: true,
+    });
 
     const negOpen1 = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen1[1], "auth-required: need to authenticate"]);
@@ -3468,7 +3502,10 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
 
   it("RAUTH-03: authRetries:0 exhausts immediately without invoking the handler or retrying", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authRetries: 0 }), { expectErrors: true });
+    const spy = subscribeSpyTo(
+      relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authRetries: 0 }),
+      { expectErrors: true },
+    );
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
@@ -3483,7 +3520,10 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
 
   it("RAUTH-04: a short authTimeout rejects the negotiation with AuthTimeoutError", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authTimeout: 30 }), { expectErrors: true });
+    const spy = subscribeSpyTo(
+      relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, authTimeout: 30 }),
+      { expectErrors: true },
+    );
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
@@ -3496,7 +3536,9 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
   it("RAUTH-04: a rejecting handler rejects the negotiation with AuthHandlerError carrying the rejection as cause", async () => {
     const cause = new Error("nope");
     const onAuthRequired = vi.fn().mockRejectedValue(cause);
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired }), {
+      expectErrors: true,
+    });
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
@@ -3508,7 +3550,10 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
 
   it("RAUTH-06: waitForAuth:false rejects immediately with AuthRequiredError without invoking the handler", async () => {
     const onAuthRequired = vi.fn();
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, waitForAuth: false }), { expectErrors: true });
+    const spy = subscribeSpyTo(
+      relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, { onAuthRequired, waitForAuth: false }),
+      { expectErrors: true },
+    );
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);
@@ -3521,11 +3566,14 @@ describe("sync negotiation auth migration (13-06 superseded by Phase 24)", () =>
   it("Abort: aborting the caller's signal while a sync auth phase is pending completes", async () => {
     const controller = new AbortController();
     const onAuthRequired = vi.fn(); // never authenticates — the abort, not the handler, must resolve this
-    const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, {
-      onAuthRequired,
-      authTimeout: false,
-      signal: controller.signal,
-    }), { expectErrors: true });
+    const spy = subscribeSpyTo(
+      relay.sync([], { kinds: [1] }, SyncDirection.RECEIVE, {
+        onAuthRequired,
+        authTimeout: false,
+        signal: controller.signal,
+      }),
+      { expectErrors: true },
+    );
 
     const negOpen = (await server.nextMessage) as any[];
     server.send(["NEG-ERR", negOpen[1], "auth-required: need to authenticate"]);

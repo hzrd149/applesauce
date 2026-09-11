@@ -471,7 +471,11 @@ function WorkerRelaySearch() {
           <span>{error.message}</span>
           {error.retry && (
             <button className="btn btn-sm" onClick={retryError} disabled={isLoading}>
-              {error.retry === "search" ? "Retry Search" : error.retry === "import" ? "Try Import Again" : "Retry Clear"}
+              {error.retry === "search"
+                ? "Retry Search"
+                : error.retry === "import"
+                  ? "Try Import Again"
+                  : "Retry Clear"}
             </button>
           )}
         </div>

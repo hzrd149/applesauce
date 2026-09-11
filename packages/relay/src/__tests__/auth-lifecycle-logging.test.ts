@@ -114,9 +114,12 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([reqFilter], { id: reqId, onAuthRequired, authTimeout: 500 }), {
-        expectErrors: true,
-      });
+      const spy = subscribeSpyTo(
+        relay[RELAY_REQ_LIFECYCLE]([reqFilter], { id: reqId, onAuthRequired, authTimeout: 500 }),
+        {
+          expectErrors: true,
+        },
+      );
 
       // 1. the client sends a REQ
       await expect(server).toReceiveMessage(["REQ", reqId, reqFilter]);
@@ -202,9 +205,12 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
-        expectErrors: true,
-      });
+      const spy = subscribeSpyTo(
+        relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }),
+        {
+          expectErrors: true,
+        },
+      );
 
       await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
       server.send(["AUTH", "challenge-hung-signer"]);
@@ -241,9 +247,12 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }), {
-        expectErrors: true,
-      });
+      const spy = subscribeSpyTo(
+        relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 50 }),
+        {
+          expectErrors: true,
+        },
+      );
 
       await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
       server.send(["AUTH", "challenge-unresponsive-relay"]);
@@ -286,9 +295,12 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 100 }), {
-        expectErrors: true,
-      });
+      const spy = subscribeSpyTo(
+        relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authTimeout: 100 }),
+        {
+          expectErrors: true,
+        },
+      );
 
       await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
       server.send(["AUTH", "challenge-reject-oversized"]);
@@ -405,9 +417,12 @@ describe("auth lifecycle logging (14-06)", () => {
     });
 
     await withDebugCapture(authNamespaceOf(relay), async (lines) => {
-      const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authRetries }), {
-        expectErrors: true,
-      });
+      const spy = subscribeSpyTo(
+        relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired, authRetries }),
+        {
+          expectErrors: true,
+        },
+      );
 
       await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
       server.send(["AUTH", "challenge-exhaust-1"]);
@@ -450,7 +465,9 @@ describe("auth lifecycle logging (14-06)", () => {
       await relay.authenticate(user);
     });
 
-    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired }), { expectErrors: true });
+    const spy = subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: reqId, onAuthRequired }), {
+      expectErrors: true,
+    });
 
     await expect(server).toReceiveMessage(["REQ", reqId, { kinds: [1] }]);
     server.send(["AUTH", "challenge-reconnect-authenticated"]);

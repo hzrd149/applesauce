@@ -1,7 +1,22 @@
 import { IAsyncEventStoreRead, IEventStoreRead, logger } from "applesauce-core";
 import { type Filter } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { concatMap, concatWith, defer, EMPTY, finalize, from, map, NEVER, Observable, share, switchMap, takeUntil, takeWhile, throwError } from "rxjs";
+import {
+  concatMap,
+  concatWith,
+  defer,
+  EMPTY,
+  finalize,
+  from,
+  map,
+  NEVER,
+  Observable,
+  share,
+  switchMap,
+  takeUntil,
+  takeWhile,
+  throwError,
+} from "rxjs";
 
 import { fromAbortSignal } from "./helpers/abort.js";
 import { Negentropy, NegentropyStorageVector } from "./lib/negentropy.js";

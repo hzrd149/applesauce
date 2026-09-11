@@ -78,8 +78,19 @@ describe("logger", () => {
         throw new Error("getter exploded");
       },
     });
-    const proxy = new Proxy({}, { ownKeys: () => { throw new Error("proxy exploded"); } });
-    const coercion = { toString: () => { throw new Error("coercion exploded"); } };
+    const proxy = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error("proxy exploded");
+        },
+      },
+    );
+    const coercion = {
+      toString: () => {
+        throw new Error("coercion exploded");
+      },
+    };
     setLoggerSink((message) => calls.push(message));
     enableLoggerNamespaces("applesauce");
 
