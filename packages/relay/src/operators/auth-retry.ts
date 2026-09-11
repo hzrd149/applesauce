@@ -1,11 +1,9 @@
 import {
   BehaviorSubject,
   catchError,
-  concat,
   defer,
   distinctUntilChanged,
-  EMPTY,
-  expand,
+  endWith,
   filter,
   finalize,
   from,
@@ -15,7 +13,7 @@ import {
   MonoTypeOperatorFunction,
   Observable,
   of,
-  OperatorFunction,
+  retry,
   switchMap,
   take,
   tap,
@@ -29,32 +27,23 @@ import type { AuthRequirement, RelayAuthContext, RelayAuthHandler } from "../typ
 
 /**
  * Internal-only D-04 operator. NOT barrel-exported from `operators/index.ts` (mirrors `complete-when.ts`'s
- * precedent) — its exports are the internal auth-required signal shape and the operation-clock gate, which
+ * precedent) — its exports are the shared auth-retry operator and the operation-clock gate, which
  * would become maintained public API for no consumer benefit. Must NOT import from `../relay.js`; `Relay`
  * injects its error constructors so the value-level dependency stays one-way (relay.ts -> this module).
  */
 
-/** Module-level unique symbol used as the discriminant key for an internal auth-required signal */
-const AUTH_REQUIRED_SIGNAL = Symbol("auth-required-signal");
+/** Errors an authRetry produced itself when giving up, so a stacked authRetry never runs a second phase on them */
+const terminalErrors = new WeakSet<object>();
 
-/** D-01: internal value carrying auth-required across this multi-hop operator chain. */
-export type AuthRequiredSignal = {
-  readonly [AUTH_REQUIRED_SIGNAL]: true;
-  readonly reason: string;
-};
-
-/** Create an {@link AuthRequiredSignal} carrying `reason` */
-export function authRequiredSignal(reason: string): AuthRequiredSignal {
-  return { [AUTH_REQUIRED_SIGNAL]: true, reason };
+/** Records an error as terminal and returns it unchanged */
+function markTerminal(error: unknown): unknown {
+  if (typeof error === "object" && error !== null) terminalErrors.add(error);
+  return error;
 }
 
-/** Type guard for {@link AuthRequiredSignal} */
-export function isAuthRequiredSignal(value: unknown): value is AuthRequiredSignal {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as Record<PropertyKey, unknown>)[AUTH_REQUIRED_SIGNAL] === true
-  );
+/** Checks whether an authRetry already gave up with this error */
+function isTerminal(error: unknown): boolean {
+  return typeof error === "object" && error !== null && terminalErrors.has(error);
 }
 
 /**
@@ -286,12 +275,14 @@ export type AuthRetryConfig<T> = {
   /** Consecutive auth-failure cycles tolerated before giving up. Defaults to 1 (D-03/D-07/RAUTH-03) */
   authRetries?: number;
   /**
-   * Required (CR-01): answers whether a real (non-signal) stream value represents progress from the
+   * Required (CR-01): answers whether a stream value represents progress from the
    * relay, as opposed to a call site's own bookkeeping value. Gates the D-08 consecutive-counter reset
    * — a value this rejects does not reset the retry budget, so a call site's bookkeeping emission (e.g.
    * `req()`'s synthetic `OPEN`) can never mask a persistently auth-gated relay.
    */
   isProgress: ProgressPredicate<T>;
+  /** Returns the relay's refusal reason when an error means auth is required, or undefined for any other error */
+  authRequiredReason: (error: unknown) => string | undefined;
   /** Builds the {@link RelayAuthContext} handed to `onAuthRequired` for a given CLOSED/NEG-ERR reason */
   buildContext: (reason: string) => RelayAuthContext;
   /** Maps an {@link AuthRequirement} to an observable of whether it is currently satisfied */
@@ -311,16 +302,14 @@ export type AuthRetryConfig<T> = {
 };
 
 /**
- * D-04 shared operator. Consumes a stream that may carry {@link AuthRequiredSignal} values and produces a
- * stream that never does — D-01 keeps this multi-hop signal off the error channel and downstream. Owns handler
- * invocation, the per-phase timeout, retry counting/reset, error mapping, and operation-clock suspension
- * (via `gate`, consumed by {@link suspendableTimeout} at the call site).
+ * D-04 shared operator. Runs an auth phase whenever the source errors with auth-required, then resubscribes the source
+ * once that phase resolves, while every other error passes straight through.
  */
-export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | AuthRequiredSignal, T> {
+export function authRetry<T>(config: AuthRetryConfig<T>): MonoTypeOperatorFunction<T> {
   const waitForAuth = config.waitForAuth ?? true;
   const authRetries = config.authRetries ?? 1;
 
-  return (source: Observable<T | AuthRequiredSignal>) =>
+  return (source: Observable<T>) =>
     defer(() => {
       // Consecutive auth-failure counter. Lives in this per-subscription closure only — no relay-scoped
       // state — so concurrent operations never share or dedupe an auth outcome (RAUTH-05).
@@ -330,11 +319,11 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
         if (config.counter) config.counter.consecutive = value;
       };
 
-      const runPhase = (signal: AuthRequiredSignal): Observable<never> => {
+      const runPhase = (reason: string): Observable<boolean> => {
         // D-05: hoisted above both early returns so even a short-circuit path (opted out, retries
         // exhausted) still has a request label to log — buildContext is a pure assembly with no
         // side effects, so moving it earlier is safe.
-        const context = config.buildContext(signal.reason);
+        const context = config.buildContext(reason);
         const requestLabel = describeWireRequest(context.request);
         // D-05/D-15: every operation-track line shares this one prefix and one call shape.
         function phaseLine(text: string): void {
@@ -346,13 +335,13 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           phaseLine(
             "relay requires auth for this request but the operation opted out of waiting — no handler is invoked and the request fails",
           );
-          return throwError(() => config.errors.exhausted(signal.reason));
+          return throwError(() => markTerminal(config.errors.exhausted(reason)));
         }
 
         // D-03/D-07: retries exhausted, terminal
         if (consecutive >= authRetries) {
           phaseLine(`auth retry budget of ${authRetries} phase(s) is exhausted — giving up`);
-          return throwError(() => config.errors.exhausted(signal.reason));
+          return throwError(() => markTerminal(config.errors.exhausted(reason)));
         }
 
         setConsecutive(consecutive + 1);
@@ -381,14 +370,14 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
             // D-14: distinct from the promise-rejection line below — this tells an operator the
             // handler failed before it ever returned, not after.
             phaseLine(`onAuthRequired threw synchronously (${phase}): ${truncateForLog(cause)}`);
-            return throwError(() => config.errors.handler(signal.reason, cause));
+            return throwError(() => markTerminal(config.errors.handler(reason, cause)));
           }
           const handled$ = result instanceof Promise ? from(result) : of(undefined);
 
           return handled$.pipe(
             catchError((cause) => {
               phaseLine(`onAuthRequired's returned promise rejected (${phase}): ${truncateForLog(cause)}`);
-              return throwError(() => config.errors.handler(signal.reason, cause));
+              return throwError(() => markTerminal(config.errors.handler(reason, cause)));
             }),
             // D-14: the handler-resolved/now-waiting state, reachable on both the handler-present and
             // handler-absent paths (handled$ resolves to `of(undefined)` either way).
@@ -425,23 +414,16 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
                   first: authTimeout ?? 30_000,
                   with: () => {
                     phaseLine(`${phase} timed out after ${authTimeout ?? 30_000}ms covering the handler and the wait`);
-                    return throwError(() => config.errors.timeout(signal.reason));
+                    return throwError(() => markTerminal(config.errors.timeout(reason)));
                   },
                 }),
               );
 
-        return timed$.pipe(ignoreElements());
+        // Emit once the phase resolves, since a retry notifier that completes without emitting would end the stream
+        return timed$.pipe(ignoreElements(), endWith(true));
       };
 
       return source.pipe(
-        expand((value) =>
-          // D-10: no backoff — re-subscribe the source immediately once the phase resolves.
-          // `concat` (not switchMap) because `runPhase` is an ignoreElements()-wrapped Observable<never>
-          // that only ever completes or errors — it has no `next` emission for switchMap to project on.
-          isAuthRequiredSignal(value) ? concat(runPhase(value), source) : EMPTY,
-        ),
-        // D-01: consume the multi-hop value signal before it reaches the subscriber.
-        filter((value): value is T => !isAuthRequiredSignal(value)),
         // D-08/CR-01: only a value config.isProgress accepts as real progress resets the consecutive
         // counter — a per-cycle budget, not a per-lifetime one. A call site's own bookkeeping value
         // (e.g. req()'s synthetic OPEN) must never reset it, or a persistently auth-gated relay could
@@ -450,6 +432,16 @@ export function authRetry<T>(config: AuthRetryConfig<T>): OperatorFunction<T | A
           // D-07: the consecutive-counter reset intentionally emits no line of its own — the per-line
           // phase counter restarting at 1 on the next auth phase is what makes the reset observable.
           if (config.isProgress(value)) setConsecutive(0);
+        }),
+        // D-10: run an auth phase when the relay refuses, then resubscribe immediately once it resolves. The error has
+        // already reset every share() on its path, so the resubscribe cannot rejoin the refused attempt (CR-02/CR-03)
+        retry({
+          delay: (error) => {
+            // Never run a second phase on an error that an authRetry already gave up with
+            if (isTerminal(error)) return throwError(() => error);
+            const reason = config.authRequiredReason(error);
+            return reason === undefined ? throwError(() => error) : runPhase(reason);
+          },
         }),
       );
     });

@@ -42,6 +42,10 @@ suppression (permanently out of scope per REQUIREMENTS.md).
   **Phase 18 amendment (2026-08-20):** EVENT is the canonical one-hop exception: raw `event()` performs
   one wire interaction and throws `AuthRequiredError` directly to its immediate `publish()` consumer.
   REQ, COUNT, and negentropy retain value signalling because their auth state crosses multi-hop chains.
+  **Amendment (2026-09-11):** auth-required now travels the error channel for every family. Each raw primitive
+  (`req()`, `event()`, `count()`, `negentropy()`) throws `AuthRequiredError`, and its immediate high-level consumer
+  pipes into `authRetry`, which runs the auth phase as a `retry` delay notifier. The one-hop throw carve-out above
+  now applies throughout, and the internal `AuthRequiredSignal` value type is removed.
 - **D-02:** Applies at **all four** auth sites. `req` (`:845-869`) and `count` (`:929-946`) stop
   throwing **for auth-required** — they keep throwing for the other `CLOSED` prefixes, which are
   genuine failures. `event` (`:990-995`) already emits `{ ok: false, message: "auth-required:" }` as

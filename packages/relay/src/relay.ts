@@ -32,7 +32,6 @@ import {
   NEVER,
   Observable,
   of,
-  OperatorFunction,
   repeat,
   RepeatConfig,
   ReplaySubject,
@@ -61,13 +60,10 @@ import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./helpers/count.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
 import {
-  authRequiredSignal,
   AuthPhaseGate,
   authSuspendableLifetime,
   authRetry,
-  isAuthRequiredSignal,
   suspendableTimeout,
-  type AuthRequiredSignal,
   type ProgressPredicate,
 } from "./operators/auth-retry.js";
 import { completeWhen } from "./operators/complete-when.js";
@@ -929,28 +925,8 @@ export class Relay {
   }
 
   /**
-   * Thin `Relay`-side adapter over the shared `authRetry` operator (`operators/auth-retry.ts`, D-04).
-   * Resolves `waitForAuth`/`onAuthRequired`/`authTimeout`/`authRetries` off `opts` (defaults: waitForAuth
-   * true, authTimeout 30_000, authRetries 1) and injects the three terminal error constructors here so the
-   * value-level dependency stays one-way — `relay.ts` imports the operator module, never the reverse, and
-   * D-01 keeps auth-required value-shaped across this multi-hop operator chain; terminal
-   * `AuthRequiredError`/`AuthHandlerError`/`AuthTimeoutError` instances are constructed at its caller boundary.
-   * `isProgress` is required (CR-01) — every call site must state what counts as progress for its
-   * own stream shape; there is no permissive default.
-   *
-   * SEND/LISTEN INVARIANT (13-10, closing CR-02/CR-03 as a class rather than per-site): any call site
-   * that pipes through this adapter must construct its send side effect and its signal-terminating
-   * listen chain together, per attempt, inside one unshared `defer` — nothing that completes on the
-   * auth-required signal may be hoisted to call scope. `authRetry`'s internal resubscribe (below) can be
-   * driven synchronously, from inside the very CLOSED/OK dispatch that delivered the auth-required
-   * signal, by a synchronous `onAuthRequired` handler; a call-scoped, already-terminating listen chain
-   * lets that resubscribe's send reach the wire while its reply is never observed (CR-02 on `req()`,
-   * CR-03 on `count()`) or, if the listen chain never terminates at all (`event()`'s `messages`), the
-   * invariant is trivially satisfied without a restructure. `event()` (13-05), `req()` (13-09), and
-   * `count()` (13-10) each independently rediscovered and fixed this same defect class one call site at
-   * a time — this comment, plus 13-10's Task 3 per-site audit (recorded in that plan's SUMMARY), exists
-   * so the next call site added to this adapter checks itself against a written invariant instead of
-   * needing its own reentrancy bug found by a future verifier.
+   * Returns the shared `authRetry` operator configured from an operation's auth options.
+   * `AuthRequiredError` triggers an auth phase, and the three terminal auth errors are what it gives up with.
    */
   protected authRetryOperator<T extends unknown = unknown>(
     describeRequest: () => RelayAuthWireRequest,
@@ -958,11 +934,16 @@ export class Relay {
     gate: AuthPhaseGate,
     isProgress: ProgressPredicate<T>,
     counter?: { consecutive: number },
-  ): OperatorFunction<T | AuthRequiredSignal, T> {
+  ): MonoTypeOperatorFunction<T> {
     const waitForAuth = opts?.waitForAuth ?? true;
     const authTimeout = opts?.authTimeout ?? 30_000;
     const authRetries = opts?.authRetries ?? 1;
 
+    // SEND/LISTEN INVARIANT (13-10, CR-02/CR-03): a call site piping through this operator must build its send side
+    // effect and its listen chain together inside one per-attempt defer. A synchronous onAuthRequired handler drives
+    // the resubscribe from inside the dispatch that delivered auth-required. The error has reset every default share()
+    // on its path by then, but retry's teardown only reaches back to the nearest share(), so a send or listen chain
+    // hoisted to call scope could be reused by the resend while its reply is never observed.
     return authRetry<T>({
       counter,
       waitForAuth,
@@ -970,6 +951,7 @@ export class Relay {
       authTimeout,
       authRetries,
       isProgress,
+      authRequiredReason: (error) => (error instanceof AuthRequiredError ? error.reason : undefined),
       // A thunk, not a value: req()'s filters can change over the life of the subscription, so the
       // summary must describe the request as it stood when the relay refused it, not as it stands now.
       buildContext: (reason) => this.buildAuthContext(describeRequest(), waitForAuth, reason),
@@ -1039,7 +1021,7 @@ export class Relay {
       // CR-02: one auth attempt owns one send and one terminating listen chain, both constructed fresh
       // on every subscription to this defer — including the internal resubscription the shared auth
       // operator drives from inside its own CLOSED dispatch when a synchronous onAuthRequired handler
-      // resolves the auth phase synchronously. Nothing that completes on the auth-required signal is
+      // resolves the auth phase synchronously. Nothing that completes on the auth-required refusal is
       // hoisted above this defer, so a synchronous resubscribe can never rejoin a still-connected
       // share() and silently skip the resend (mirrors event()'s 13-05 send/listen split).
 
@@ -1049,7 +1031,7 @@ export class Relay {
       let relayClosedSub = false;
 
       // Create an observable that filters responses from the relay to just the ones for this REQ.
-      // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
+      // Per-attempt: a fresh chain, so a resend after an auth-required refusal always registers its own
       // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
       // completed for the previous attempt.
       const messages: Observable<RelayReqMessage> = this.socket.pipe(
@@ -1063,16 +1045,13 @@ export class Relay {
           // EOSE
           return { type: "EOSE", from: this.url, id: m[1] } satisfies RelayReqEoseMessage;
         }),
-        // D-01/D-02/D-03: auth-required crosses a multi-hop operator chain, so signal it as a value
-        // that the shared auth operator consumes; every other prefixed CLOSED still throws its typed error
-        // unchanged. Mark relay-closed before takeWhile sees either outcome.
+        // Throw a typed error for a prefixed CLOSED. Auth-required throws AuthRequiredError, which the high-level
+        // auth operator retries. Mark relay-closed first so teardown never sends a redundant CLOSE
         map<RelayReqMessage, RelayReqMessage>((m) => {
           if (m.type === "CLOSED") {
             relayClosedSub = true;
 
-            // D-01/D-02/D-03: only multi-hop auth-required is signalled as a value; check the reason prefix
-            // directly (mirrors event()'s existing value-signal check) rather than parsing then
-            // narrowing by instanceof
+            // Check the auth-required prefix directly so the refusal is logged and flagged before throwing
             if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
               this.authLog(
                 `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(m.reason)}`,
@@ -1086,7 +1065,7 @@ export class Relay {
           }
           return m;
         }),
-        // Complete the stream on unprefixed CLOSED or an auth-required signal, emitting it last (inclusive)
+        // Complete the stream on an unprefixed CLOSED, emitting it last (inclusive)
         takeWhile((m) => m.type !== "CLOSED", true),
         // Singleton within this attempt only (prevents the switchMap below and the takeUntil notifier
         // from registering two separate socket filters for the same attempt)
@@ -1154,13 +1133,10 @@ export class Relay {
         tap((message) => {
           repeatAfterClosed.value = message.type === "CLOSED";
         }),
-        catchError((error) =>
-          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
-        ),
       );
     });
     return attempt.pipe(
-      this.authRetryOperator(describeRequest, opts, gate, isReqProgress, authCounter),
+      this.authRetryOperator<RelayReqMessage>(describeRequest, opts, gate, isReqProgress, authCounter),
       this.customConnectionRetryOperator(opts?.reconnect),
       this.customRepeatOperator(opts?.resubscribe, () => repeatAfterClosed.value),
     );
@@ -1184,17 +1160,21 @@ export class Relay {
 
     // D-04/D-09: the shared auth-retry operator drives the whole read auth phase. RAUTH-02: no
     // pre-block here — the COUNT is sent immediately regardless of any other operation's auth state.
-    // Annotated explicitly so the `with` callback below can't leak a `never` inference back into it.
     // COUNT responses carry no bookkeeping value of their own, so every response is real progress.
-    const authOperator: OperatorFunction<RelayCountResponse | AuthRequiredSignal, RelayCountResponse> =
-      this.authRetryOperator(describeRequest, opts, gate, () => true, authCounter);
+    const authOperator = this.authRetryOperator<RelayCountResponse>(
+      describeRequest,
+      opts,
+      gate,
+      () => true,
+      authCounter,
+    );
 
     return defer(() => {
       // CR-03: mirrors req()'s CR-02 fix — one auth attempt owns one send and one terminating listen
       // chain, both constructed fresh on every subscription to this defer, including the internal
       // resubscription the shared auth operator drives from inside its own CLOSED dispatch when a
       // synchronous onAuthRequired handler resolves the auth phase synchronously. Nothing that
-      // completes on the auth-required signal is hoisted above this defer, so a synchronous resubscribe
+      // completes on the auth-required refusal is hoisted above this defer, so a synchronous resubscribe
       // always reaches a live listen chain instead of rejoining one that already terminated (mirrors
       // event()'s 13-05 and req()'s 13-09 send/listen splits).
 
@@ -1206,37 +1186,29 @@ export class Relay {
       const closeSubscription = this.close$.subscribe((event) => (transportClose = event));
 
       // Create an observable that filters responses from the relay to just the ones for this COUNT.
-      // Per-attempt: a fresh chain, so a resend after an auth-required signal always registers its own
+      // Per-attempt: a fresh chain, so a resend after an auth-required refusal always registers its own
       // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
       // completed for the previous attempt.
-      const messages: Observable<RelayCountResponse | AuthRequiredSignal> = this.socket.pipe(
+      const messages: Observable<RelayCountResponse> = this.socket.pipe(
         filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
-        // Map to typed response. D-01/D-02/D-03: multi-hop auth-required is signalled as a value (the
-        // shared auth operator consumes and never forwards it) — check the reason prefix directly
-        // (mirrors req()'s existing value-signal check) rather than parsing then narrowing by
-        // instanceof. Every other recognized CLOSED prefix still throws its typed error unchanged.
-        map<any, RelayCountResponse | AuthRequiredSignal | null>((m) => {
+        // Parse a COUNT response, or throw a typed error for a CLOSED. Auth-required throws AuthRequiredError, which
+        // the auth operator retries; its prefix is checked directly so the refusal is logged and flagged first
+        map<any, RelayCountResponse>((m) => {
           if (m[0] === "COUNT") return parseRelayCountResponse(m[2]);
-          else if (m[0] === "CLOSED") {
-            relayClosedSub = true;
-            const reason = m[2] ?? "";
 
-            if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
-              this.authLog(
-                `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(reason)}`,
-              );
-              this.receivedAuthRequiredFor("COUNT");
-              return authRequiredSignal(reason);
-            }
+          relayClosedSub = true;
+          const reason = m[2] ?? "";
 
-            throw parseClosedError(reason) ?? new RelayClosedError(reason);
+          if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
+            this.authLog(
+              `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(reason)}`,
+            );
+            this.receivedAuthRequiredFor("COUNT");
+            throw new AuthRequiredError(reason);
           }
-          return null;
+
+          throw parseClosedError(reason) ?? new RelayClosedError(reason);
         }),
-        // Complete the stream on any CLOSED (including graceful close) or an auth-required signal,
-        // emitting it last (inclusive)
-        takeWhile((m) => m !== null && !isAuthRequiredSignal(m), true),
-        filter((m): m is RelayCountResponse | AuthRequiredSignal => m !== null),
         // Singleton within this attempt only
         share(),
       );
@@ -1257,8 +1229,7 @@ export class Relay {
       );
 
       const countObservable = merge(this.watchTower, control).pipe(
-        // Complete when messages completes (unprefixed CLOSED = graceful relay close, or the terminal
-        // auth-required signal)
+        // Complete when the socket stops delivering this COUNT's messages, since the watch tower never completes
         takeUntil(messages.pipe(ignoreElements(), endWith(true))),
       );
 
@@ -1674,17 +1645,11 @@ export class Relay {
     const gate = new AuthPhaseGate();
     const authCounter = { consecutive: 0 };
     const describeRequest = (): RelayAuthWireRequest => ({ verb: "EVENT", event });
-    const attempt = defer(() =>
-      this.event(event).pipe(
-        catchError((error) =>
-          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
-        ),
-      ),
-    );
+    const attempt = defer(() => this.event(event));
 
     return lastValueFrom(
       attempt.pipe(
-        this.authRetryOperator(describeRequest, opts, gate, () => true, authCounter),
+        this.authRetryOperator<PublishResponse>(describeRequest, opts, gate, () => true, authCounter),
         // Retry the publish until it succeeds or the number of retries is reached. D-07: with
         // customRetryOperator's RelayClosedError skip, terminal auth failures are never retried here.
         this.customRetryOperator(opts?.retries ?? opts?.reconnect ?? true, this.publishRetry),
@@ -1729,18 +1694,10 @@ export class Relay {
     const authGate = new AuthPhaseGate();
     const authCounter = { consecutive: 0 };
 
-    const withSyncAuth = <T>(
-      source: Observable<T>,
-      describeRequest: () => RelayAuthWireRequest,
-    ): Observable<T> =>
-      source.pipe(
-        // Restate an auth-required rejection as a value, since that is what the auth operator consumes
-        catchError((error) =>
-          error instanceof AuthRequiredError ? of(authRequiredSignal(error.reason)) : throwError(() => error),
-        ),
-        // Run the auth phase, then resubscribe. The gate and counter are shared, so one sync spends one auth budget
-        this.authRetryOperator(describeRequest, authOptions, authGate, () => false, authCounter),
-      );
+    // Runs an auth phase when the relay refuses, then resubscribes. The gate and counter are shared, so one sync spends
+    // a single auth budget across the negotiation and every transfer
+    const syncAuth = <T>(describeRequest: () => RelayAuthWireRequest): MonoTypeOperatorFunction<T> =>
+      this.authRetryOperator<T>(describeRequest, authOptions, authGate, () => false, authCounter);
 
     // Writes to the caller's store if they gave a writable one, applied fresh per transfer for its own dedupe state
     const toStore: MonoTypeOperatorFunction<NostrEvent> = "add" in store ? mapEventsToStore(store) : identity;
@@ -1754,11 +1711,9 @@ export class Relay {
         mergeMap(([event]) =>
           !event
             ? EMPTY
-            : withSyncAuth(
-                // Defer so an auth retry writes a fresh EVENT frame instead of rejoining the refused one
-                defer(() => this.event(event)),
-                () => ({ verb: "EVENT", event }),
-              ).pipe(
+            : defer(() => this.event(event)).pipe(
+                // Run an auth phase if the relay refuses the event; the defer makes each retry write a fresh frame
+                syncAuth<PublishResponse>(() => ({ verb: "EVENT", event })),
                 // Wait for the relay's final verdict on this event
                 last(),
                 // Restate that verdict as the outcome message the caller sees
@@ -1788,14 +1743,13 @@ export class Relay {
 
     // One RECEIVE transfer: request a batch of events the local store is missing and report what came back
     const receiveTask = (ids: string[]): Observable<SyncMessage> =>
-      // Defer the request so an auth retry sends a fresh REQ under its own id
+      // Defer so every subscription requests the batch under its own id
       defer(() => {
         const requestId = nanoid();
-        return withSyncAuth(this.req({ ids }, { id: requestId }), () => ({
-          verb: "REQ",
-          id: requestId,
-          filters: [{ ids }],
-        }));
+        return this.req({ ids }, { id: requestId }).pipe(
+          // Run an auth phase if the relay refuses the request, then send it again
+          syncAuth<RelayReqMessage>(() => ({ verb: "REQ", id: requestId, filters: [{ ids }] })),
+        );
       }).pipe(
         // The relay has nothing further for this id once it sends EOSE
         takeWhile((message) => message.type !== "EOSE"),
@@ -1810,10 +1764,13 @@ export class Relay {
       );
 
     // Negotiate which event ids each side is missing. Deferred so a transport reconnect starts a fresh negotiation
-    // under a new id, while an auth retry inside withSyncAuth reuses this one
+    // under a new id, while an auth retry inside syncAuth reuses this one
     return defer(() => {
       const id = nanoid();
-      return withSyncAuth(this.negentropy(store, filters, { id }), () => ({ verb: "NEG-OPEN", id, filter: filters }));
+      return this.negentropy(store, filters, { id }).pipe(
+        // Run an auth phase if the relay refuses the negotiation, then reopen it under the same id
+        syncAuth<NegentropyRound>(() => ({ verb: "NEG-OPEN", id, filter: filters })),
+      );
     }).pipe(
       // Expand each round into its transfers: one per event to send, one per batch of ids to request. The two lanes
       // are interleaved so one direction cannot starve the other

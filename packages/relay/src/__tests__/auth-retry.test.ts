@@ -1,20 +1,12 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import type { NostrEvent } from "applesauce-core/helpers/event";
-import { NEVER, Observable, of, Subject, throwError, timer } from "rxjs";
+import { EMPTY, NEVER, Observable, of, Subject, throwError, timer } from "rxjs";
 import { map } from "rxjs/operators";
 import { describe, expect, it, vi } from "vitest";
 
 import { describeWireRequest } from "../helpers/auth-log.js";
 import type { RelayAuthContext } from "../types.js";
-import {
-  AuthPhaseGate,
-  AuthRequiredSignal,
-  authRequiredSignal,
-  authRetry,
-  AuthRetryConfig,
-  isAuthRequiredSignal,
-  suspendableTimeout,
-} from "../operators/auth-retry.js";
+import { AuthPhaseGate, authRetry, AuthRetryConfig, suspendableTimeout } from "../operators/auth-retry.js";
 
 /** A minimal RelayAuthContext stand-in — the operator is tested in isolation, no real Relay involved */
 const FAKE_CONTEXT: RelayAuthContext = {
@@ -26,6 +18,13 @@ const FAKE_CONTEXT: RelayAuthContext = {
   missingPubkeys: null,
   reason: "",
 };
+
+/** Stands in for relay.ts's AuthRequiredError, which the operator module must not import */
+class FakeAuthRequired extends Error {
+  constructor(public readonly reason: string) {
+    super(reason);
+  }
+}
 
 /** Marker error constructors distinguishable by `kind`, standing in for the real Relay error classes */
 function makeErrors() {
@@ -39,6 +38,7 @@ function makeErrors() {
 function baseConfig(overrides: Partial<AuthRetryConfig<number>> = {}): AuthRetryConfig<number> {
   return {
     buildContext: (reason) => ({ ...FAKE_CONTEXT, reason }),
+    authRequiredReason: (error) => (error instanceof FakeAuthRequired ? error.reason : undefined),
     authSatisfied$: () => of(true),
     satisfiedPubkeys: () => [],
     gate: new AuthPhaseGate(),
@@ -54,12 +54,12 @@ function baseConfig(overrides: Partial<AuthRetryConfig<number>> = {}): AuthRetry
  * so the test can manually control what each successive subscription emits, and count subscriptions.
  */
 function makeControllableSource<T>() {
-  let current: Subject<T | AuthRequiredSignal> | null = null;
+  let current: Subject<T> | null = null;
   let subscribeCount = 0;
 
-  const source = new Observable<T | AuthRequiredSignal>((subscriber) => {
+  const source = new Observable<T>((subscriber) => {
     subscribeCount++;
-    const subject = new Subject<T | AuthRequiredSignal>();
+    const subject = new Subject<T>();
     current = subject;
     const sub = subject.subscribe(subscriber);
     return () => sub.unsubscribe();
@@ -67,18 +67,21 @@ function makeControllableSource<T>() {
 
   return {
     source,
-    emit: (value: T | AuthRequiredSignal) => current?.next(value),
+    emit: (value: T) => current?.next(value),
+    /** Refuses the current subscription with auth-required */
+    fail: (reason: string) => current?.error(new FakeAuthRequired(reason)),
+    /** Errors the current subscription with an arbitrary error */
+    raise: (error: unknown) => current?.error(error),
     getSubscribeCount: () => subscribeCount,
   };
 }
 
-/** A source that always signals auth-required on every subscription, never emitting a real value */
-function makePersistentSignalSource() {
+/** A source that refuses with auth-required synchronously on every subscription, never emitting a real value */
+function makePersistentRefusalSource() {
   let subscribeCount = 0;
-  const source = new Observable<number | AuthRequiredSignal>((subscriber) => {
+  const source = new Observable<number>((subscriber) => {
     subscribeCount++;
-    subscriber.next(authRequiredSignal("auth-required: persistent"));
-    subscriber.complete();
+    subscriber.error(new FakeAuthRequired("auth-required: persistent"));
   });
   return { source, getSubscribeCount: () => subscribeCount };
 }
@@ -89,15 +92,16 @@ function collectLines(log: ReturnType<typeof vi.fn>): string[] {
 }
 
 describe("authRetry", () => {
-  it("never lets the raw signal reach the subscriber", async () => {
+  it("consumes auth-required by resubscribing and forwarding the next attempt's values", async () => {
     const ctrl = makeControllableSource<number>();
     const spy = subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig())));
 
-    ctrl.emit(authRequiredSignal("auth-required: need"));
+    ctrl.fail("auth-required: need");
     ctrl.emit(42);
 
     expect(spy.getValues()).toEqual([42]);
-    expect(spy.getValues().some((v) => isAuthRequiredSignal(v))).toBe(false);
+    expect(spy.receivedError()).toBe(false);
+    expect(ctrl.getSubscribeCount()).toBe(2);
   });
 
   it("invokes the handler once per auth phase with the built context", async () => {
@@ -105,14 +109,14 @@ describe("authRetry", () => {
     const onAuthRequired = vi.fn();
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired }))));
 
-    ctrl.emit(authRequiredSignal("auth-required: please authenticate"));
+    ctrl.fail("auth-required: please authenticate");
 
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
     expect(onAuthRequired).toHaveBeenCalledWith({ ...FAKE_CONTEXT, reason: "auth-required: please authenticate" });
   });
 
   it("subscribes the source exactly twice (authRetries + 1) against a persistently-signalling source", async () => {
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const errors = makeErrors();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ errors }))), { expectErrors: true });
 
@@ -128,12 +132,12 @@ describe("authRetry", () => {
     const errors = makeErrors();
     const spy = subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ errors }))), { expectErrors: true });
 
-    // First cycle: one signal (consumes the single default retry), then a real value resets the counter
-    ctrl.emit(authRequiredSignal("auth-required: cycle 1"));
+    // First cycle: one refusal (consumes the single default retry), then a real value resets the counter
+    ctrl.fail("auth-required: cycle 1");
     ctrl.emit(1);
-    // Second cycle: two consecutive signals should exhaust the (reset) budget of 1
-    ctrl.emit(authRequiredSignal("auth-required: cycle 2a"));
-    ctrl.emit(authRequiredSignal("auth-required: cycle 2b"));
+    // Second cycle: two consecutive refusals should exhaust the (reset) budget of 1
+    ctrl.fail("auth-required: cycle 2a");
+    ctrl.fail("auth-required: cycle 2b");
 
     await spy.onError();
 
@@ -145,7 +149,7 @@ describe("authRetry", () => {
   it("waitForAuth: false never invokes the handler and errors with the exhausted constructor", async () => {
     const onAuthRequired = vi.fn();
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(
       persistent.source.pipe(authRetry(baseConfig({ waitForAuth: false, onAuthRequired, errors }))),
       { expectErrors: true },
@@ -163,7 +167,7 @@ describe("authRetry", () => {
     const rejection = new Error("handler blew up");
     const onAuthRequired = vi.fn().mockRejectedValue(rejection);
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))), {
       expectErrors: true,
     });
@@ -182,7 +186,7 @@ describe("authRetry", () => {
       throw thrown;
     });
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))), {
       expectErrors: true,
     });
@@ -200,7 +204,7 @@ describe("authRetry", () => {
   it("does not let a non-progress bookkeeping value reset the consecutive counter (CR-01)", async () => {
     const errors = makeErrors();
     const onAuthRequired = vi.fn();
-    // -1 stands in for req()'s synthetic OPEN: a real (non-signal) value that is NOT progress
+    // -1 stands in for req()'s synthetic OPEN: a real value that is NOT progress
     const isProgress = (value: number) => value !== -1;
     let subscribeCount = 0;
     // Explicit subscription cap (per plan instruction): against an operator whose D-08 reset is
@@ -208,15 +212,15 @@ describe("authRetry", () => {
     // source would be resubscribed forever. Cap it so the test fails an assertion instead of hanging.
     const SUBSCRIPTION_CAP = 5;
 
-    const source = new Observable<number | AuthRequiredSignal>((subscriber) => {
+    const source = new Observable<number>((subscriber) => {
       subscribeCount++;
       if (subscribeCount > SUBSCRIPTION_CAP) {
         subscriber.error(new Error("test fixture subscription cap exceeded — CR-01 bound did not hold"));
         return;
       }
-      // Every subscription: a bookkeeping value first (mirrors req()'s OPEN), then an auth-required signal
+      // Every subscription: a bookkeeping value first (mirrors req()'s OPEN), then an auth-required refusal
       subscriber.next(-1);
-      subscriber.next(authRequiredSignal(`auth-required: cycle ${subscribeCount}`));
+      subscriber.error(new FakeAuthRequired(`auth-required: cycle ${subscribeCount}`));
     });
 
     const spy = subscribeSpyTo(
@@ -233,7 +237,7 @@ describe("authRetry", () => {
 
   it("a short authTimeout produces the timeout error", async () => {
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(
       persistent.source.pipe(
         authRetry(
@@ -263,7 +267,7 @@ describe("authRetry", () => {
       expectErrors: true,
     });
 
-    ctrl.emit(authRequiredSignal("auth-required: unbounded"));
+    ctrl.fail("auth-required: unbounded");
 
     // A short bound (e.g. 50ms) would have already errored by now; authTimeout: false must not have
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -280,9 +284,108 @@ describe("authRetry", () => {
     const ctrl = makeControllableSource<number>();
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired, authSatisfied$: () => of(true) }))));
 
-    ctrl.emit(authRequiredSignal("auth-required: already satisfied"));
+    ctrl.fail("auth-required: already satisfied");
 
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes a non-auth error straight through without starting an auth phase", async () => {
+    const error = new Error("boom");
+    const onAuthRequired = vi.fn();
+    const errors = makeErrors();
+    const gate = new AuthPhaseGate();
+    const begin = vi.spyOn(gate, "begin");
+    const counter = { consecutive: 0 };
+    let subscribeCount = 0;
+    const source = new Observable<number>((subscriber) => {
+      subscribeCount++;
+      subscriber.error(error);
+    });
+
+    const spy = subscribeSpyTo(source.pipe(authRetry(baseConfig({ onAuthRequired, errors, gate, counter }))), {
+      expectErrors: true,
+    });
+    await spy.onError();
+
+    expect(spy.getError()).toBe(error);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(errors.exhausted).not.toHaveBeenCalled();
+    expect(errors.handler).not.toHaveBeenCalled();
+    expect(errors.timeout).not.toHaveBeenCalled();
+    expect(begin).not.toHaveBeenCalled();
+    expect(subscribeCount).toBe(1);
+    expect(counter.consecutive).toBe(0);
+  });
+
+  it("passes a non-auth error through on the attempt after a successful auth phase", async () => {
+    const error = new Error("boom");
+    const onAuthRequired = vi.fn();
+    const ctrl = makeControllableSource<number>();
+    const spy = subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired }))), { expectErrors: true });
+
+    ctrl.fail("auth-required: first");
+    ctrl.raise(error);
+    await spy.onError();
+
+    expect(spy.getError()).toBe(error);
+    expect(onAuthRequired).toHaveBeenCalledTimes(1);
+    expect(ctrl.getSubscribeCount()).toBe(2);
+  });
+
+  it("tears down the refused attempt and closes the gate before resubscribing", async () => {
+    const events: string[] = [];
+    const gate = new AuthPhaseGate();
+    const end = gate.end.bind(gate);
+    gate.end = () => {
+      events.push("gate.end");
+      end();
+    };
+    let subscribeCount = 0;
+    let refuse: (() => void) | undefined;
+    const source = new Observable<number>((subscriber) => {
+      const attempt = ++subscribeCount;
+      events.push(`subscribe ${attempt}`);
+      // Refuse after subscribing, the way a relay's CLOSED arrives on an already-open REQ
+      if (attempt === 1) refuse = () => subscriber.error(new FakeAuthRequired("auth-required: once"));
+      return () => events.push(`teardown ${attempt}`);
+    });
+
+    subscribeSpyTo(source.pipe(authRetry(baseConfig({ gate }))));
+    refuse!();
+
+    expect(events).toEqual(["subscribe 1", "gate.end", "teardown 1", "subscribe 2"]);
+  });
+
+  it("still resubscribes when an auth phase completes without a value", async () => {
+    const ctrl = makeControllableSource<number>();
+    const spy = subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ authSatisfied$: () => EMPTY }))));
+
+    ctrl.fail("auth-required: empty wait");
+    ctrl.emit(7);
+
+    expect(ctrl.getSubscribeCount()).toBe(2);
+    expect(spy.getValues()).toEqual([7]);
+    expect(spy.receivedComplete()).toBe(false);
+  });
+
+  it("does not run a second auth phase on an error a stacked authRetry already gave up with", async () => {
+    const outerHandler = vi.fn();
+    // The inner operator gives up with an error that itself looks auth-required, like relay.ts's AuthRequiredError
+    const errors = { ...makeErrors(), exhausted: vi.fn((reason: string) => new FakeAuthRequired(reason)) };
+    const persistent = makePersistentRefusalSource();
+    const spy = subscribeSpyTo(
+      persistent.source.pipe(
+        authRetry(baseConfig({ waitForAuth: false, errors })),
+        authRetry(baseConfig({ onAuthRequired: outerHandler })),
+      ),
+      { expectErrors: true },
+    );
+
+    await spy.onError();
+
+    expect(outerHandler).not.toHaveBeenCalled();
+    expect(persistent.getSubscribeCount()).toBe(1);
+    expect(spy.getError()).toBeInstanceOf(FakeAuthRequired);
   });
 });
 
@@ -294,7 +397,7 @@ describe("authRetry — operation track logging (14-05)", () => {
   it("opted-out short circuit logs exactly one line, prefixed by the wire key, naming the opt-out, with no phase counter", async () => {
     const log = vi.fn();
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const expectedLabel = describeWireRequest(FAKE_CONTEXT.request);
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ waitForAuth: false, log, errors }))), {
       expectErrors: true,
@@ -312,7 +415,7 @@ describe("authRetry — operation track logging (14-05)", () => {
   it("retries-exhausted logs one line naming the exhausted budget, with no phase counter of its own", async () => {
     const log = vi.fn();
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ authRetries: 1, log, errors }))), {
       expectErrors: true,
     });
@@ -332,7 +435,7 @@ describe("authRetry — operation track logging (14-05)", () => {
     const ctrl = makeControllableSource<number>();
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired, log, satisfiedPubkeys: () => ["pk1"] }))));
 
-    ctrl.emit(authRequiredSignal("auth-required: go"));
+    ctrl.fail("auth-required: go");
 
     const lines = collectLines(log);
     const beginIdx = lines.findIndex((l) => l.includes("entering phase 1/1"));
@@ -351,7 +454,7 @@ describe("authRetry — operation track logging (14-05)", () => {
     const ctrl = makeControllableSource<number>();
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ log }))));
 
-    ctrl.emit(authRequiredSignal("auth-required: go"));
+    ctrl.fail("auth-required: go");
 
     const lines = collectLines(log);
     expect(lines.some((l) => l.includes("entering phase 1/1"))).toBe(true);
@@ -368,7 +471,7 @@ describe("authRetry — operation track logging (14-05)", () => {
       throw thrown;
     });
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, log, errors }))), {
       expectErrors: true,
     });
@@ -385,7 +488,7 @@ describe("authRetry — operation track logging (14-05)", () => {
     const rejection = new Error("handler blew up");
     const onAuthRequired = vi.fn().mockRejectedValue(rejection);
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, log, errors }))), {
       expectErrors: true,
     });
@@ -400,7 +503,7 @@ describe("authRetry — operation track logging (14-05)", () => {
   it("a per-phase timeout logs the timeout naming the configured budget", async () => {
     const log = vi.fn();
     const errors = makeErrors();
-    const persistent = makePersistentSignalSource();
+    const persistent = makePersistentRefusalSource();
     const spy = subscribeSpyTo(
       persistent.source.pipe(authRetry(baseConfig({ authTimeout: 50, authSatisfied$: () => NEVER, log, errors }))),
       { expectErrors: true },
@@ -437,8 +540,8 @@ describe("authRetry — operation track logging (14-05)", () => {
     const eventLabel = describeWireRequest(eventRequest);
     expect(reqLabel).not.toBe(eventLabel);
 
-    const reqSource = makePersistentSignalSource();
-    const eventSource = makePersistentSignalSource();
+    const reqSource = makePersistentRefusalSource();
+    const eventSource = makePersistentRefusalSource();
     const errorsA = makeErrors();
     const errorsB = makeErrors();
 
@@ -492,7 +595,7 @@ describe("authRetry — operation track logging (14-05)", () => {
       ),
     );
 
-    ctrl.emit(authRequiredSignal("auth-required: go"));
+    ctrl.fail("auth-required: go");
 
     const lines = collectLines(log);
     const satisfiedLine = lines.find((l) => l.includes("wait satisfied"));
@@ -507,7 +610,7 @@ describe("authRetry — operation track logging (14-05)", () => {
     // baseConfig's default satisfiedPubkeys already returns []
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ log }))));
 
-    ctrl.emit(authRequiredSignal("auth-required: go"));
+    ctrl.fail("auth-required: go");
 
     const lines = collectLines(log);
     const satisfiedLine = lines.find((l) => l.includes("wait satisfied"));
@@ -521,12 +624,12 @@ describe("authRetry — operation track logging (14-05)", () => {
     subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ authRetries: 1, log }))));
 
     // Cycle 1: one auth phase, resolved by a real value which also resets the counter
-    ctrl.emit(authRequiredSignal("auth-required: cycle 1"));
+    ctrl.fail("auth-required: cycle 1");
     ctrl.emit(1);
 
     // Cycle 2: a fresh phase — if the reset above had not happened, authRetries: 1 would already be
-    // exhausted and this signal would produce the "exhausted" line instead of a second "entering" line.
-    ctrl.emit(authRequiredSignal("auth-required: cycle 2"));
+    // exhausted and this refusal would produce the "exhausted" line instead of a second "entering" line.
+    ctrl.fail("auth-required: cycle 2");
     ctrl.emit(2);
 
     const lines = collectLines(log);
