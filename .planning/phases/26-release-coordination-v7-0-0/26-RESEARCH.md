@@ -287,7 +287,7 @@ Prepare all tracked audit/evidence content first, commit it, run the full gate, 
 
 ### Pitfall 4: Final evidence changes the pinned tree
 **What goes wrong:** The executor runs all tests, writes/commits the audit results afterward, and squashes the ungated parent or moves `next` after recording it.  
-**How to avoid:** Make all tracked artifacts final, commit, run the gate, preserve raw logs outside the tree, and only then pin. If GSD closeout will add a summary commit afterward, explicitly decide whether that later commit is outside the pinned release tree and record that fact.
+**How to avoid:** Make all release-tree artifacts final, commit, run the gate, preserve raw logs outside the tree, and only then pin. Any later GSD state/summary bookkeeping is permitted only as planning-only commits outside the pinned release tree, with no non-planning diff from SOURCE; local `next` must never move after pinning.
 
 ### Pitfall 5: History check has the wrong universe
 **What goes wrong:** `--all` fails forever because preserved `next` and remote refs retain the old history, or a commit-message grep fails on legitimate planning prose.  
@@ -346,17 +346,11 @@ test "$(git for-each-ref --format='%(refname) %(objectname)' refs/remotes)" = "$
 |---|-------|---------|---------------|
 | — | None; recommendations are either locked decisions, live repository observations, or cited tool behavior | — | — |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **How will post-task GSD summary/bookkeeping interact with the pinned `next` tree?**
-   - What we know: D-13 requires the source to be pinned after corrections and release gates, and D-14 requires the squash tree to equal that pinned tree. [VERIFIED: 26-CONTEXT.md:34-38]
-   - What's unclear: ordinary execution may create a plan summary or state commit after the history task.
-   - Recommendation: make the squash/ref update the final operation after all tracked closeout artifacts are committed, or explicitly keep later planning-only commits outside the pinned release tree and verify no package/app/release-metadata difference.
+1. **RESOLVED — post-pin GSD summary/bookkeeping boundary.** D-13's SOURCE and SOURCE_TREE remain the immutable reviewed release tree. GSD planning, state, validation, requirements, roadmap, and summary bookkeeping created afterward may exist only as planning-only commits outside that pinned release tree, and each such state must be proven to have no non-planning diff from SOURCE. The executor must detach closeout work from SOURCE so local `next` never moves after pinning; local `master` remains the verified candidate and is never rebuilt from a bookkeeping descendant. [VERIFIED: 26-CONTEXT.md:34-38]
 
-2. **What exact historical artifact backs old changesets whose owning phase directories were removed?**
-   - What we know: the active `.planning/phases/` directory starts at Phase 16, while many of the 40 master-existing notes predate it; their introducing commits remain reachable today. [VERIFIED: `.planning/phases/` directory read and live Git history]
-   - What's unclear: D-02 says “owning phase summaries and verification records,” but some are no longer checked out.
-   - Recommendation: the audit matrix should cite current summaries where present and immutable historical commit/path evidence (`git show COMMIT:path`) where extraction cleanup removed the active copy; flag any note with no recoverable semantic evidence for manual review rather than guessing.
+2. **RESOLVED — provenance for removed historical phase artifacts.** Use current owning summaries/verifications when present. When extraction cleanup removed an active phase artifact, immutable `git show COMMIT:path` evidence from the introducing or owning commit, together with current source and tests, is authoritative provenance for the changeset row. Any row lacking recoverable evidence remains UNRESOLVED and blocks the release rather than being inferred or approved by wording alone. [VERIFIED: `.planning/phases/` directory read and live Git history]
 
 ## Environment Availability
 
@@ -406,7 +400,7 @@ test "$(git for-each-ref --format='%(refname) %(objectname)' refs/remotes)" = "$
 - [ ] Create the committed 73-row/13-row audit artifact selected under D-04.
 - [ ] Add a dependency-free Node checker (inline in the plan or tracked under the Phase 26 directory) that parses all release notes, rejects multiline or multi-sentence bodies, and validates the final status JSON package set/version.
 - [ ] Encode the history proof commands with fail-closed exit handling; do not rely on visual `git log` inspection.
-- [ ] Decide the closeout/pinning order so no tracked commit silently moves `next` after the release tree is pinned.
+- [x] Closeout/pinning order resolved: detach closeout bookkeeping from pinned SOURCE, permit only `.planning/**` diffs, and never move `next` after pinning.
 
 ## Security Domain
 
@@ -460,7 +454,7 @@ test "$(git for-each-ref --format='%(refname) %(objectname)' refs/remotes)" = "$
 - Standard stack: HIGH — read from current manifests and executable version probes.
 - Release graph: HIGH — generated by the installed CLI against the current repository.
 - Changeset semantic audit: MEDIUM — all files were opened and mechanical issues identified, but D-02 requires a row-by-row execution review against many historical phase artifacts.
-- Git reconstruction: HIGH for current topology/OIDs; MEDIUM for execution ordering until the planner resolves post-squash closeout behavior.
+- Git reconstruction: HIGH for current topology/OIDs; execution ordering is resolved by detached planning-only closeout commits that preserve pinned SOURCE and local `next`.
 - Pitfalls: HIGH — derived from observed status/ref behavior and locked phase constraints.
 
 **Research date:** 2026-09-14  
