@@ -16,7 +16,7 @@ affects: [26-02, release-notes, v7.0.0]
 actuals:
   tokens: 7434
   tasks: 2
-  commits: 2
+  commits: 5
 tech-stack:
   added: []
   patterns: [stable source-input IDs across splits, provenance-backed semantic review separate from sentence parsing]
@@ -92,11 +92,22 @@ status: complete
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Corrected stale Phase 26 roadmap progress**
+- **Found during:** Closeout self-check
+- **Issue:** `roadmap.update-plan-progress` checked off Plan 26-01 but left the phase progress row at `0/TBD | Not started`.
+- **Fix:** Corrected the row to `1/4 | In Progress` and re-verified both roadmap representations.
+- **Files modified:** `.planning/ROADMAP.md`
+- **Verification:** Plan checklist and progress table both report Plan 26-01 complete.
+- **Committed in:** Plan closeout correction commit.
+
+**Total deviations:** 1 auto-fixed (1 Rule 1 bug)
+**Impact on plan:** Bookkeeping-only correction; release artifacts and verification are unchanged.
 
 ## Issues Encountered
 
-None.
+The roadmap SDK reported success without updating the phase progress table; the closeout self-check caught and corrected it.
 
 ## User Setup Required
 
