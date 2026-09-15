@@ -6,6 +6,8 @@ The source inventory is the 73 tracked release-note files returned by `git ls-fi
 
 The result is 71 byte-identical retains, one parser-only rewrite, and one two-change input split into two focused notes. The split changes the final pending population to 74 files while preserving exactly 73 source-input rows. There are no unresolved semantic decisions.
 
+The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision against its row-specific evidence. An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
+
 | ID | Input path | Package + bump | Exact final body (or split bodies) | Line | Sentence | Semantic | Provenance | Held | Disposition / final path |
 |---|---|---|---|---|---|---|---|---|---|
 | CS-001 | `.changeset/add-is-valid-seal.md` | `applesauce-common: minor` | Add `isValidSeal`, a type guard that checks an event is a NIP-59 seal with a valid id and signature. | PASS | 1 | PASS | `422ce62b` implementation commit + input path | — | RETAIN |
@@ -88,8 +90,8 @@ The final pending inventory contains the 72 surviving input paths (including the
 
 ## Held v1.2 notes
 
-- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2):** Phase 18's correction summary establishes the final high-level ownership sentence. Current `packages/relay/src/types.ts` and `packages/relay/src/relay.ts` expose and route the operation-scoped auth options. Plan 02 still owns the release-time runtime gate; historical presence alone is not treated as current-behavior proof.
-- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2):** Phase 24's correction summary establishes the final loader sentence. Current `packages/loaders/src/loaders/sync-loader.ts` and `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` show the same options preserved through direct sync and paginated fallback. Plan 02 still owns the release-time runtime gate.
+- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2):** `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` establishes the corrected high-level ownership sentence. Current `packages/relay/src/types.ts` and `packages/relay/src/relay.ts` expose and route the operation-scoped auth options. Plan 02 still owns the release-time runtime gate; historical presence alone is not treated as current-behavior proof.
+- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2):** `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` establishes the corrected loader sentence. Current `packages/loaders/src/loaders/sync-loader.ts` and `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` show the same options preserved through direct sync and paginated fallback. Plan 02 still owns the release-time runtime gate.
 
 ## Mechanical gate
 
