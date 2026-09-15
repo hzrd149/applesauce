@@ -173,7 +173,7 @@ Plans:
   4. `auth()` sends exactly one fixed AUTH frame through the same private one-frame/one-reply primitive as `event()`, never `publish()`, so it cannot recurse into the EVENT family's retry loop.
   5. If this phase adds a new terminal auth error class, `applesauce-loaders`' `RELAY_AUTH_ERROR_NAMES` recognizes it in the same change — a dedicated test proves the loader classifies it as an auth failure, not a generic one.
 
-**Plans**: 4/4 plans executed
+**Plans**: 4/7 plans executed
 
 Plans:
 
@@ -432,6 +432,18 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 26-04-PLAN.md — Construct, verify, and compare-and-swap the release-ready local master
+
+**Wave 5** *(gap closure; blocked on Wave 4 completion)*
+
+- [ ] 26-05-PLAN.md — Reconcile the immutable installed-master oracle and exact package audit table
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 26-06-PLAN.md — Build, review, and durably accept the 74-entry semantic packet
+
+**Wave 7** *(blocked on Wave 6 acceptance)*
+
+- [ ] 26-07-PLAN.md — Build, review, and durably accept cleanup safety before final sign-off
 
 ## Progress
 
