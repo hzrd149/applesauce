@@ -16,9 +16,9 @@ provides:
   - thirteen ordered PASS records plus an atomic terminal completion marker
 affects: [26-04, release-source-pinning, v7.0.0]
 actuals:
-  tokens: 2551
+  tokens: 4041
   tasks: 2
-  commits: 5
+  commits: 6
 tech-stack:
   added: []
   patterns: [immutable gated-source OID, allowlisted ignored-path cleanup, byte-identical baseline restoration]
@@ -109,8 +109,16 @@ status: complete
 - **Verification:** The final run produced all thirteen ordered PASS rows, exact restoration, and the OID-bound terminal marker.
 - **Committed in:** `11477ec7` records the successful evidence after the gated-source commit.
 
-**Total deviations:** 1 auto-fixed (1 Rule 1 bug)
-**Impact on plan:** The failed attempts ended inside preflight before installation or baseline markers. The successful full run started clean and all release/restoration guarantees remain intact.
+**2. [Rule 1 - Bug] Corrected stale Phase 26 roadmap progress**
+- **Found during:** Closeout self-check
+- **Issue:** `roadmap.update-plan-progress` checked Plan 26-03 and updated the detailed count to 3/4, but left the progress-table row at 1/4.
+- **Fix:** Updated the Phase 26 progress-table row to 3/4 and retained the in-progress status for Plan 04.
+- **Files modified:** `.planning/ROADMAP.md`
+- **Verification:** Both Phase 26 roadmap representations now report 3/4 plans executed.
+- **Committed in:** Plan tracking closeout commit.
+
+**Total deviations:** 2 auto-fixed (2 Rule 1 bugs)
+**Impact on plan:** The failed preflight attempts ended before installation or baseline markers, and the roadmap correction is bookkeeping-only. The successful full run started clean and all release/restoration guarantees remain intact.
 
 ## Issues Encountered
 
