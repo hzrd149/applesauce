@@ -82,9 +82,9 @@ findings changed the plan and are marked **[research]** below.
 
 ### Release
 
-- [ ] **REL-01**: **[research]** Every remaining publishable package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit thirteen-package checklist verified by a dry run
-- [ ] **REL-03**: v1.2's held `applesauce-relay` and `applesauce-loaders` changesets ship in this release
-- [ ] **REL-04**: Each changeset file describes exactly one change in a single sentence, per the repo's changeset convention
+- [x] **REL-01**: **[research]** Every remaining publishable package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit thirteen-package checklist verified by a dry run
+- [x] **REL-03**: v1.2's held `applesauce-relay` and `applesauce-loaders` changesets ship in this release
+- [x] **REL-04**: Each changeset file describes exactly one change in a single sentence, per the repo's changeset convention
 
 ### Ecosystem
 
@@ -177,9 +177,9 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | RESID-02 | Phase 17 | Complete |
 | RESID-03 | Phase 24 | Complete |
 | RESID-04 | Phase 18 | Gaps Found |
-| REL-01 | Phase 26 | Pending |
-| REL-03 | Phase 26 | Pending |
-| REL-04 | Phase 26 | Pending |
+| REL-01 | Phase 26 | Complete |
+| REL-03 | Phase 26 | Complete |
+| REL-04 | Phase 26 | Complete |
 | ECO-01 | Phase 16 | Complete |
 | ECO-02 | Phase 25 | Complete |
 | ECO-03 | Phase 25 | Complete |

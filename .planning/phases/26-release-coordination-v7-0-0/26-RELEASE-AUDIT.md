@@ -142,3 +142,36 @@ The terminal marker is `COMPLETE 3aa2dd2a73d3c10012abd9ee139d0005aee26393` and w
 ## Post-gate bookkeeping boundary
 
 The command-run source is the gated OID above, not a later evidence commit. Commit `11477ec7` and the Plan 03 audit/summary closeout are planning-only descendants created after the full gate; they do not redefine the tested source. Plan 04 must prove every descendant between the gated source and its selected release source changes only `.planning/**` (empty commits are also tree-identical) before pinning or rewriting local release history.
+
+## Immutable release-history proof
+
+The release source and destination were pinned only after the clean checkout and terminal gate were rechecked. The pre-Concord boundary was re-proven from source history, the candidate was verified while unreachable, and local `master` moved through expected-old compare-and-swap only after every structural and history check passed.
+
+```text
+SOURCE=4786d952e04eb4535e9c776d86adf4058c69801f
+SOURCE_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
+BASE=5d0260e296a15b85bc4e58abc34cde3fb055179c
+OLD_MASTER=ec51f7d4ecfd3db6099e786e8eec0062255588d4
+CANDIDATE=399eea787eb86e4eeab3a7c8138092255fce180f
+CANDIDATE_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
+RESULTING_MASTER=399eea787eb86e4eeab3a7c8138092255fce180f
+RESULTING_MASTER_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
+NEXT_BEFORE=4786d952e04eb4535e9c776d86adf4058c69801f
+HEAD_BEFORE=refs/heads/next
+GATED_SOURCE=3aa2dd2a73d3c10012abd9ee139d0005aee26393
+```
+
+| Proof | Result |
+|---|---|
+| Gated source to pinned source changes only `.planning/**` | PASS |
+| Base is the sole parent of first Concord code commit `452dc444df7e3f48a8099f3917de705e4389d264` | PASS |
+| TREE EQUALITY PASS | Candidate tree equals pinned source tree |
+| SOLE PARENT PASS | Candidate parent equals verified base |
+| ONE POST-BASE COMMIT | PASS |
+| Candidate byte-empty tree diff | PASS |
+| Expected-old `refs/heads/master` compare-and-swap | PASS |
+| Immediate `next`, symbolic HEAD, remote refs, and every other local ref preservation | PASS |
+| CONCORD HISTORY ABSENCE PASS | No case-insensitive path or blob-content match in the scoped product/release surfaces of any commit reachable from resulting local `master` |
+| Detached closeout at immutable SOURCE with `next` unchanged | PASS |
+
+Raw machine-readable identities, before/after ref snapshots, empty match files, and command-status evidence remain in `.git/gsd-phase-26-release-evidence/final.env` and its sibling files. `SOURCE` remains the immutable reviewed release source and the candidate tree. Commit `9aabc544` and every subsequent Phase 26 closeout commit belong only to the detached planning lineage; each is checked to differ from `SOURCE` exclusively under `.planning/**`, with no package, app, changeset, manifest, lockfile, changelog, or build-configuration difference. Local `next` remains exactly `NEXT_BEFORE`, and local `master` will not be rebuilt or moved again during closeout.
