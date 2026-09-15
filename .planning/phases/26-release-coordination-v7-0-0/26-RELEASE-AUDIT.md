@@ -116,3 +116,29 @@ The post-audit oracle is `pnpm exec changeset status --verbose --since=master --
 ## Mechanical gate
 
 The task gate checks exactly 73 stable source rows, validates all 74 final files as one nonblank Markdown line and one `Intl.Segmenter` sentence, rejects unresolved/failing rows, rejects the removed combined timer path, and requires both replacement and held-note paths. Semantic PASS values above are the distinct manual/provenance judgment trail and are not inferred from the parser.
+
+## Frozen full release gate
+
+The complete D-08 gate ran against immutable source `3aa2dd2a73d3c10012abd9ee139d0005aee26393`. Raw output, baselines, hashes, generated-path inventories, final Changesets JSON, and the terminal marker remain under `.git/gsd-phase-26-release-evidence/`.
+
+| Step | Status | Result |
+|---|---:|---|
+| preflight | 0 | PASS |
+| frozen-install | 0 | PASS |
+| workspace-test | 0 | PASS — 232 test files passed, 1 skipped; 2,235 tests passed, 2 skipped |
+| workspace-build | 0 | PASS — all 17 workspace build targets passed |
+| docs-build | 0 | PASS |
+| examples-build | 0 | PASS |
+| changeset-parser | 0 | PASS — 73 stable audit rows and 74 one-line, one-sentence final notes |
+| changeset-status | 0 | PASS — final Changesets JSON regenerated from the gated source |
+| release-assertions | 0 | PASS — exact thirteen-package `7.0.0` set, direct/cascade classifications, and both held IDs |
+| generated-cleanup | 0 | PASS — guarded post-cleanup inventory is empty |
+| status-restoration | 0 | PASS — sorted porcelain snapshots are byte-identical |
+| lock-restoration | 0 | PASS — SHA-256 remained `df7010d518e3ff41990030435520c01a7d94cd829061fab9d97dbb750db46550` |
+| head-restoration | 0 | PASS — command-run HEAD remained the gated source OID |
+
+The terminal marker is `COMPLETE 3aa2dd2a73d3c10012abd9ee139d0005aee26393` and was created atomically only after all thirteen ordered status rows and restoration checks passed. No versioning, package/changelog mutation, publication, push, tag, hosted-release, or runbook action ran.
+
+## Post-gate bookkeeping boundary
+
+The command-run source is the gated OID above, not a later evidence commit. Commit `11477ec7` and the Plan 03 audit/summary closeout are planning-only descendants created after the full gate; they do not redefine the tested source. Plan 04 must prove every descendant between the gated source and its selected release source changes only `.planning/**` (empty commits are also tree-identical) before pinning or rewriting local release history.
