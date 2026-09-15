@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
 status: executing
-stopped_at: Phase 26 context gathered
-last_updated: "2026-09-14T19:17:29.107Z"
-last_activity: 2026-09-09
-last_activity_desc: Phase 25.5 complete, transitioned to Phase 26
-state_head: 426695cede3a88e8f5a624cca1472c7a74c55cf1
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-09-15T00:19:04.600Z"
+last_activity: 2026-09-14
+last_activity_desc: Phase 26 execution started
+state_head: b8497a6697b6025772b219f95ebb6422f6ee374a
 progress:
   total_phases: 12
-  completed_phases: 16
+  completed_phases: 10
   total_plans: 67
-  completed_plans: 63
+  completed_plans: 64
   percent: 83
 ---
 
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 25.5 — repository-extraction-cleanup
+**Current focus:** Phase 26 — Release Coordination — v7.0.0
 
 ## Current Position
 
-Phase: 26 (Release Coordination — v7.0.0) — READY TO EXECUTE
-Plan: Not started
+Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-09-09 — Phase 25.5 complete, transitioned to Phase 26
+Last activity: 2026-09-14 — Phase 26 execution started
 
-Progress: [██████████] 72/72 plans ([██████████] 100%)
+Progress: [██████████] 72/72 plans ([████████░░] 83%)
 
 ## Performance Metrics
 
@@ -178,6 +178,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.5 P02 | 8m | 2 tasks | 450 files |
 | Phase 25.5 P03 | 5 min | 2 tasks | 10 files |
 | Phase 25.5 P04 | 9min | 2 tasks | 4 files |
+| Phase 26 P01 | 8min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -397,6 +398,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Deleted only package-owned historical trees and surgically removed matching lines from shared records
 - [Phase ?]: Removed the obsolete Phase 05.1 follow-up record after Plan 01 verified its open outcomes
 - [Phase ?]: Phase 25.5 validates only the checked-out repository; reachable Git history remains Phase 26 squash-merge work
+- [Phase 26-01]: Stable CS IDs identify the 73 pre-edit physical inputs while a SPLIT row accounts for both replacement paths. — Preserves source audit identity while accounting for all 74 final notes.
+- [Phase 26-01]: Held v1.2 notes remain provenance-approved while Plan 02 owns current-runtime proof. — Historical presence is not sufficient evidence of final behavior.
 
 ### Pending Todos
 
@@ -510,9 +513,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-14T18:13:43.300Z
-Stopped at: Phase 26 context gathered
-Resume file: /home/robert/Projects/applesauce/.planning/phases/26-release-coordination-v7-0-0/26-CONTEXT.md
+Last session: 2026-09-15T00:19:04.268Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.

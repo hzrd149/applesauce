@@ -414,12 +414,12 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 4 plans
+**Plans**: 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 26-01-PLAN.md — Audit all 73 pending changesets and reconcile focused release notes
+- [x] 26-01-PLAN.md — Audit all 73 pending changesets and reconcile focused release notes
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
