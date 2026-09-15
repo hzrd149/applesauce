@@ -174,6 +174,8 @@ if (sentences.length !== 1) throw Error(`${name}: sentence count`);
 
 Also require valid Changesets frontmatter, at least one valid package/bump entry, exactly one nonblank body line, no list/heading/fence, and a resolved matrix row. Semantic one-change review remains human/provenance-backed and cannot be replaced by tokenization.
 
+The stable matrix IDs identify the 73 pre-edit physical inputs. A `SPLIT` row retains the removed input path and names every replacement path, so the final 74-note inventory remains fully accounted for without renumbering the source audit.
+
 ### Release graph oracle
 
 **Source:** `.changeset/config.json` lines 5-29.
