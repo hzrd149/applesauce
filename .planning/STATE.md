@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
 status: executing
-stopped_at: Completed 26-02-PLAN.md
-last_updated: "2026-09-15T00:28:15.816Z"
+stopped_at: Completed 26-03-PLAN.md
+last_updated: "2026-09-15T00:41:11.900Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 26 execution started
-state_head: 3fe00d6960624e0134e5e599b6fea343e07db8fe
+state_head: 608f58aee3631e1f4a159297eb6c3fb04222add5
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 67
-  completed_plans: 65
+  completed_plans: 66
   percent: 83
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 26 execution started
 
@@ -180,6 +180,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.5 P04 | 9min | 2 tasks | 4 files |
 | Phase 26 P01 | 8min | 2 tasks | 6 files |
 | Phase 26 P02 | 4min | 2 tasks | 1 files |
+| Phase 26 P03 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -403,6 +404,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 26-01]: Held v1.2 notes remain provenance-approved while Plan 02 owns current-runtime proof. — Historical presence is not sufficient evidence of final behavior.
 - [Phase 26-02]: Classify direct releases only from nonempty final Changesets arrays; empty arrays require real manifest dependency cascades.
 - [Phase 26-02]: Retain both held v1.2 notes because current source and full package suites prove their exact one-change bodies.
+- [Phase 26]: Bind the release gate to the exact command-run HEAD and classify later audit/summary commits as planning-only descendants.
+- [Phase 26]: Remove generated residue only from explicit repository-contained, ignored, non-symlink families.
 
 ### Pending Todos
 
@@ -516,8 +519,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-15T00:28:15.463Z
-Stopped at: Completed 26-02-PLAN.md
+Last session: 2026-09-15T00:41:11.558Z
+Stopped at: Completed 26-03-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
