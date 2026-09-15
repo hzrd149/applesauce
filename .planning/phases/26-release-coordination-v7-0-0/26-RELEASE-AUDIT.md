@@ -88,6 +88,26 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 
 The final pending inventory contains the 72 surviving input paths (including the rewritten hidden-content note) plus the two timer replacements named by CS-009, for 74 total. The removed combined timer path is represented only as CS-009's source input. Every final path has a row either directly or through that split disposition.
 
+## Final package result
+
+The post-audit oracle is `pnpm exec changeset status --verbose --since=master --output=.git/gsd-phase-26-release-evidence/status.json`. Its non-`none` release-name set equals the thirteen names in `.changeset/config.json`, every computed version is `7.0.0`, and the only additional row is the ignored private `applesauce-examples` application with type `none`. A nonempty final `changesets` array is classified as **direct**; an empty array is classified as a real **downstream dependency cascade**. No no-op release note was added to alter this result.
+
+| Package | Version | Final classification | Changesets-array evidence |
+|---|---|---|---|
+| applesauce-accounts | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` and `applesauce-signers` |
+| applesauce-actions | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-common` and `applesauce-core` |
+| applesauce-common | 7.0.0 | direct | `common-falsy-app-data`, `group-pointer-lossless-roundtrip`, `hidden-content-unlock-guards` |
+| applesauce-content | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-common` and `applesauce-core` |
+| applesauce-core | 7.0.0 | direct | `clamp-expiration-timer-delay`, `core-stamp-comment`, `logger-colors`, `logger-sink-record` |
+| applesauce-extra | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` |
+| applesauce-loaders | 7.0.0 | direct | `loaders-sync-fallback-auth`, `sync-loader-auth-hooks` |
+| applesauce-react | 7.0.0 | downstream dependency cascade | `[]`; manifest optionally depends on `applesauce-core` and sibling packages |
+| applesauce-relay | 7.0.0 | direct | 24 final IDs, including `relay-operation-scoped-auth-callbacks` |
+| applesauce-signers | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` |
+| applesauce-sqlite | 7.0.0 | direct | `sqlite-optional-backends` |
+| applesauce-wallet-connect | 7.0.0 | direct | `wait-for-paid-timer-fixes` |
+| applesauce-wallet | 7.0.0 | direct | `wallet-lock-relays` |
+
 ## Held v1.2 notes
 
 - **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2):** `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` establishes the corrected high-level ownership sentence. Current `packages/relay/src/types.ts` and `packages/relay/src/relay.ts` expose and route the operation-scoped auth options. Plan 02 still owns the release-time runtime gate; historical presence alone is not treated as current-behavior proof.
