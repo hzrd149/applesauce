@@ -414,7 +414,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 1/4 plans executed
+**Plans**: 2/4 plans executed
 
 Plans:
 **Wave 1**
@@ -423,7 +423,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 26-02-PLAN.md — Prove the exact thirteen-package 7.0.0 result and both held notes
+- [x] 26-02-PLAN.md — Prove the exact thirteen-package 7.0.0 result and both held notes
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

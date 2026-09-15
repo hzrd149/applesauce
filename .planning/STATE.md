@@ -5,16 +5,16 @@ milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
 status: executing
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-09-15T00:19:04.600Z"
+stopped_at: Completed 26-02-PLAN.md
+last_updated: "2026-09-15T00:28:15.816Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 26 execution started
-state_head: b8497a6697b6025772b219f95ebb6422f6ee374a
+state_head: 3fe00d6960624e0134e5e599b6fea343e07db8fe
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 67
-  completed_plans: 64
+  completed_plans: 65
   percent: 83
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 26 execution started
 
@@ -179,6 +179,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 25.5 P03 | 5 min | 2 tasks | 10 files |
 | Phase 25.5 P04 | 9min | 2 tasks | 4 files |
 | Phase 26 P01 | 8min | 2 tasks | 6 files |
+| Phase 26 P02 | 4min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -400,6 +401,8 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase ?]: Phase 25.5 validates only the checked-out repository; reachable Git history remains Phase 26 squash-merge work
 - [Phase 26-01]: Stable CS IDs identify the 73 pre-edit physical inputs while a SPLIT row accounts for both replacement paths. — Preserves source audit identity while accounting for all 74 final notes.
 - [Phase 26-01]: Held v1.2 notes remain provenance-approved while Plan 02 owns current-runtime proof. — Historical presence is not sufficient evidence of final behavior.
+- [Phase 26-02]: Classify direct releases only from nonempty final Changesets arrays; empty arrays require real manifest dependency cascades.
+- [Phase 26-02]: Retain both held v1.2 notes because current source and full package suites prove their exact one-change bodies.
 
 ### Pending Todos
 
@@ -513,8 +516,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-15T00:19:04.268Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-09-15T00:28:15.463Z
+Stopped at: Completed 26-02-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
