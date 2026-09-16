@@ -144,7 +144,15 @@ status: complete
 - **Verification:** All four plan-level automated commands passed after both task commits.
 - **Committed in:** Raw verifier evidence under `.git`; tracked Task 2 outcome is `d3d88974`.
 
-**Total deviations:** 3 auto-fixed (2 Rule 1 bugs, 1 Rule 3 blocking issue)
+**4. [Rule 1 - Bug] Corrected stale SDK progress projections**
+- **Found during:** Plan tracking closeout
+- **Issue:** The SDK counted 69 completed plans but rendered 83%, left the prose progress at 68/72, and did not update the roadmap progress-table row from 5/9 even though its Phase 26 detail correctly showed 6/9.
+- **Fix:** Reconciled STATE to 69/72 (96%), advanced the activity description to Plan 26-06, and aligned the roadmap progress row to 6/9.
+- **Files modified:** `.planning/STATE.md`, `.planning/ROADMAP.md`
+- **Verification:** Six Phase 26 summaries exist and Plans 26-01 through 26-06 are checked in the roadmap.
+- **Committed in:** Plan tracking closeout commit.
+
+**Total deviations:** 4 auto-fixed (3 Rule 1 bugs, 1 Rule 3 blocking issue)
 **Impact on plan:** The fixes align field names and verifier assumptions with the prescribed retained evidence; no release input, ref, developer-owned file, package version, lockfile, tag, or remote changed.
 
 ## Issues Encountered

@@ -5,17 +5,17 @@ milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
 status: executing
-stopped_at: Completed 26-05-PLAN.md
-last_updated: "2026-09-16T02:13:14.971Z"
+stopped_at: Completed 26-06-PLAN.md
+last_updated: "2026-09-16T02:34:00.591Z"
 last_activity: 2026-09-16
-last_activity_desc: Phase 26 execution started
-state_head: 5f939032ed042e5280828ed1951eae46056515a4
+last_activity_desc: Plan 26-06 completed; intended release tree passed the isolated full gate
+state_head: 306df4eab5ca015ed9bb4a7c83e480861682e6e5
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 72
-  completed_plans: 68
-  percent: 94
+  completed_plans: 69
+  percent: 96
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 ## Current Position
 
 Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
-Last activity: 2026-09-16 — Plan 26-05 completed; intended release tree ready for fresh gate
+Last activity: 2026-09-16 — Plan 26-06 completed; intended release tree passed the isolated full gate
 
-Progress: [█████████░] 68/72 plans (94%)
+Progress: [██████████] 69/72 plans (96%)
 
 ## Performance Metrics
 
@@ -183,6 +183,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 26 P03 | 8min | 2 tasks | 2 files |
 | Phase 26 P04 | 25min | 2 tasks | 5 files |
 | Phase 26 P05 | 10min | 2 tasks | 10 files |
+| Phase 26 P06 | 12min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -413,6 +414,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 26]: Retain original source and old installed master identities as provenance while making INTENDED_TREE the sole input to the next release gate. — The D-13/D-14/D-16 supersession chain must remain explicit.
 - [Phase 26]: Construct INTENDED_TREE in a private index seeded from OLD_MASTER_TREE, leaving the ordinary index and developer changesets untouched. — Only the two authorized blobs may enter the release tree.
 - [Phase 26]: Keep preservation comparisons stage-local around each task commit. — Cross-stage comparison would misclassify the planned audit commit as developer-state drift.
+- [Phase 26]: Gate INTENDED_TREE through an unreachable sole-parent commit and detached temporary worktree without moving any ref.
+- [Phase 26]: Treat Task 1 and Task 2 preservation pairs as separate stage-local authorities rather than comparing across execution commits.
+- [Phase 26]: Reconstruct the Changesets oracle from retained raw status bytes and validate all 74 intended-tree notes independently.
 
 ### Pending Todos
 
@@ -526,8 +530,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-16T02:13:14.589Z
-Stopped at: Completed 26-05-PLAN.md
+Last session: 2026-09-16T02:34:00.208Z
+Stopped at: Completed 26-06-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
