@@ -1,21 +1,21 @@
 ---
-gsd_state_version: "1.0"
+gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
-status: ready_to_execute
-stopped_at: Phase 26 gap plans verified — ready for gap-only execution
-last_updated: "2026-09-16T00:04:18.931Z"
+status: executing
+stopped_at: Completed 26-05-PLAN.md
+last_updated: "2026-09-16T02:13:14.971Z"
 last_activity: 2026-09-16
-last_activity_desc: Phase 26 gap Plans 26-05 through 26-09 verified and approved
-state_head: 29049f37056799163538be5fbf731302f8ea56ac
+last_activity_desc: Phase 26 execution started
+state_head: 5f939032ed042e5280828ed1951eae46056515a4
 progress:
   total_phases: 12
   completed_phases: 10
   total_plans: 72
-  completed_plans: 67
-  percent: 93
+  completed_plans: 68
+  percent: 94
 ---
 
 # Project State
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 ## Current Position
 
-Phase: 26 (Release Coordination — v7.0.0) — READY TO EXECUTE
-Plan: 4 of 9
+Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
+Plan: 6 of 9
 Status: Ready to execute
-Last activity: 2026-09-16 — Phase 26 gap Plans 26-05 through 26-09 verified and approved
+Last activity: 2026-09-16 — Plan 26-05 completed; intended release tree ready for fresh gate
 
-Progress: [██████████] 72/72 plans ([█████████░] 93%)
+Progress: [█████████░] 68/72 plans (94%)
 
 ## Performance Metrics
 
@@ -182,6 +182,7 @@ v1.1 metrics begin populating after Phase 5's first plan completes.
 | Phase 26 P02 | 4min | 2 tasks | 1 files |
 | Phase 26 P03 | 8min | 2 tasks | 2 files |
 | Phase 26 P04 | 25min | 2 tasks | 5 files |
+| Phase 26 P05 | 10min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -409,6 +410,9 @@ Full v1.0 decision log lives in `.planning/milestones/v1.0-phases/`. Current mil
 - [Phase 26]: Remove generated residue only from explicit repository-contained, ignored, non-symlink families.
 - [Phase 26]: Keep SOURCE as the immutable release tree and perform every later GSD commit on a detached planning-only lineage, leaving next unchanged.
 - [Phase 26]: Install the verified candidate with expected-old update-ref only after tree, parent, count, history, and preserved-ref proofs pass.
+- [Phase 26]: Retain original source and old installed master identities as provenance while making INTENDED_TREE the sole input to the next release gate. — The D-13/D-14/D-16 supersession chain must remain explicit.
+- [Phase 26]: Construct INTENDED_TREE in a private index seeded from OLD_MASTER_TREE, leaving the ordinary index and developer changesets untouched. — Only the two authorized blobs may enter the release tree.
+- [Phase 26]: Keep preservation comparisons stage-local around each task commit. — Cross-stage comparison would misclassify the planned audit commit as developer-state drift.
 
 ### Pending Todos
 
@@ -522,8 +526,8 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-16T00:04:18.931Z
-Stopped at: Phase 26 gap plans verified, proceeding to gap-only execution
+Last session: 2026-09-16T02:13:14.589Z
+Stopped at: Completed 26-05-PLAN.md
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the

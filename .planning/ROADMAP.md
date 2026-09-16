@@ -414,7 +414,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 4/9 plans executed
+**Plans**: 5/9 plans executed
 
 Plans:
 **Wave 1**
@@ -435,7 +435,7 @@ Plans:
 
 **Wave 5** *(gap closure; blocked on Wave 4 completion)*
 
-- [ ] 26-05-PLAN.md — Audit exactly two authorized edits and construct the immutable intended tree from a schema-validated complete preflight
+- [x] 26-05-PLAN.md — Audit exactly two authorized edits and construct the immutable intended tree from a schema-validated complete preflight
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -484,7 +484,7 @@ Plans:
 | 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
-| 26. Release Coordination — v7.0.0 | v7.0.0 | 4/9 | In Progress | - |
+| 26. Release Coordination — v7.0.0 | v7.0.0 | 5/9 | In Progress | - |
 
 **Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
 

@@ -124,8 +124,16 @@ status: complete
 - **Verification:** The exhaustive verifier passed before Task 1 commit, at the tracer gate, before Task 2 capture, and in the final verification pass.
 - **Committed in:** Raw evidence under `.git`; Task 1 tracked outcome is `339fc1d8`.
 
-**Total deviations:** 1 auto-fixed (1 Rule 3 blocking issue)
-**Impact on plan:** The adaptation reconciles the executor's mandatory tracer rerun with the plan's stage-local evidence rule without widening any authorized release-tree input.
+**2. [Rule 1 - Bug] Corrected stale SDK tracking positions**
+- **Found during:** Sequential tracking closeout
+- **Issue:** The state advance started from a stale Plan 1 position and reported Plan 2 plus an arithmetically incorrect 83%, while the roadmap progress table remained at 4/9 after its Phase 26 detail advanced to 5/9.
+- **Fix:** Reconciled STATE to next Plan 6 with 68/72 (94%) and the roadmap progress row to 5/9.
+- **Files modified:** `.planning/STATE.md`, `.planning/ROADMAP.md`
+- **Verification:** Five Phase 26 summaries exist and Plans 26-01 through 26-05 are checked in the roadmap.
+- **Committed in:** Plan tracking closeout commit.
+
+**Total deviations:** 2 auto-fixed (1 Rule 1 bug, 1 Rule 3 blocking issue)
+**Impact on plan:** The verifier adaptation preserves the stage-local evidence rule, and the tracking correction reflects existing summaries without altering release inputs.
 
 ## Issues Encountered
 
