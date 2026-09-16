@@ -118,8 +118,16 @@ status: complete
 - **Verification:** Fresh terminal/hash/identity preflight passed, followed by complete Task 1 CAS verification and the post-commit tracer rerun.
 - **Committed in:** `023ffa96`
 
-**Total deviations:** 1 auto-fixed (1 Rule 3 blocking issue)
-**Impact on plan:** The adaptation preserves the original stage-local evidence contract and avoids weakening it into a cross-commit HEAD comparison; release inputs and protected refs were unchanged.
+**2. [Rule 1 - Bug] Corrected stale SDK progress projections**
+- **Found during:** Plan tracking closeout
+- **Issue:** The SDK advanced to Plan 8 and counted 70/72 summaries but rendered 83%, left the prose counter at 69/72, and did not update the roadmap progress-table row from 6/9.
+- **Fix:** Reconciled STATE to 70/72 (97%), advanced the activity description to Plan 26-07, and aligned the roadmap row to 7/9.
+- **Files modified:** `.planning/STATE.md`, `.planning/ROADMAP.md`
+- **Verification:** Seven Phase 26 summaries exist and Plans 26-01 through 26-07 are checked in the roadmap.
+- **Committed in:** Plan tracking closeout commit.
+
+**Total deviations:** 2 auto-fixed (1 Rule 1 bug, 1 Rule 3 blocking issue)
+**Impact on plan:** The verifier adaptation preserves the original stage-local evidence contract, and the tracking correction reflects the summaries on disk; release inputs and protected refs were unchanged.
 
 ## Issues Encountered
 
