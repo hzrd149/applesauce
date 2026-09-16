@@ -1,15 +1,15 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
-status: executing
-stopped_at: Completed 26-07-PLAN.md
-last_updated: "2026-09-16T02:49:45.558Z"
+status: Blocked at mandatory semantic review; four changesets require remediation
+stopped_at: "Phase 26 Plan 26-08 halted: semantic review rejected four non-consumer-facing changesets"
+last_updated: "2026-09-16T21:04:24.070Z"
 last_activity: 2026-09-16
-last_activity_desc: Plan 26-07 completed; local master installed and canonical oracle reconciled
-state_head: 7ba3f76d186689b673019e30fc3b883fe5e23c8a
+last_activity_desc: Plan 26-08 semantic review recorded four rejected changesets
+state_head: 29a27cd3b40fded642225d7b4ddeb18c8244d7bd
 progress:
   total_phases: 12
   completed_phases: 10
@@ -31,10 +31,10 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
 Plan: 8 of 9
-Status: Ready to execute
-Last activity: 2026-09-16 — Plan 26-07 completed; local master installed and canonical oracle reconciled
+Status: Blocked at mandatory semantic review; four changesets require remediation
+Last activity: 2026-09-16 — Plan 26-08 semantic review recorded four rejected changesets
 
-Progress: [██████████] 70/72 plans (97%)
+Progress: [██████████] 70/72 plans ([█████████░] 97%)
 
 ## Performance Metrics
 
@@ -535,7 +535,7 @@ a major that is happening anyway is cheaper than cutting a second one later.
 ## Session Continuity
 
 Last session: 2026-09-16T02:49:45.160Z
-Stopped at: Completed 26-07-PLAN.md
+Stopped at: Phase 26 Plan 26-08 halted: semantic review rejected four non-consumer-facing changesets
 Resume file: None
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
