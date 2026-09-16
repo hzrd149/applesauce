@@ -90,23 +90,43 @@ The final pending inventory contains the 72 surviving input paths (including the
 
 ## Final package result
 
-The post-audit oracle is `pnpm exec changeset status --verbose --since=master --output=.git/gsd-phase-26-release-evidence/status.json`. Its non-`none` release-name set equals the thirteen names in `.changeset/config.json`, every computed version is `7.0.0`, and the only additional row is the ignored private `applesauce-examples` application with type `none`. A nonempty final `changesets` array is classified as **direct**; an empty array is classified as a real **downstream dependency cascade**. No no-op release note was added to alter this result.
+The installed-master oracle is `pnpm exec changeset status --verbose --since=master --output=.git/gsd-phase-26-release-evidence/status.json`. Its non-`none` release-name set is exactly the thirteen configured publishable packages, every computed version is `7.0.0`, and classification is derived only from whether the live `changesets` array is nonempty. No no-op release note was added.
 
-| Package | Version | Final classification | Changesets-array evidence |
+| Package | Version | Final classification | Exact changesets array |
 |---|---|---|---|
-| applesauce-accounts | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` and `applesauce-signers` |
-| applesauce-actions | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-common` and `applesauce-core` |
-| applesauce-common | 7.0.0 | direct | `common-falsy-app-data`, `group-pointer-lossless-roundtrip`, `hidden-content-unlock-guards` |
-| applesauce-content | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-common` and `applesauce-core` |
-| applesauce-core | 7.0.0 | direct | `clamp-expiration-timer-delay`, `core-stamp-comment`, `logger-colors`, `logger-sink-record` |
-| applesauce-extra | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` |
-| applesauce-loaders | 7.0.0 | direct | `loaders-sync-fallback-auth`, `sync-loader-auth-hooks` |
-| applesauce-react | 7.0.0 | downstream dependency cascade | `[]`; manifest optionally depends on `applesauce-core` and sibling packages |
-| applesauce-relay | 7.0.0 | direct | 24 final IDs, including `relay-operation-scoped-auth-callbacks` |
-| applesauce-signers | 7.0.0 | downstream dependency cascade | `[]`; manifest depends on `applesauce-core` |
-| applesauce-sqlite | 7.0.0 | direct | `sqlite-optional-backends` |
-| applesauce-wallet-connect | 7.0.0 | direct | `wait-for-paid-timer-fixes` |
-| applesauce-wallet | 7.0.0 | direct | `wallet-lock-relays` |
+| applesauce-accounts | 7.0.0 | direct | `["android-native-account-restore-fields","android-native-signer-seed-pubkey"]` |
+| applesauce-actions | 7.0.0 | downstream dependency cascade | `[]` |
+| applesauce-common | 7.0.0 | direct | `["add-is-valid-seal","chat-message-factory","comment-parent-rumor","common-falsy-app-data","forum-thread-nip7d","generic-common-helpers","gift-wrap-symbols-to-core","group-pointer-lossless-roundtrip","hidden-content-unlock-guards","lock-app-data-clears-plaintext","reaction-parent","seal-parse-failures-return-undefined","verify-gift-wrap-seal-signatures"]` |
+| applesauce-content | 7.0.0 | downstream dependency cascade | `[]` |
+| applesauce-core | 7.0.0 | direct | `["cache-write-frozen-throws","cache-writes-hidden-from-spread","clamp-expiration-timer-delay","copy-symbols-guards","core-stamp-comment","generic-event-stores","gift-wrap-symbols-to-core","hidden-tags-undefined-not-throw","logger-colors","logger-sink-record","pubkey-casts-store-cache","remove-event-factory-kind","rumor-stores","rumor-type-and-helpers","stamp-no-caller-mutation","tricky-pots-teach","verify-event-undefined-fix"]` |
+| applesauce-extra | 7.0.0 | downstream dependency cascade | `[]` |
+| applesauce-loaders | 7.0.0 | direct | `["loaders-sync-fallback-auth","sync-loader-auth-hooks","sync-loader-auth-phase-timer-leak-fixed","sync-loader-handlerless-stall-suspension","sync-loader-wait-for-auth"]` |
+| applesauce-react | 7.0.0 | downstream dependency cascade | `[]` |
+| applesauce-relay | 7.0.0 | direct | `["auth-retry-error-channel","brave-ids-batch","lucky-pans-shave","relay-auth-family-re-layer","relay-auth-handler-sync-throw-mapped","relay-auth-lifecycle-debug-logging","relay-auth-log-namespace-order","relay-auth-resend-req-count-observed","relay-auth-retry-bound-not-reset-by-req-open","relay-auth-timeout-bounded-wait","relay-auth-wire-request-context","relay-closed-prefix-safety","relay-count-nip45","relay-event-publish-layering","relay-group-count-progressive","relay-group-error-surface","relay-group-logger-routing","relay-group-request-error-not-progress","relay-group-request-timeout-suspended","relay-group-sync-per-relay-isolation","relay-negentropy-rounds","relay-operation-scoped-auth-callbacks","relay-publish-response-error-field","relay-publish-timeout-marks-itself","relay-quiet-empty-auth-invalidation","relay-req-family-re-layer","relay-request-timeout-can-fire","relay-sync-outcomes","shaggy-clowns-smile","tall-months-invite","wait-for-auth-pubkeys","wide-donkeys-smile"]` |
+| applesauce-signers | 7.0.0 | direct | `["android-native-signer-seed-pubkey"]` |
+| applesauce-sqlite | 7.0.0 | direct | `["sqlite-optional-backends"]` |
+| applesauce-wallet | 7.0.0 | direct | `["wallet-getters-return-undefined","wallet-lock-relays"]` |
+| applesauce-wallet-connect | 7.0.0 | direct | `["wait-for-paid-timer-fixes","wallet-notification-safe-parse"]` |
+
+### Installed-master reconstruction and oracle ledger
+
+| Field | Value |
+|---|---|
+| Original source | `4786d952e04eb4535e9c776d86adf4058c69801f` |
+| Original source tree | `0099380fb3df8c9e97b4ac19b0066e32e445d617` |
+| Superseded installed master | `399eea787eb86e4eeab3a7c8138092255fce180f` |
+| Superseded installed master tree | `0099380fb3df8c9e97b4ac19b0066e32e445d617` |
+| CS-038 old → approved blob | `8e6d8406e5734f526f728f6a4c44a7a8045f5e0a` → `a7fabf994e8000d5312ebb0bf266e8b7cbf3f5e3` |
+| CS-039 old → approved blob | `a9e95cc1ecc91b0c49022b27207bb1d2057ed6f1` → `b07e37c5ea99bbcef9fc9311a656a14cc773c3cb` |
+| Intended tree | `55ab2be44b61114b559a762b5d43e373180535c9` |
+| Fresh gate commit / tree | `cf52395c865d3b612a74b8d142ae9ce67a4ec4f6` / `55ab2be44b61114b559a762b5d43e373180535c9` |
+| Pre-Concord base | `5d0260e296a15b85bc4e58abc34cde3fb055179c` |
+| Installed master / tree | `d760214907a5d5828498fb9e07a4a013c8326e51` / `55ab2be44b61114b559a762b5d43e373180535c9` |
+| Canonical oracle SHA-256 | `4317ece993d6644cecbfa0bdffdecd6f3903e52007a4ad22959670f08e0c1268` |
+| Expected-old master CAS | PASS — exactly one ledger row |
+| Complete all-ref comparison | PASS — every non-master ref preserved |
+| Developer state preservation | PASS — worktree, index, approved bytes, untracked identities, detached HEAD, and lock unchanged |
+| Reachable scoped Concord scan | PASS — path and content match files empty |
 
 ## Held v1.2 notes
 
