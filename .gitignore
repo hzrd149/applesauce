@@ -40,6 +40,9 @@ yarn-error.log*
 .beads/
 graphify-out/
 audit.log
+.gsd/
+.planning/milestone.lock
+.planning/state.json
 
 # typedoc
 /docs

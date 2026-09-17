@@ -11,6 +11,7 @@
     "release": "pnpm run -r build && changeset publish",
     "prerelease-snapshot": "pnpm build && pnpm test",
     "release-snapshot": "node scripts/snapshot-release.mjs",
+    "release-next": "node scripts/snapshot-release.mjs --tag next",
     "test:browser": "vitest",
     "docs": "cd apps/docs && pnpm dev"
   },

@@ -3,7 +3,8 @@
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,7 @@ const configPath = join(root, ".changeset", "config.json");
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const skipVersion = args.includes("--skip-version");
+const isolated = process.env.APPLESAUCE_SNAPSHOT_WORKTREE === "1";
 
 function getArgValue(name) {
   const equalsArg = args.find((arg) => arg.startsWith(`${name}=`));
@@ -23,24 +25,24 @@ function getArgValue(name) {
 
 const tag = getArgValue("--tag") ?? "next";
 
-function run(command, commandArgs, env = {}) {
+function run(command, commandArgs, env = {}, cwd = root) {
   if (dryRun) {
     console.log([command, ...commandArgs].join(" "));
     return;
   }
 
   const result = spawnSync(command, commandArgs, {
-    cwd: root,
+    cwd,
     env: { ...process.env, ...env },
     stdio: "inherit",
     shell: process.platform === "win32",
   });
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.status !== 0) throw new Error(`${command} exited with status ${result.status ?? 1}`);
 }
 
-function runCapture(command, commandArgs) {
+function runCapture(command, commandArgs, cwd = root) {
   return spawnSync(command, commandArgs, {
-    cwd: root,
+    cwd,
     encoding: "utf8",
     env: process.env,
     shell: process.platform === "win32",
@@ -92,6 +94,8 @@ function publishPackages(otp) {
 }
 
 async function getOtp() {
+  if (dryRun) return undefined;
+
   const otp = getArgValue("--otp") ?? process.env.NPM_CONFIG_OTP ?? process.env.NPM_OTP;
   if (otp) return otp.trim();
 
@@ -109,11 +113,62 @@ async function getOtp() {
   }
 }
 
-const otp = await getOtp();
-if (otp === "") throw new Error("NPM OTP cannot be empty");
+function requireCleanNextCheckout() {
+  const branch = runCapture("git", ["branch", "--show-current"]);
+  if (branch.status !== 0) throw new Error(branch.stderr || "Unable to read the current Git branch");
+  if (branch.stdout.trim() !== "next") throw new Error("Snapshot releases must start from the next branch");
 
-if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
+  const status = runCapture("git", ["status", "--porcelain", "--untracked-files=all"]);
+  if (status.status !== 0) throw new Error(status.stderr || "Unable to inspect the Git worktree");
+  if (status.stdout.trim()) throw new Error("Snapshot releases require a clean next checkout");
+}
 
-publishPackages(otp);
-run("git", ["reset", "--hard", "HEAD"]);
-run("git", ["clean", "-fd"]);
+async function publishFromDisposableWorktree() {
+  requireCleanNextCheckout();
+
+  if (dryRun) {
+    const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], {
+      cwd: root,
+      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1" },
+      stdio: "inherit",
+    });
+    if (result.status !== 0) throw new Error(`Snapshot dry run exited with status ${result.status ?? 1}`);
+    return;
+  }
+
+  const tempRoot = mkdtempSync(join(tmpdir(), "applesauce-next-release-"));
+  const worktree = join(tempRoot, "checkout");
+  let created = false;
+
+  try {
+    run("git", ["worktree", "add", "--detach", worktree, "HEAD"]);
+    created = true;
+    run("pnpm", ["install", "--frozen-lockfile"], {}, worktree);
+
+    const result = spawnSync(process.execPath, [join(worktree, "scripts", "snapshot-release.mjs"), ...args], {
+      cwd: worktree,
+      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1" },
+      stdio: "inherit",
+    });
+    if (result.status !== 0) throw new Error(`Snapshot release exited with status ${result.status ?? 1}`);
+  } finally {
+    if (created) {
+      const cleanup = runCapture("git", ["worktree", "remove", "--force", worktree]);
+      if (cleanup.status !== 0) {
+        throw new Error(`Unable to remove temporary release worktree ${worktree}:\n${cleanup.stderr}`);
+      }
+    }
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+}
+
+if (!isolated) {
+  await publishFromDisposableWorktree();
+} else {
+  const otp = await getOtp();
+  if (otp === "") throw new Error("NPM OTP cannot be empty");
+
+  if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
+
+  publishPackages(otp);
+}
