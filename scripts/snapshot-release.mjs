@@ -170,5 +170,6 @@ if (!isolated) {
 
   if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
 
+  run("pnpm", ["prerelease-snapshot"]);
   publishPackages(otp);
 }
