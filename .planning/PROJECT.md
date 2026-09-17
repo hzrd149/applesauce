@@ -10,8 +10,9 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 ## Current State
 
 **Phase 25.5 complete (2026-09-09).** The checked-out repository has no active Concord package
-surface, the remaining workspace passes the release gate, and reachable-history cleanup is reserved
-for Phase 26's squash merge.
+surface and the remaining workspace passes the release gate. Historical commits are intentionally
+preserved; `next` is the full-history prerelease branch for npm snapshots under the `next` tag before
+a normal merge into `master` for the stable v7 release.
 
 protocol field types, persisted Invite List entries cross a closed validation boundary, and corrupt
 self-authored entries are quarantined per source without erasing valid state or triggering repair

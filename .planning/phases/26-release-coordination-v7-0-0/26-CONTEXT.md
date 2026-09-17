@@ -1,12 +1,12 @@
 # Phase 26: Release Coordination - v7.0.0 - Context
 
 **Gathered:** 2026-09-14T18:11:49Z
-**Status:** Ready for planning
+**Status:** Needs replanning after prerelease strategy reset
 
 <domain>
 ## Phase Boundary
 
-Phase 26 prepares the coordinated stable `applesauce-*@7.0.0` release without publishing it. It audits and corrects pending changesets, proves all thirteen publishable packages resolve to `7.0.0`, reruns the full clean-checkout release gate, and rewrites local `master` from the last pre-Concord base into one squash commit whose tree exactly matches the reviewed `next` tree. Version mutation, npm publication, pushes, tags, GitHub releases, and a publication runbook are outside this phase.
+Phase 26 prepares the coordinated `applesauce-*@7.0.0` release while preserving the complete development history. The `next` branch is the canonical prerelease branch and publishes disposable timestamped snapshots under npm's `next` dist-tag before a normal ancestry-preserving merge into `master` for the stable release. The abandoned squash candidate and Plans 26-04 through 26-09 remain historical evidence only and must not be resumed.
 
 </domain>
 
@@ -31,11 +31,11 @@ Phase 26 prepares the coordinated stable `applesauce-*@7.0.0` release without pu
 - **D-11:** Keep an explicit package checklist recording each package name, computed `7.0.0` version, and whether its bump is direct or downstream from `applesauce-core` through the current release graph.
 - **D-12:** If a package disappears from the final computed release, diagnose the release graph discrepancy. Do not invent a no-op changeset merely to force inclusion.
 
-### Squash and Reachable History
-- **D-13:** The original reviewed source remains `SOURCE=4786d952e04eb4535e9c776d86adf4058c69801f`, `SOURCE_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617`, and the installed result remains `OLD_INSTALLED_MASTER=399eea787eb86e4eeab3a7c8138092255fce180f` with `OLD_INSTALLED_MASTER_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617`; those identities are retained as superseded-source provenance, not silently redefined. For this user-approved gap closure, the final reviewed release source is `INTENDED_TREE = OLD_INSTALLED_MASTER_TREE` plus exactly two authorized blob replacements and no other tree delta: `.changeset/relay-count-nip45.md` with body `Make \`COUNT\` a validated high-level Observable with configurable policy and NIP-45 HLL utilities.` and `.changeset/relay-event-publish-layering.md` with body `Make \`event\` a one-attempt raw interaction and move authentication, retry, reconnect, and timeout policy to publish.` Both developer-authored edits remain uncommitted and byte-preserved in the developer checkout while their exact blobs are audited into `INTENDED_TREE`.
-- **D-14:** Run a fresh full D-08 gate against exactly `INTENDED_TREE` before reconstructing local `master` from the last pre-Concord base. Only after that gate and independent reconstruction pass, replace the old installed master with one expected-old compare-and-swap to a new squash commit whose tree is byte-identical to `INTENDED_TREE` and whose sole parent is the re-verified base. A normal squash merge onto current `master`, reuse of the old gate alone, or construction from mutable worktree bytes is insufficient. — **Reversibility:** costly — changing the selected base or intended tree requires reconstructing and re-verifying the rewritten branch.
-- **D-15:** Update local `master` with the verified squash commit while leaving `next` and all remote refs untouched.
-- **D-16:** Record the complete supersession chain: original `SOURCE`/`SOURCE_TREE`, `OLD_INSTALLED_MASTER`/`OLD_INSTALLED_MASTER_TREE`, both authorized path→old-blob→approved-blob relationships, `INTENDED_TREE`, fresh-gate commit/tree and terminal hashes, pre-Concord base, resulting `NEW_MASTER`/tree, expected-old CAS proof, tree equality, and the case-insensitive reachable-history absence check for Concord code. The old identities remain provenance for the prior reviewed installation; `INTENDED_TREE` and its fresh gate are the reviewed release source for the new CAS.
+### Prerelease Branch and Preserved History
+- **D-13:** Preserve the complete commit history. `next` is the canonical integration and prerelease branch; do not squash, replace, or reconstruct it from a tree object.
+- **D-14:** Keep local `master` aligned with `origin/master` until the stable release is ready. The stable v7 transition is a normal ancestry-preserving merge from reviewed `next`, never a replacement-master compare-and-swap.
+- **D-15:** Publish disposable timestamped snapshots from a clean `next` checkout under npm's `next` dist-tag. Snapshot versioning must not consume pending changesets or mutate the committed branch.
+- **D-16:** Before each snapshot, validate the consumer-facing changeset set and full release gate. Before stable v7, rerun the gate, verify all thirteen package versions, merge `next` into `master` normally, and let the standard Changesets release workflow produce the stable release.
 
 ### the agent's Discretion
 - Choose the audit matrix filename and exact table layout as long as every pending changeset and all thirteen packages are explicit and traceable.
@@ -50,7 +50,7 @@ Phase 26 prepares the coordinated stable `applesauce-*@7.0.0` release without pu
 **Downstream agents MUST read these before planning or implementing.**
 
 ### Milestone and Release Contract
-- `.planning/ROADMAP.md` - Phase 26 requirements, success criteria, and the squash-history boundary.
+- `.planning/ROADMAP.md` - Phase 26 requirements, success criteria, and the preserved-history prerelease boundary.
 - `.planning/REQUIREMENTS.md` - REL-01, REL-03, and REL-04 definitions and traceability.
 - `.planning/PROJECT.md` - Stable v7 release goal, held v1.2 changesets, and coordinated-major context.
 - `.planning/STATE.md` - Current Phase 26 project position.
@@ -97,8 +97,8 @@ No external specification was introduced during discussion; the repository relea
 ### Integration Points
 - Pending `.changeset/*.md` files integrate phase-level implementation outcomes into the public changelog.
 - Package manifests and `.changeset/config.json` determine the thirteen-package release graph.
-- Local Git refs `next` and `master` are the source and destination of the final history operation; remote refs are verification inputs only and must not be mutated.
-- The candidate pre-Concord base found during discussion is `5d0260e296a15b85bc4e58abc34cde3fb055179c`, the parent of first case-insensitive Concord code commit `452dc444df7e3f48a8099f3917de705e4389d264`. Planning must re-verify this boundary before rewriting history.
+- Local and remote `next` carry the full development history and prerelease state; `master` remains the stable branch until the final normal merge.
+- The abandoned squash candidate is retained only under the local archive ref `archive/v7-squashed-release-candidate`; it is not a release source.
 
 </code_context>
 
@@ -106,8 +106,8 @@ No external specification was introduced during discussion; the repository relea
 ## Specific Ideas
 
 - Keep one reviewable matrix for both release-note truth and the explicit thirteen-package checklist rather than scattering proof across plan summaries.
-- Bind the squash to commit and tree identities, not branch names that can move during execution.
-- Construct and verify the replacement history safely before moving local `master` to it.
+- Run snapshots from clean, disposable state so package-version mutations never contaminate `next`.
+- Keep pending changesets intact across snapshots and consume them only in the stable Changesets release flow.
 
 </specifics>
 

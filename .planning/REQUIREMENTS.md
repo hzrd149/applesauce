@@ -98,7 +98,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### Repository Extraction Cleanup
 
-- [x] **D-01**: Phase 25.5's cleanup boundary is the checked-out repository; removal of Concord references from reachable Git history is deferred to Phase 26's squash merge
+- [x] **D-01**: Phase 25.5's cleanup boundary is the checked-out repository; historical Concord commits remain in the preserved Git history while active release surfaces stay removed
 - [x] **D-05**: Remaining workspace manifests and `pnpm-lock.yaml` contain no Concord package integration or dependency surface
 - [x] **D-08**: Tracked content, filenames, hidden files, documentation, examples, and release records contain no active Concord trace in the final checkout
 - [x] **D-09**: A frozen-lockfile install, focused wallet-lock and falsy application-data regressions, full workspace/docs/examples release gate, and generated-residue cleanup complete without changing `pnpm-lock.yaml` or the pre-install non-generated repository status

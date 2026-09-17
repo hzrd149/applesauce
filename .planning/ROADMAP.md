@@ -312,7 +312,7 @@ Plans:
 
 ### Phase 25.5: Repository Extraction Cleanup (INSERTED)
 
-**Goal:** The checked-out repository contains no active Concord package trace while the remaining workspace and folded Phase 05.1 fixes stay correct; removal from reachable Git history is deferred to Phase 26's squash merge.
+**Goal:** The checked-out repository contains no active Concord package trace while the remaining workspace and folded Phase 05.1 fixes stay correct; historical commits remain preserved in the full Git history.
 **Requirements**: D-01, D-05, D-08, D-09
 **Depends on:** Phase 25
 **Plans:** 2/2 plans complete
@@ -407,14 +407,15 @@ Plans:
 ### Phase 26: Release Coordination — v7.0.0
 
 **Requirements**: REL-01, REL-03, REL-04
-**Scope note:** The squash merge for this release removes Concord code history from the published branch; Phase 25.5 intentionally validates only the checked-out repository.
+**Scope note:** `next` preserves the complete development history and serves as the prerelease branch for timestamped snapshots published under npm's `next` tag. Stable v7 follows through a normal merge into `master`; no history squash or replacement-master CAS is permitted.
+**Strategy reset (2026-09-17):** Plans 26-04 through 26-09 record the abandoned squash-release attempt and must not be re-executed. Replacement plans start at 26-10 and must validate the cleaned changeset set, safe snapshot publication from `next`, and the later ancestry-preserving stable merge.
 **Success Criteria** (what must be TRUE):
 
   1. A `changeset status --verbose --since=master` dry run shows all thirteen remaining publishable packages bumping to 7.0.0, checked off an explicit per-package checklist — including packages with no code changes of their own — rather than assumed from one major changeset.
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 7/9 plans executed
+**Plans**: 7/9 historical plans executed; replacement planning required
 
 Plans:
 **Wave 1**
@@ -447,11 +448,11 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 26-08-PLAN.md — Build the intended-tree-derived identity-bound semantic packet and record exact human acceptance
+- [ ] 26-08-PLAN.md — SUPERSEDED: rejected semantic packet from the abandoned squash candidate; do not resume
 
 **Wave 9** *(blocked on Wave 8 acceptance)*
 
-- [ ] 26-09-PLAN.md — Build the structurally extracted cleanup packet, record exact human acceptance, and close requirements last
+- [ ] 26-09-PLAN.md — SUPERSEDED: squash-candidate cleanup and closure; do not execute
 
 ## Progress
 
@@ -484,7 +485,7 @@ Plans:
 | 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
-| 26. Release Coordination — v7.0.0 | v7.0.0 | 7/9 | In Progress | - |
+| 26. Release Coordination — v7.0.0 | v7.0.0 | 7/9 historical | Replanning | - |
 
 **Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
 

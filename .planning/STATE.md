@@ -4,12 +4,12 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
-status: Blocked at mandatory semantic review; four changesets require remediation
-stopped_at: "Phase 26 Plan 26-08 halted: semantic review rejected four non-consumer-facing changesets"
-last_updated: "2026-09-16T21:04:24.070Z"
-last_activity: 2026-09-16
-last_activity_desc: Plan 26-08 semantic review recorded four rejected changesets
-state_head: 29a27cd3b40fded642225d7b4ddeb18c8244d7bd
+status: needs_planning
+stopped_at: "Phase 26 strategy reset: replan from 26-10 for next-tag snapshots and a normal next-to-master release"
+last_updated: "2026-09-17T15:47:50.000Z"
+last_activity: 2026-09-17
+last_activity_desc: Moved full detached history onto next, restored master to origin/master, and abandoned the squash strategy
+state_head: d4165276
 progress:
   total_phases: 12
   completed_phases: 10
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 ## Current Position
 
-Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
-Plan: 8 of 9
-Status: Blocked at mandatory semantic review; four changesets require remediation
-Last activity: 2026-09-16 — Plan 26-08 semantic review recorded four rejected changesets
+Phase: 26 (Release Coordination — v7.0.0) — REPLANNING
+Plan: 7 of 9 historical; replacement plans start at 26-10
+Status: Needs planning for the `next` snapshot and normal stable-release flow
+Last activity: 2026-09-17 — Full history moved onto `next`; local `master` restored to `origin/master`; squash strategy abandoned
 
 Progress: [██████████] 70/72 plans ([█████████░] 97%)
 
