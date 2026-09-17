@@ -534,9 +534,9 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 ## Session Continuity
 
-Last session: 2026-09-16T02:49:45.160Z
-Stopped at: Phase 26 Plan 26-08 halted: semantic review rejected four non-consumer-facing changesets
-Resume file: None
+Last session: 2026-09-17T15:50:40.642Z
+Stopped at: Phase 26 strategy reset; replacement planning starts at 26-10 on `next`
+Resume file: .planning/phases/26-release-coordination-v7-0-0/.continue-here.md
 
 Stale Phase 13 pause artifacts (`.planning/HANDOFF.json`, `13-.../.continue-here.md`, both from the
 2026-08-05 wave-1 pause) were removed on resume — superseded by Phase 13's completion at 14/14 plans.
@@ -544,4 +544,4 @@ Recoverable from commit `c3be26c2` if ever needed.
 
 ## Operator Next Steps
 
-- Run /gsd-execute-phase 26 --gaps-only to execute the verified release gap plans
+- Run /gsd-plan-phase 26 to replace the superseded squash plans with the `next` snapshot and normal stable-release flow
