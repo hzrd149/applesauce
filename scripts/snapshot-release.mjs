@@ -13,6 +13,7 @@ const configPath = join(root, ".changeset", "config.json");
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const skipVersion = args.includes("--skip-version");
+const verifyOnly = args.includes("--verify-only");
 const isolated = process.env.APPLESAUCE_SNAPSHOT_WORKTREE === "1";
 
 function getArgValue(name) {
@@ -94,7 +95,7 @@ function publishPackages(otp) {
 }
 
 async function getOtp() {
-  if (dryRun) return undefined;
+  if (dryRun || verifyOnly) return undefined;
 
   const otp = getArgValue("--otp") ?? process.env.NPM_CONFIG_OTP ?? process.env.NPM_OTP;
   if (otp) return otp.trim();
@@ -171,5 +172,5 @@ if (!isolated) {
   if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
 
   run("pnpm", ["prerelease-snapshot"]);
-  publishPackages(otp);
+  if (!verifyOnly) publishPackages(otp);
 }

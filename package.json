@@ -12,6 +12,7 @@
     "prerelease-snapshot": "pnpm build && pnpm test",
     "release-snapshot": "node scripts/snapshot-release.mjs",
     "release-next": "node scripts/snapshot-release.mjs --tag next",
+    "verify-next-release": "node scripts/snapshot-release.mjs --tag next --verify-only",
     "test:browser": "vitest",
     "docs": "cd apps/docs && pnpm dev"
   },
