@@ -2,4 +2,4 @@
 "applesauce-relay": patch
 ---
 
-Classify relay CLOSED prefixes with a prototype-safe lookup.
+Treat unrecognized `CLOSED` prefixes that match JavaScript prototype properties as ordinary relay closures instead of invalid errors.

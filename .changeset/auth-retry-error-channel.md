@@ -2,4 +2,4 @@
 "applesauce-relay": patch
 ---
 
-Make the protected `authRetryOperator` consume `AuthRequiredError` directly instead of an internal signal value
+Prevent relay operations from starting a second authentication phase after an authentication retry has already failed.
