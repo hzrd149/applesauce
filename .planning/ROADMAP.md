@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 10/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
+**Plans**: 12/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
 
 Plans:
 **Wave 1**
@@ -448,11 +448,11 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 26-08-PLAN.md — SUPERSEDED: rejected semantic packet from the abandoned squash candidate; do not resume
+- [x] 26-08-PLAN.md — SUPERSEDED: rejected semantic packet from the abandoned squash candidate; do not resume
 
 **Wave 9** *(blocked on Wave 8 acceptance)*
 
-- [ ] 26-09-PLAN.md — SUPERSEDED: squash-candidate cleanup and closure; do not execute
+- [x] 26-09-PLAN.md — SUPERSEDED: squash-candidate cleanup and closure; do not execute
 
 **Replacement Wave 1** *(independent of the abandoned squash-plan dependency chain)*
 
