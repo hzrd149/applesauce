@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 15/18 plans executed; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
+**Plans**: 16/18 plans executed; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
 
 Plans:
 **Wave 1**
@@ -477,7 +477,7 @@ Plans:
 
 **Gap Closure Wave 6** *(blocked on both human checkpoints)*
 
-- [ ] 26-16-PLAN.md — Record semantic acceptance and reconcile audit, validation, and requirements claims
+- [x] 26-16-PLAN.md — Record semantic acceptance and reconcile audit, validation, and requirements claims
 
 **Gap Closure Wave 7** *(protected-ref decision)*
 
