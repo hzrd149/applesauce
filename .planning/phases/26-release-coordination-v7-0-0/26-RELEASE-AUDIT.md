@@ -4,7 +4,7 @@
 
 The source inventory is the current 74 tracked release-note files returned in byte order by `git ls-files '.changeset/*.md'` with `README.md` excluded. Existing IDs remain stable for surviving notes; CS-009 follows its first focused replacement, CS-074 identifies the second replacement, and CS-075 is the post-verification wallet remediation. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
 
-The 73 pre-gap judgments remain the exact semantic-review population established before verification. The current inventory has 74 notes after adding CS-075 for the wallet root fix; that post-verification remediation passes mechanical checks but remains **HUMAN ACCEPTANCE PENDING** for Plan 26-14 rather than inheriting acceptance from the earlier population.
+The 73 pre-gap judgments remain the exact semantic-review subset established before verification. The current inventory has 74 notes after adding CS-075 for the wallet root fix. The human accepted all 74 row-specific semantic judgments under the exact inventory recorded in [`26-SEMANTIC-ACCEPTANCE.md`](./26-SEMANTIC-ACCEPTANCE.md); that artifact binds the accepted IDs, paths, package bumps, bodies, and provenance to schema `phase26-semantic-inventory/v1` and digest `sha256:bed7a41516fc2fe7f6ca623a7afc54e009ebdb049ff7f5b5845b16f774c7baf2`.
 
 An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
 
@@ -83,11 +83,11 @@ An “implementation commit + input path” citation means the immutable `git sh
 | CS-071 | `.changeset/wallet-lock-relays.md` | `applesauce-wallet: patch` | Clear cached relay metadata when locking a wallet. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-072 | `.changeset/wallet-notification-safe-parse.md` | `applesauce-wallet-connect: patch` | `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing. | PASS | 1 | PASS | `.planning/quick/260804-g0c-undefined-over-throw/260804-g0c-SUMMARY.md` | — | RETAIN |
 | CS-073 | `.changeset/wide-donkeys-smile.md` | `applesauce-relay: minor` | Accept synchronous event stores in `NegentropyWriteStore` so a store written to during sync is typed as writeable | PASS | 1 | PASS | `e4d5977c` implementation commit + input path | — | RETAIN |
-| CS-075 | `.changeset/wallet-node-root-import.md` | `applesauce-wallet: patch` | Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency. | PASS | 1 | HUMAN ACCEPTANCE PENDING | Plan 26-13 packed-root Node evidence and focused animated-QR regressions | — | POST-VERIFICATION REMEDIATION — pending Plan 26-14 semantic acceptance |
+| CS-075 | `.changeset/wallet-node-root-import.md` | `applesauce-wallet: patch` | Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency. | PASS | 1 | HUMAN ACCEPTED | Plan 26-13 packed-root Node evidence and focused animated-QR regressions | — | POST-VERIFICATION REMEDIATION — accepted in Plan 26-14 |
 
 ## Final-path accounting
 
-The current pending inventory contains exactly 74 paths and has a one-to-one mapping to the 74 rows above: the exact 73 pre-gap judgments plus CS-075 as post-verification remediation. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
+The current pending inventory contains exactly 74 paths and has a one-to-one mapping to the 74 rows above: the exact 73 pre-gap judgments plus CS-075 as post-verification remediation. Human semantic acceptance covers this exact inventory and no other; line and sentence parser PASS results remain mechanical evidence only. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
 
 ## Final package result
 
@@ -113,7 +113,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic status. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 74 files; CS-075 remains explicitly pending human semantic acceptance. |
+| 1 | Every current pending note is represented exactly once, has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and an explicitly accepted semantic judgment. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`; the dependency-free Node gate passes all 74 files, while the distinct human judgment is bound to the exact inventory by `26-SEMANTIC-ACCEPTANCE.md`. |
 | 2 | The current release graph contains exactly the configured thirteen publishable packages at `7.0.0`, independent of Changesets output order. | PASS | `/tmp/opencode/phase26-10-status.json` passes exact-name set equality and per-row version checks. |
 | 3 | The two held v1.2 notes remain direct inputs to the current release result. | PASS | The status JSON arrays contain `relay-operation-scoped-auth-callbacks` and `sync-loader-auth-hooks`; Task 2 records current behavior evidence. |
 | 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | The captured release base equals local `next`; the isolated executor branch adds only this plan's commits while `next` stays unchanged. Local `master` equals `origin/master`, `master` is an ancestor of `next`, and no squash/CAS evidence remains in this audit. |
@@ -122,7 +122,8 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `.changeset/*.md` | Current consumer release-note population | PASS | 74 tracked pending notes, excluding README, each represented once above; 73 retain their prior judgments and CS-075 is pending Plan 26-14. |
+| `.changeset/*.md` | Current consumer release-note population | PASS | 74 tracked pending notes, excluding README, each represented once above; all 74 semantic judgments are human accepted under the digest-bound inventory. |
+| `26-SEMANTIC-ACCEPTANCE.md` | Durable human semantic judgment | PASS | Records the exact bounded response, all accepted IDs and paths, the 73 pre-gap subset, CS-075, audit content identity, canonical digest, and invalidation rule. |
 | `/tmp/opencode/phase26-10-status.json` | Installed Changesets release projection | PASS | Exact thirteen-package set; every non-`none` release computes `7.0.0`. |
 | `/tmp/opencode/phase26-10-baseline.json` | Schema-v1 checkout/ref/content baseline | PASS | Captured before the audit edit and reserved for Task 2 restoration proof. |
 
@@ -131,6 +132,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 | Current changeset inventory | Changeset audit matrix | Fixed column-two path parser and bijection | WIRED | Duplicate IDs/paths, missing paths, extra paths, and malformed rows fail closed. |
 | Current Changesets JSON | Final package result | Exact name-set/version checks and live `changesets` arrays | WIRED | Empty arrays classify real dependency cascades; no synthetic note forces inclusion. |
 | Historical implementation evidence | Current semantic claims | Row-specific commits, summaries, source, and tests | WIRED | Mechanical sentence success is never used as semantic proof. |
+| Human semantic acceptance | Exact 74-row inventory | `phase26-semantic-inventory/v1` digest and bounded response | WIRED | Any ID/path/package+bump/body/provenance change invalidates acceptance. |
 
 ## Command evidence
 
@@ -279,6 +281,6 @@ The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e
 | SUPPORTED NODE WALLET ROOT PASS | PASS | Node `v26.4.0` imported the exact extracted `applesauce-wallet` archive root with no Bun substitution, resolver override, or runtime flag and returned nonempty exports `Actions`, `Casts`, `Factories`, `Helpers`, `Models`, and `Operations`. |
 | PACKED BYTES IDENTIFIED | PASS | The imported archive SHA-256 is `e52b84416b8d0de3903ef2011af57881b723c1b217c412265081cf0986fab18f`; `.git/gsd-phase-26-release-evidence/wallet-node/result.json` records schema `phase26-wallet-node/v1`, runtime, hash, import status `0`, and exports. |
 | ANIMATED QR RETAINED | PASS | The focused wallet suite keeps ordered fragments, receive progress and reconstruction, deferred-load behavior, and both public helper exports green. |
-| RELEASE NOTE SEMANTICS | HUMAN ACCEPTANCE PENDING | CS-075 passes package/frontmatter, one-line, and one-sentence checks, but Plan 26-14 owns the separate D-02/D-04 human one-change judgment. |
+| RELEASE NOTE SEMANTICS | HUMAN ACCEPTED | CS-075 passes package/frontmatter, one-line, and one-sentence checks, and Plan 26-14's separate D-02/D-04 human judgment is durably bound in `26-SEMANTIC-ACCEPTANCE.md`. |
 
 The Plan 26-11 Bun result is retained above only as historical failure evidence. It is not a supported-runtime pass and no longer supports the representative-import claim.
