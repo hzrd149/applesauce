@@ -260,3 +260,13 @@ The durable machine evidence is `.git/gsd-phase-26-release-evidence/final-source
 | Prospective normal merge proof | PASS | `0f2e2e2278522693fe0a342231c3df55b3c37b3405c50728a9465a7069ba0704` |
 
 The detached checkout returned to the pinned source with an empty porcelain-v2 stream and exact lock, config, 73 changeset, package-manifest, and changelog hashes after guarded removal of ignored generated directories. Release input resolution occurred once from `refs/heads/next`; every gate, oracle, held-note check, source-tree comparison, merge second parent, JSON record, and terminal marker reused the captured OID.
+
+### Final restoration and descendant scope
+
+| Check | Status | Evidence |
+|---|---|---|
+| PRIMARY CHECKOUT RESTORATION PASS | PASS | The recorded disposable path `/tmp/opencode/phase26-12-worktree` and administrative gitdir are absent. Stable `master` and `origin/master` remain identical at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`; all remote-tracking refs, tags, protected local refs, lock/config bytes, 73 changesets, thirteen package manifests, and thirteen changelogs match the schema-v2 entry baseline. |
+| PLANNING-ONLY DESCENDANTS PASS | PASS | `next` remains exactly the immutable source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, so `RELEASE_SOURCE..next` contains no commits. The executor-only descendant at the Task 2 check boundary is `d0aa49181c48f1337a89c063caf774e7fc281244`, changing only `.planning/phases/26-release-coordination-v7-0-0/26-RELEASE-AUDIT.md`; pending closeout paths are restricted to this audit, `26-VALIDATION.md`, `.planning/REQUIREMENTS.md`, and the later `26-12-SUMMARY.md`. |
+| FINAL REPLACEMENT READINESS PASS | PASS | Plans 26-10 through 26-12 jointly prove 73 structured notes, thirteen `7.0.0` packages, both held IDs, the non-publishing snapshot consumer, the exact-source full gate, normal-merge object, planning-only closeout, and complete restoration. Plans 26-04 through 26-09 remain historical and non-gating. |
+
+The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e5c6f48da3e03011` for the schema-v2 baseline and `8cd5899d50f6078556666857fd26779a14adf9586c60b4d603c49dc9e8fd14f7` for the disposable-worktree identity. The durable release-source evidence remains byte-identical to its temporary source record. D-16's later stable transition must merge recorded source OID `6e83afa3532bc054b8fe0c755d7e4942462d89d8` normally into stable master and then use the standard Changesets workflow; neither current `next` nor a later planning tip may replace that OID.
