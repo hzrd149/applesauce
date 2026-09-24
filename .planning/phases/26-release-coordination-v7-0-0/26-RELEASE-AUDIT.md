@@ -55,7 +55,7 @@ An “implementation commit + input path” citation means the immutable `git sh
 | CS-044 | `.changeset/relay-group-request-timeout-suspended.md` | `applesauce-relay: patch` | `RelayGroup.request()`'s operation timeout is now suspended for the duration of a relay's auth phase instead of racing it. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-045 | `.changeset/relay-group-sync-per-relay-isolation.md` | `applesauce-relay: minor` | Emit an attributed `relay-failed` result when one relay fails without ending sibling sync operations. | PASS | 1 | PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | RETAIN |
 | CS-046 | `.changeset/relay-negentropy-rounds.md` | `applesauce-relay: major` | Replace callback-based negentropy with a raw Observable of negotiation rounds. | PASS | 1 | PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | RETAIN |
-| CS-047 | `.changeset/relay-operation-scoped-auth-callbacks.md` | `applesauce-relay: minor` | Move operation-scoped authentication callbacks to publish, request, count, and sync. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md`; `packages/relay/src/types.ts`; `packages/relay/src/relay.ts`; `packages/relay/src/__tests__/relay.test.ts`; 418-test relay suite PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
+| CS-047 | `.changeset/relay-operation-scoped-auth-callbacks.md` | `applesauce-relay: minor` | Move operation-scoped authentication callbacks to publish, request, count, and sync. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md`; `packages/relay/src/types.ts`; `packages/relay/src/relay.ts`; `packages/relay/src/__tests__/relay.test.ts`; 16 files / 418 tests PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
 | CS-048 | `.changeset/relay-publish-response-error-field.md` | `applesauce-relay: minor` | Attach typed errors to relay rejection verdicts and RelayGroup-converted failures. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
 | CS-049 | `.changeset/relay-publish-timeout-marks-itself.md` | `applesauce-relay: patch` | Reject publish calls when their client-side timeout expires. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
 | CS-050 | `.changeset/relay-quiet-empty-auth-invalidation.md` | `applesauce-relay: patch` | Stop logging the auth invalidation line on reset when no authenticated pubkeys were dropped. | PASS | 1 | PASS | `0420f75a` implementation commit + input path | — | RETAIN |
@@ -69,7 +69,7 @@ An “implementation commit + input path” citation means the immutable `git sh
 | CS-058 | `.changeset/shaggy-clowns-smile.md` | `applesauce-relay: minor` | Add `RelayPool.added$` and `RelayPool.removed$` aliases | PASS | 1 | PASS | `165a27ba` implementation commit + input path | — | RETAIN |
 | CS-059 | `.changeset/sqlite-optional-backends.md` | `applesauce-sqlite: patch` | Mark every supported SQLite backend peer as optional for consumer installs. | PASS | 1 | PASS | `f961e73b` implementation/release commit + input path | — | RETAIN |
 | CS-060 | `.changeset/stamp-no-caller-mutation.md` | `applesauce-core: patch` | `stamp()` no longer removes `id` and `sig` from the draft that was passed into it. | PASS | 1 | PASS | `.planning/milestones/v1.1-phases/05.1-symbol-propagation-redesign/05.1-03-SUMMARY.md` | — | RETAIN |
-| CS-061 | `.changeset/sync-loader-auth-hooks.md` | `applesauce-loaders: minor` | Make high-level sync own authentication hooks while the sync loader preserves them across its paginated fallback. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md`; `packages/loaders/src/loaders/sync-loader.ts`; `packages/loaders/src/loaders/__tests__/sync-loader.test.ts`; 130-test loaders suite PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
+| CS-061 | `.changeset/sync-loader-auth-hooks.md` | `applesauce-loaders: minor` | Make high-level sync own authentication hooks while the sync loader preserves them across its paginated fallback. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md`; `packages/loaders/src/loaders/sync-loader.ts`; `packages/loaders/src/loaders/__tests__/sync-loader.test.ts`; 16 files / 130 tests PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
 | CS-062 | `.changeset/sync-loader-auth-phase-timer-leak-fixed.md` | `applesauce-loaders: patch` | `SyncLoader` no longer leaves an auth-phase timer pending after a load is torn down or after a handler settles once its auth phase was already force-closed. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-063 | `.changeset/sync-loader-handlerless-stall-suspension.md` | `applesauce-loaders: patch` | `SyncLoader`'s stall guard is now suspended for the full duration of a relay's auth phase even when the caller supplies no `onAuthRequired` handler. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-064 | `.changeset/sync-loader-wait-for-auth.md` | `applesauce-loaders: minor` | Add `waitForAuth` support to the sync loader so auth-required relays wait for NIP-42 authentication and retry. | PASS | 1 | PASS | `98875b1f` implementation commit + input path | — | RETAIN |
@@ -133,16 +133,26 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 
 ## Command evidence
 
-All Task 1 commands returned status 0:
+All release-audit commands returned status 0:
 
 - `git ls-files --error-unmatch` for every existing Task 1 read path.
 - Canonical release-boundary checks: worktree HEAD equals `next`; local `master` equals `origin/master`; `master` is an ancestor of `next`.
 - `pnpm exec changeset status --verbose --since=master --output=/tmp/opencode/phase26-10-status.json`.
 - Current-note ten-column schema, path-bijection, frontmatter, line, sentence, semantic, exact-package-set, and `7.0.0` assertions.
+- `pnpm build` — 17/17 workspace build targets passed after the clean install populated dependencies.
+- `pnpm --filter applesauce-relay test` — 16 files and 418 tests passed.
+- `pnpm --filter applesauce-loaders test` — 16 files and 130 tests passed.
 
 No versioning, changelog mutation, publication, push, tag creation, hosted release, branch rewrite, or snapshot mutation ran.
 
 ## Held v1.2 notes
 
-- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. Task 2 re-proves high-level publish/request/count/sync auth-option ownership against current relay source and tests.
-- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. Task 2 re-proves direct sync and paginated fallback option preservation against current loaders source and tests.
+- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. `RelayAuthOptions` in `packages/relay/src/types.ts` declares `waitForAuth`, `onAuthRequired`, `authTimeout`, and `authRetries`; `packages/relay/src/relay.ts` makes high-level `publish()`, `request()`, `count()`, and `sync()` own or thread those options. `packages/relay/src/__tests__/relay.test.ts` exercises those operation-scoped paths. `pnpm --filter applesauce-relay test` passed 16 files and 418 tests.
+- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. `packages/loaders/src/loaders/sync-loader.ts` constructs `methodOptions` once, derives one per-relay options object, and passes that same object to direct sync and the paginated fallback. `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` asserts direct sync, direct request, and reference-identical fallback reuse. `pnpm --filter applesauce-loaders test` passed 16 files and 130 tests.
+
+## Checkout restoration
+
+| Check | Status | Evidence |
+|---|---|---|
+| PHASE26-10 RESTORATION PASS | PASS | Schema-v1 baseline SHA-256 `936eb0fb8da68ad398a1b271e2c545d0412695dfec6eca855381a43fee41edea`; protected refs/tags, `next`, `master`, `origin/master`, lock/config/changeset hashes, and non-audit porcelain records remained unchanged. The isolated `worktree-agent-p10` ref advanced only through this plan's required atomic task commit. |
+| Developer state | PASS | The baseline had no dirty paths; `.planning/STATE.md` remained clean, byte-identical to the index, and unstaged. |
