@@ -844,7 +844,7 @@ describe("createReconnectTimer", () => {
     // Verify the subscription errored
     expect(spy.receivedError()).toBe(true);
 
-    expect(reconnectTimer).toHaveBeenCalledWith(expect.any(Error), 0);
+    expect(reconnectTimer).toHaveBeenCalledWith(expect.any(Error), 1);
   });
 
   it("should set ready$ to false until the reconnect timer completes", async () => {

@@ -496,9 +496,6 @@ export class Relay {
         // Changed the connected state to false
         if (this.connected$.value) this.connected$.next(false);
 
-        // Increment the attempts counter
-        this.attempts$.next(this.attempts$.value + 1);
-
         // Reset the state
         this.resetState();
 
@@ -716,8 +713,12 @@ export class Relay {
   protected startReconnectTimer(error: Error | CloseEvent) {
     if (!this.ready) return;
 
-    this.error$.next(error instanceof Error ? error : new Error("Connection error"));
     this._ready$.next(false);
+    // Count recovery attempts here because socket errors (including constructor
+    // failures) may not emit close. The ready guard deduplicates error + close
+    // while recovery is pending, including reentrant error observers.
+    this.attempts$.next(this.attempts$.value + 1);
+    this.error$.next(error instanceof Error ? error : new Error("Connection error"));
 
     // Cancel any previously armed reconnect timer before arming a new one
     this.reconnectSubscription?.unsubscribe();
