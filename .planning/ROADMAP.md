@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 12/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
+**Plans**: 18 plans; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
 
 Plans:
 **Wave 1**
@@ -465,6 +465,27 @@ Plans:
 **Replacement Wave 3** *(blocked on Replacement Wave 2 completion)*
 
 - [x] 26-12-PLAN.md — Prove the normal ancestry-preserving stable merge path and close release readiness
+
+**Gap Closure Wave 4** *(blocked on Replacement Wave 3 completion)*
+
+- [ ] 26-13-PLAN.md — Isolate the wallet UR dependency and prove the actual packed root under supported Node
+
+**Gap Closure Wave 5** *(blocking human review and contract decisions after the wallet correction)*
+
+- [ ] 26-14-PLAN.md — Obtain digest-bound human semantic acceptance for every release-note judgment
+- [ ] 26-15-PLAN.md — Decide whether REL-03 remains literal/incomplete or is formally amended to readiness
+
+**Gap Closure Wave 6** *(blocked on both human checkpoints)*
+
+- [ ] 26-16-PLAN.md — Record semantic acceptance and reconcile audit, validation, and requirements claims
+
+**Gap Closure Wave 7** *(protected-ref decision)*
+
+- [ ] 26-17-PLAN.md — Authorize or decline the exact local `next` fast-forward
+
+**Gap Closure Wave 8** *(blocked on exact-OID authorization)*
+
+- [ ] 26-18-PLAN.md — Fully gate current canonical `next` and regenerate the prospective normal merge proof
 
 ## Progress
 
