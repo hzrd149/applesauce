@@ -2,9 +2,9 @@
 
 ## Method and result
 
-The source inventory is the current 73 tracked release-note files returned in byte order by `git ls-files '.changeset/*.md'` with `README.md` excluded. Existing IDs remain stable for surviving notes; CS-009 follows its first focused replacement and CS-074 identifies the second replacement. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
+The source inventory is the current 74 tracked release-note files returned in byte order by `git ls-files '.changeset/*.md'` with `README.md` excluded. Existing IDs remain stable for surviving notes; CS-009 follows its first focused replacement, CS-074 identifies the second replacement, and CS-075 is the post-verification wallet remediation. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
 
-The cleaned result is 73 current notes: the former two-change timer note is represented by two focused notes, the documentation-only `core-stamp-comment` note remains recorded as a historical removal, and the three semantic-review rejections now use consumer-facing wording from `d4165276`. There are no unresolved semantic decisions.
+The 73 pre-gap judgments remain the exact semantic-review population established before verification. The current inventory has 74 notes after adding CS-075 for the wallet root fix; that post-verification remediation passes mechanical checks but remains **HUMAN ACCEPTANCE PENDING** for Plan 26-14 rather than inheriting acceptance from the earlier population.
 
 An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
 
@@ -83,10 +83,11 @@ An “implementation commit + input path” citation means the immutable `git sh
 | CS-071 | `.changeset/wallet-lock-relays.md` | `applesauce-wallet: patch` | Clear cached relay metadata when locking a wallet. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-072 | `.changeset/wallet-notification-safe-parse.md` | `applesauce-wallet-connect: patch` | `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing. | PASS | 1 | PASS | `.planning/quick/260804-g0c-undefined-over-throw/260804-g0c-SUMMARY.md` | — | RETAIN |
 | CS-073 | `.changeset/wide-donkeys-smile.md` | `applesauce-relay: minor` | Accept synchronous event stores in `NegentropyWriteStore` so a store written to during sync is typed as writeable | PASS | 1 | PASS | `e4d5977c` implementation commit + input path | — | RETAIN |
+| CS-075 | `.changeset/wallet-node-root-import.md` | `applesauce-wallet: patch` | Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency. | PASS | 1 | HUMAN ACCEPTANCE PENDING | Plan 26-13 packed-root Node evidence and focused animated-QR regressions | — | POST-VERIFICATION REMEDIATION — pending Plan 26-14 semantic acceptance |
 
 ## Final-path accounting
 
-The current pending inventory contains exactly 73 paths and has a one-to-one mapping to the 73 rows above. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
+The current pending inventory contains exactly 74 paths and has a one-to-one mapping to the 74 rows above: the exact 73 pre-gap judgments plus CS-075 as post-verification remediation. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
 
 ## Final package result
 
@@ -105,14 +106,14 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 | applesauce-relay | 7.0.0 | direct | `["auth-retry-error-channel","brave-ids-batch","lucky-pans-shave","relay-auth-family-re-layer","relay-auth-lifecycle-debug-logging","relay-auth-log-namespace-order","relay-auth-wire-request-context","relay-closed-prefix-safety","relay-count-nip45","relay-event-publish-layering","relay-group-count-progressive","relay-group-error-surface","relay-group-sync-per-relay-isolation","relay-negentropy-rounds","relay-operation-scoped-auth-callbacks","relay-publish-response-error-field","relay-publish-timeout-marks-itself","relay-quiet-empty-auth-invalidation","relay-req-family-re-layer","relay-sync-outcomes","shaggy-clowns-smile","tall-months-invite","wait-for-auth-pubkeys","wide-donkeys-smile"]` |
 | applesauce-signers | 7.0.0 | downstream dependency cascade | `[]` |
 | applesauce-sqlite | 7.0.0 | direct | `["sqlite-optional-backends"]` |
-| applesauce-wallet | 7.0.0 | direct | `["wallet-lock-relays"]` |
+| applesauce-wallet | 7.0.0 | direct | `["wallet-lock-relays","wallet-node-root-import"]` |
 | applesauce-wallet-connect | 7.0.0 | direct | `["wait-for-paid-timer-fixes"]` |
 
 ## Observable truths
 
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic judgment. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 73 files. |
+| 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic status. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 74 files; CS-075 remains explicitly pending human semantic acceptance. |
 | 2 | The current release graph contains exactly the configured thirteen publishable packages at `7.0.0`, independent of Changesets output order. | PASS | `/tmp/opencode/phase26-10-status.json` passes exact-name set equality and per-row version checks. |
 | 3 | The two held v1.2 notes remain direct inputs to the current release result. | PASS | The status JSON arrays contain `relay-operation-scoped-auth-callbacks` and `sync-loader-auth-hooks`; Task 2 records current behavior evidence. |
 | 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | The captured release base equals local `next`; the isolated executor branch adds only this plan's commits while `next` stays unchanged. Local `master` equals `origin/master`, `master` is an ancestor of `next`, and no squash/CAS evidence remains in this audit. |
@@ -121,7 +122,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `.changeset/*.md` | Current consumer release-note population | PASS | 73 tracked pending notes, excluding README, each represented once above. |
+| `.changeset/*.md` | Current consumer release-note population | PASS | 74 tracked pending notes, excluding README, each represented once above; 73 retain their prior judgments and CS-075 is pending Plan 26-14. |
 | `/tmp/opencode/phase26-10-status.json` | Installed Changesets release projection | PASS | Exact thirteen-package set; every non-`none` release computes `7.0.0`. |
 | `/tmp/opencode/phase26-10-baseline.json` | Schema-v1 checkout/ref/content baseline | PASS | Captured before the audit edit and reserved for Task 2 restoration proof. |
 
@@ -220,7 +221,7 @@ The dedicated executor branch `worktree-agent-p11` began at the same immutable O
 |---|---|---|
 | 13 TARBALLS PASS | PASS | `pnpm --dir packages/<name> pack --pack-destination /tmp/opencode/phase26-11-tarballs` produced exactly thirteen archives; every embedded manifest has the expected package name and shared `0.0.0-next-20260924153023` version. |
 | CONSUMER INSTALL PASS | PASS | One isolated pnpm 11.10.0 consumer installed all thirteen local tarballs together with lifecycle scripts disabled. Because the snapshot is intentionally unpublished, a consumer-local `pnpm-workspace.yaml` override mapped every transitive `applesauce-*` edge to its matching tarball instead of consulting npm. |
-| REPRESENTATIVE IMPORTS PASS | PASS | Node imported core, relay, common, loaders, accounts, signers, and wallet-connect roots; Bun imported all eight required roots including wallet. The wallet Node root remains affected by `@gandlaf21/bc-ur@1.1.12`'s extensionless ESM import, while the bundler-compatible Bun import and the examples build pass. |
+| HISTORICAL WALLET NODE IMPORT FAILURE | FAIL | Node imported seven representative roots but rejected the wallet root through `@gandlaf21/bc-ur@1.1.12`'s extensionless ESM import. Bun loaded the wallet only as historical diagnostic evidence; it was never supported-Node success and is superseded by Plan 26-13. |
 | TEMPORARY WORKTREE REMOVED | PASS | Consumer and tarball paths were removed first; tracked disposable mutations were restored path-by-path; `git worktree remove /tmp/opencode/phase26-11-worktree` removed both the checkout and its recorded administrative gitdir. |
 | PRIMARY CHECKOUT RESTORATION PASS | PASS | Branch remains `worktree-agent-p11`; protected `next`, its tree, `master`, `origin/master`, lock/config bytes, 73 release notes, `.planning/STATE.md`, and the baseline porcelain-v2 stream are unchanged. Only the dedicated executor ref advanced through this plan's required atomic commit. |
 | CHANGESET HASH RESTORATION PASS | PASS | Every one of the 73 baseline changeset paths exists at its original SHA-256; no snapshot versioning mutation reached `next`. |
@@ -270,3 +271,14 @@ The detached checkout returned to the pinned source with an empty porcelain-v2 s
 | FINAL REPLACEMENT READINESS PASS | PASS | Plans 26-10 through 26-12 jointly prove 73 structured notes, thirteen `7.0.0` packages, both held IDs, the non-publishing snapshot consumer, the exact-source full gate, normal-merge object, planning-only closeout, and complete restoration. Plans 26-04 through 26-09 remain historical and non-gating. |
 
 The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e5c6f48da3e03011` for the schema-v2 baseline and `8cd5899d50f6078556666857fd26779a14adf9586c60b4d603c49dc9e8fd14f7` for the disposable-worktree identity. The durable release-source evidence remains byte-identical to its temporary source record. D-16's later stable transition must merge recorded source OID `6e83afa3532bc054b8fe0c755d7e4942462d89d8` normally into stable master and then use the standard Changesets workflow; neither current `next` nor a later planning tip may replace that OID.
+
+## Plan 26-13 wallet Node remediation
+
+| Claim | Status | Evidence |
+|---|---|---|
+| SUPPORTED NODE WALLET ROOT PASS | PASS | Node `v26.4.0` imported the exact extracted `applesauce-wallet` archive root with no Bun substitution, resolver override, or runtime flag and returned nonempty exports `Actions`, `Casts`, `Factories`, `Helpers`, `Models`, and `Operations`. |
+| PACKED BYTES IDENTIFIED | PASS | The imported archive SHA-256 is `e52b84416b8d0de3903ef2011af57881b723c1b217c412265081cf0986fab18f`; `.git/gsd-phase-26-release-evidence/wallet-node/result.json` records schema `phase26-wallet-node/v1`, runtime, hash, import status `0`, and exports. |
+| ANIMATED QR RETAINED | PASS | The focused wallet suite keeps ordered fragments, receive progress and reconstruction, deferred-load behavior, and both public helper exports green. |
+| RELEASE NOTE SEMANTICS | HUMAN ACCEPTANCE PENDING | CS-075 passes package/frontmatter, one-line, and one-sentence checks, but Plan 26-14 owns the separate D-02/D-04 human one-change judgment. |
+
+The Plan 26-11 Bun result is retained above only as historical failure evidence. It is not a supported-runtime pass and no longer supports the representative-import claim.
