@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 8/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
+**Plans**: 9/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
 
 Plans:
 **Wave 1**
@@ -460,7 +460,7 @@ Plans:
 
 **Replacement Wave 2** *(blocked on Replacement Wave 1 completion)*
 
-- [ ] 26-11-PLAN.md — Validate disposable next snapshots and the coherent thirteen-package consumer surface without publication
+- [x] 26-11-PLAN.md — Validate disposable next snapshots and the coherent thirteen-package consumer surface without publication
 
 **Replacement Wave 3** *(blocked on Replacement Wave 2 completion)*
 
