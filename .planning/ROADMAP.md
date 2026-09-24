@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 7/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
+**Plans**: 8/12 plans executed; Plans 26-04 through 26-09 are historical/superseded and replacements begin at 26-10
 
 Plans:
 **Wave 1**
@@ -456,7 +456,7 @@ Plans:
 
 **Replacement Wave 1** *(independent of the abandoned squash-plan dependency chain)*
 
-- [ ] 26-10-PLAN.md — Reconcile the cleaned changeset audit, held notes, and exact thirteen-package 7.0.0 result
+- [x] 26-10-PLAN.md — Reconcile the cleaned changeset audit, held notes, and exact thirteen-package 7.0.0 result
 
 **Replacement Wave 2** *(blocked on Replacement Wave 1 completion)*
 
