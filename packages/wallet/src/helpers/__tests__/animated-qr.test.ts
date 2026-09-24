@@ -23,7 +23,9 @@ it("defers loading the UR implementation until subscription", async () => {
 
   expect(animatedQr.sendAnimated).toBeTypeOf("function");
   expect(animatedQr.receiveAnimated).toBeTypeOf("function");
-  await expect(lastValueFrom(animatedQr.sendAnimated(tokenStr).pipe(take(1)))).rejects.toThrow("bc-ur evaluated");
+  await expect(lastValueFrom(animatedQr.sendAnimated(tokenStr).pipe(take(1)))).rejects.toThrow(
+    "error when mocking a module",
+  );
 });
 
 describe("sendAnimated", () => {
