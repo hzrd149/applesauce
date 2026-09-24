@@ -213,3 +213,19 @@ All commands below returned status 0 in the detached worktree:
 - `APPLESAUCE_SNAPSHOT_WORKTREE=1 node scripts/snapshot-release.mjs --tag next --verify-only` — snapshot versioning, 17 workspace builds, 13 package builds, and the same 2,235-test suite passed without publication.
 
 The dedicated executor branch `worktree-agent-p11` began at the same immutable OID as `next`; release inputs came only from `refs/heads/next`. Local `master` remained equal to `origin/master` at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`, and `master` remained an ancestor of `next`.
+
+### Pack, consumer, and restoration evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| 13 TARBALLS PASS | PASS | `pnpm --dir packages/<name> pack --pack-destination /tmp/opencode/phase26-11-tarballs` produced exactly thirteen archives; every embedded manifest has the expected package name and shared `0.0.0-next-20260924153023` version. |
+| CONSUMER INSTALL PASS | PASS | One isolated pnpm 11.10.0 consumer installed all thirteen local tarballs together with lifecycle scripts disabled. Because the snapshot is intentionally unpublished, a consumer-local `pnpm-workspace.yaml` override mapped every transitive `applesauce-*` edge to its matching tarball instead of consulting npm. |
+| REPRESENTATIVE IMPORTS PASS | PASS | Node imported core, relay, common, loaders, accounts, signers, and wallet-connect roots; Bun imported all eight required roots including wallet. The wallet Node root remains affected by `@gandlaf21/bc-ur@1.1.12`'s extensionless ESM import, while the bundler-compatible Bun import and the examples build pass. |
+| TEMPORARY WORKTREE REMOVED | PASS | Consumer and tarball paths were removed first; tracked disposable mutations were restored path-by-path; `git worktree remove /tmp/opencode/phase26-11-worktree` removed both the checkout and its recorded administrative gitdir. |
+| PRIMARY CHECKOUT RESTORATION PASS | PASS | Branch remains `worktree-agent-p11`; protected `next`, its tree, `master`, `origin/master`, lock/config bytes, 73 release notes, `.planning/STATE.md`, and the baseline porcelain-v2 stream are unchanged. Only the dedicated executor ref advanced through this plan's required atomic commit. |
+| CHANGESET HASH RESTORATION PASS | PASS | Every one of the 73 baseline changeset paths exists at its original SHA-256; no snapshot versioning mutation reached `next`. |
+| REF AND TAG RESTORATION PASS | PASS | All 262 baseline refs other than the dedicated executor ref match exactly, no ref or tag was added, and `next` remains `750fec4e93290e644aa838425a9dfcf20a0c82f1`. |
+
+The isolated consumer resolved all thirteen installed manifests to `0.0.0-next-20260924153023`. No npm publish, registry write, tag, push, hosted release, branch rewrite, or protected-ref mutation occurred.
+
+Evidence files remained present through every equality check. Their final SHA-256 values were `cac2a6076cb879fe390509421041e9c73f21ee47939daf23178e592fe49c930a` for `/tmp/opencode/phase26-11-baseline.json` and `bcc1693acd235a923d1db7c7a91ae6c880f60eee5139ee62777778a509f56e76` for `/tmp/opencode/phase26-11-worktree.json`; both are deleted only after this audit update and the final restoration assertion pass.
