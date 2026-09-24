@@ -156,3 +156,76 @@ No versioning, changelog mutation, publication, push, tag creation, hosted relea
 |---|---|---|
 | PHASE26-10 RESTORATION PASS | PASS | Schema-v1 baseline SHA-256 `936eb0fb8da68ad398a1b271e2c545d0412695dfec6eca855381a43fee41edea`; protected refs/tags, `next`, `master`, `origin/master`, lock/config/changeset hashes, and non-audit porcelain records remained unchanged. The isolated `worktree-agent-p10` ref advanced only through this plan's required atomic task commit. |
 | Developer state | PASS | The baseline had no dirty paths; `.planning/STATE.md` remained clean, byte-identical to the index, and unstaged. |
+
+## Plan 26-11 immutable next snapshot evidence
+
+### Observable truths
+
+| # | Truth | Status | Evidence |
+|---|---|---|---|
+| 1 | NEXT SNAPSHOT GATE PASS | PASS | Detached worktree `/tmp/opencode/phase26-11-worktree` pinned source `750fec4e93290e644aa838425a9dfcf20a0c82f1` and tree `59ef11ef9b1fb1c69895f3ce703c485d0cccac11`; the frozen full gate and isolated verify-only snapshot command returned status 0. |
+| 2 | 13 snapshot packages share one timestamped version | PASS | All thirteen non-private linked manifests resolve to `0.0.0-next-20260924153023`; the exact names are recorded below. |
+| 3 | CONFIG RESTORATION PASS | PASS | `.changeset/config.json` returned to SHA-256 `0a89968a98d8596451710c1f206e3ee54de3a10d13debcea0f9c9ca8122c99f6`, exactly matching the pinned source and checkout baseline. |
+| 4 | Every pending release note remains available | PASS | All 73 tracked changeset paths and SHA-256 values match the baseline after restoring the snapshot versioner's disposable deletions from pinned `HEAD`; local `next` was never mutated. |
+| 5 | NO PUBLICATION | PASS | `scripts/snapshot-release.mjs` ran with `--verify-only`; its publish loop and OTP/registry publication path were not entered, and no tag, push, release, or ref mutation command ran. |
+
+### Snapshot package set
+
+| Package | Snapshot version | Status |
+|---|---|---|
+| `applesauce-accounts` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-actions` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-common` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-content` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-core` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-extra` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-loaders` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-react` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-relay` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-signers` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-sqlite` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-wallet-connect` | `0.0.0-next-20260924153023` | PASS |
+| `applesauce-wallet` | `0.0.0-next-20260924153023` | PASS |
+
+### Artifact and link evidence
+
+| Artifact | Expected | Status | Details |
+|---|---|---|---|
+| `/tmp/opencode/phase26-11-baseline.json` | Schema-v1 checkout/ref/content baseline | PASS | SHA-256 `cac2a6076cb879fe390509421041e9c73f21ee47939daf23178e592fe49c930a`; records the dedicated executor checkout at the exact `next` OID, every ref/tag OID, porcelain-v2 bytes, lock/config hashes, and 73 changeset hashes. |
+| `/tmp/opencode/phase26-11-worktree.json` | Schema-v1 disposable identity | PASS | SHA-256 `bcc1693acd235a923d1db7c7a91ae6c880f60eee5139ee62777778a509f56e76`; records the detached path, administrative gitdir, pinned source/tree, tarball path, and consumer path. |
+| Snapshot-versioned manifests | One coherent prerelease set | PASS | Exact thirteen-name equality against `.changeset/config.json`; one version matching `0.0.0-next-YYYYMMDDHHMMSS`. |
+
+| From | To | Via | Status | Details |
+|---|---|---|---|---|
+| `refs/heads/next` | Snapshot-versioned package manifests | Detached worktree plus `APPLESAUCE_SNAPSHOT_WORKTREE=1` | WIRED | The source OID/tree were resolved before worktree creation; snapshot mutation remained disposable. |
+| Pending changesets | Stable release flow | Path/hash equality against schema-v1 baseline | WIRED | Versioning's disposable deletions were restored from pinned `HEAD`; no note changed or disappeared from `next`. |
+| Snapshot manifests | Isolated consumer probe | Thirteen local tarballs | PENDING TASK 2 | Task 2 owns pack, install, import, removal, and restoration proof. |
+
+### Command evidence
+
+All commands below returned status 0 in the detached worktree:
+
+- `pnpm install --frozen-lockfile` — lockfile resolution remained frozen.
+- `pnpm test` — 232 files passed, 1 skipped; 2,235 tests passed, 2 skipped; 13 package builds passed.
+- `pnpm build` — 17/17 workspace build targets passed.
+- `pnpm --filter applesauce-docs build` — VitePress build completed.
+- `pnpm --filter applesauce-examples build` — TypeScript and Vite build completed.
+- `APPLESAUCE_SNAPSHOT_WORKTREE=1 node scripts/snapshot-release.mjs --tag next --verify-only` — snapshot versioning, 17 workspace builds, 13 package builds, and the same 2,235-test suite passed without publication.
+
+The dedicated executor branch `worktree-agent-p11` began at the same immutable OID as `next`; release inputs came only from `refs/heads/next`. Local `master` remained equal to `origin/master` at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`, and `master` remained an ancestor of `next`.
+
+### Pack, consumer, and restoration evidence
+
+| Check | Status | Evidence |
+|---|---|---|
+| 13 TARBALLS PASS | PASS | `pnpm --dir packages/<name> pack --pack-destination /tmp/opencode/phase26-11-tarballs` produced exactly thirteen archives; every embedded manifest has the expected package name and shared `0.0.0-next-20260924153023` version. |
+| CONSUMER INSTALL PASS | PASS | One isolated pnpm 11.10.0 consumer installed all thirteen local tarballs together with lifecycle scripts disabled. Because the snapshot is intentionally unpublished, a consumer-local `pnpm-workspace.yaml` override mapped every transitive `applesauce-*` edge to its matching tarball instead of consulting npm. |
+| REPRESENTATIVE IMPORTS PASS | PASS | Node imported core, relay, common, loaders, accounts, signers, and wallet-connect roots; Bun imported all eight required roots including wallet. The wallet Node root remains affected by `@gandlaf21/bc-ur@1.1.12`'s extensionless ESM import, while the bundler-compatible Bun import and the examples build pass. |
+| TEMPORARY WORKTREE REMOVED | PASS | Consumer and tarball paths were removed first; tracked disposable mutations were restored path-by-path; `git worktree remove /tmp/opencode/phase26-11-worktree` removed both the checkout and its recorded administrative gitdir. |
+| PRIMARY CHECKOUT RESTORATION PASS | PASS | Branch remains `worktree-agent-p11`; protected `next`, its tree, `master`, `origin/master`, lock/config bytes, 73 release notes, `.planning/STATE.md`, and the baseline porcelain-v2 stream are unchanged. Only the dedicated executor ref advanced through this plan's required atomic commit. |
+| CHANGESET HASH RESTORATION PASS | PASS | Every one of the 73 baseline changeset paths exists at its original SHA-256; no snapshot versioning mutation reached `next`. |
+| REF AND TAG RESTORATION PASS | PASS | All 262 baseline refs other than the dedicated executor ref match exactly, no ref or tag was added, and `next` remains `750fec4e93290e644aa838425a9dfcf20a0c82f1`. |
+
+The isolated consumer resolved all thirteen installed manifests to `0.0.0-next-20260924153023`. No npm publish, registry write, tag, push, hosted release, branch rewrite, or protected-ref mutation occurred.
+
+Evidence files remained present through every equality check. Their final SHA-256 values were `cac2a6076cb879fe390509421041e9c73f21ee47939daf23178e592fe49c930a` for `/tmp/opencode/phase26-11-baseline.json` and `bcc1693acd235a923d1db7c7a91ae6c880f60eee5139ee62777778a509f56e76` for `/tmp/opencode/phase26-11-worktree.json`; both are deleted only after this audit update and the final restoration assertion pass.
