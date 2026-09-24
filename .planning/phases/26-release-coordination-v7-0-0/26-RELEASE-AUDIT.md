@@ -4,7 +4,7 @@
 
 The source inventory is the current 74 tracked release-note files returned in byte order by `git ls-files '.changeset/*.md'` with `README.md` excluded. Existing IDs remain stable for surviving notes; CS-009 follows its first focused replacement, CS-074 identifies the second replacement, and CS-075 is the post-verification wallet remediation. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
 
-The 73 pre-gap judgments remain the exact semantic-review population established before verification. The current inventory has 74 notes after adding CS-075 for the wallet root fix; that post-verification remediation passes mechanical checks but remains **HUMAN ACCEPTANCE PENDING** for Plan 26-14 rather than inheriting acceptance from the earlier population.
+The 73 pre-gap judgments remain the exact semantic-review subset established before verification. The current inventory has 74 notes after adding CS-075 for the wallet root fix. The human accepted all 74 row-specific semantic judgments under the exact inventory recorded in [`26-SEMANTIC-ACCEPTANCE.md`](./26-SEMANTIC-ACCEPTANCE.md); that artifact binds the accepted IDs, paths, package bumps, bodies, and provenance to schema `phase26-semantic-inventory/v1` and digest `sha256:bed7a41516fc2fe7f6ca623a7afc54e009ebdb049ff7f5b5845b16f774c7baf2`.
 
 An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
 
@@ -83,15 +83,15 @@ An “implementation commit + input path” citation means the immutable `git sh
 | CS-071 | `.changeset/wallet-lock-relays.md` | `applesauce-wallet: patch` | Clear cached relay metadata when locking a wallet. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-072 | `.changeset/wallet-notification-safe-parse.md` | `applesauce-wallet-connect: patch` | `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing. | PASS | 1 | PASS | `.planning/quick/260804-g0c-undefined-over-throw/260804-g0c-SUMMARY.md` | — | RETAIN |
 | CS-073 | `.changeset/wide-donkeys-smile.md` | `applesauce-relay: minor` | Accept synchronous event stores in `NegentropyWriteStore` so a store written to during sync is typed as writeable | PASS | 1 | PASS | `e4d5977c` implementation commit + input path | — | RETAIN |
-| CS-075 | `.changeset/wallet-node-root-import.md` | `applesauce-wallet: patch` | Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency. | PASS | 1 | HUMAN ACCEPTANCE PENDING | Plan 26-13 packed-root Node evidence and focused animated-QR regressions | — | POST-VERIFICATION REMEDIATION — pending Plan 26-14 semantic acceptance |
+| CS-075 | `.changeset/wallet-node-root-import.md` | `applesauce-wallet: patch` | Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency. | PASS | 1 | HUMAN ACCEPTED | Plan 26-13 packed-root Node evidence and focused animated-QR regressions | — | POST-VERIFICATION REMEDIATION — accepted in Plan 26-14 |
 
 ## Final-path accounting
 
-The current pending inventory contains exactly 74 paths and has a one-to-one mapping to the 74 rows above: the exact 73 pre-gap judgments plus CS-075 as post-verification remediation. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
+The current pending inventory contains exactly 74 paths and has a one-to-one mapping to the 74 rows above: the exact 73 pre-gap judgments plus CS-075 as post-verification remediation. Human semantic acceptance covers this exact inventory and no other; line and sentence parser PASS results remain mechanical evidence only. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
 
 ## Final package result
 
-The current preserved-history oracle is `pnpm exec changeset status --verbose --since=master --output=/tmp/opencode/phase26-10-status.json`. Its non-`none` release-name set is exactly the thirteen configured publishable packages, every computed version is `7.0.0`, and classification is derived only from whether the live `changesets` array is nonempty. No no-op release note was added.
+The latest release-graph oracle is `pnpm exec changeset status --verbose --since=master`; its non-`none` release-name set is exactly the thirteen configured publishable packages, every computed version is `7.0.0`, and classification is derived only from whether the live `changesets` array is nonempty. No no-op release note was added. This package result does not identify or authorize a release source: Plan 26-18 must rerun it while gating the then-current canonical `next` tip.
 
 | Package | Version | Final classification | Exact changesets array |
 |---|---|---|---|
@@ -113,16 +113,19 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic status. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 74 files; CS-075 remains explicitly pending human semantic acceptance. |
+| 1 | Every current pending note is represented exactly once, has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and an explicitly accepted semantic judgment. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`; the dependency-free Node gate passes all 74 files, while the distinct human judgment is bound to the exact inventory by `26-SEMANTIC-ACCEPTANCE.md`. |
 | 2 | The current release graph contains exactly the configured thirteen publishable packages at `7.0.0`, independent of Changesets output order. | PASS | `/tmp/opencode/phase26-10-status.json` passes exact-name set equality and per-row version checks. |
 | 3 | The two held v1.2 notes remain direct inputs to the current release result. | PASS | The status JSON arrays contain `relay-operation-scoped-auth-callbacks` and `sync-loader-auth-hooks`; Task 2 records current behavior evidence. |
-| 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | The captured release base equals local `next`; the isolated executor branch adds only this plan's commits while `next` stays unchanged. Local `master` equals `origin/master`, `master` is an ancestor of `next`, and no squash/CAS evidence remains in this audit. |
+| 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | Local `master` remains aligned with `origin/master`, the stable transition remains a future normal ancestry-preserving merge, and no squash/CAS evidence governs the release. |
+| 5 | The amended REL-03 release-candidate-readiness contract is satisfied without claiming shipment. | PASS | Plan 26-15 records the human `amend-readiness` decision; CS-047 and CS-061 are present, direct, truthful, and behavior-tested. The decision authorizes no publication, versioning, push, tag, hosted release, or real master merge. |
+| 6 | The release source is the fully gated current canonical `next` tip. | GAPS FOUND | Historical Plan 26-12 evidence is stale for current release authority. Plan 26-18 must capture and gate the then-current canonical `next`; REL-01 remains incomplete until that succeeds. |
 
 ## Artifact and link evidence
 
 | Artifact | Expected | Status | Details |
 |---|---|---|---|
-| `.changeset/*.md` | Current consumer release-note population | PASS | 74 tracked pending notes, excluding README, each represented once above; 73 retain their prior judgments and CS-075 is pending Plan 26-14. |
+| `.changeset/*.md` | Current consumer release-note population | PASS | 74 tracked pending notes, excluding README, each represented once above; all 74 semantic judgments are human accepted under the digest-bound inventory. |
+| `26-SEMANTIC-ACCEPTANCE.md` | Durable human semantic judgment | PASS | Records the exact bounded response, all accepted IDs and paths, the 73 pre-gap subset, CS-075, audit content identity, canonical digest, and invalidation rule. |
 | `/tmp/opencode/phase26-10-status.json` | Installed Changesets release projection | PASS | Exact thirteen-package set; every non-`none` release computes `7.0.0`. |
 | `/tmp/opencode/phase26-10-baseline.json` | Schema-v1 checkout/ref/content baseline | PASS | Captured before the audit edit and reserved for Task 2 restoration proof. |
 
@@ -131,6 +134,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 | Current changeset inventory | Changeset audit matrix | Fixed column-two path parser and bijection | WIRED | Duplicate IDs/paths, missing paths, extra paths, and malformed rows fail closed. |
 | Current Changesets JSON | Final package result | Exact name-set/version checks and live `changesets` arrays | WIRED | Empty arrays classify real dependency cascades; no synthetic note forces inclusion. |
 | Historical implementation evidence | Current semantic claims | Row-specific commits, summaries, source, and tests | WIRED | Mechanical sentence success is never used as semantic proof. |
+| Human semantic acceptance | Exact 74-row inventory | `phase26-semantic-inventory/v1` digest and bounded response | WIRED | Any ID/path/package+bump/body/provenance change invalidates acceptance. |
 
 ## Command evidence
 
@@ -231,20 +235,22 @@ The isolated consumer resolved all thirteen installed manifests to `0.0.0-next-2
 
 Evidence files remained present through every equality check. Their final SHA-256 values were `cac2a6076cb879fe390509421041e9c73f21ee47939daf23178e592fe49c930a` for `/tmp/opencode/phase26-11-baseline.json` and `bcc1693acd235a923d1db7c7a91ae6c880f60eee5139ee62777778a509f56e76` for `/tmp/opencode/phase26-11-worktree.json`; both are deleted only after this audit update and the final restoration assertion pass.
 
-## Plan 26-12 immutable final release source
+## Historical Plan 26-12 evidence
+
+This section is **historical Plan 26-12 evidence**, not a current release-source instruction. Source `6e83afa3532bc054b8fe0c755d7e4942462d89d8` and prospective merge `20b7853c525daa43fdf139648b9aeaf58b7cf7f5` proved the normal-merge method against that earlier tree, but subsequent preserved-history work advanced canonical `next`. Neither OID is authorized for the future stable merge. Current validation remains `gaps_found` until Plan 26-18 captures, fully gates, and proves a prospective normal merge for the then-current canonical `next`.
 
 ### Exact-source gate
 
 | Claim | Status | Evidence |
 |---|---|---|
-| EXACT RELEASE SOURCE GATE PASS | PASS | Immutable source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, tree `ec5046e21248f0c8cd92f17997c682f4b678b255`, passed every D-08/D-16 command in a detached disposable worktree. |
+| HISTORICAL EXACT-SOURCE GATE PASS | HISTORICAL PASS | Source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, tree `ec5046e21248f0c8cd92f17997c682f4b678b255`, passed every D-08/D-16 command in a detached disposable worktree at the time of Plan 26-12. |
 | STRUCTURED CHANGESET ACCOUNTING PASS | PASS | The fixed ten-column parser found 73 unique `CS-NNN` rows and a bijection with all 73 tracked pending `.changeset/*.md` paths; every note passed package/bump, body-line, sentence, and semantic-evidence checks. |
 | 13 PACKAGE ORACLE PASS | PASS | Changesets reported exactly the thirteen checklist packages at `7.0.0`, with arrays and direct/cascade classifications identical to Plan 26-10; both held IDs remain direct inputs. |
-| PROSPECTIVE NORMAL MERGE PASS | PASS | Unreachable commit `20b7853c525daa43fdf139648b9aeaf58b7cf7f5` has ordered parents stable master `ec51f7d4ecfd3db6099e786e8eec0062255588d4` then exact source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, and tree `ec5046e21248f0c8cd92f17997c682f4b678b255`. Both parent ancestries are preserved. |
+| HISTORICAL PROSPECTIVE NORMAL MERGE PASS | HISTORICAL PASS | Unreachable commit `20b7853c525daa43fdf139648b9aeaf58b7cf7f5` has ordered parents stable master `ec51f7d4ecfd3db6099e786e8eec0062255588d4` then historical source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, and tree `ec5046e21248f0c8cd92f17997c682f4b678b255`. It demonstrates ancestry preservation but is not the future merge object. |
 | NO NPM PUBLICATION | PASS | No publish, registry, OTP, version, changelog, tag, push, or hosted-release operation ran. |
 | NO REAL MASTER MERGE | PASS | The merge object is unreachable evidence only; local `master` remains exactly equal to `origin/master` at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`. |
 
-The durable machine evidence is `.git/gsd-phase-26-release-evidence/final-source/release-source.json` with SHA-256 `0e7ec3637396da21f6c348c2342605d4875f617a2a84ee6b8a739602ae264960`. Its atomic terminal marker contains exactly `COMPLETE 6e83afa3532bc054b8fe0c755d7e4942462d89d8`. This immutable OID, not a later planning descendant or mutable branch name, is the sole source authorized for the later stable merge.
+The historical machine evidence is `.git/gsd-phase-26-release-evidence/final-source/release-source.json` with SHA-256 `0e7ec3637396da21f6c348c2342605d4875f617a2a84ee6b8a739602ae264960`. Its terminal marker describes only the completed Plan 26-12 gate. It does not authorize a later stable merge and must not override the Plan 26-18 current-tip gate.
 
 ### Full D-08/D-16 command ledger
 
@@ -268,9 +274,9 @@ The detached checkout returned to the pinned source with an empty porcelain-v2 s
 |---|---|---|
 | PRIMARY CHECKOUT RESTORATION PASS | PASS | The recorded disposable path `/tmp/opencode/phase26-12-worktree` and administrative gitdir are absent. Stable `master` and `origin/master` remain identical at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`; all remote-tracking refs, tags, protected local refs, lock/config bytes, 73 changesets, thirteen package manifests, and thirteen changelogs match the schema-v2 entry baseline. |
 | PLANNING-ONLY DESCENDANTS PASS | PASS | `next` remains exactly the immutable source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, so `RELEASE_SOURCE..next` contains no commits. The executor-only descendant at the Task 2 check boundary is `d0aa49181c48f1337a89c063caf774e7fc281244`, changing only `.planning/phases/26-release-coordination-v7-0-0/26-RELEASE-AUDIT.md`; pending closeout paths are restricted to this audit, `26-VALIDATION.md`, `.planning/REQUIREMENTS.md`, and the later `26-12-SUMMARY.md`. |
-| FINAL REPLACEMENT READINESS PASS | PASS | Plans 26-10 through 26-12 jointly prove 73 structured notes, thirteen `7.0.0` packages, both held IDs, the non-publishing snapshot consumer, the exact-source full gate, normal-merge object, planning-only closeout, and complete restoration. Plans 26-04 through 26-09 remain historical and non-gating. |
+| HISTORICAL REPLACEMENT READINESS PASS | HISTORICAL PASS | Plans 26-10 through 26-12 proved 73 structured notes, thirteen `7.0.0` packages, both held IDs, a non-publishing snapshot consumer, an exact-source full gate, a normal-merge object, planning-only closeout, and complete restoration for their then-current source. Plans 26-04 through 26-09 remain historical and non-gating. |
 
-The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e5c6f48da3e03011` for the schema-v2 baseline and `8cd5899d50f6078556666857fd26779a14adf9586c60b4d603c49dc9e8fd14f7` for the disposable-worktree identity. The durable release-source evidence remains byte-identical to its temporary source record. D-16's later stable transition must merge recorded source OID `6e83afa3532bc054b8fe0c755d7e4942462d89d8` normally into stable master and then use the standard Changesets workflow; neither current `next` nor a later planning tip may replace that OID.
+The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e5c6f48da3e03011` for the schema-v2 baseline and `8cd5899d50f6078556666857fd26779a14adf9586c60b4d603c49dc9e8fd14f7` for the disposable-worktree identity. The historical release-source evidence remains byte-identical to its temporary source record. D-16's later stable transition must use Plan 26-18's fully gated current canonical `next` OID in a normal merge to stable master and then use the standard Changesets workflow.
 
 ## Plan 26-13 wallet Node remediation
 
@@ -279,6 +285,14 @@ The entry evidence hashes are `501f92f160e86a555ff84fb03e6dbd85c50bba0f79bcc432e
 | SUPPORTED NODE WALLET ROOT PASS | PASS | Node `v26.4.0` imported the exact extracted `applesauce-wallet` archive root with no Bun substitution, resolver override, or runtime flag and returned nonempty exports `Actions`, `Casts`, `Factories`, `Helpers`, `Models`, and `Operations`. |
 | PACKED BYTES IDENTIFIED | PASS | The imported archive SHA-256 is `e52b84416b8d0de3903ef2011af57881b723c1b217c412265081cf0986fab18f`; `.git/gsd-phase-26-release-evidence/wallet-node/result.json` records schema `phase26-wallet-node/v1`, runtime, hash, import status `0`, and exports. |
 | ANIMATED QR RETAINED | PASS | The focused wallet suite keeps ordered fragments, receive progress and reconstruction, deferred-load behavior, and both public helper exports green. |
-| RELEASE NOTE SEMANTICS | HUMAN ACCEPTANCE PENDING | CS-075 passes package/frontmatter, one-line, and one-sentence checks, but Plan 26-14 owns the separate D-02/D-04 human one-change judgment. |
+| RELEASE NOTE SEMANTICS | HUMAN ACCEPTED | CS-075 passes package/frontmatter, one-line, and one-sentence checks, and Plan 26-14's separate D-02/D-04 human judgment is durably bound in `26-SEMANTIC-ACCEPTANCE.md`. |
 
 The Plan 26-11 Bun result is retained above only as historical failure evidence. It is not a supported-runtime pass and no longer supports the representative-import claim.
+
+## Current release disposition
+
+- **SUPPORTED NODE WALLET ROOT PASS:** Plan 26-13's plain-Node packed-tarball import is the current wallet compatibility evidence; the Plan 26-11 Bun substitution remains a historical failed probe only.
+- **REL-03 — COMPLETE under amended readiness contract:** Plan 26-15's exact `amend-readiness` response replaces literal shipment with held-note presence and verified release-candidate readiness. CS-047 and CS-061 satisfy that amended contract. They have not been published or shipped.
+- **REL-04 — COMPLETE:** Plan 26-14's human response is bound to all 74 current rows by `26-SEMANTIC-ACCEPTANCE.md`.
+- **REL-01 — GAPS FOUND:** the current canonical `next` has not yet passed Plan 26-18's final exact-tip gate.
+- **D-06 — BINDING:** do not run `changeset version`, mutate versions or changelogs, publish packages, push branches, create tags or hosted releases, or perform the real master merge.
