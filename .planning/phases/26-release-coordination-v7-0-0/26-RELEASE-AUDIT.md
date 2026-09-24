@@ -2,27 +2,26 @@
 
 ## Method and result
 
-The source inventory is the 73 tracked release-note files returned by `git ls-files '.changeset/*.md'` with `README.md` excluded before edits. IDs are alphabetical and stable against that inventory. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
+The source inventory is the current 73 tracked release-note files returned in byte order by `git ls-files '.changeset/*.md'` with `README.md` excluded. Existing IDs remain stable for surviving notes; CS-009 follows its first focused replacement and CS-074 identifies the second replacement. Every row was reviewed separately for package/bump, exact body, Markdown line shape, `Intl.Segmenter("en", { granularity: "sentence" })` count, and whether the sentence describes one shipped change supported by the cited evidence. Parser success is only mechanical evidence; the Semantic column records the separate provenance-backed judgment required by REL-04.
 
-The result is 71 byte-identical retains, one parser-only rewrite, and one two-change input split into two focused notes. The split changes the final pending population to 74 files while preserving exactly 73 source-input rows. There are no unresolved semantic decisions.
+The cleaned result is 73 current notes: the former two-change timer note is represented by two focused notes, the documentation-only `core-stamp-comment` note remains recorded as a historical removal, and the three semantic-review rejections now use consumer-facing wording from `d4165276`. There are no unresolved semantic decisions.
 
-The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision against its row-specific evidence. An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
+An “implementation commit + input path” citation means the immutable `git show <commit> -- <changeset> <sibling source/test paths>` diff contains both the exact release metadata and its implementation; consolidation citations additionally follow predecessor-note history to current named test families. Summary citations below are only used where that exact summary names the audited note or the exact behavior, never as generic phase-theme evidence.
 
-| ID | Input path | Package + bump | Exact final body (or split bodies) | Line | Sentence | Semantic | Provenance | Held | Disposition / final path |
+| ID | Input path | Package + bump | Exact final body | Line | Sentence | Semantic | Provenance | Held | Disposition / final path |
 |---|---|---|---|---|---|---|---|---|---|
 | CS-001 | `.changeset/add-is-valid-seal.md` | `applesauce-common: minor` | Add `isValidSeal`, a type guard that checks an event is a NIP-59 seal with a valid id and signature. | PASS | 1 | PASS | `422ce62b` implementation commit + input path | — | RETAIN |
 | CS-002 | `.changeset/android-native-account-restore-fields.md` | `applesauce-accounts: patch` | Restore the persisted `id` and metadata of `AndroidNativeAccount` when rehydrating from JSON. | PASS | 1 | PASS | `44416390` implementation commit + input path | — | RETAIN |
 | CS-003 | `.changeset/android-native-signer-seed-pubkey.md` | `applesauce-signers: patch`<br>`applesauce-accounts: patch` | Seed `AndroidNativeSigner` with the persisted pubkey so relaunching an app does not re-prompt the signer app for `getPublicKey`. | PASS | 1 | PASS | `44416390` implementation commit + input path | — | RETAIN |
-| CS-004 | `.changeset/auth-retry-error-channel.md` | `applesauce-relay: patch` | Make the protected `authRetryOperator` consume `AuthRequiredError` directly instead of an internal signal value | PASS | 1 | PASS | `db7ed4a7` implementation commit + input path | — | RETAIN |
+| CS-004 | `.changeset/auth-retry-error-channel.md` | `applesauce-relay: patch` | Prevent relay operations from starting a second authentication phase after an authentication retry has already failed. | PASS | 1 | PASS | `d4165276` consumer-facing revision; `db7ed4a7` implementation commit + input path | — | REVISE — consumer-visible failure behavior |
 | CS-005 | `.changeset/brave-ids-batch.md` | `applesauce-relay: minor` | Batch sync requests for missing events into REQs of up to 500 ids, configurable with `batchSize` | PASS | 1 | PASS | `e4d5977c` implementation commit + input path | — | RETAIN |
 | CS-006 | `.changeset/cache-write-frozen-throws.md` | `applesauce-core: minor` | Writing a cached value onto a frozen event now throws instead of failing silently. | PASS | 1 | PASS | `bfe32678` consolidation + predecessor note history and current cache tests | — | RETAIN |
 | CS-007 | `.changeset/cache-writes-hidden-from-spread.md` | `applesauce-core: patch` | Cached values are no longer copied by an object spread, so a duplicated event can no longer carry a stale cached value forward. | PASS | 1 | PASS | `bfe32678` consolidation + predecessor note history and current cache tests | — | RETAIN |
 | CS-008 | `.changeset/chat-message-factory.md` | `applesauce-common: minor` | Add a NIP-C7 chat message factory for building kind 9 chat messages and their replies. | PASS | 1 | PASS | `696b860a` implementation commit + input path | — | RETAIN |
-| CS-009 | `.changeset/clamp-timer-delays.md` | `applesauce-core: patch`<br>`applesauce-wallet-connect: patch` | Core: Clamp NIP-40 expiration timer delays to Node's 32-bit limit so far-future events do not trigger a `TimeoutOverflowWarning` hot loop.<br>Wallet Connect: Fix `waitForPaid()` timer handling so invoices without an expiry do not reject immediately and far-future expiry delays stay within Node's 32-bit limit. | PASS | 1 each | PASS — two independent package changes separated | `.planning/quick/260805-ds0-clamp-expirationmanager-settimeout-delay/260805-ds0-SUMMARY.md` and current timer tests | — | SPLIT → `.changeset/clamp-expiration-timer-delay.md`, `.changeset/wait-for-paid-timer-fixes.md`; the independently shipped stale ExpirationManager bookkeeping note is historical and is not duplicated |
+| CS-009 | `.changeset/clamp-expiration-timer-delay.md` | `applesauce-core: patch` | Clamp NIP-40 expiration timer delays to Node's 32-bit limit so far-future events do not trigger a `TimeoutOverflowWarning` hot loop. | PASS | 1 | PASS | `.planning/quick/260805-ds0-clamp-expirationmanager-settimeout-delay/260805-ds0-SUMMARY.md` and current core timer tests | — | RETAIN — focused replacement for the historical combined timer note |
 | CS-010 | `.changeset/comment-parent-rumor.md` | `applesauce-common: minor` | Support NIP-59 rumors as the parent of a NIP-22 comment. | PASS | 1 | PASS | `557a8c17` implementation commit + input path | — | RETAIN |
 | CS-011 | `.changeset/common-falsy-app-data.md` | `applesauce-common: patch` | Preserve valid falsy JSON values when parsing application data. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-012 | `.changeset/copy-symbols-guards.md` | `applesauce-core: patch` | Decrypted content and signature verification results are no longer copied onto a different version of a replaceable event. | PASS | 1 | PASS | `bfe32678` consolidation + predecessor note history and current symbol tests | — | RETAIN |
-| CS-013 | `.changeset/core-stamp-comment.md` | `applesauce-core: patch` | Clarify that `stamp` writes its copied plaintext cache non-enumerably. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-014 | `.changeset/forum-thread-nip7d.md` | `applesauce-common: minor` | Add NIP-7D forum thread support with a thread factory, cast, helpers, and a title operation. | PASS | 1 | PASS | `560e193d` implementation commit + input path | — | RETAIN |
 | CS-015 | `.changeset/generic-common-helpers.md` | `applesauce-common: minor` | The NIP-10 reference, reaction emoji, hashtag, and content warning helpers now accept unsigned rumors as well as signed events. | PASS | 1 | PASS | `bfe32678` consolidation + v1.0 implementation history | — | RETAIN |
 | CS-016 | `.changeset/generic-event-stores.md` | `applesauce-core: minor` | Event stores, models, casts, and helpers are now generic over the event type, so they can hold unsigned rumors as well as signed events. | PASS | 1 | PASS | `bfe32678` consolidation + v1.0 implementation history | — | RETAIN |
@@ -30,7 +29,7 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 | CS-018 | `.changeset/group-pointer-lossless-roundtrip.md` | `applesauce-common: patch` | Preserve complete normalized relay endpoints when group pointers round-trip through compatibility strings. | PASS | 1 | PASS | `82fe2739` implementation/test commit + input path | — | RETAIN |
 | CS-019 | `.changeset/hidden-content-unlock-guards.md` | `applesauce-common: patch` | The hidden-content unlock guards now report unlocked only after the hidden values are decrypted, so the matching unlock helpers no longer resolve undefined. | PASS | 1 | PASS | `bfe32678` consolidation + current hidden-content guard tests | — | REWRITE → same path (removed `is...Unlocked` parser ambiguity) |
 | CS-020 | `.changeset/hidden-tags-undefined-not-throw.md` | `applesauce-core: minor` | `getHiddenTags` now returns undefined when the hidden content is not valid tags instead of throwing. | PASS | 1 | PASS | `.planning/quick/260804-g0c-undefined-over-throw/260804-g0c-SUMMARY.md` | — | RETAIN |
-| CS-021 | `.changeset/loaders-sync-fallback-auth.md` | `applesauce-loaders: patch` | Close sync authentication phases before starting the paginated request fallback. | PASS | 1 | PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | RETAIN |
+| CS-021 | `.changeset/loaders-sync-fallback-auth.md` | `applesauce-loaders: patch` | Resume timeout tracking before a sync loader falls back to paginated requests so the fallback cannot hang indefinitely. | PASS | 1 | PASS | `d4165276` consumer-facing revision; `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | REVISE — consumer-visible timeout behavior |
 | CS-022 | `.changeset/lock-app-data-clears-plaintext.md` | `applesauce-common: patch` | `lockAppData` now clears the decrypted content so `getAppDataContent` returns undefined after locking. | PASS | 1 | PASS | `.planning/milestones/v1.1-phases/05.1-symbol-propagation-redesign/05.1-05-SUMMARY.md` | — | RETAIN |
 | CS-023 | `.changeset/logger-colors.md` | `applesauce-core: minor` | Add colored logger output with a stable per-namespace color and a `+Nms` time diff | PASS | 1 | PASS | `a4c6cd50` implementation commit + input path | — | RETAIN |
 | CS-024 | `.changeset/logger-sink-record.md` | `applesauce-core: minor` | Pass a structured `LogRecord` as a second argument to logger sinks | PASS | 1 | PASS | `a4c6cd50` implementation commit + input path | — | RETAIN |
@@ -46,7 +45,7 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 | CS-034 | `.changeset/relay-auth-retry-bound-not-reset-by-req-open.md` | `applesauce-relay: patch` | `req()`, `request()`, and `subscription()` auth-required retries are now correctly bounded by `authRetries` instead of being silently reset by the synthetic `OPEN` message emitted on every resubscribe. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-035 | `.changeset/relay-auth-timeout-bounded-wait.md` | `applesauce-relay: minor` | An operation that previously waited indefinitely against an auth-required relay now fails with a timeout after 30 seconds by default, since `waitForAuth` no longer pre-blocks the operation on the relay-wide auth-required flags and the wait is instead bounded by the new `authTimeout` option — pass `authTimeout: false` to restore the previous indefinite wait for out-of-band authentication. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-07-SUMMARY.md` | — | RETAIN |
 | CS-036 | `.changeset/relay-auth-wire-request-context.md` | `applesauce-relay: minor` | The auth-required handler context now carries the exact NIP-01/NIP-77 request that triggered it, discriminated by wire verb (`REQ`/`COUNT`/`EVENT`/`NEG-OPEN`), replacing the previous read/publish/sync category. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/14-auth-lifecycle-debug-logging/14-07-SUMMARY.md` | — | RETAIN |
-| CS-037 | `.changeset/relay-closed-prefix-safety.md` | `applesauce-relay: patch` | Classify relay CLOSED prefixes with a prototype-safe lookup. | PASS | 1 | PASS | `25909a1d` implementation commit + input path | — | RETAIN |
+| CS-037 | `.changeset/relay-closed-prefix-safety.md` | `applesauce-relay: patch` | Treat unrecognized `CLOSED` prefixes that match JavaScript prototype properties as ordinary relay closures instead of invalid errors. | PASS | 1 | PASS | `d4165276` consumer-facing revision; `25909a1d` implementation commit + input path | — | REVISE — consumer-visible closure classification |
 | CS-038 | `.changeset/relay-count-nip45.md` | `applesauce-relay: minor` | Make `COUNT` a validated high-level Observable with configurable policy and NIP-45 HLL utilities. | PASS | 1 | PASS | `.planning/phases/19-count-becomes-the-high-level-member/19-03-SUMMARY.md` | — | RETAIN |
 | CS-039 | `.changeset/relay-event-publish-layering.md` | `applesauce-relay: major` | Make `event` a one-attempt raw interaction and move authentication, retry, reconnect, and timeout policy to publish. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
 | CS-040 | `.changeset/relay-group-count-progressive.md` | `applesauce-relay: major` | Make Group and Pool COUNT emit progressive per-relay success and failure outcomes. | PASS | 1 | PASS | `.planning/phases/23-group-count-isolation/23-VERIFICATION.md` | — | RETAIN |
@@ -56,7 +55,7 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 | CS-044 | `.changeset/relay-group-request-timeout-suspended.md` | `applesauce-relay: patch` | `RelayGroup.request()`'s operation timeout is now suspended for the duration of a relay's auth phase instead of racing it. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-045 | `.changeset/relay-group-sync-per-relay-isolation.md` | `applesauce-relay: minor` | Emit an attributed `relay-failed` result when one relay fails without ending sibling sync operations. | PASS | 1 | PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | RETAIN |
 | CS-046 | `.changeset/relay-negentropy-rounds.md` | `applesauce-relay: major` | Replace callback-based negentropy with a raw Observable of negotiation rounds. | PASS | 1 | PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md` | — | RETAIN |
-| CS-047 | `.changeset/relay-operation-scoped-auth-callbacks.md` | `applesauce-relay: minor` | Move operation-scoped authentication callbacks to publish, request, count, and sync. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md`; `packages/relay/src/types.ts`; `packages/relay/src/relay.ts`; `packages/relay/src/__tests__/relay.test.ts`; 418-test relay suite PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
+| CS-047 | `.changeset/relay-operation-scoped-auth-callbacks.md` | `applesauce-relay: minor` | Move operation-scoped authentication callbacks to publish, request, count, and sync. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md`; `packages/relay/src/types.ts`; `packages/relay/src/relay.ts`; `packages/relay/src/__tests__/relay.test.ts`; 16 files / 418 tests PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
 | CS-048 | `.changeset/relay-publish-response-error-field.md` | `applesauce-relay: minor` | Attach typed errors to relay rejection verdicts and RelayGroup-converted failures. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
 | CS-049 | `.changeset/relay-publish-timeout-marks-itself.md` | `applesauce-relay: patch` | Reject publish calls when their client-side timeout expires. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
 | CS-050 | `.changeset/relay-quiet-empty-auth-invalidation.md` | `applesauce-relay: patch` | Stop logging the auth invalidation line on reset when no authenticated pubkeys were dropped. | PASS | 1 | PASS | `0420f75a` implementation commit + input path | — | RETAIN |
@@ -70,7 +69,7 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 | CS-058 | `.changeset/shaggy-clowns-smile.md` | `applesauce-relay: minor` | Add `RelayPool.added$` and `RelayPool.removed$` aliases | PASS | 1 | PASS | `165a27ba` implementation commit + input path | — | RETAIN |
 | CS-059 | `.changeset/sqlite-optional-backends.md` | `applesauce-sqlite: patch` | Mark every supported SQLite backend peer as optional for consumer installs. | PASS | 1 | PASS | `f961e73b` implementation/release commit + input path | — | RETAIN |
 | CS-060 | `.changeset/stamp-no-caller-mutation.md` | `applesauce-core: patch` | `stamp()` no longer removes `id` and `sig` from the draft that was passed into it. | PASS | 1 | PASS | `.planning/milestones/v1.1-phases/05.1-symbol-propagation-redesign/05.1-03-SUMMARY.md` | — | RETAIN |
-| CS-061 | `.changeset/sync-loader-auth-hooks.md` | `applesauce-loaders: minor` | Make high-level sync own authentication hooks while the sync loader preserves them across its paginated fallback. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md`; `packages/loaders/src/loaders/sync-loader.ts`; `packages/loaders/src/loaders/__tests__/sync-loader.test.ts`; 130-test loaders suite PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
+| CS-061 | `.changeset/sync-loader-auth-hooks.md` | `applesauce-loaders: minor` | Make high-level sync own authentication hooks while the sync loader preserves them across its paginated fallback. | PASS | 1 | BEHAVIOR PASS | `.planning/phases/24-negentropy-sync-re-layer/24-10-SUMMARY.md`; `packages/loaders/src/loaders/sync-loader.ts`; `packages/loaders/src/loaders/__tests__/sync-loader.test.ts`; 16 files / 130 tests PASS | HELD v1.2 | RETAIN — current release-tree behavior proven |
 | CS-062 | `.changeset/sync-loader-auth-phase-timer-leak-fixed.md` | `applesauce-loaders: patch` | `SyncLoader` no longer leaves an auth-phase timer pending after a load is torn down or after a handler settles once its auth phase was already force-closed. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-063 | `.changeset/sync-loader-handlerless-stall-suspension.md` | `applesauce-loaders: patch` | `SyncLoader`'s stall guard is now suspended for the full duration of a relay's auth phase even when the caller supplies no `onAuthRequired` handler. | PASS | 1 | PASS | `.planning/milestones/v1.2-phases/13-operation-scoped-nip-42-auth-hooks/13-12-SUMMARY.md` | — | RETAIN |
 | CS-064 | `.changeset/sync-loader-wait-for-auth.md` | `applesauce-loaders: minor` | Add `waitForAuth` support to the sync loader so auth-required relays wait for NIP-42 authentication and retry. | PASS | 1 | PASS | `98875b1f` implementation commit + input path | — | RETAIN |
@@ -79,6 +78,7 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 | CS-067 | `.changeset/verify-event-undefined-fix.md` | `applesauce-core: patch` | Event stores now honor `verifyEvent: undefined` to disable event verification. | PASS | 1 | PASS | `.planning/milestones/v1.0-phases/01-generic-store-foundation/01-04-SUMMARY.md` | — | RETAIN |
 | CS-068 | `.changeset/verify-gift-wrap-seal-signatures.md` | `applesauce-common: patch` | Gift wrap seals are now signature verified before they are trusted, so a seal with an invalid signature is no longer accepted as proof of authorship. | PASS | 1 | PASS | `422ce62b` implementation commit + input path | — | RETAIN |
 | CS-069 | `.changeset/wait-for-auth-pubkeys.md` | `applesauce-relay: minor` | Add `waitForAuth` support to publish, request, count, and sync. | PASS | 1 | PASS | `.planning/phases/18-event-family-re-layer/18-05-SUMMARY.md` | — | RETAIN |
+| CS-074 | `.changeset/wait-for-paid-timer-fixes.md` | `applesauce-wallet-connect: patch` | Fix `waitForPaid()` timer handling so invoices without an expiry do not reject immediately and far-future expiry delays stay within Node's 32-bit limit. | PASS | 1 | PASS | `.planning/quick/260805-ds0-clamp-expirationmanager-settimeout-delay/260805-ds0-SUMMARY.md` and current wallet-connect timer tests | — | RETAIN — focused replacement for the historical combined timer note |
 | CS-070 | `.changeset/wallet-getters-return-undefined.md` | `applesauce-wallet: minor` | The token content, history content, and nutzap P2PK getters now return undefined on malformed input instead of throwing. | PASS | 1 | PASS | `bfe32678` consolidation + predecessor note history and current wallet tests | — | RETAIN |
 | CS-071 | `.changeset/wallet-lock-relays.md` | `applesauce-wallet: patch` | Clear cached relay metadata when locking a wallet. | PASS | 1 | PASS | `.planning/phases/25-ecosystem-riders-react-19-snort-worker-relay-v2/25-04-SUMMARY.md` | — | RETAIN |
 | CS-072 | `.changeset/wallet-notification-safe-parse.md` | `applesauce-wallet-connect: patch` | `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing. | PASS | 1 | PASS | `.planning/quick/260804-g0c-undefined-over-throw/260804-g0c-SUMMARY.md` | — | RETAIN |
@@ -86,116 +86,73 @@ The Task 2 second pass re-opened every RETAIN, REWRITE, and SPLIT decision again
 
 ## Final-path accounting
 
-The final pending inventory contains the 72 surviving input paths (including the rewritten hidden-content note) plus the two timer replacements named by CS-009, for 74 total. The removed combined timer path is represented only as CS-009's source input. Every final path has a row either directly or through that split disposition.
+The current pending inventory contains exactly 73 paths and has a one-to-one mapping to the 73 rows above. The removed `.changeset/clamp-timer-delays.md` and `.changeset/core-stamp-comment.md` paths are historical dispositions only: the former was split into CS-009 and CS-074, while the latter was removed because a source-comment-only correction is not a consumer release change.
 
 ## Final package result
 
-The installed-master oracle is `pnpm exec changeset status --verbose --since=master --output=.git/gsd-phase-26-release-evidence/status.json`. Its non-`none` release-name set is exactly the thirteen configured publishable packages, every computed version is `7.0.0`, and classification is derived only from whether the live `changesets` array is nonempty. No no-op release note was added.
+The current preserved-history oracle is `pnpm exec changeset status --verbose --since=master --output=/tmp/opencode/phase26-10-status.json`. Its non-`none` release-name set is exactly the thirteen configured publishable packages, every computed version is `7.0.0`, and classification is derived only from whether the live `changesets` array is nonempty. No no-op release note was added.
 
 | Package | Version | Final classification | Exact changesets array |
 |---|---|---|---|
-| applesauce-accounts | 7.0.0 | direct | `["android-native-account-restore-fields","android-native-signer-seed-pubkey"]` |
+| applesauce-accounts | 7.0.0 | downstream dependency cascade | `[]` |
 | applesauce-actions | 7.0.0 | downstream dependency cascade | `[]` |
-| applesauce-common | 7.0.0 | direct | `["add-is-valid-seal","chat-message-factory","comment-parent-rumor","common-falsy-app-data","forum-thread-nip7d","generic-common-helpers","gift-wrap-symbols-to-core","group-pointer-lossless-roundtrip","hidden-content-unlock-guards","lock-app-data-clears-plaintext","reaction-parent","seal-parse-failures-return-undefined","verify-gift-wrap-seal-signatures"]` |
+| applesauce-common | 7.0.0 | direct | `["common-falsy-app-data","group-pointer-lossless-roundtrip","hidden-content-unlock-guards"]` |
 | applesauce-content | 7.0.0 | downstream dependency cascade | `[]` |
-| applesauce-core | 7.0.0 | direct | `["cache-write-frozen-throws","cache-writes-hidden-from-spread","clamp-expiration-timer-delay","copy-symbols-guards","core-stamp-comment","generic-event-stores","gift-wrap-symbols-to-core","hidden-tags-undefined-not-throw","logger-colors","logger-sink-record","pubkey-casts-store-cache","remove-event-factory-kind","rumor-stores","rumor-type-and-helpers","stamp-no-caller-mutation","tricky-pots-teach","verify-event-undefined-fix"]` |
+| applesauce-core | 7.0.0 | direct | `["clamp-expiration-timer-delay","logger-colors","logger-sink-record"]` |
 | applesauce-extra | 7.0.0 | downstream dependency cascade | `[]` |
-| applesauce-loaders | 7.0.0 | direct | `["loaders-sync-fallback-auth","sync-loader-auth-hooks","sync-loader-auth-phase-timer-leak-fixed","sync-loader-handlerless-stall-suspension","sync-loader-wait-for-auth"]` |
+| applesauce-loaders | 7.0.0 | direct | `["loaders-sync-fallback-auth","sync-loader-auth-hooks"]` |
 | applesauce-react | 7.0.0 | downstream dependency cascade | `[]` |
-| applesauce-relay | 7.0.0 | direct | `["auth-retry-error-channel","brave-ids-batch","lucky-pans-shave","relay-auth-family-re-layer","relay-auth-handler-sync-throw-mapped","relay-auth-lifecycle-debug-logging","relay-auth-log-namespace-order","relay-auth-resend-req-count-observed","relay-auth-retry-bound-not-reset-by-req-open","relay-auth-timeout-bounded-wait","relay-auth-wire-request-context","relay-closed-prefix-safety","relay-count-nip45","relay-event-publish-layering","relay-group-count-progressive","relay-group-error-surface","relay-group-logger-routing","relay-group-request-error-not-progress","relay-group-request-timeout-suspended","relay-group-sync-per-relay-isolation","relay-negentropy-rounds","relay-operation-scoped-auth-callbacks","relay-publish-response-error-field","relay-publish-timeout-marks-itself","relay-quiet-empty-auth-invalidation","relay-req-family-re-layer","relay-request-timeout-can-fire","relay-sync-outcomes","shaggy-clowns-smile","tall-months-invite","wait-for-auth-pubkeys","wide-donkeys-smile"]` |
-| applesauce-signers | 7.0.0 | direct | `["android-native-signer-seed-pubkey"]` |
+| applesauce-relay | 7.0.0 | direct | `["auth-retry-error-channel","brave-ids-batch","lucky-pans-shave","relay-auth-family-re-layer","relay-auth-lifecycle-debug-logging","relay-auth-log-namespace-order","relay-auth-wire-request-context","relay-closed-prefix-safety","relay-count-nip45","relay-event-publish-layering","relay-group-count-progressive","relay-group-error-surface","relay-group-sync-per-relay-isolation","relay-negentropy-rounds","relay-operation-scoped-auth-callbacks","relay-publish-response-error-field","relay-publish-timeout-marks-itself","relay-quiet-empty-auth-invalidation","relay-req-family-re-layer","relay-sync-outcomes","shaggy-clowns-smile","tall-months-invite","wait-for-auth-pubkeys","wide-donkeys-smile"]` |
+| applesauce-signers | 7.0.0 | downstream dependency cascade | `[]` |
 | applesauce-sqlite | 7.0.0 | direct | `["sqlite-optional-backends"]` |
-| applesauce-wallet | 7.0.0 | direct | `["wallet-getters-return-undefined","wallet-lock-relays"]` |
-| applesauce-wallet-connect | 7.0.0 | direct | `["wait-for-paid-timer-fixes","wallet-notification-safe-parse"]` |
+| applesauce-wallet | 7.0.0 | direct | `["wallet-lock-relays"]` |
+| applesauce-wallet-connect | 7.0.0 | direct | `["wait-for-paid-timer-fixes"]` |
 
-### Installed-master reconstruction and oracle ledger
+## Observable truths
 
-| Field | Value |
-|---|---|
-| Original source | `4786d952e04eb4535e9c776d86adf4058c69801f` |
-| Original source tree | `0099380fb3df8c9e97b4ac19b0066e32e445d617` |
-| Superseded installed master | `399eea787eb86e4eeab3a7c8138092255fce180f` |
-| Superseded installed master tree | `0099380fb3df8c9e97b4ac19b0066e32e445d617` |
-| CS-038 old → approved blob | `8e6d8406e5734f526f728f6a4c44a7a8045f5e0a` → `a7fabf994e8000d5312ebb0bf266e8b7cbf3f5e3` |
-| CS-039 old → approved blob | `a9e95cc1ecc91b0c49022b27207bb1d2057ed6f1` → `b07e37c5ea99bbcef9fc9311a656a14cc773c3cb` |
-| Intended tree | `55ab2be44b61114b559a762b5d43e373180535c9` |
-| Fresh gate commit / tree | `cf52395c865d3b612a74b8d142ae9ce67a4ec4f6` / `55ab2be44b61114b559a762b5d43e373180535c9` |
-| Pre-Concord base | `5d0260e296a15b85bc4e58abc34cde3fb055179c` |
-| Installed master / tree | `d760214907a5d5828498fb9e07a4a013c8326e51` / `55ab2be44b61114b559a762b5d43e373180535c9` |
-| Canonical oracle SHA-256 | `4317ece993d6644cecbfa0bdffdecd6f3903e52007a4ad22959670f08e0c1268` |
-| Expected-old master CAS | PASS — exactly one ledger row |
-| Complete all-ref comparison | PASS — every non-master ref preserved |
-| Developer state preservation | PASS — worktree, index, approved bytes, untracked identities, detached HEAD, and lock unchanged |
-| Reachable scoped Concord scan | PASS — path and content match files empty |
+| # | Truth | Status | Evidence |
+|---|---|---|---|
+| 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic judgment. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 73 files. |
+| 2 | The current release graph contains exactly the configured thirteen publishable packages at `7.0.0`, independent of Changesets output order. | PASS | `/tmp/opencode/phase26-10-status.json` passes exact-name set equality and per-row version checks. |
+| 3 | The two held v1.2 notes remain direct inputs to the current release result. | PASS | The status JSON arrays contain `relay-operation-scoped-auth-callbacks` and `sync-loader-auth-hooks`; Task 2 records current behavior evidence. |
+| 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | The captured release base equals local `next`; the isolated executor branch adds only this plan's commits while `next` stays unchanged. Local `master` equals `origin/master`, `master` is an ancestor of `next`, and no squash/CAS evidence remains in this audit. |
+
+## Artifact and link evidence
+
+| Artifact | Expected | Status | Details |
+|---|---|---|---|
+| `.changeset/*.md` | Current consumer release-note population | PASS | 73 tracked pending notes, excluding README, each represented once above. |
+| `/tmp/opencode/phase26-10-status.json` | Installed Changesets release projection | PASS | Exact thirteen-package set; every non-`none` release computes `7.0.0`. |
+| `/tmp/opencode/phase26-10-baseline.json` | Schema-v1 checkout/ref/content baseline | PASS | Captured before the audit edit and reserved for Task 2 restoration proof. |
+
+| From | To | Via | Status | Details |
+|---|---|---|---|---|
+| Current changeset inventory | Changeset audit matrix | Fixed column-two path parser and bijection | WIRED | Duplicate IDs/paths, missing paths, extra paths, and malformed rows fail closed. |
+| Current Changesets JSON | Final package result | Exact name-set/version checks and live `changesets` arrays | WIRED | Empty arrays classify real dependency cascades; no synthetic note forces inclusion. |
+| Historical implementation evidence | Current semantic claims | Row-specific commits, summaries, source, and tests | WIRED | Mechanical sentence success is never used as semantic proof. |
+
+## Command evidence
+
+All release-audit commands returned status 0:
+
+- `git ls-files --error-unmatch` for every existing Task 1 read path.
+- Canonical release-boundary checks: the captured worktree base equals `next`; local `master` equals `origin/master`; `master` is an ancestor of `next`; later HEAD movement is confined to required commits on `worktree-agent-p10`.
+- `pnpm exec changeset status --verbose --since=master --output=/tmp/opencode/phase26-10-status.json`.
+- Current-note ten-column schema, path-bijection, frontmatter, line, sentence, semantic, exact-package-set, and `7.0.0` assertions.
+- `pnpm build` — 17/17 workspace build targets passed after the clean install populated dependencies.
+- `pnpm --filter applesauce-relay test` — 16 files and 418 tests passed.
+- `pnpm --filter applesauce-loaders test` — 16 files and 130 tests passed.
+
+No versioning, changelog mutation, publication, push, tag creation, hosted release, branch rewrite, or snapshot mutation ran.
 
 ## Held v1.2 notes
 
-- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2, BEHAVIOR PASS):** The final status JSON contains the held ID. `RelayAuthOptions` in `packages/relay/src/types.ts` declares `waitForAuth`, `onAuthRequired`, `authTimeout`, and `authRetries`; `packages/relay/src/relay.ts` routes them through high-level `publish()`, `request()`, `count()`, and `sync()` ownership. `packages/relay/src/__tests__/relay.test.ts` exercises those operation-scoped paths. `pnpm --filter applesauce-relay test` passed 16 files and 418 tests.
-- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2, BEHAVIOR PASS):** The final status JSON contains the held ID. `packages/loaders/src/loaders/sync-loader.ts` constructs one `methodOptions` value, derives one per-relay options object, and passes that exact object to direct sync and the non-auth paginated fallback. `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` asserts direct sync, direct request, and reference-identical fallback reuse. `pnpm --filter applesauce-loaders test` passed 16 files and 130 tests.
+- **CS-047 — `relay-operation-scoped-auth-callbacks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. `RelayAuthOptions` in `packages/relay/src/types.ts` declares `waitForAuth`, `onAuthRequired`, `authTimeout`, and `authRetries`; `packages/relay/src/relay.ts` makes high-level `publish()`, `request()`, `count()`, and `sync()` own or thread those options. `packages/relay/src/__tests__/relay.test.ts` exercises those operation-scoped paths. `pnpm --filter applesauce-relay test` passed 16 files and 418 tests.
+- **CS-061 — `sync-loader-auth-hooks.md` (HELD v1.2, BEHAVIOR PASS):** The current status JSON contains the held ID. `packages/loaders/src/loaders/sync-loader.ts` constructs `methodOptions` once, derives one per-relay options object, and passes that same object to direct sync and the paginated fallback. `packages/loaders/src/loaders/__tests__/sync-loader.test.ts` asserts direct sync, direct request, and reference-identical fallback reuse. `pnpm --filter applesauce-loaders test` passed 16 files and 130 tests.
 
-## Mechanical gate
+## Checkout restoration
 
-The task gate checks exactly 73 stable source rows, validates all 74 final files as one nonblank Markdown line and one `Intl.Segmenter` sentence, rejects unresolved/failing rows, rejects the removed combined timer path, and requires both replacement and held-note paths. Semantic PASS values above are the distinct manual/provenance judgment trail and are not inferred from the parser.
-
-## Frozen full release gate
-
-The complete D-08 gate ran against immutable source `3aa2dd2a73d3c10012abd9ee139d0005aee26393`. Raw output, baselines, hashes, generated-path inventories, final Changesets JSON, and the terminal marker remain under `.git/gsd-phase-26-release-evidence/`.
-
-| Step | Status | Result |
-|---|---:|---|
-| preflight | 0 | PASS |
-| frozen-install | 0 | PASS |
-| workspace-test | 0 | PASS — 232 test files passed, 1 skipped; 2,235 tests passed, 2 skipped |
-| workspace-build | 0 | PASS — all 17 workspace build targets passed |
-| docs-build | 0 | PASS |
-| examples-build | 0 | PASS |
-| changeset-parser | 0 | PASS — 73 stable audit rows and 74 one-line, one-sentence final notes |
-| changeset-status | 0 | PASS — final Changesets JSON regenerated from the gated source |
-| release-assertions | 0 | PASS — exact thirteen-package `7.0.0` set, direct/cascade classifications, and both held IDs |
-| generated-cleanup | 0 | PASS — guarded post-cleanup inventory is empty |
-| status-restoration | 0 | PASS — sorted porcelain snapshots are byte-identical |
-| lock-restoration | 0 | PASS — SHA-256 remained `df7010d518e3ff41990030435520c01a7d94cd829061fab9d97dbb750db46550` |
-| head-restoration | 0 | PASS — command-run HEAD remained the gated source OID |
-
-The terminal marker is `COMPLETE 3aa2dd2a73d3c10012abd9ee139d0005aee26393` and was created atomically only after all thirteen ordered status rows and restoration checks passed. No versioning, package/changelog mutation, publication, push, tag, hosted-release, or runbook action ran.
-
-## Post-gate bookkeeping boundary
-
-The command-run source is the gated OID above, not a later evidence commit. Commit `11477ec7` and the Plan 03 audit/summary closeout are planning-only descendants created after the full gate; they do not redefine the tested source. Plan 04 must prove every descendant between the gated source and its selected release source changes only `.planning/**` (empty commits are also tree-identical) before pinning or rewriting local release history.
-
-## Immutable release-history proof
-
-The release source and destination were pinned only after the clean checkout and terminal gate were rechecked. The pre-Concord boundary was re-proven from source history, the candidate was verified while unreachable, and local `master` moved through expected-old compare-and-swap only after every structural and history check passed.
-
-```text
-SOURCE=4786d952e04eb4535e9c776d86adf4058c69801f
-SOURCE_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
-BASE=5d0260e296a15b85bc4e58abc34cde3fb055179c
-OLD_MASTER=ec51f7d4ecfd3db6099e786e8eec0062255588d4
-CANDIDATE=399eea787eb86e4eeab3a7c8138092255fce180f
-CANDIDATE_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
-RESULTING_MASTER=399eea787eb86e4eeab3a7c8138092255fce180f
-RESULTING_MASTER_TREE=0099380fb3df8c9e97b4ac19b0066e32e445d617
-NEXT_BEFORE=4786d952e04eb4535e9c776d86adf4058c69801f
-HEAD_BEFORE=refs/heads/next
-GATED_SOURCE=3aa2dd2a73d3c10012abd9ee139d0005aee26393
-```
-
-| Proof | Result |
-|---|---|
-| Gated source to pinned source changes only `.planning/**` | PASS |
-| Base is the sole parent of first Concord code commit `452dc444df7e3f48a8099f3917de705e4389d264` | PASS |
-| TREE EQUALITY PASS | Candidate tree equals pinned source tree |
-| SOLE PARENT PASS | Candidate parent equals verified base |
-| ONE POST-BASE COMMIT | PASS |
-| Candidate byte-empty tree diff | PASS |
-| Expected-old `refs/heads/master` compare-and-swap | PASS |
-| Immediate `next`, symbolic HEAD, remote refs, and every other local ref preservation | PASS |
-| CONCORD HISTORY ABSENCE PASS | No case-insensitive path or blob-content match in the scoped product/release surfaces of any commit reachable from resulting local `master` |
-| Detached closeout at immutable SOURCE with `next` unchanged | PASS |
-
-Raw machine-readable identities, before/after ref snapshots, empty match files, and command-status evidence remain in `.git/gsd-phase-26-release-evidence/final.env` and its sibling files. `SOURCE` remains the immutable reviewed release source and the candidate tree. Commit `9aabc544` and every subsequent Phase 26 closeout commit belong only to the detached planning lineage; each is checked to differ from `SOURCE` exclusively under `.planning/**`, with no package, app, changeset, manifest, lockfile, changelog, or build-configuration difference. Local `next` remains exactly `NEXT_BEFORE`, and local `master` will not be rebuilt or moved again during closeout.
-
-<!-- phase26:acceptance:semantic:start -->
-{"type":"semantic","status":"REJECTED","response":"SEMANTIC REVIEW: ACCEPT ALL UNLISTED; REJECT .changeset/auth-retry-error-channel.md: Internal protected-operator refactor only; the note names an internal signal-channel change and no consumer-facing API or observable behavior.; REJECT .changeset/core-stamp-comment.md: Documentation-only source-comment correction; provenance states runtime code did not change, so this is not a consumer-facing API or behavior change.; REJECT .changeset/loaders-sync-fallback-auth.md: Implementation sequencing only; the note says an internal auth phase is closed before fallback but does not state the consumer-visible failure, hang, timeout, or resource behavior corrected.; REJECT .changeset/relay-closed-prefix-safety.md: Implementation-mechanism wording only; prototype-safe lookup is internal and the note does not state the consumer-visible behavior for an unrecognized or prototype-named CLOSED prefix.","scope":{"changesets":74},"timestamp":"2026-09-16T21:00:25Z","packetSha256":"eff5534ac17c47bf415c18ba3a376ad611511ccf74632519ad97cb91c369239d","manifestSha256":"1cda992301d92fc95e0fd057baf7fe72c86449eb9c826bfe5fa4285b695fc508","oracleSha256":"4317ece993d6644cecbfa0bdffdecd6f3903e52007a4ad22959670f08e0c1268","master":"d760214907a5d5828498fb9e07a4a013c8326e51","intendedTree":"55ab2be44b61114b559a762b5d43e373180535c9"}
-<!-- phase26:acceptance:semantic:end -->
+| Check | Status | Evidence |
+|---|---|---|
+| PHASE26-10 RESTORATION PASS | PASS | Schema-v1 baseline SHA-256 `936eb0fb8da68ad398a1b271e2c545d0412695dfec6eca855381a43fee41edea`; protected refs/tags, `next`, `master`, `origin/master`, lock/config/changeset hashes, and non-audit porcelain records remained unchanged. The isolated `worktree-agent-p10` ref advanced only through this plan's required atomic task commit. |
+| Developer state | PASS | The baseline had no dirty paths; `.planning/STATE.md` remained clean, byte-identical to the index, and unstaged. |
