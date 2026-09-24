@@ -115,7 +115,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 | 1 | Every current pending note is represented exactly once and has valid frontmatter, one nonempty Markdown body line, one segmented sentence, and a separate semantic judgment. | PASS | The fixed ten-column matrix is bijective with `git ls-files '.changeset/*.md'`, and the dependency-free Node gate passes all 73 files. |
 | 2 | The current release graph contains exactly the configured thirteen publishable packages at `7.0.0`, independent of Changesets output order. | PASS | `/tmp/opencode/phase26-10-status.json` passes exact-name set equality and per-row version checks. |
 | 3 | The two held v1.2 notes remain direct inputs to the current release result. | PASS | The status JSON arrays contain `relay-operation-scoped-auth-callbacks` and `sync-loader-auth-hooks`; Task 2 records current behavior evidence. |
-| 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | `HEAD` equals local `next`, local `master` equals `origin/master`, and `master` is an ancestor of `next`; no squash/CAS evidence remains in this audit. |
+| 4 | Preserved history governs the release path and the obsolete squash candidate is not an oracle. | PASS | The captured release base equals local `next`; the isolated executor branch adds only this plan's commits while `next` stays unchanged. Local `master` equals `origin/master`, `master` is an ancestor of `next`, and no squash/CAS evidence remains in this audit. |
 
 ## Artifact and link evidence
 
@@ -136,7 +136,7 @@ The current preserved-history oracle is `pnpm exec changeset status --verbose --
 All release-audit commands returned status 0:
 
 - `git ls-files --error-unmatch` for every existing Task 1 read path.
-- Canonical release-boundary checks: worktree HEAD equals `next`; local `master` equals `origin/master`; `master` is an ancestor of `next`.
+- Canonical release-boundary checks: the captured worktree base equals `next`; local `master` equals `origin/master`; `master` is an ancestor of `next`; later HEAD movement is confined to required commits on `worktree-agent-p10`.
 - `pnpm exec changeset status --verbose --since=master --output=/tmp/opencode/phase26-10-status.json`.
 - Current-note ten-column schema, path-bijection, frontmatter, line, sentence, semantic, exact-package-set, and `7.0.0` assertions.
 - `pnpm build` — 17/17 workspace build targets passed after the clean install populated dependencies.
