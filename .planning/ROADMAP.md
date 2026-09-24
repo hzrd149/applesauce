@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 18 plans; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
+**Plans**: 13/18 plans executed; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
 
 Plans:
 **Wave 1**
@@ -468,7 +468,7 @@ Plans:
 
 **Gap Closure Wave 4** *(blocked on Replacement Wave 3 completion)*
 
-- [ ] 26-13-PLAN.md — Isolate the wallet UR dependency and prove the actual packed root under supported Node
+- [x] 26-13-PLAN.md — Isolate the wallet UR dependency and prove the actual packed root under supported Node
 
 **Gap Closure Wave 5** *(blocking human review and contract decisions after the wallet correction)*
 
