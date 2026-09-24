@@ -229,3 +229,34 @@ The dedicated executor branch `worktree-agent-p11` began at the same immutable O
 The isolated consumer resolved all thirteen installed manifests to `0.0.0-next-20260924153023`. No npm publish, registry write, tag, push, hosted release, branch rewrite, or protected-ref mutation occurred.
 
 Evidence files remained present through every equality check. Their final SHA-256 values were `cac2a6076cb879fe390509421041e9c73f21ee47939daf23178e592fe49c930a` for `/tmp/opencode/phase26-11-baseline.json` and `bcc1693acd235a923d1db7c7a91ae6c880f60eee5139ee62777778a509f56e76` for `/tmp/opencode/phase26-11-worktree.json`; both are deleted only after this audit update and the final restoration assertion pass.
+
+## Plan 26-12 immutable final release source
+
+### Exact-source gate
+
+| Claim | Status | Evidence |
+|---|---|---|
+| EXACT RELEASE SOURCE GATE PASS | PASS | Immutable source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, tree `ec5046e21248f0c8cd92f17997c682f4b678b255`, passed every D-08/D-16 command in a detached disposable worktree. |
+| STRUCTURED CHANGESET ACCOUNTING PASS | PASS | The fixed ten-column parser found 73 unique `CS-NNN` rows and a bijection with all 73 tracked pending `.changeset/*.md` paths; every note passed package/bump, body-line, sentence, and semantic-evidence checks. |
+| 13 PACKAGE ORACLE PASS | PASS | Changesets reported exactly the thirteen checklist packages at `7.0.0`, with arrays and direct/cascade classifications identical to Plan 26-10; both held IDs remain direct inputs. |
+| PROSPECTIVE NORMAL MERGE PASS | PASS | Unreachable commit `20b7853c525daa43fdf139648b9aeaf58b7cf7f5` has ordered parents stable master `ec51f7d4ecfd3db6099e786e8eec0062255588d4` then exact source `6e83afa3532bc054b8fe0c755d7e4942462d89d8`, and tree `ec5046e21248f0c8cd92f17997c682f4b678b255`. Both parent ancestries are preserved. |
+| NO NPM PUBLICATION | PASS | No publish, registry, OTP, version, changelog, tag, push, or hosted-release operation ran. |
+| NO REAL MASTER MERGE | PASS | The merge object is unreachable evidence only; local `master` remains exactly equal to `origin/master` at `ec51f7d4ecfd3db6099e786e8eec0062255588d4`. |
+
+The durable machine evidence is `.git/gsd-phase-26-release-evidence/final-source/release-source.json` with SHA-256 `0e7ec3637396da21f6c348c2342605d4875f617a2a84ee6b8a739602ae264960`. Its atomic terminal marker contains exactly `COMPLETE 6e83afa3532bc054b8fe0c755d7e4942462d89d8`. This immutable OID, not a later planning descendant or mutable branch name, is the sole source authorized for the later stable merge.
+
+### Full D-08/D-16 command ledger
+
+| Command | Status | Log SHA-256 |
+|---|---|---|
+| `pnpm install --frozen-lockfile` | PASS | `54e88c79b43a1373e3088501599baa227cb434abb41851b4e70ae8b4169b0a7d` |
+| `pnpm test` | PASS | `0aff927af8910457c324391be0dfc70b50b2f21cbe6a0b2d6af615164f74e552` |
+| `pnpm build` | PASS | `079808d75c793ef97eee0ff497fbf0eeb0ce2ad225f7d80e8ef3736d6990002d` |
+| `pnpm --filter applesauce-docs build` | PASS | `f09a46d25db807675dbcf84ff3110ae1c3ddbe77c235800d59c69546cb9ee701` |
+| `pnpm --filter applesauce-examples build` | PASS | `7f3e35222661f15a07cf72ac0af961fc57900eb6e8a024fd2f673cd8971e1459` |
+| Structured changeset parser | PASS | `7196746178d102d9d512aeea4d984bec97c8f6f9c89131dc6818c992d54c2bb8` |
+| Changesets status oracle | PASS | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Exact disposable-checkout restoration | PASS | `b11a2b02d5e97f757332a839784c7c36d16f4bcd29660955e7fbcc6889d7ed57` |
+| Prospective normal merge proof | PASS | `0f2e2e2278522693fe0a342231c3df55b3c37b3405c50728a9465a7069ba0704` |
+
+The detached checkout returned to the pinned source with an empty porcelain-v2 stream and exact lock, config, 73 changeset, package-manifest, and changelog hashes after guarded removal of ignored generated directories. Release input resolution occurred once from `refs/heads/next`; every gate, oracle, held-note check, source-tree comparison, merge second parent, JSON record, and terminal marker reused the captured OID.
