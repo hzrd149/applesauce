@@ -152,6 +152,45 @@ Three phases, but 37 plans — gap closure dominated. Phase 13 alone ran 14 plan
 milestone's most valuable output may be the closing audit rather than the code: it found four group
 methods that silently swallow failures, none of which any requirement covered.
 
+## Milestone: v7.0.0 — relay-method-layering
+
+**Closed:** 2026-09-28 (override closeout; release cut manually)
+**Phases:** 12 (16–26, incl. 25.4 and 25.5) | **Plans:** 81 executed in the milestone roadmap, plus 17 more Phase 26 gap plans on an unmerged branch
+
+### What Was Built
+
+Every relay method family now follows one layering rule: `event()`, `req()`, and `negentropy()` are
+single relay interactions, and `publish()`, `request()`, `subscription()`, `count()`, `sync()`, and
+`authenticate()` own the retry/reconnect/auth/timeout/concurrency policy. `count()` became high-level
+with per-relay isolation, group failures raise aggregate errors, the workspace moved to TypeScript 7
+and React 19, and a core-owned logger replaced `debug`. 74 single-sentence changesets bump all
+thirteen packages to 7.0.0.
+
+### What Worked
+
+- **Sequencing the re-layer by family.** Landing EVENT before REQ and COUNT-high-level before
+  COUNT-isolation proved the pattern on small surfaces first; Phases 18–24 each closed in a day or two.
+
+### What Was Inefficient
+
+- **Phase 26 ballooned from changeset cleanup into release engineering.** The ask was to clean up
+  incorrect changesets; it grew to 35 plans covering a squash-release strategy (abandoned), snapshot
+  publishing, an OTP registry harness, CI portability, and checkers that verified the ledgers
+  describing that tooling. The final gap round stalled because the closeout checker rejected GSD's
+  own roadmap-progress formatting. The changeset work was done long before the phase stopped.
+- **Verification gaps were treated as mandatory scope.** Each verifier round produced gaps in
+  tooling the operator never asked for, and each gap produced more plans.
+
+### Key Lessons
+
+- Keep a phase scoped to what the operator asked for; when verification surfaces gaps in adjacent
+  tooling, ask whether they are in scope before planning closure rounds.
+- Release/publishing is operator-owned in this repo — GSD should prepare `next`, not build release
+  machinery around it.
+- Don't let checkers certify planning ledgers; they break whenever tracking tools reformat docs.
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
