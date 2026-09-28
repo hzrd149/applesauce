@@ -1,5 +1,7 @@
 # Milestones
 
+> **Phase-level documents removed 2026-09-28.** Per-phase plans, summaries, verifications, reviews, quick tasks, and v7 research were deleted from the working tree; recover any of them with `git show 39c2f817:<path>` (e.g. `git show 39c2f817:.planning/milestones/v7.0.0-phases/26-release-coordination-v7-0-0/26-CONTEXT.md`) or `git checkout 39c2f817 -- .planning/milestones/<version>-phases`. `quick/` and `research/` lived at `.planning/quick` and `.planning/research` in that commit.
+
 ## v7.0.0 relay-method-layering (Closed: 2026-09-28)
 
 **Phases completed:** 12 phases (16–26, incl. 25.4 and 25.5), 81 plans
