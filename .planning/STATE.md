@@ -4,11 +4,11 @@ milestone: v7.0.0
 milestone_name: relay-method-layering
 current_phase: 26
 current_phase_name: Release Coordination — v7.0.0
-status: executing
-stopped_at: "Phase 26 strategy reset: replan from 26-10 for next-tag snapshots and a normal next-to-master release"
-last_updated: "2026-09-24T17:55:00.400Z"
-last_activity: 2026-09-24
-last_activity_desc: Phase 26 execution started
+status: complete
+stopped_at: "Phase 26 closed manually (changeset cleanup done); operator publishes next snapshot manually"
+last_updated: "2026-09-28T00:00:00.000Z"
+last_activity: 2026-09-28
+last_activity_desc: Phase 26 closed manually
 state_head: bf746ae668515db9ce67d3844b0ce58b97e6c02a
 progress:
   total_phases: 12
@@ -29,10 +29,9 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 
 ## Current Position
 
-Phase: 26 (Release Coordination — v7.0.0) — EXECUTING
-Plan: 1 of 18
-Status: Executing Phase 26
-Last activity: 2026-09-24 — Phase 26 execution started
+Phase: 26 (Release Coordination — v7.0.0) — COMPLETE (closed manually)
+Status: Changesets cleaned; next is ready for a manual `next` snapshot publish
+Last activity: 2026-09-28 — Phase 26 scope trimmed to changeset cleanup and closed
 
 Progress: [██████████] 70/72 plans ([█████████░] 97%)
 

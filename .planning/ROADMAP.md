@@ -415,7 +415,7 @@ Plans:
   3. v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present in the release and describe behavior the shipped code actually has.
   4. Every `.changeset/*.md` file included in the release describes exactly one change in a single sentence, per the repo's changeset convention.
 
-**Plans**: 16/18 plans executed; 12 executed and 6 verification gap-closure plans pending; Plans 26-04 through 26-09 are historical/superseded
+**Plans**: Complete (closed manually 2026-09-28). Scope trimmed to changeset cleanup: all 74 changesets are single-sentence and `changeset status --since=master` bumps all thirteen packages to 7.0.0. Remaining gap-closure plans (26-17+) were dropped; release tooling work lives unmerged on `gsd/phase-26-gap-closure` except the wallet animated-QR fix. Publishing a `next` snapshot and the stable merge are handled manually. Plans 26-04 through 26-09 are historical/superseded
 
 Plans:
 **Wave 1**
@@ -481,11 +481,11 @@ Plans:
 
 **Gap Closure Wave 7** *(protected-ref decision)*
 
-- [ ] 26-17-PLAN.md — Authorize or decline the exact local `next` fast-forward
+- [~] 26-17-PLAN.md — Authorize or decline the exact local `next` fast-forward
 
 **Gap Closure Wave 8** *(blocked on exact-OID authorization)*
 
-- [ ] 26-18-PLAN.md — Fully gate current canonical `next` and regenerate the prospective normal merge proof
+- [~] 26-18-PLAN.md — Fully gate current canonical `next` and regenerate the prospective normal merge proof
 
 ## Progress
 
@@ -518,7 +518,7 @@ Plans:
 | 24. Negentropy & Sync Re-layer | v7.0.0 | 0/TBD | Not started | - |
 | 25. Ecosystem Riders — React 19 & @snort/worker-relay v2 | v7.0.0 | 0/TBD | Not started | - |
 | 25.4 Replace the `debug` Dependency | v7.0.0 | 5/5 | Complete | 2026-09-06 |
-| 26. Release Coordination — v7.0.0 | v7.0.0 | 7/9 historical | Replanning | - |
+| 26. Release Coordination — v7.0.0 | v7.0.0 | closed manually | Complete | 2026-09-28 |
 
 **Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
 

@@ -82,7 +82,7 @@ findings changed the plan and are marked **[research]** below.
 
 ### Release
 
-- [ ] **REL-01**: **[research]** Every remaining publishable package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit thirteen-package checklist verified by a dry run
+- [x] **REL-01**: **[research]** Every remaining publishable package intended to reach 7.0.0 actually reaches it. The config uses changesets' `linked`, not `fixed`, so a package bumps only via its own changeset or a real dependency cascade — the release carries an explicit thirteen-package checklist verified by a dry run
 - [x] **REL-03**: v1.2's held `applesauce-relay` and `applesauce-loaders` changesets are present as truthful direct inputs to the coordinated v7 release candidate, with their current behavior and release readiness verified (amended from literal shipment by the human `amend-readiness` decision in Plan 26-15; no release action authorized)
 - [x] **REL-04**: Each changeset file describes exactly one change in a single sentence, per the repo's changeset convention
 
@@ -177,7 +177,7 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 | RESID-02 | Phase 17 | Complete |
 | RESID-03 | Phase 24 | Complete |
 | RESID-04 | Phase 18 | Gaps Found |
-| REL-01 | Phase 26 | Gaps Found |
+| REL-01 | Phase 26 | Complete |
 | REL-03 | Phase 26 | Complete |
 | REL-04 | Phase 26 | Complete |
 | ECO-01 | Phase 16 | Complete |
@@ -197,5 +197,5 @@ Populated during roadmap creation 2026-08-19. All 46 v1 requirements map to exac
 
 ---
 *Requirements defined: 2026-08-19*
-*Last updated: 2026-09-24 for Phase 26 human-authorized release-readiness reconciliation*
+*Last updated: 2026-09-28 — Phase 26 closed manually with scope trimmed to changeset cleanup*
 *Traceability populated: 2026-09-09 — 51/51 v1 requirements mapped across Phases 16–26, 0 orphans.*
