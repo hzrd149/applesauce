@@ -9,10 +9,12 @@ The core `EventStore` and its reactive model/timeline/filter/cast infrastructure
 
 ## Current State
 
-**Phase 25.5 complete (2026-09-09).** The checked-out repository has no active Concord package
-surface and the remaining workspace passes the release gate. Historical commits are intentionally
-preserved; `next` is the full-history prerelease branch for npm snapshots under the `next` tag before
-a normal merge into `master` for the stable v7 release.
+**v7.0.0 relay-method-layering closed (2026-09-28).** Every relay method family follows the
+low-level/high-level layering rule, `count()` is high-level and isolated per relay, group failures
+surface as errors, and the workspace runs on TypeScript 7 and React 19 with a core-owned logger.
+`next` carries 74 single-sentence changesets bumping all thirteen packages to 7.0.0; the operator
+publishes a `next` snapshot and then the stable release (normal `next` → `master` merge) manually.
+Release-tooling hardening from Phase 26's gap rounds stays unmerged on `gsd/phase-26-gap-closure`.
 
 protocol field types, persisted Invite List entries cross a closed validation boundary, and corrupt
 self-authored entries are quarantined per source without erasing valid state or triggering repair
@@ -100,7 +102,7 @@ round had asserted a Prettier finding was "introduced by this phase" — checkin
 refuted it outright, while the same check confirmed the real blocker. Severity labels are hypotheses
 until someone checks them against the base, in both directions.
 
-## Current Milestone: v7.0.0 relay-method-layering
+## Milestone: v7.0.0 relay-method-layering — CLOSED 2026-09-28
 
 **Goal:** Make every relay method family honour one rule — a low-level method (`event()`, `req()`,
 `negentropy()`) is a single interaction with the relay; a high-level method (`publish()`, `request()`,
@@ -341,3 +343,5 @@ verified, suite at 2,647 passing. Two code-review findings were closed as gap pl
 
 
 *Prior: 2026-08-01 — Phase 12 complete (document & caps conformance; re-verification passed 7/7 after a gap wave closed CR-01, the channel-fold type-validation regression, as a class via type-derived rule tables rather than by enumeration).*
+
+*Last updated: 2026-09-28 after the v7.0.0 relay-method-layering milestone (override closeout; Phase 26 trimmed to changeset cleanup, release cut manually).*

@@ -1,9 +1,29 @@
 # Milestones
 
+## v7.0.0 relay-method-layering (Closed: 2026-09-28)
+
+**Phases completed:** 12 phases (16–26, incl. 25.4 and 25.5), 81 plans
+
+**Closeout:** `override_closeout` — closed at the operator's direction. Phase 26 was trimmed to changeset cleanup and closed manually; its `26-VERIFICATION.md` gaps (release-tooling/OTP portability) and Phase 16's stale verification were acknowledged, not resolved. Nine dormant seeds carried forward. See STATE.md → Deferred Items.
+
+**Key accomplishments:**
+
+- **One layering rule across every relay method family** — low-level `event()`, `req()`, and `negentropy()` are single relay interactions, while `publish()`, `request()`, `subscription()`, `count()`, `sync()`, and `authenticate()` own retries, reconnects, auth retries, resubscribes, timeouts, and concurrency (Phases 16, 18, 20, 22, 24).
+- **`count()` became high-level** with validated NIP-45 responses, an HLL merge helper, and per-relay isolation so one dead relay no longer costs every count (Phases 19, 23).
+- **Group failures became visible** — total group failure in `request()`/`subscription()` raises an aggregate error instead of completing empty or hanging (Phase 21).
+- **Ecosystem riders** — TypeScript 7, React 19 support with the first real rendering tests, and `@snort/worker-relay` v2 in examples (Phases 16, 25).
+- **The `debug` dependency was replaced** by a core-owned logger across every package (Phase 25.4).
+- **Changesets cleaned for release** — 74 single-sentence changesets bump all thirteen packages to 7.0.0, including v1.2's held relay/loaders notes (Phase 26).
+
+**Not released by GSD.** The operator publishes a `next` snapshot and the stable v7.0.0 release manually. Unmerged release-tooling work (snapshot/OTP harness) remains on `gsd/phase-26-gap-closure`.
+
+**Not tagged:** this repo tags per-package via changesets.
+
+---
+
 ## v1.2 operation-scoped-relay-auth (Shipped: 2026-08-19)
 
 **Phases completed:** 3 phases, 37 plans, 100 tasks
-
 
 **Stats:** 269 commits (`e03939d4`..`e5ece2e9`), 208 files changed (+30,492 / −2,326), 14 days (2026-08-05 → 2026-08-19).
 
@@ -28,8 +48,6 @@
 ## v1.1 first-fixes (Shipped: 2026-08-04)
 
 **Phases completed:** 12 phases, 87 plans, 203 tasks
-
-
 
 **Closeout:** `override_closeout` — 54/54 requirements satisfied and 12/12 phases verified, but one `low` todo and nine dormant seeds were acknowledged rather than resolved at close. See STATE.md → Deferred Items.
 

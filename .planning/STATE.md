@@ -2,20 +2,19 @@
 gsd_state_version: 1.0
 milestone: v7.0.0
 milestone_name: relay-method-layering
-current_phase: 26
-current_phase_name: Release Coordination — v7.0.0
-status: complete
-stopped_at: "Phase 26 closed manually (changeset cleanup done); operator publishes next snapshot manually"
-last_updated: "2026-09-28T00:00:00.000Z"
+current_phase: 0.0
+status: Awaiting next milestone
+stopped_at: "v7.0.0 milestone closed; release published manually by operator"
+last_updated: "2026-09-28T14:53:13.674Z"
 last_activity: 2026-09-28
-last_activity_desc: Phase 26 closed manually
-state_head: bf746ae668515db9ce67d3844b0ce58b97e6c02a
+last_activity_desc: Milestone v7.0.0 completed and archived
 progress:
   total_phases: 12
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 81
-  completed_plans: 75
-  percent: 83
+  completed_plans: 79
+  percent: 92
+current_phase_name: —
 ---
 
 # Project State
@@ -25,15 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-04)
 
 **Core value:** The core `EventStore` and its reactive model/timeline/filter/cast infrastructure are the foundation everything else builds on — they must stay correct and fast for signed `NostrEvent` consumers no matter what else changes.
-**Current focus:** Phase 26 — Release Coordination — v7.0.0
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 26 (Release Coordination — v7.0.0) — COMPLETE (closed manually)
-Status: Changesets cleaned; next is ready for a manual `next` snapshot publish
-Last activity: 2026-09-28 — Phase 26 scope trimmed to changeset cleanup and closed
-
-Progress: [██████████] 70/72 plans ([█████████░] 97%)
+Phase: Milestone v7.0.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-28 — Milestone v7.0.0 completed and archived
 
 ## Performance Metrics
 
@@ -531,6 +529,17 @@ a major that is happening anyway is cheaper than cutting a second one later.
 **Still carried from v1.1:** three Nyquist validation gaps (`/gsd-validate-phase` on Phases 10, 12.1,
 12.2) and five accepted overrides. v1.2's own three phases are all `nyquist_compliant: true`.
 
+
+### Acknowledged at v7.0.0 milestone close (2026-09-28)
+
+Closed at the operator's direction as an `override_closeout`; Phase 26 was trimmed to changeset cleanup.
+
+| Category | Item | Status |
+|----------|------|--------|
+| verification | Phase 26 — `26-VERIFICATION.md` `gaps_found` (CI-portable OTP regression / release tooling); gap plans 26-32..26-34 live unmerged on `gsd/phase-26-gap-closure` | Dropped |
+| verification | Phase 16 — verification status stale | Accepted |
+| seed | SEED-002 through SEED-010 (nine dormant seeds; 002–004 were delivered by Phases 16/25 and can be closed) | Dormant |
+
 ## Session Continuity
 
 Last session: 2026-09-20
@@ -543,4 +552,4 @@ Recoverable from commit `c3be26c2` if ever needed.
 
 ## Operator Next Steps
 
-- Run /gsd-plan-phase 26 to replace the superseded squash plans with the `next` snapshot and normal stable-release flow
+- Start the next milestone with /gsd-new-milestone

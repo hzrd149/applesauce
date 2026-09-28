@@ -3,5 +3,8 @@
     "_auto_chain_active": false,
     "build_command": "turbo build --filter='./packages/*'",
     "test_command": "vitest run"
+  },
+  "git": {
+    "create_tag": false
   }
 }
