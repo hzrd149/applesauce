@@ -1,4 +1,5 @@
-import { bytesToHex } from "applesauce-core/helpers/event";
+import { unixNow } from "applesauce-core/helpers";
+import { bytesToHex, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { NEVER } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
@@ -9,7 +10,7 @@ const client = new PrivateKeySigner();
 const remote = new PrivateKeySigner();
 
 const subscriptionMethod = vi.fn().mockReturnValue(NEVER);
-const publishMethod = vi.fn(async () => {});
+const publishMethod = vi.fn(async (_relays: string[], _event: NostrEvent) => {});
 
 let signer: NostrConnectSigner;
 
@@ -124,5 +125,60 @@ describe("close", () => {
     const p = signer.waitForSigner();
     await signer.close();
     await expect(p).rejects.toThrow("Closed");
+  });
+});
+
+async function respond(result: unknown) {
+  await vi.waitFor(() => expect(publishMethod).toHaveBeenCalled());
+  const [, event] = publishMethod.mock.lastCall!;
+  const request = JSON.parse(await remote.nip44.decrypt(event.pubkey, event.content));
+
+  await signer.handleEvent(
+    await remote.signEvent({
+      kind: kinds.NostrConnect,
+      created_at: unixNow(),
+      tags: [["p", event.pubkey]],
+      content: await remote.nip44.encrypt(event.pubkey, JSON.stringify({ id: request.id, result })),
+    }),
+  );
+}
+
+describe("switchRelays", () => {
+  beforeEach(() => {
+    signer.isConnected = true;
+  });
+
+  it("should switch to relays returned as a JSON string", async () => {
+    await signer.open();
+    const p = signer.switchRelays();
+    await respond(JSON.stringify(["wss://new.relay.com"]));
+
+    await expect(p).resolves.toEqual(["wss://new.relay.com"]);
+    expect(signer.relays).toEqual(["wss://new.relay.com"]);
+    expect(subscriptionMethod).toHaveBeenLastCalledWith(["wss://new.relay.com"], expect.any(Array));
+  });
+
+  it("should switch to relays returned as an array", async () => {
+    const p = signer.switchRelays();
+    await respond(["wss://new.relay.com"]);
+
+    await expect(p).resolves.toEqual(["wss://new.relay.com"]);
+    expect(signer.relays).toEqual(["wss://new.relay.com"]);
+  });
+
+  it("should keep relays when signer returns a JSON string null", async () => {
+    const p = signer.switchRelays();
+    await respond("null");
+
+    await expect(p).resolves.toBeNull();
+    expect(signer.relays).toEqual(relays);
+  });
+
+  it("should keep relays when signer returns null", async () => {
+    const p = signer.switchRelays();
+    await respond(null);
+
+    await expect(p).resolves.toBeNull();
+    expect(signer.relays).toEqual(relays);
   });
 });
