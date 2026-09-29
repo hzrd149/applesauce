@@ -59,7 +59,7 @@ export type ConnectResponseResults = {
   [NostrConnectMethod.Nip04Decrypt]: string;
   [NostrConnectMethod.Nip44Encrypt]: string;
   [NostrConnectMethod.Nip44Decrypt]: string;
-  [NostrConnectMethod.SwitchRelays]: string[] | null;
+  [NostrConnectMethod.SwitchRelays]: string | string[] | null;
   [NostrConnectMethod.Logout]: "ack";
 };
 
