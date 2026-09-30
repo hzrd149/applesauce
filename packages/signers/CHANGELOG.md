@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 6.2.3
+
+### Patch Changes
+
+- fcbd4f9: Fix `NostrConnectSigner.switchRelays` ignoring JSON-stringified relay lists and hanging on `null` results.
+
 ## 6.2.2
 
 ### Patch Changes
