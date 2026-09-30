@@ -154,6 +154,50 @@ Each changeset file in `.changeset/` MUST describe exactly **one** change, and t
 
 If a piece of work introduces multiple distinct changes, create one changeset file per change. Pick the smallest applicable bump (`patch` / `minor` / `major`) per package in the frontmatter.
 
+# Releasing Packages Locally
+
+Releases are prepared, verified, and published locally. GitHub Actions may test release commits, but must not version or publish packages.
+
+## Before Every Release
+
+1. Start from a clean worktree, fetch the target branch and tags, and use the repository's pinned pnpm version.
+2. Confirm every included package change has one valid changeset.
+3. Run `pnpm install --frozen-lockfile` and the tests and builds appropriate to the release scope.
+4. Run `pnpm release-preview` from a clean worktree and inspect the generated versions, changelogs, lockfile, and consumed changesets. It does not commit, publish, or tag; discard all preview changes before continuing.
+5. Confirm npm authentication with `npm whoami` before changing package versions.
+
+## Patch Releases
+
+1. Create `patch/<package>-<version>-<description>` from the package's latest release tag.
+2. Apply only the fix, its tests, and its patch changeset. Bring the current release configuration onto historical branches when needed.
+3. Install from the frozen lockfile, then test and build the affected package. Add broader verification when the fix crosses package boundaries.
+4. Run `pnpm version-packages`. It consumes the changeset, updates versions and changelogs, refreshes the lockfile, and creates one release commit.
+5. Inspect the release commit and require a clean worktree. Verify the package version, changelog, consumed changeset, lockfile, and `git diff --check HEAD^ HEAD`.
+6. Re-run the affected tests and builds from the versioned tree. From each released package, use `npm pack --dry-run` to inspect the publish payload when packaging changed.
+7. Run `pnpm release`. It builds the workspace, publishes changed packages, and creates local `package@version` tags.
+8. Verify each version with `npm view <package>@<version> version` and inspect its tag before running `git push origin <branch> --follow-tags`.
+9. Merge the complete release branch into `master` without squashing so the fix, release commit, and tags remain connected.
+10. Push `master`, verify the tags are ancestors of it, then delete the patch branch locally and remotely.
+
+## Major Releases
+
+1. Stage and verify the complete release on `next`; close and delete any stale generated Changesets release PR or branch.
+2. Merge `next` into a clean local `master` without pushing, then run `pnpm install --frozen-lockfile`, `pnpm test`, and `pnpm build`.
+3. Run `pnpm release-preview` and verify all intended major, linked-package, and internal-dependency bumps, then discard all preview changes before versioning.
+4. Run `pnpm version-packages`, inspect the generated release commit and every changed version, changelog, and lockfile, and require a clean worktree.
+5. Re-run `pnpm test` and `pnpm build` against the versioned tree and inspect publish payloads for packages whose packaging changed.
+6. Run `pnpm release`, verify every npm version and generated tag, then push `master` and tags with `git push origin master --follow-tags`.
+7. Fast-forward `next` to the released `master`, push it, and remove obsolete release branches only after registry and tag verification succeeds.
+
+## Release Safety
+
+- Never publish with uncommitted changes or from an unverified release commit.
+- Never recreate, move, delete, or force-push a published version tag.
+- Preserve generated release commits; do not squash them when merging release branches.
+- `pnpm release` builds all workspace packages and may publish more than one package. If publication partially fails, inspect npm and local tags before retrying.
+- Keep ordinary build and test CI, but do not add workflows or secrets that publish packages from GitHub Actions.
+- Remove obsolete release branches only after their commits are merged and their tags are reachable from `master`.
+
 # Building examples
 
 Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.
