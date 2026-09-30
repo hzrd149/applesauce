@@ -1118,10 +1118,9 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     // behind this flag. Non-vacuity: this assertion was observed RED (the second EVENT never arrives)
     // against the pre-task event()'s ambient waitForAuth() wrapper. Deliberately no wait between the
     // first response and the second event() call: this fixture's keepAlive=0 drops the connection (and
-    // resetState() clears receivedAuthRequiredForEvent) within a few ms of nothing being subscribed,
-    // which would falsely "pass" even the old pre-blocked model — checking immediately is what actually
-    // exercises RAUTH-02 rather than an unrelated timing quirk (matches this suite's established
-    // convention, e.g. the COUNT/REQ RAUTH-09 tests).
+    // resets auth state) within a few ms of nothing being subscribed, which would falsely "pass" even the
+    // old pre-blocked model — checking immediately is what actually exercises RAUTH-02 rather than an
+    // unrelated timing quirk.
     const firstSub = relay.event(mockEvent).subscribe({ error: () => undefined });
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
@@ -1262,20 +1261,6 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
     server.send(["OK", mockEvent.id, true, ""]);
 
     await expect(spy).resolves.toEqual({ ok: true, message: "", from: "wss://test" });
-  });
-
-  it("RAUTH-09: authRequiredForPublish$ flips true when an EVENT receives auth-required", async () => {
-    const flagSpy = subscribeSpyTo(relay.authRequiredForPublish$);
-    expect(flagSpy.getLastValue()).toBe(false);
-
-    const spy = subscribeSpyTo(relay.event(mockEvent, "EVENT", { authTimeout: 30 }), { expectErrors: true });
-
-    await expect(server).toReceiveMessage(["EVENT", mockEvent]);
-    server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
-
-    expect(flagSpy.getLastValue()).toBe(true);
-
-    spy.unsubscribe();
   });
 
   it("RAUTH-07: publish() forwards onAuthRequired to the underlying EVENT auth phase", async () => {
@@ -1940,24 +1925,6 @@ describe("operation-scoped REQ auth (13-02)", () => {
     expect(spy.receivedError()).toBe(false);
 
     spy.unsubscribe();
-  });
-
-  it("RAUTH-09: authRequiredForRead$ flips true when a REQ receives auth-required", async () => {
-    subscribeSpyTo(relay[RELAY_REQ_LIFECYCLE]([{ kinds: [1] }], { id: "sub1", authTimeout: 30 }), {
-      expectErrors: true,
-    });
-
-    const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
-    expect(flagSpy.getLastValue()).toBe(false);
-
-    await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
-    server.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
-
-    // Check immediately (not after a delay): this fixture's keepAlive=0 is a pre-existing quirk
-    // (reproducible against the pre-13-02 implementation too) that lets the connection drop and
-    // resetState() clear the flag again once nothing has resubscribed for a few ms — orthogonal to
-    // what RAUTH-09 asserts here (the flag flips true the instant auth-required is received)
-    expect(flagSpy.getLastValue()).toBe(true);
   });
 
   it("D-01: req() keeps multi-hop auth signalling internal to its operator chain", async () => {
@@ -2921,22 +2888,6 @@ describe("operation-scoped COUNT auth (13-04)", () => {
     expect(spy.getError()).toBeInstanceOf(RelayClosedError);
     expect(spy.getError()).not.toBeInstanceOf(AuthRequiredError);
     expect(onAuthRequired).not.toHaveBeenCalled();
-  });
-
-  it("RAUTH-09: authRequiredForRead$ flips true when a COUNT receives auth-required", async () => {
-    subscribeSpyTo(relay.count([{ kinds: [1] }], "count1", { authTimeout: 30 }), { expectErrors: true });
-
-    const flagSpy = subscribeSpyTo(relay.authRequiredForRead$);
-    expect(flagSpy.getLastValue()).toBe(false);
-
-    await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
-    server.send(["CLOSED", "count1", "auth-required: need to authenticate"]);
-
-    // Check immediately (not after a delay): this fixture's keepAlive=0 is a pre-existing quirk that
-    // lets the connection drop and resetState() clear the flag again once nothing has resubscribed
-    // for a few ms — orthogonal to what RAUTH-09 asserts here (the flag flips true the instant
-    // auth-required is received)
-    expect(flagSpy.getLastValue()).toBe(true);
   });
 
   it("D-15: count()'s 10s clock is suspended across the auth phase", async () => {
@@ -3931,9 +3882,5 @@ describe(":auth sub-namespace (14-04)", () => {
     });
 
     spy.unsubscribe();
-  });
-
-  it("WR-04: receivedAuthRequiredFor degrades silently on an unrecognized verb rather than throwing into the subscription", () => {
-    expect(() => (relay as any).receivedAuthRequiredFor("BOGUS")).not.toThrow();
   });
 });

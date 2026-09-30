@@ -155,6 +155,27 @@ relay.challenge$.subscribe(async (challenge) => {
 });
 ```
 
+### Auth-required responses
+
+Relays refuse individual requests with `auth-required:`, so each `REQ`, `COUNT`, `EVENT`, and negentropy operation handles its own refusal. A refused request never holds back other requests on the same connection.
+
+When an operation is refused it calls its `onAuthRequired` handler, waits up to `authTimeout` (default 30s) for `waitForAuth` to be satisfied, then resends once. If nobody authenticates in time it errors with `AuthTimeoutError`.
+
+```typescript
+relay.subscription(filters, {
+  onAuthRequired: ({ relay }) => relay.authenticate(signer),
+  waitForAuth: pubkey, // default `true`: any authenticated user
+});
+```
+
+Pass `waitForAuth: false` to fail immediately with `AuthRequiredError` instead of waiting.
+
+To authenticate proactively as a side process, watch `challenge$` instead of waiting for a refusal:
+
+```typescript
+relay.challenge$.pipe(filter(Boolean)).subscribe(() => relay.authenticate(signer));
+```
+
 ### Integration
 
 Use `authenticate()` for normal signer integration, including remote or interactive signers. Use `challenge$` plus `auth()` only when an application intentionally owns challenge freshness and event construction itself.
@@ -441,16 +462,6 @@ relay.challenge$.subscribe((challenge) => {
 // Authentication state
 relay.authenticated$.subscribe((authenticated) => {
   console.log("Authenticated:", authenticated);
-});
-
-// Whether auth is required for reading events
-relay.authRequiredForRead$.subscribe((required) => {
-  console.log("Auth required for reading:", required);
-});
-
-// Whether auth is required for publishing events
-relay.authRequiredForPublish$.subscribe((required) => {
-  console.log("Auth required for publishing:", required);
 });
 
 // All notices from the relay

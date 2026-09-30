@@ -107,8 +107,8 @@ export default function GroupsExample() {
   }, [selectedRelay]);
 
   // Subscribe to authentication state for the selected relay
-  const authRequiredForRead = useObservableEagerMemo(
-    () => (selectedRelay ? pool.relay(selectedRelay).authRequiredForRead$ : undefined),
+  const challenge = useObservableEagerMemo(
+    () => (selectedRelay ? pool.relay(selectedRelay).challenge$ : undefined),
     [selectedRelay],
   );
   const authenticated = useObservableEagerMemo(
@@ -164,9 +164,9 @@ export default function GroupsExample() {
 
       {selectedRelay && (
         <>
-          {authRequiredForRead && !authenticated && (
+          {challenge && !authenticated && (
             <div className="mb-4">
-              <div className="alert alert-warning">
+              <div className="alert alert-info">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="stroke-current shrink-0 h-6 w-6"
@@ -177,12 +177,14 @@ export default function GroupsExample() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth="2"
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
                 <div className="flex-1">
-                  <h3 className="font-bold">Authentication Required</h3>
-                  <div className="text-xs">This relay requires authentication to read groups.</div>
+                  <h3 className="font-bold">Authentication Available</h3>
+                  <div className="text-xs">
+                    This relay sent an authentication challenge. Authenticate to see private groups.
+                  </div>
                 </div>
                 <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
                   Authenticate

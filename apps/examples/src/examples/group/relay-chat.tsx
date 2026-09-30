@@ -149,10 +149,6 @@ export default function RelayGroupExample() {
   );
 
   // Subscribe to authentication state for the current relay
-  const authRequiredForRead = useObservableEagerMemo(
-    () => (pointer ? pool.relay(pointer.relay).authRequiredForRead$ : undefined),
-    [pointer?.relay],
-  );
   const authenticated = useObservableEagerMemo(
     () => (pointer ? pool.relay(pointer.relay).authenticated$ : undefined),
     [pointer?.relay],
@@ -161,9 +157,6 @@ export default function RelayGroupExample() {
     () => (pointer ? pool.relay(pointer.relay).challenge$ : undefined),
     [pointer?.relay],
   );
-
-  const needsAuth = !!authRequiredForRead;
-  const authAvailable = !!challenge && !authRequiredForRead;
 
   const handleSignIn = useCallback(async () => {
     const pubkey = await signer.getPublicKey();
@@ -189,7 +182,7 @@ export default function RelayGroupExample() {
     } catch (error) {
       console.error("Authentication failed:", error);
     }
-  }, [pointer, needsAuth, authenticated]);
+  }, [pointer, authenticated]);
 
   const npub = pubkey && npubEncode(pubkey);
 
@@ -205,35 +198,7 @@ export default function RelayGroupExample() {
         {pointer && authenticated && npub && <div className="badge badge-success">Authenticated</div>}
       </div>
 
-      {pointer && needsAuth && !authenticated && (
-        <div className="mb-4">
-          <div className="alert alert-warning">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="stroke-current shrink-0 h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
-            <div className="flex-1">
-              <h3 className="font-bold">Authentication Required</h3>
-              <div className="text-xs">This relay requires authentication to read group messages.</div>
-              {challenge && <div className="text-xs mt-1">Challenge received: {challenge.slice(0, 10)}...</div>}
-            </div>
-            <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
-              Authenticate
-            </button>
-          </div>
-        </div>
-      )}
-
-      {pointer && authAvailable && !authenticated && (
+      {pointer && challenge && !authenticated && (
         <div className="mb-4">
           <div className="alert alert-info">
             <svg
@@ -251,7 +216,9 @@ export default function RelayGroupExample() {
             </svg>
             <div className="flex-1">
               <h3 className="font-bold">Authentication Available</h3>
-              <div className="text-xs">This relay supports authentication but it's not required to read messages.</div>
+              <div className="text-xs">
+                This relay sent an authentication challenge. Authenticate to read and post in private groups.
+              </div>
             </div>
             <button className="btn btn-sm btn-primary" onClick={handleAuthenticate}>
               Authenticate

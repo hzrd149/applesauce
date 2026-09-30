@@ -80,7 +80,6 @@ import {
   RelayAuthenticateOptions,
   RelayAuthOptions,
   RelayAuthWireRequest,
-  RelayAuthWireVerb,
   RelayAuthState,
   PublishResponse,
   RelayCountOptions,
@@ -489,51 +488,6 @@ export class Relay {
   /** Policy hook for unresponsive connections */
   protected onUnresponsive?: RelayOptions["onUnresponsive"];
 
-  // Subjects that track if an "auth-required" message has been received for REQ or EVENT
-  protected receivedAuthRequiredForReq = new BehaviorSubject(false);
-  protected receivedAuthRequiredForEvent = new BehaviorSubject(false);
-
-  /**
-   * D-03: the single surviving mapping from a wire verb to the legacy read/publish informational flags.
-   * `REQ`, `COUNT`, and `NEG-OPEN` set `receivedAuthRequiredForReq`; `EVENT` sets
-   * `receivedAuthRequiredForEvent`. Each branch is guarded by the subject's current value so a repeat
-   * call is a no-op. The `default` branch assigns the narrowed `verb` to a `never`-typed local so a new
-   * {@link RelayAuthWireVerb} member added later is a compile error here rather than a silent default.
-   * WR-04: that branch is unreachable through the type system today, but this method is called from
-   * inside a socket `map`/`tap`/`catchError` at every call site — a throw here would drop the whole
-   * subscription instead of just leaving an informational flag stale, so it fails soft (a no-op) rather
-   * than throwing.
-   */
-  protected receivedAuthRequiredFor(verb: RelayAuthWireVerb): void {
-    switch (verb) {
-      case "REQ":
-      case "COUNT":
-      case "NEG-OPEN":
-        if (!this.receivedAuthRequiredForReq.value) this.receivedAuthRequiredForReq.next(true);
-        break;
-      case "EVENT":
-        if (!this.receivedAuthRequiredForEvent.value) this.receivedAuthRequiredForEvent.next(true);
-        break;
-      default: {
-        const exhaustive: never = verb;
-        void exhaustive;
-        return;
-      }
-    }
-  }
-
-  /**
-   * Computed observables that track if auth is required for REQ
-   * @deprecated
-   */
-  authRequiredForRead$: Observable<boolean>;
-
-  /**
-   * Computed observables that track if auth is required for EVENT
-   * @deprecated
-   */
-  authRequiredForPublish$: Observable<boolean>;
-
   protected resetState() {
     // D-12/WR-02: read BEFORE the guarded clears below run, so the counts describe what is about to be
     // dropped rather than what has already been cleared. Makes the expected re-auth-per-reconnect
@@ -557,9 +511,6 @@ export class Relay {
     if (this.authenticationResponse$.value) this.authenticationResponse$.next(null);
     if (this.authentication$.value !== null) this.authentication$.next(null);
     if (this.notices$.value.length > 0) this.notices$.next([]);
-
-    if (this.receivedAuthRequiredForReq.value) this.receivedAuthRequiredForReq.next(false);
-    if (this.receivedAuthRequiredForEvent.value) this.receivedAuthRequiredForEvent.next(false);
   }
 
   /** An internal observable that is responsible for watching all messages and updating state, subscribing to it will trigger a connection to the relay */
@@ -685,10 +636,6 @@ export class Relay {
       map((info) => info?.icon || new URL("/favicon.ico", ensureHttpURL(this.url)).toString()),
     );
 
-    // Create observables that track if auth is required for REQ or EVENT
-    this.authRequiredForRead$ = this.receivedAuthRequiredForReq;
-    this.authRequiredForPublish$ = this.receivedAuthRequiredForEvent;
-
     // Create status$ observable by combining state observables
     this.status$ = combineLatest({
       url: of(this.url),
@@ -698,8 +645,6 @@ export class Relay {
       authenticatedPubkeys: this.authenticatedPubkeys$,
       authentications: this.authentications$,
       ready: this._ready$,
-      authRequiredForRead: this.authRequiredForRead$,
-      authRequiredForPublish: this.authRequiredForPublish$,
       challenge: this.challenge$.asObservable(),
     }).pipe(shareReplay(1));
 
@@ -1052,12 +997,11 @@ export class Relay {
           if (m.type === "CLOSED") {
             relayClosedSub = true;
 
-            // Check the auth-required prefix directly so the refusal is logged and flagged before throwing
+            // Check the auth-required prefix directly so the refusal is logged before throwing
             if (m.reason.startsWith(AUTH_REQUIRED_PREFIX)) {
               this.authLog(
                 `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(m.reason)}`,
               );
-              this.receivedAuthRequiredFor("REQ");
               throw new AuthRequiredError(m.reason);
             }
 
@@ -1208,7 +1152,6 @@ export class Relay {
             this.authLog(
               `Relay refused ${describeWireRequest(describeRequest())} — authentication required: ${truncateForLog(reason)}`,
             );
-            this.receivedAuthRequiredFor("COUNT");
             throw new AuthRequiredError(reason);
           }
 
@@ -1325,7 +1268,6 @@ export class Relay {
           this.authLog(
             `Relay refused ${describeWireRequest({ verb: "EVENT", event })} — authentication required: ${truncateForLog(response.message)}`,
           );
-          this.receivedAuthRequiredFor("EVENT");
           throw new AuthRequiredError(response.message);
         }
         return response;

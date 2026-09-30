@@ -463,24 +463,6 @@ describe("dropped-relay diagnostics (14-03): human prose names the failure class
   });
 });
 
-describe("RAUTH-09: group status$ surfaces informational auth-required flags (13-07)", () => {
-  it("authRequiredForRead flips true on the affected relay's entry in group.status$", async () => {
-    const spy = subscribeSpyTo(group.status$);
-
-    group.req([{ kinds: [1] }], { id: "sub1" }).subscribe({ error: () => {} });
-
-    await expect(mockRelay1).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
-    mockRelay1.send(["CLOSED", "sub1", "auth-required: need to authenticate"]);
-
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    const last = spy.getLastValue()!;
-    expect(last["wss://relay1.test"]?.authRequiredForRead).toBe(true);
-
-    spy.unsubscribe();
-  });
-});
-
 describe("count", () => {
   it("CR-03 downstream (13-10): RelayGroup.count's combineLatest still emits for a relay whose count survives an auth round-trip", async () => {
     // waitForAuth: [] + a synchronous handler drives relay1's resubscribe from inside the very
