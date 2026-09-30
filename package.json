@@ -8,7 +8,7 @@
     "coverage": "turbo build --filter='./packages/*' && vitest run --coverage",
     "format": "prettier --write .",
     "release-preview": "node scripts/release-preview.mjs",
-    "version-packages": "changeset version && pnpm install --no-frozen-lockfile && git add pnpm-lock.yaml && git commit --amend --no-edit",
+    "release-commit": "changeset version && pnpm install --no-frozen-lockfile && git add pnpm-lock.yaml && git commit --amend --no-edit",
     "release": "pnpm run -r build && changeset publish",
     "prerelease-snapshot": "pnpm build && pnpm test",
     "release-snapshot": "node scripts/snapshot-release.mjs",

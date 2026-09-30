@@ -171,7 +171,7 @@ Releases are prepared, verified, and published locally. GitHub Actions may test 
 1. Create `patch/<package>-<version>-<description>` from the package's latest release tag.
 2. Apply only the fix, its tests, and its patch changeset. Bring the current release configuration onto historical branches when needed.
 3. Install from the frozen lockfile, then test and build the affected package. Add broader verification when the fix crosses package boundaries.
-4. Run `pnpm version-packages`. It consumes the changeset, updates versions and changelogs, refreshes the lockfile, and creates one release commit.
+4. Run `pnpm release-commit`. It consumes the changeset, updates versions and changelogs, refreshes the lockfile, and creates one release commit.
 5. Inspect the release commit and require a clean worktree. Verify the package version, changelog, consumed changeset, lockfile, and `git diff --check HEAD^ HEAD`.
 6. Re-run the affected tests and builds from the versioned tree. From each released package, use `npm pack --dry-run` to inspect the publish payload when packaging changed.
 7. Run `pnpm release`. It builds the workspace, publishes changed packages, and creates local `package@version` tags.
@@ -184,7 +184,7 @@ Releases are prepared, verified, and published locally. GitHub Actions may test 
 1. Stage and verify the complete release on `next`; close and delete any stale generated Changesets release PR or branch.
 2. Merge `next` into a clean local `master` without pushing, then run `pnpm install --frozen-lockfile`, `pnpm test`, and `pnpm build`.
 3. Run `pnpm release-preview` and verify all intended major, linked-package, and internal-dependency bumps, then confirm its cleanup prompt before versioning.
-4. Run `pnpm version-packages`, inspect the generated release commit and every changed version, changelog, and lockfile, and require a clean worktree.
+4. Run `pnpm release-commit`, inspect the generated release commit and every changed version, changelog, and lockfile, and require a clean worktree.
 5. Re-run `pnpm test` and `pnpm build` against the versioned tree and inspect publish payloads for packages whose packaging changed.
 6. Run `pnpm release`, verify every npm version and generated tag, then push `master` and tags with `git push origin master --follow-tags`.
 7. Fast-forward `next` to the released `master`, push it, and remove obsolete release branches only after registry and tag verification succeeds.
