@@ -1,5 +1,27 @@
 # applesauce-core
 
+## 6.3.0
+
+### Minor Changes
+
+- bfe3267: Writing a cached value onto a frozen event now throws instead of failing silently.
+- bfe3267: Event stores, models, casts, and helpers are now generic over the event type, so they can hold unsigned rumors as well as signed events.
+- a587410: `getHiddenTags` now returns undefined when the hidden content is not valid tags instead of throwing.
+- bfe3267: Add `RumorStore` and `AsyncRumorStore` for storing NIP-59 rumors, verifying each one by recomputing its event hash.
+- bfe3267: Add a shared `Rumor` type for unsigned events along with `isRumor` and `verifyRumor` helpers.
+
+### Patch Changes
+
+- bfe3267: Cached values are no longer copied by an object spread, so a duplicated event can no longer carry a stale cached value forward.
+- 594bf1d: Clamp `setTimeout` delays to Node's 32-bit limit so far-future NIP-40 expirations no longer trigger a `TimeoutOverflowWarning` hot loop, and fix `waitForPaid()` rejecting immediately on invoices with no expiry
+- bfe3267: Decrypted content and signature verification results are no longer copied onto a different version of a replaceable event.
+- e6a8cb2: Move the gift wrap, seal, and rumor symbols into `applesauce-core` and re-export them from `applesauce-common`.
+- e17c1f8: Pubkey casts are now cached per event store so the same pubkey can be cast independently across multiple stores.
+- e829d0a: Remove the unused `EventFactory.kind()` method, whose returned promise never resolved.
+- 88d77d5: `stamp()` no longer removes `id` and `sig` from the draft that was passed into it.
+- 4f2c1bb: Import from `nostr-tools` subpaths instead of the package root so bundles no longer pull in modules that reference `fetch`
+- 937e4d3: Event stores now honor `verifyEvent: undefined` to disable event verification.
+
 ## 6.2.0
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # applesauce-wallet
 
+## 6.3.0
+
+### Minor Changes
+
+- bfe3267: The token content, history content, and nutzap P2PK getters now return undefined on malformed input instead of throwing.
+
+### Patch Changes
+
+- Updated dependencies
+  - applesauce-common@6.3.0
+  - applesauce-core@6.3.0
+  - applesauce-loaders@6.3.0
+
 ## 6.2.0
 
 ### Minor Changes
