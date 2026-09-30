@@ -252,7 +252,7 @@ export class NostrConnectSigner implements ISigner {
               }
             }
           } else p.reject(new Error(response.error));
-        } else if (response.result) {
+        } else if (response.result !== undefined) {
           this.log("Got Response", response.id, response.result);
           p.resolve(response.result);
         }
@@ -440,10 +440,17 @@ export class NostrConnectSigner implements ISigner {
    */
   async switchRelays(): Promise<string[] | null> {
     await this.requireConnection();
-    const result = await this.makeRequest(NostrConnectMethod.SwitchRelays, []);
+    const response = await this.makeRequest(NostrConnectMethod.SwitchRelays, []);
+
+    // NIP-46 results are strings, so the relay list arrives JSON-stringified
+    let result: string[] | null = null;
+    try {
+      const parsed = typeof response === "string" ? JSON.parse(response) : response;
+      if (Array.isArray(parsed)) result = parsed.filter((relay) => typeof relay === "string");
+    } catch (e) {}
 
     // Update local relays if the remote signer provided new ones
-    if (result !== null && Array.isArray(result) && result.length > 0) {
+    if (result && result.length > 0) {
       this.log("Switching relays from", this.relays, "to", result);
       this.relays = result;
 
