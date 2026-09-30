@@ -163,7 +163,7 @@ Releases are prepared, verified, and published locally. GitHub Actions may test 
 1. Start from a clean worktree, fetch the target branch and tags, and use the repository's pinned pnpm version.
 2. Confirm every included package change has one valid changeset.
 3. Run `pnpm install --frozen-lockfile` and the tests and builds appropriate to the release scope.
-4. Run `pnpm release-preview` from a clean worktree and inspect the generated versions, changelogs, lockfile, and consumed changesets. It does not commit, publish, or tag; discard all preview changes before continuing.
+4. Run `pnpm release-preview` from a clean worktree and inspect the generated versions, changelogs, lockfile, and consumed changesets. It does not commit, publish, or tag; confirm its cleanup prompt to restore the worktree before continuing.
 5. Confirm npm authentication with `npm whoami` before changing package versions.
 
 ## Patch Releases
@@ -183,7 +183,7 @@ Releases are prepared, verified, and published locally. GitHub Actions may test 
 
 1. Stage and verify the complete release on `next`; close and delete any stale generated Changesets release PR or branch.
 2. Merge `next` into a clean local `master` without pushing, then run `pnpm install --frozen-lockfile`, `pnpm test`, and `pnpm build`.
-3. Run `pnpm release-preview` and verify all intended major, linked-package, and internal-dependency bumps, then discard all preview changes before versioning.
+3. Run `pnpm release-preview` and verify all intended major, linked-package, and internal-dependency bumps, then confirm its cleanup prompt before versioning.
 4. Run `pnpm version-packages`, inspect the generated release commit and every changed version, changelog, and lockfile, and require a clean worktree.
 5. Re-run `pnpm test` and `pnpm build` against the versioned tree and inspect publish payloads for packages whose packaging changed.
 6. Run `pnpm release`, verify every npm version and generated tag, then push `master` and tags with `git push origin master --follow-tags`.

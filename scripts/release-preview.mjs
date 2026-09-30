@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
 
 const configPath = new URL("../.changeset/config.json", import.meta.url);
 const originalConfig = readFileSync(configPath, "utf8");
@@ -19,4 +21,18 @@ try {
 }
 
 console.log("\nRelease preview generated without commits or tags.");
-console.log("Inspect the worktree, then discard every preview change before running pnpm version-packages.");
+execFileSync("git", ["status", "--short"], { stdio: "inherit" });
+execFileSync("git", ["diff", "--stat"], { stdio: "inherit" });
+
+const prompt = createInterface({ input: stdin, output: stdout });
+const answer = await prompt.question("\nClear all preview changes and restore the clean worktree? [y/N] ");
+prompt.close();
+
+if (!/^y(es)?$/i.test(answer.trim())) {
+  console.log("Preview changes kept. Clear them before running pnpm version-packages.");
+  process.exit(0);
+}
+
+execFileSync("git", ["reset", "--hard", "HEAD"], { stdio: "inherit" });
+execFileSync("git", ["clean", "-fd"], { stdio: "inherit" });
+console.log("Release preview cleared; the worktree is back to HEAD.");
