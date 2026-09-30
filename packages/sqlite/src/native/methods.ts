@@ -193,8 +193,7 @@ export function getReplaceableHistory(
 /** Checks if a replaceable event exists in a database */
 export function hasReplaceable(db: DatabaseSync, kind: number, pubkey: string, identifier: string = ""): boolean {
   const result = db.prepare(HAS_REPLACEABLE_STATEMENT.sql).get(kind, pubkey, identifier) as
-    | { count: number }
-    | undefined;
+    { count: number } | undefined;
   if (!result) return false;
   return result.count > 0;
 }

@@ -215,8 +215,7 @@ export type RelayInformation = CoreRelayInformation & {
 export type NegentropyReadStore = IEventStoreRead | IAsyncEventStoreRead | NostrEvent[];
 /** A writeable event store for negentropy sync */
 export type NegentropyWriteStore =
-  | (IAsyncEventStoreRead & IAsyncEventStoreActions)
-  | (IEventStoreRead & IAsyncEventStoreActions);
+  (IAsyncEventStoreRead & IAsyncEventStoreActions) | (IEventStoreRead & IAsyncEventStoreActions);
 
 /** An event store that can be used for negentropy sync */
 export type NegentropySyncStore = NegentropyReadStore | NegentropyWriteStore;

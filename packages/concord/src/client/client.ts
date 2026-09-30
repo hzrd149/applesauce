@@ -1239,7 +1239,9 @@ export class ConcordClient {
       // `community=`.
       const tombstoneBytes = new TextEncoder().encode(JSON.stringify(tombstones)).length;
       const largestEntryClause =
-        list.length === 0 ? "" : ` — largest entry community=${largestEntryId.slice(0, 8)} (${largestEntryBytes} bytes)`;
+        list.length === 0
+          ? ""
+          : ` — largest entry community=${largestEntryId.slice(0, 8)} (${largestEntryBytes} bytes)`;
       // Reused `this.publishLog` (never a new logger, never `.extend()` at this call site,
       // project rule / D-20) — no `console.warn`: there is no refusal left to surface.
       this.publishLog(

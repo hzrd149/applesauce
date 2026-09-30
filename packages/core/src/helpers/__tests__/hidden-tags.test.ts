@@ -142,7 +142,15 @@ describe("getHiddenTags — malformed content returns undefined", () => {
   // a throw errors the observable and is terminal — one corrupt list would take down every
   // event in the pipe, not just the malformed one.
   const listWithHiddenContent = (plaintext: string) => {
-    const event = { kind: kinds.Mutelist, content: "ciphertext", tags: [], created_at: unixNow(), pubkey, id: "", sig: "" } as unknown as NostrEvent;
+    const event = {
+      kind: kinds.Mutelist,
+      content: "ciphertext",
+      tags: [],
+      created_at: unixNow(),
+      pubkey,
+      id: "",
+      sig: "",
+    } as unknown as NostrEvent;
     setHiddenContentCache(event, plaintext);
     return event;
   };

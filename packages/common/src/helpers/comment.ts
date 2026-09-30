@@ -37,9 +37,7 @@ export type CommentAddressPointer = {
 export type CommentExternalPointer<T extends keyof ExternalIdentifiers> = ExternalPointer<T> & { type: "external" };
 
 export type CommentPointer =
-  | CommentEventPointer
-  | CommentAddressPointer
-  | CommentExternalPointer<keyof ExternalIdentifiers>;
+  CommentEventPointer | CommentAddressPointer | CommentExternalPointer<keyof ExternalIdentifiers>;
 
 export const CommentRootPointerSymbol = Symbol.for("comment-root-pointer");
 export const CommentReplyPointerSymbol = Symbol.for("comment-reply-pointer");

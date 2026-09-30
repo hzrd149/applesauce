@@ -16,9 +16,7 @@ const service = new FakeUser();
 describe("getWalletResponse", () => {
   it("parses and memoizes the response content non-enumerably", async () => {
     const request: GetBalanceMethod["request"] = { method: "get_balance", params: {} };
-    const requestEvent = await WalletRequestFactory.create<GetBalanceMethod>(service.pubkey, request)
-      .as(client)
-      .sign();
+    const requestEvent = await WalletRequestFactory.create<GetBalanceMethod>(service.pubkey, request).as(client).sign();
 
     const response: GetBalanceMethod["response"] = {
       result_type: "get_balance",

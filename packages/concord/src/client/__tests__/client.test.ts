@@ -1017,7 +1017,9 @@ describe("ConcordClient.joinByLink (INVITE-01 collapse-then-tombstone, D-01/D-02
 
     expect(requestSpy).toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining([expect.objectContaining({ kinds: [INVITE_BUNDLE_KIND], authors: [linkPub], "#d": [""] })]),
+      expect.arrayContaining([
+        expect.objectContaining({ kinds: [INVITE_BUNDLE_KIND], authors: [linkPub], "#d": [""] }),
+      ]),
     );
 
     client.stop();
@@ -1208,7 +1210,11 @@ describe("ConcordClient.joinByLink (INVITE-04 expires_at seconds join-time check
     const token = newInviteToken();
     const linkSk = generateSecretKey();
     const linkPub = getPublicKey(linkSk);
-    const bundle = buildInviteBundle(genesis.material, { name: "Expiring", creator_npub: ownerPub, expires_at: expiresAt });
+    const bundle = buildInviteBundle(genesis.material, {
+      name: "Expiring",
+      creator_npub: ownerPub,
+      expires_at: expiresAt,
+    });
     const template = await InviteBundleFactory.create(bundle, token);
     const bundleEvent = finalizeEvent(template, linkSk) as NostrEvent;
     const link = buildInviteLink("https://app.example", linkPub, token, genesis.material.relays);
@@ -1573,9 +1579,11 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
       // insertion order) ever starts.
       expect(client.getCommunity(legitMaterial.community_id)).toBeDefined();
       expect(client.getCommunity(malformedMaterial.community_id)).toBeUndefined();
-      expect(calls.some((c) => format(...(c as [unknown, ...unknown[]])).includes(malformedMaterial.community_id.slice(0, 8)))).toBe(
-        true,
-      );
+      expect(
+        calls.some((c) =>
+          format(...(c as [unknown, ...unknown[]])).includes(malformedMaterial.community_id.slice(0, 8)),
+        ),
+      ).toBe(true);
       expect(unhandled).toEqual([]);
     } finally {
       process.removeListener("unhandledRejection", onUnhandled);
@@ -1714,10 +1722,7 @@ describe("ConcordClient join atomicity + reconcile fault-tolerance (CR-02, gap c
     await client.start();
 
     async function publishEntryAt(createdAt: number, material: JoinMaterial) {
-      const communities = mergeCommunities(
-        [],
-        [{ community_id: cid, seed: material, current: material, added_at: 1 }],
-      );
+      const communities = mergeCommunities([], [{ community_id: cid, seed: material, current: material, added_at: 1 }]);
       const content = await signer.nip44!.encrypt(pubkey, JSON.stringify({ entries: communities, tombstones: [] }));
       const event = await signer.signEvent({ kind: COMMUNITY_LIST_KIND, content, tags: [], created_at: createdAt });
       store.add(event as NostrEvent);
@@ -1816,10 +1821,7 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
       description: "WR-02 regression",
       relays: ["wss://fake"],
     });
-    const bundle = buildInviteBundle(
-      { ...genesis.material, relays: ["junk1", "junk2"] },
-      { name: "JunkRelays" },
-    );
+    const bundle = buildInviteBundle({ ...genesis.material, relays: ["junk1", "junk2"] }, { name: "JunkRelays" });
 
     // Non-vacuity: pre-fix, joinByBundle handed `bundle` straight to
     // joinFromBundle unvalidated — `bundle.relays.length` (2 junk strings) is
@@ -1840,7 +1842,13 @@ describe("ConcordClient joinByBundle validation, relay gate relocation, and Comm
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool } = fakePool();
-    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+    });
     await client.start();
 
     const genesis = await createCommunity({
@@ -2131,7 +2139,13 @@ describe("ConcordClient pruneDeadEntries — engine-less leave, unknown-cid no-o
   it("CR-02(a): leave() on a cid the client has never seen adds NO tombstone and triggers no publish", async () => {
     const signer = new PrivateKeySigner(generateSecretKey());
     const { pool, published } = fakePool();
-    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+    });
     await client.start();
 
     await client.leave("ff".repeat(32));
@@ -2201,7 +2215,13 @@ describe("ConcordClient recordJoin — D-07 byte ceiling removed, IN-01/IN-04 (1
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool, published } = fakePool();
-    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+    });
     await client.start();
 
     // A plain literal oversized field — no per-entry ceiling constant survives
@@ -2360,7 +2380,13 @@ describe("ConcordClient recordJoin — 50-membership cap enforcement (WIRE-08, D
     const signer = new PrivateKeySigner(generateSecretKey());
     const pubkey = await signer.getPublicKey();
     const { pool } = fakePool();
-    const client = new ConcordClient({ signer, pool, eventStore: new EventStore(), storage: memoryStorage(), relays: ["wss://fake"] });
+    const client = new ConcordClient({
+      signer,
+      pool,
+      eventStore: new EventStore(),
+      storage: memoryStorage(),
+      relays: ["wss://fake"],
+    });
     await client.start();
 
     // 49 live memberships, each duplicated (raw array length 98) — a shape
@@ -2393,7 +2419,9 @@ describe("ConcordClient recordJoin — 50-membership cap enforcement (WIRE-08, D
     expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
 
     await expect(client.createNewCommunity("one-too-many", "d", ["wss://fake"])).rejects.toThrow(
-      new RegExp(`${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP} live memberships.*${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP}-membership cap`),
+      new RegExp(
+        `${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP} live memberships.*${CORD_COMMUNITY_LIST_MEMBERSHIP_CAP}-membership cap`,
+      ),
     );
     expect(client.communities$.value.length).toBe(CORD_COMMUNITY_LIST_MEMBERSHIP_CAP);
 

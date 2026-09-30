@@ -169,7 +169,13 @@ describe.each(Object.entries(HELD_KEY_FIELD_RULES))("held-root-entry field %s (g
 describe.each(Object.entries(BLOB_POINTER_FIELD_RULES))("icon field %s (generated probe)", (field) => {
   it(`a malformed icon.${field} drops the whole icon (every blob-table field is reject/reject)`, () => {
     const bundle = baselineBundle();
-    const injected = { ...bundle, icon: { ...(bundle.icon as BlobPointer), [field]: hostileValueFor(BLOB_POINTER_FIELD_RULES[field as keyof BlobPointer]) } };
+    const injected = {
+      ...bundle,
+      icon: {
+        ...(bundle.icon as BlobPointer),
+        [field]: hostileValueFor(BLOB_POINTER_FIELD_RULES[field as keyof BlobPointer]),
+      },
+    };
     const result = validateInviteBundle(injected);
     expect(result).toBeDefined();
     expect(result?.icon).toBeUndefined();
@@ -189,14 +195,17 @@ describe("array-kind count-cap and ordering probes (generated over the bundle ta
       "countCap" in entry[1] && entry[1].kind !== "relay-list",
   );
 
-  it.each(arrayFields)("an over-count %s array of well-formed-looking entries is refused per its disposition", (field, rule) => {
-    // "Well-formed-looking" placeholder entries — the count cap must fire on
-    // the RAW array length, before any per-entry validation ever runs.
-    const entries = Array.from({ length: rule.countCap + 1 }, () => ({}));
-    const bundle = { ...baselineBundle(), [field]: entries };
-    const result = validateInviteBundle(bundle);
-    expect(result).toBeUndefined();
-  });
+  it.each(arrayFields)(
+    "an over-count %s array of well-formed-looking entries is refused per its disposition",
+    (field, rule) => {
+      // "Well-formed-looking" placeholder entries — the count cap must fire on
+      // the RAW array length, before any per-entry validation ever runs.
+      const entries = Array.from({ length: rule.countCap + 1 }, () => ({}));
+      const bundle = { ...baselineBundle(), [field]: entries };
+      const result = validateInviteBundle(bundle);
+      expect(result).toBeUndefined();
+    },
+  );
 
   it.each(arrayFields)(
     "the same over-count %s array with every entry malformed is refused identically (ordering guard)",
@@ -245,9 +254,7 @@ it("no string value anywhere in a validated (maximal) bundle exceeds the largest
     ...Object.values(HELD_KEY_FIELD_RULES),
     ...Object.values(BLOB_POINTER_FIELD_RULES),
   ];
-  const largestCap = Math.max(
-    ...allRules.map((r) => ("max" in r ? r.max : "urlMax" in r ? r.urlMax : 0)),
-  );
+  const largestCap = Math.max(...allRules.map((r) => ("max" in r ? r.max : "urlMax" in r ? r.urlMax : 0)));
 
   const lengths: number[] = [];
   (function walk(value: unknown): void {
@@ -261,7 +268,11 @@ it("no string value anywhere in a validated (maximal) bundle exceeds the largest
 });
 
 it("every key a genuine buildInviteBundle output carries has a rule in the bundle table (builder coverage)", async () => {
-  const genesis = await createCommunity({ ownerPubkey: OWNER, name: "Builder Coverage", relays: ["wss://ok.example.com"] });
+  const genesis = await createCommunity({
+    ownerPubkey: OWNER,
+    name: "Builder Coverage",
+    relays: ["wss://ok.example.com"],
+  });
   const material = {
     ...genesis.material,
     channels: [{ id: "11".repeat(32), key: "22".repeat(32), epoch: 0, name: "general" }],
@@ -421,7 +432,9 @@ it("an unknown attacker key injected at every nested position is absent from the
   const bundle = baselineBundle();
   const injected = {
     ...bundle,
-    channels: [{ ...bundle.channels[0], [ATTACKER_KEY]: "x", held: [{ ...bundle.channels[0]!.held![0], [ATTACKER_KEY]: "x" }] }],
+    channels: [
+      { ...bundle.channels[0], [ATTACKER_KEY]: "x", held: [{ ...bundle.channels[0]!.held![0], [ATTACKER_KEY]: "x" }] },
+    ],
     held_roots: [{ ...bundle.held_roots![0], [ATTACKER_KEY]: "x" }],
     icon: { ...bundle.icon, [ATTACKER_KEY]: "x" },
   };

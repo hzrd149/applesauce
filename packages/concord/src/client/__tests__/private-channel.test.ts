@@ -23,7 +23,11 @@ import { giftWrap } from "../../operations/gift-wrap.js";
 import { bindToChannel } from "../../operations/channel.js";
 import type { ChannelKey } from "../../types.js";
 import { ConcordPrivateChannel } from "../private-channel.js";
-import { VOICE_PRESENCE_JOINED_EXAMPLE, missingFixtureTags, substituteFixtureTags } from "../../__tests__/cord-wire-fixtures.js";
+import {
+  VOICE_PRESENCE_JOINED_EXAMPLE,
+  missingFixtureTags,
+  substituteFixtureTags,
+} from "../../__tests__/cord-wire-fixtures.js";
 
 const settle = () => new Promise((r) => setTimeout(r, 200));
 
@@ -728,7 +732,12 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
     // Non-vacuity guard against the test passing vacuously because the source
     // is never subscribed at all: a SUCCESSFUL construction against the same
     // kind of source must leave exactly one active subscriber.
-    const okChannel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1, name: "ok" };
+    const okChannel: ChannelKey = {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "ok",
+    };
     const { source: okExtras, count: okCount } = countingExtrasSource([]);
     const channel = new ConcordPrivateChannel({
       channelKey: okChannel,
@@ -754,7 +763,12 @@ describe("ConcordPrivateChannel constructor — self-cleaning extras on throw (W
     const myPub = await me.getPublicKey();
     const genesis = await createCommunity({ ownerPubkey: ownerPub, name: "Test", relays: ["wss://fake"] });
     const pool = servingPool([]);
-    const okChannel: ChannelKey = { id: bytesToHex(generateSecretKey()), key: bytesToHex(generateSecretKey()), epoch: 1, name: "ok" };
+    const okChannel: ChannelKey = {
+      id: bytesToHex(generateSecretKey()),
+      key: bytesToHex(generateSecretKey()),
+      epoch: 1,
+      name: "ok",
+    };
     const { source: extras, count } = countingExtrasSource([]);
 
     const channel = new ConcordPrivateChannel({

@@ -310,7 +310,4 @@ export type CashuListMintsMethod = TWalletMethod<"cashu_list_mints", {}, { mints
 
 /** Union of all cashu methods */
 export type CashuWalletMethods =
-  | CashuWithdrawMethod
-  | CashuDepositMethod
-  | CashuPayRequestMethod
-  | CashuListMintsMethod;
+  CashuWithdrawMethod | CashuDepositMethod | CashuPayRequestMethod | CashuListMintsMethod;

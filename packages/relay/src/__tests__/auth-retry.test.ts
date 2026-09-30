@@ -107,10 +107,7 @@ describe("authRetry", () => {
   it("subscribes the source exactly twice (authRetries + 1) against a persistently-signalling source", async () => {
     const persistent = makePersistentSignalSource();
     const errors = makeErrors();
-    const spy = subscribeSpyTo(
-      persistent.source.pipe(authRetry(baseConfig({ errors }))),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ errors }))), { expectErrors: true });
 
     await spy.onError();
 
@@ -160,10 +157,9 @@ describe("authRetry", () => {
     const onAuthRequired = vi.fn().mockRejectedValue(rejection);
     const errors = makeErrors();
     const persistent = makePersistentSignalSource();
-    const spy = subscribeSpyTo(
-      persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))), {
+      expectErrors: true,
+    });
 
     await spy.onError();
 
@@ -180,10 +176,9 @@ describe("authRetry", () => {
     });
     const errors = makeErrors();
     const persistent = makePersistentSignalSource();
-    const spy = subscribeSpyTo(
-      persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(persistent.source.pipe(authRetry(baseConfig({ onAuthRequired, errors }))), {
+      expectErrors: true,
+    });
 
     await spy.onError();
 
@@ -257,10 +252,9 @@ describe("authRetry", () => {
     // Resolves after 150ms — comfortably past a would-be short timeout, proving no bound applies
     const authSatisfied$ = () => timer(150).pipe(map(() => true));
 
-    const spy = subscribeSpyTo(
-      ctrl.source.pipe(authRetry(baseConfig({ authTimeout: false, authSatisfied$ }))),
-      { expectErrors: true },
-    );
+    const spy = subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ authTimeout: false, authSatisfied$ }))), {
+      expectErrors: true,
+    });
 
     ctrl.emit(authRequiredSignal("auth-required: unbounded"));
 
@@ -277,9 +271,7 @@ describe("authRetry", () => {
   it("still invokes the handler when the requirement is already satisfied", async () => {
     const onAuthRequired = vi.fn();
     const ctrl = makeControllableSource<number>();
-    subscribeSpyTo(
-      ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired, authSatisfied$: () => of(true) }))),
-    );
+    subscribeSpyTo(ctrl.source.pipe(authRetry(baseConfig({ onAuthRequired, authSatisfied$: () => of(true) }))));
 
     ctrl.emit(authRequiredSignal("auth-required: already satisfied"));
 
