@@ -2131,10 +2131,10 @@ describe("authenticate", () => {
   });
 
   it("waits for a challenge and rejects at the whole-operation deadline", async () => {
-    const promise = relay.authenticate(signer, { timeout: 20 });
+    const result = relay.authenticate(signer, { timeout: 20 }).catch((error) => error);
 
     await expect(server.connected).resolves.toBeDefined();
-    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
+    expect(await result).toBeInstanceOf(RelayAuthChallengeTimeoutError);
     expect(server.messages.some((message: any) => message[0] === "AUTH")).toBe(false);
   });
 
@@ -2296,12 +2296,13 @@ describe("authenticate", () => {
   });
 
   it("unsubscribes an AUTH exchange at the outer timeout and ignores a late OK", async () => {
-    const promise = relay.authenticate(signer, { timeout: 20 });
+    // Observe the rejection immediately: under load the 20ms timeout can fire before the AUTH frame arrives
+    const result = relay.authenticate(signer, { timeout: 20 }).catch((error) => error);
     await expect(server.connected).resolves.toBeDefined();
     server.send(["AUTH", "challenge-timeout-after-write"]);
     const auth = (await server.nextMessage) as ["AUTH", NostrEvent];
 
-    await expect(promise).rejects.toBeInstanceOf(RelayAuthChallengeTimeoutError);
+    expect(await result).toBeInstanceOf(RelayAuthChallengeTimeoutError);
     server.send(["OK", auth[1].id, true, "too late"]);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
