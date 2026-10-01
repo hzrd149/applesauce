@@ -7,6 +7,8 @@ import {
   FromCacheSymbol,
   getEventUID,
   getReplaceableAddress,
+  isEvent,
+  isRumor,
   markFromCache,
   verifiedSymbol,
 } from "../event.js";
@@ -81,5 +83,44 @@ describe("markFromCache", () => {
 
     const copy = { ...event };
     expect(Object.prototype.hasOwnProperty.call(copy, FromCacheSymbol)).toBe(false);
+  });
+});
+
+describe("isEvent", () => {
+  const valid = user.note("gm");
+
+  it("accepts a valid signed event", () => {
+    expect(isEvent(valid)).toBe(true);
+  });
+
+  it("rejects null and undefined", () => {
+    expect(isEvent(null)).toBe(false);
+    expect(isEvent(undefined)).toBe(false);
+  });
+
+  it("rejects an event whose id is a non-string of length 64", () => {
+    expect(isEvent({ ...valid, id: new Array(64) })).toBe(false);
+  });
+
+  it("rejects a fractional or non-finite created_at", () => {
+    expect(isEvent({ ...valid, created_at: 0.5 })).toBe(false);
+    expect(isEvent({ ...valid, created_at: Infinity })).toBe(false);
+  });
+});
+
+describe("isRumor", () => {
+  const { sig: _, ...valid } = user.note("gm");
+
+  it("accepts a valid rumor", () => {
+    expect(isRumor(valid)).toBe(true);
+  });
+
+  it("rejects a non-string id", () => {
+    expect(isRumor({ ...valid, id: new Array(64) })).toBe(false);
+  });
+
+  it("rejects a fractional or non-finite created_at", () => {
+    expect(isRumor({ ...valid, created_at: 0.5 })).toBe(false);
+    expect(isRumor({ ...valid, created_at: Infinity })).toBe(false);
   });
 });

@@ -75,13 +75,15 @@ export const ReplaceableIdentifierSymbol = Symbol.for("replaceable-identifier");
 /** Checks if an object is a Rumor ( unsigned event with a known id ) */
 export function isRumor(event: any): event is Rumor {
   return (
-    event.id?.length === 64 &&
+    typeof event.id === "string" &&
+    event.id.length === 64 &&
     event.sig === undefined && // Missing signature ( unsigned )
     typeof event.pubkey === "string" &&
     event.pubkey.length === 64 &&
     typeof event.content === "string" &&
     Array.isArray(event.tags) &&
     typeof event.created_at === "number" &&
+    Number.isInteger(event.created_at) &&
     event.created_at > 0
   );
 }
@@ -94,13 +96,15 @@ export function isEvent(event: any): event is NostrEvent {
   if (event === undefined || event === null) return false;
 
   return (
-    event.id?.length === 64 &&
+    typeof event.id === "string" &&
+    event.id.length === 64 &&
     typeof event.sig === "string" &&
     typeof event.pubkey === "string" &&
     event.pubkey.length === 64 &&
     typeof event.content === "string" &&
     Array.isArray(event.tags) &&
     typeof event.created_at === "number" &&
+    Number.isInteger(event.created_at) &&
     event.created_at > 0
   );
 }
