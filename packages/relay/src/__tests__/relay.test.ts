@@ -1098,18 +1098,26 @@ describe("operation-scoped EVENT/PUBLISH auth (13-05)", () => {
   });
 
   it("D-15: publish's timeout is suspended across the auth phase", async () => {
-    // Handler + wait together outlast the short `timeout` below; only suspension across the auth
-    // phase (not a race against authTimeout) lets this publish still resolve. Simulates successful
-    // authentication out of band via authenticationResponse$ (this suite's established convention,
-    // see 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip — this fixture's
-    // keepAlive=0 can drop the connection (and wipe the challenge) while nothing is subscribed
-    // during a real async handler delay, which is orthogonal to what D-15 asserts here.
+    // Keep the socket alive across the auth phase. `event()` completes its per-attempt stream
+    // (take(1)) on the auth-required OK, and this fixture's default keepAlive=0 then tears the
+    // connection down while the async handler is still running, so the resend has to race a
+    // reconnect. That drop is orthogonal to D-15 (which asserts only that the operation clock is
+    // suspended, not that a zero keepAlive socket survives an auth phase), so raise keepAlive past
+    // the handler's wait to isolate what this test actually measures.
+    relay.keepAlive = 1_000;
+
+    // Handler + wait together comfortably outlast `timeout`, so without suspension the clock would
+    // fire and the publish would fail (non-vacuous). Both numbers are sized well above the
+    // connection/first-round-trip overhead (tens of ms on a loaded CI box): the suspended clock must
+    // keep enough remaining budget for the whole post-auth resend + OK, not barely enough.
+    // Authentication is completed out of band via authenticationResponse$ (this suite's established
+    // convention, see 13-02-SUMMARY.md) rather than a live relay.authenticate() round trip.
     const onAuthRequired = vi.fn(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 200));
       relay.authenticationResponse$.next({ ok: true, from: "wss://test" });
     });
 
-    const spy = relay.publish(mockEvent, { onAuthRequired, timeout: 20, authTimeout: false });
+    const spy = relay.publish(mockEvent, { onAuthRequired, timeout: 80, authTimeout: false });
 
     await expect(server).toReceiveMessage(["EVENT", mockEvent]);
     server.send(["OK", mockEvent.id, false, "auth-required: need to authenticate"]);
