@@ -111,6 +111,17 @@ Plans:
 
 - [ ] TBD (promote with $gsd-review-backlog when ready)
 
+### Phase 999.2: Adaptive Relay Signature Verification (BACKLOG)
+
+**Goal:** Investigate and build a flexible, responsive event signature verification system for selected relays that tracks counts of verified good and bad signatures over a configurable time period, gradually reduces Schnorr signature verification as each relay earns trust through valid events, and continues infrequent checks even when a relay is fully trusted; any invalid signature immediately resets that relay's trust to zero and records a permanent or long-standing strike against it.
+**Requirements:** TBD
+**Open questions:** Trust growth and verification backoff policy, time-window accounting, minimum sampling frequency, and strike persistence and expiry.
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (promote with $gsd-review-backlog when ready)
+
 ## v7 release coordination
 
 **Recorded 2026-08-19.** The relay re-layering cluster below is breaking, so it ships as **applesauce v7.0.0**. Everything is on 6.x today (`applesauce-relay` 6.2.1, most of the suite 6.2.0, `applesauce-react`/`applesauce-sqlite` 6.0.0).
