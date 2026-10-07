@@ -2,7 +2,8 @@ import { EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers/event";
 import { from } from "rxjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Action, ActionRunner } from "../action-runner.js";
+import type { EventSigner } from "applesauce-core";
+import { Action, ActionContext, ActionRunner } from "../action-runner.js";
 import { CreateProfile } from "../actions/profile.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -190,6 +191,41 @@ describe("ActionRunner", () => {
       await hub.run(actionBuilder2);
 
       expect(firstContext).toBe(secondContext);
+    });
+
+    it("should rebuild context when the signer's pubkey changes (account switch)", async () => {
+      const a = new FakeUser();
+      const b = new FakeUser();
+      let active: FakeUser = a;
+      // Mirrors AccountManager.signer: a proxy that always targets the active account
+      const proxy: EventSigner = {
+        getPublicKey: () => active.getPublicKey(),
+        signEvent: (draft) => active.signEvent(draft),
+      };
+      const publish = vi.fn().mockResolvedValue(undefined);
+      const hub = new ActionRunner(events, proxy, publish);
+
+      const contexts: ActionContext[] = [];
+      const capture = () => {
+        const action: Action = async (ctx) => {
+          contexts.push(ctx);
+        };
+        return action;
+      };
+
+      await hub.run(capture);
+      await hub.run(capture);
+      active = b;
+      await hub.run(capture);
+
+      expect(contexts[0].self).toBe(a.pubkey);
+      expect(contexts[0].user.pubkey).toBe(a.pubkey);
+      // same account -> same context object
+      expect(contexts[1]).toBe(contexts[0]);
+      // switched account -> fresh self and user
+      expect(contexts[2].self).toBe(b.pubkey);
+      expect(contexts[2].user.pubkey).toBe(b.pubkey);
+      expect(contexts[2]).not.toBe(contexts[0]);
     });
   });
 });
