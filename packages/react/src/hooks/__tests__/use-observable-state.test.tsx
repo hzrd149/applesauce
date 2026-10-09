@@ -3,7 +3,7 @@
 import { act, render, renderHook, screen } from "@testing-library/react";
 import { StrictMode, useEffect, useLayoutEffect } from "react";
 import { BehaviorSubject, Observable } from "rxjs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createControlledObservable,
   createTrackedObservable,
@@ -135,5 +135,42 @@ describe("useObservableState", () => {
     unmount();
     expect(first.active + second.active).toBe(0);
     expect([...first.subscriptions, ...second.subscriptions].every(({ teardowns }) => teardowns === 1)).toBe(true);
+  });
+
+  it("stores function values emitted synchronously without calling them", () => {
+    const fnA = vi.fn(() => "called-a");
+    const fnB = vi.fn(() => "called-b");
+    const source = new BehaviorSubject<() => string>(fnA);
+    const { result } = renderHook(() => useObservableState(source));
+
+    expect(result.current).toBe(fnA);
+    act(() => source.next(fnB));
+    expect(result.current).toBe(fnB);
+    expect(fnA).not.toHaveBeenCalled();
+    expect(fnB).not.toHaveBeenCalled();
+  });
+
+  it("stores function values emitted asynchronously without calling them", () => {
+    const fn = vi.fn(() => "called");
+    const source = createControlledObservable<() => string>();
+    const { result } = renderHook(() => useObservableState(source.observable));
+
+    expect(result.current).toBeUndefined();
+    act(() => source.next(fn));
+    expect(result.current).toBe(fn);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("stores function values from a replacement source without calling them", () => {
+    const fnA = vi.fn(() => "called-a");
+    const fnC = vi.fn(() => "called-c");
+    const { result, rerender } = renderHook(({ source }) => useObservableState(source), {
+      initialProps: { source: new BehaviorSubject<() => string>(fnA) },
+    });
+
+    rerender({ source: new BehaviorSubject<() => string>(fnC) });
+    expect(result.current).toBe(fnC);
+    expect(fnA).not.toHaveBeenCalled();
+    expect(fnC).not.toHaveBeenCalled();
   });
 });
