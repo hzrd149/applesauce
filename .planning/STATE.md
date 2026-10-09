@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 Phase: Milestone v7.0.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-09-28 — Milestone v7.0.0 completed and archived
+Last activity: 2026-10-09 - Completed quick task 261009-kku: Fix useObservableState treating function values as setState updaters
 
 ## Performance Metrics
 
@@ -451,6 +451,7 @@ None yet.
 | 260804-hmw-b | Remove unused EventFactory.kind() method (WR-04) | 2026-08-04 | e829d0a3 | inline (no plan dir) |
 | 260805-ds0 | Clamp setTimeout delays to the 32-bit max in ExpirationManager and WalletConnect.waitForPaid (resolves backlog 999.10) | 2026-08-05 | 187930b9, 3f6f4bd3, 1b6b2976, 594bf1de | [260805-ds0-clamp-expirationmanager-settimeout-delay](./quick/260805-ds0-clamp-expirationmanager-settimeout-delay/) |
 | 260907-g46 | Remove deprecated RelayPool.ignoreOffline flag | 2026-09-07 | 6131d0f0, 43a02481 | [260907-g46-remove-deprecated-relaypool-ignoreofflin](./quick/260907-g46-remove-deprecated-relaypool-ignoreofflin/) |
+| 261009-kku | Fix useObservableState treating function values as setState updaters | 2026-10-09 | 866d9701, 7fffaa3b, 6fc1f873 | [261009-kku-fix-useobservablestate-treating-function](./quick/261009-kku-fix-useobservablestate-treating-function/) |
 
 ### Roadmap Evolution
 
