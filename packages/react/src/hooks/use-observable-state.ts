@@ -108,15 +108,17 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
       subStateRef.current = subState;
 
       // Update state if we got a sync value from new observable
-      if (subState.latestValue !== NO_VALUE) {
-        setState(subState.latestValue);
+      const latest = subState.latestValue;
+      if (latest !== NO_VALUE) {
+        setState(() => latest);
       } else {
         setState(undefined);
       }
     } else {
       // Same observable - check if we missed any values between useState and this effect
-      if (subState.latestValue !== NO_VALUE && subState.latestValue !== state) {
-        setState(subState.latestValue);
+      const latest = subState.latestValue;
+      if (latest !== NO_VALUE && latest !== state) {
+        setState(() => latest);
       }
     }
 
@@ -128,7 +130,8 @@ export function useObservableState<TState>(state$: Observable<TState>): TState |
     // Register callbacks for future emissions
     subState.onValue = (value) => {
       if (state$Ref.current === state$) {
-        setState(value);
+        // Updater form is required because emitted values may be functions (e.g. timeline loaders) that React would call
+        setState(() => value);
       }
     };
 
