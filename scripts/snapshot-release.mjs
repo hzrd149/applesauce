@@ -113,8 +113,6 @@ async function publishManifest(path) {
         "--registry",
         registry,
         "--no-git-checks",
-        "--publish-wait-timeout",
-        "600000",
       ]),
     promote: (pkg, targetTag) =>
       run("pnpm", ["dist-tag", "add", `${pkg.name}@${pkg.version}`, targetTag, "--registry", registry]),
