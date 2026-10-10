@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { artifactIntegrity, publishRelease, readRelease, registry, writeRelease } from "./snapshot-publish.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = join(root, ".changeset", "config.json");
@@ -25,6 +24,18 @@ function getArgValue(name) {
 }
 
 const tag = getArgValue("--tag") ?? "next";
+const resume = getArgValue("--resume");
+
+if (args.some((arg) => arg === "--resume" || arg.startsWith("--resume=")) && (!resume || resume.startsWith("--")))
+  throw new Error("--resume requires a release manifest path");
+if (!/^[a-z][a-z0-9-]*$/.test(tag) || tag === "latest") throw new Error("Invalid snapshot tag");
+if (args.some((arg) => arg === "--otp" || arg.startsWith("--otp="))) {
+  throw new Error("OTP forwarding has been removed. Use pnpm login and let pnpm handle publishing authentication.");
+}
+if (args.includes("--prepare-only")) throw new Error("Use pnpm release-next to prepare and publish in one run");
+if (resume && (dryRun || verifyOnly || skipVersion || getArgValue("--tag"))) {
+  throw new Error("--resume uses the saved artifacts and tag; do not combine it with preparation flags");
+}
 
 function run(command, commandArgs, env = {}, cwd = root) {
   if (dryRun) {
@@ -62,56 +73,84 @@ function getSnapshotPackages() {
   });
 }
 
-function isPublished(name, version) {
-  if (dryRun) return false;
-
-  const result = runCapture("pnpm", ["view", `${name}@${version}`, "version"]);
-  if (result.status === 0 && result.stdout.trim() === version) return true;
-  if (result.stderr.includes("ERR_PNPM_PACKAGE_NOT_FOUND")) return false;
-  if (result.stderr.includes("E404") || result.stderr.includes("404")) return false;
-  if (result.stdout.includes("ERR_PNPM_PACKAGE_NOT_FOUND")) return false;
-  if (result.stdout.includes("E404") || result.stdout.includes("404")) return false;
-
-  const error = result.stderr || result.stdout;
-  throw new Error(`Unable to check whether ${name}@${version} is published:\n${error}`);
+function registryJson(commandArgs, allowMissing = false) {
+  const result = runCapture("pnpm", [...commandArgs, "--json", "--registry", registry]);
+  if (result.status === 0) return JSON.parse(result.stdout);
+  let code;
+  try {
+    code = JSON.parse(result.stdout).error?.code;
+  } catch {
+    // Non-JSON process failures are errors, never evidence of a missing version.
+  }
+  if (allowMissing && ["ERR_PNPM_PACKAGE_NOT_FOUND", "ERR_PNPM_FETCH_404", "E404"].includes(code)) return undefined;
+  throw new Error(`Unable to read npm registry state:\n${result.stderr || result.stdout}`);
 }
 
-function publishPackages(otp) {
-  const otpEnv = otp ? { npm_config_otp: otp, NPM_CONFIG_OTP: otp } : {};
+async function publishManifest(path) {
+  const release = readRelease(path);
+  const expected = getSnapshotPackages()
+    .filter((pkg) => !pkg.manifest.private)
+    .map((pkg) => pkg.name)
+    .sort();
+  const actual = release.packages.map((pkg) => pkg.name).sort();
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+    throw new Error("Release manifest does not contain the complete linked snapshot package group");
+  }
+  console.log(`Release artifacts: ${path}`);
+  console.log(`To retry without rebuilding: pnpm release-snapshot --resume ${JSON.stringify(path)}`);
+  run("pnpm", ["whoami", "--registry", registry]);
+  await publishRelease(path, {
+    view: (pkg) => registryJson(["view", `${pkg.name}@${pkg.version}`, "name", "version", "dist"], true),
+    tags: (name) => registryJson(["view", name, "dist-tags"]),
+    publish: (tarball, uploadTag) =>
+      run("pnpm", [
+        "publish",
+        tarball,
+        "--tag",
+        uploadTag,
+        "--access",
+        "public",
+        "--registry",
+        registry,
+        "--no-git-checks",
+        "--publish-wait-timeout",
+        "600000",
+      ]),
+    promote: (pkg, targetTag) =>
+      run("pnpm", ["dist-tag", "add", `${pkg.name}@${pkg.version}`, targetTag, "--registry", registry]),
+  });
+}
 
+function prepareManifest() {
+  const destination = process.env.APPLESAUCE_SNAPSHOT_ARTIFACTS;
+  if (!destination) throw new Error("Missing snapshot artifact directory");
+  const packages = [];
   for (const { dir, manifest, name } of getSnapshotPackages()) {
     if (manifest.private) continue;
-
-    if (isPublished(name, manifest.version)) {
-      console.log(`${name}@${manifest.version} is already published, skipping`);
-      continue;
-    }
-
-    const publishArgs = ["publish", dir, "--tag", tag, "--access", "public", "--no-git-checks"];
-    if (otp) publishArgs.push("--otp", otp);
-
-    run("pnpm", publishArgs, otpEnv);
+    const tarball = `${name}-${manifest.version}.tgz`;
+    run("pnpm", ["pack", "--out", join(destination, tarball)], {}, dir);
+    packages.push({
+      name,
+      version: manifest.version,
+      tarball,
+      integrity: dryRun ? "(dry run)" : artifactIntegrity(join(destination, tarball)),
+    });
   }
-}
-
-async function getOtp() {
-  if (dryRun || verifyOnly) return undefined;
-
-  const otp = getArgValue("--otp") ?? process.env.NPM_CONFIG_OTP ?? process.env.NPM_OTP;
-  if (otp) return otp.trim();
-
-  if (process.env.NODE_AUTH_TOKEN) return undefined;
-
-  if (!input.isTTY || !output.isTTY) {
-    throw new Error("NPM OTP is required. Pass --otp <code>, NPM_OTP, or NPM_CONFIG_OTP.");
+  const path = join(destination, "release.json");
+  if (!packages.length) throw new Error("No public snapshot packages found");
+  const release = {
+    schema: 1,
+    registry,
+    tag,
+    uploadTag: `${tag}-pending-${packages[0].version.replaceAll(".", "-")}`,
+    packages,
+  };
+  if (!dryRun) {
+    writeRelease(path, release);
+    readRelease(path);
   }
-
-  const readline = createInterface({ input, output });
-  try {
-    return (await readline.question("Enter npm OTP: ")).trim();
-  } finally {
-    readline.close();
-  }
+  console.log(`Prepared release: ${path}`);
+  return path;
 }
 
 function requireCleanNextCheckout() {
@@ -130,15 +169,18 @@ async function publishFromDisposableWorktree() {
   if (dryRun) {
     const result = spawnSync(process.execPath, [fileURLToPath(import.meta.url), ...args], {
       cwd: root,
-      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1" },
+      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1", APPLESAUCE_SNAPSHOT_ARTIFACTS: "<release-artifacts>" },
       stdio: "inherit",
     });
     if (result.status !== 0) throw new Error(`Snapshot dry run exited with status ${result.status ?? 1}`);
     return;
   }
 
-  const tempRoot = mkdtempSync(join(tmpdir(), "applesauce-next-release-"));
+  const tempBase = existsSync("/tmp/opencode") ? "/tmp/opencode" : tmpdir();
+  const tempRoot = mkdtempSync(join(tempBase, "applesauce-next-release-"));
   const worktree = join(tempRoot, "checkout");
+  const artifacts = join(tempRoot, "artifacts");
+  mkdirSync(artifacts);
   let created = false;
 
   try {
@@ -148,7 +190,7 @@ async function publishFromDisposableWorktree() {
 
     const result = spawnSync(process.execPath, [join(worktree, "scripts", "snapshot-release.mjs"), ...args], {
       cwd: worktree,
-      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1" },
+      env: { ...process.env, APPLESAUCE_SNAPSHOT_WORKTREE: "1", APPLESAUCE_SNAPSHOT_ARTIFACTS: artifacts },
       stdio: "inherit",
     });
     if (result.status !== 0) throw new Error(`Snapshot release exited with status ${result.status ?? 1}`);
@@ -159,18 +201,24 @@ async function publishFromDisposableWorktree() {
         throw new Error(`Unable to remove temporary release worktree ${worktree}:\n${cleanup.stderr}`);
       }
     }
-    rmSync(tempRoot, { recursive: true, force: true });
+    if (existsSync(join(artifacts, "release.json"))) {
+      console.log(`Saved release artifacts: ${join(artifacts, "release.json")}`);
+    } else {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   }
 }
 
-if (!isolated) {
+if (resume) {
+  await publishManifest(resolve(root, resume));
+} else if (!isolated) {
   await publishFromDisposableWorktree();
 } else {
-  const otp = await getOtp();
-  if (otp === "") throw new Error("NPM OTP cannot be empty");
-
   if (!skipVersion) run("node", ["scripts/snapshot-version.mjs", tag]);
 
   run("pnpm", ["prerelease-snapshot"]);
-  if (!verifyOnly) publishPackages(otp);
+  if (!verifyOnly) {
+    const path = prepareManifest();
+    if (!dryRun) await publishManifest(path);
+  }
 }
