@@ -19,6 +19,7 @@ import {
   BunkerURI,
   ConnectRequestParams,
   ConnectResponseResults,
+  createConnectMetadata,
   createNbunksec,
   NostrConnectAppMetadata,
   NostrConnectMethod,
@@ -52,6 +53,18 @@ export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   bunkerSecret?: string;
   /** A method for handling "auth" requests */
   onAuth?: (url: string) => Promise<void>;
+  /** Milliseconds to wait for a response before rejecting a request (default 60s, 0 to disable) */
+  timeout?: number;
+  /** Whether to send a `switch_relays` request after connecting (default false) */
+  autoSwitchRelays?: boolean;
+  /** Client metadata sent with `connect` requests and used for the nostrconnect:// URI */
+  metadata?: NostrConnectAppMetadata;
+};
+
+/** Options for {@link NostrConnectSigner.logout} */
+export type NostrConnectLogoutOptions = {
+  /** Milliseconds to wait for the remote signer to acknowledge before closing (defaults to the signer timeout) */
+  timeout?: number;
 };
 
 export class NostrConnectSigner implements ISigner {
@@ -92,6 +105,15 @@ export class NostrConnectSigner implements ISigner {
   /** A method for handling "auth" requests */
   public onAuth: (url: string) => Promise<void> = defaultHandleAuth;
 
+  /** Milliseconds to wait for a response before rejecting a request (0 to disable) */
+  public timeout: number;
+
+  /** Whether to send a `switch_relays` request after connecting */
+  public autoSwitchRelays: boolean;
+
+  /** Client metadata sent with `connect` requests */
+  public metadata?: NostrConnectAppMetadata;
+
   verifyEvent: typeof verifyEvent = verifyEvent;
 
   /** A secret used when initiating a connection from the client side (the `secret` in a nostrconnect:// URI) */
@@ -127,6 +149,9 @@ export class NostrConnectSigner implements ISigner {
     this.remote = options.remote;
     this.connectSecret = options.connectSecret || options.secret || nanoid(12);
     this.bunkerSecret = options.bunkerSecret;
+    this.timeout = options.timeout ?? 60_000;
+    this.autoSwitchRelays = options.autoSwitchRelays ?? false;
+    this.metadata = options.metadata;
 
     // Get the subscription and publish methods
     const { subscriptionMethod, publishMethod } = getConnectionMethods(options, NostrConnectSigner);
@@ -158,6 +183,13 @@ export class NostrConnectSigner implements ISigner {
     if (this.listening) return;
 
     this.listening = true;
+    await this.subscribe();
+    this.log("Opened", this.relays);
+  }
+
+  /** Starts the REQ subscription on the current relays */
+  protected async subscribe() {
+    this.req?.unsubscribe();
     const pubkey = await this.signer.getPublicKey();
 
     // Setup subscription
@@ -178,14 +210,15 @@ export class NostrConnectSigner implements ISigner {
         filter((event) => typeof event !== "string"),
       )
       .subscribe(this.handleEvent.bind(this));
-
-    this.log("Opened", this.relays);
   }
 
   /** Close the connection */
   async close() {
-    this.listening = false;
     this.isConnected = false;
+
+    // Already closed, nothing to clean up
+    if (!this.listening) return;
+    this.listening = false;
 
     // Close the current subscription
     if (this.req) {
@@ -199,11 +232,29 @@ export class NostrConnectSigner implements ISigner {
       this.waitingPromise = null;
     }
 
+    // Reject pending requests since their responses can no longer be received
+    for (const request of this.requests.values()) request.reject(new Error("Closed"));
+
     this.log("Closed");
   }
 
   protected requests = new Map<string, Deferred<any>>();
   protected auths = new Set<string>();
+  /** Timeout timers for pending requests */
+  protected timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Starts or restarts the timeout for a pending request */
+  protected startRequestTimeout(id: string, method: string) {
+    clearTimeout(this.timers.get(id));
+    if (!this.timeout) return;
+
+    this.timers.set(
+      id,
+      setTimeout(() => {
+        this.requests.get(id)?.reject(new Error(`Remote signer did not respond to ${method} request`));
+      }, this.timeout),
+    );
+  }
 
   /** Call this method with incoming events */
   public async handleEvent(event: NostrEvent) {
@@ -222,16 +273,17 @@ export class NostrConnectSigner implements ISigner {
 
       const response = JSON.parse(responseStr) as NostrConnectResponse<any>;
 
-      // handle remote signer connection
-      if (
-        !this.remote &&
-        (response.result === "ack" || (this.connectSecret && response.result === this.connectSecret))
-      ) {
-        this.log("Got ack response from", event.pubkey, response.result);
+      // Handle the remote signer connecting from a nostrconnect:// URI
+      if (!this.remote) {
+        // The secret must be validated to prevent connection spoofing, so "ack" is not accepted here
+        if (response.result !== this.connectSecret) return;
+
+        this.log("Got connect response from", event.pubkey);
         this.isConnected = true;
         this.remote = event.pubkey;
         this.waitingPromise?.resolve();
         this.waitingPromise = null;
+        this.startAutoSwitchRelays();
         return;
       }
 
@@ -243,6 +295,8 @@ export class NostrConnectSigner implements ISigner {
           if (response.result === "auth_url") {
             if (!this.auths.has(response.id)) {
               this.auths.add(response.id);
+              // Give the user time to authenticate before timing out
+              this.startRequestTimeout(response.id, "auth");
               if (this.onAuth) {
                 try {
                   await this.onAuth(response.error);
@@ -271,11 +325,22 @@ export class NostrConnectSigner implements ISigner {
     });
   }
 
+  /** Sends a request and waits for the response */
   private async makeRequest<T extends NostrConnectMethod>(
     method: T,
     params: ConnectRequestParams[T],
     kind = kinds.NostrConnect,
   ): Promise<ConnectResponseResults[T]> {
+    const { response } = await this.sendRequest(method, params, kind);
+    return response;
+  }
+
+  /** Publishes a request and returns the pending response without waiting for it */
+  private async sendRequest<T extends NostrConnectMethod>(
+    method: T,
+    params: ConnectRequestParams[T],
+    kind = kinds.NostrConnect,
+  ): Promise<{ response: Promise<ConnectResponseResults[T]> }> {
     // Talk to the remote signer or the users pubkey
     if (!this.remote) throw new Error("Missing remote signer pubkey");
 
@@ -288,15 +353,27 @@ export class NostrConnectSigner implements ISigner {
     const p = createDefer<ConnectResponseResults[T]>();
     this.requests.set(id, p);
 
-    const result = this.publishMethod?.(this.relays, event);
+    // Cleanup when the request is resolved, rejected, or timed out
+    const cleanup = () => {
+      this.requests.delete(id);
+      this.auths.delete(id);
+      clearTimeout(this.timers.get(id));
+      this.timers.delete(id);
+    };
+    p.then(cleanup, cleanup);
 
-    // Handle returned Promise or Observable
-    if (result instanceof Promise) await result;
-    else if ("subscribe" in result) await new Promise<void>((res) => result.subscribe({ complete: res }));
+    this.startRequestTimeout(id, method);
+    try {
+      // Handle returned Promise or Observable
+      const result = this.publishMethod(this.relays, event);
+      await new Promise<void>((res, rej) => from(result).subscribe({ complete: res, error: rej }));
+      this.log(`Sent ${id} (${method})`);
+    } catch (error) {
+      p.reject(error);
+      throw error;
+    }
 
-    this.log(`Sent ${id} (${method})`);
-
-    return p;
+    return { response: p };
   }
 
   /**
@@ -314,12 +391,16 @@ export class NostrConnectSigner implements ISigner {
     try {
       if (bunkerSecret !== undefined) this.bunkerSecret = bunkerSecret;
 
-      const result = await this.makeRequest(NostrConnectMethod.Connect, [
-        this.remote,
-        this.bunkerSecret || "",
-        permissions?.join(",") ?? "",
-      ]);
+      const metadata = createConnectMetadata(this.metadata);
+      const secret = this.bunkerSecret || "";
+      const perms = permissions?.join(",") ?? "";
+
+      const result = await this.makeRequest(
+        NostrConnectMethod.Connect,
+        metadata ? [this.remote, secret, perms, metadata] : [this.remote, secret, perms],
+      );
       this.isConnected = true;
+      this.startAutoSwitchRelays();
       return result;
     } catch (e) {
       this.isConnected = false;
@@ -335,18 +416,22 @@ export class NostrConnectSigner implements ISigner {
     if (this.isConnected) return Promise.resolve();
 
     this.open();
-    this.waitingPromise = createDefer();
-    abort?.addEventListener(
-      "abort",
-      () => {
-        this.waitingPromise?.reject(new Error("Aborted"));
-        this.waitingPromise = null;
-        this.close();
-      },
-      true,
-    );
+    const p = createDefer<void>();
+    this.waitingPromise = p;
 
-    return this.waitingPromise;
+    const onAbort = () => {
+      if (this.waitingPromise !== p) return;
+      this.waitingPromise = null;
+      p.reject(new Error("Aborted"));
+      this.close();
+    };
+    abort?.addEventListener("abort", onAbort, true);
+
+    // Remove the listener once settled so a later abort can't close a connected signer
+    const cleanup = () => abort?.removeEventListener("abort", onAbort, true);
+    p.then(cleanup, cleanup);
+
+    return p;
   }
 
   /** Request to create an account on the remote signer */
@@ -373,9 +458,32 @@ export class NostrConnectSigner implements ISigner {
     }
   }
 
-  /** Ensure the signer is connected to the remote signer */
+  /** Ensure the signer is listening for responses from the remote signer */
   async requireConnection() {
-    if (!this.isConnected) await this.connect();
+    // Wait for an in-flight relay switch so requests are sent on the new relays
+    if (this.switching) await this.switching;
+    if (this.isConnected && this.listening) return;
+
+    // Fallback for legacy sessions where the remote signer used the users key
+    if (!this.remote && this.pubkey) this.remote = this.pubkey;
+    if (!this.remote) throw new Error("Not connected to a remote signer");
+
+    // Sessions are keyed by the client pubkey, so an established session only needs to listen again.
+    // Re-sending `connect` would reuse a secret that remote signers are expected to ignore
+    await this.open();
+    this.isConnected = true;
+  }
+
+  /** The in-flight automatic `switch_relays` request */
+  protected switching: Promise<unknown> | null = null;
+
+  /** Sends a `switch_relays` request in the background if {@link autoSwitchRelays} is enabled */
+  protected startAutoSwitchRelays() {
+    if (!this.autoSwitchRelays || this.switching) return;
+
+    this.switching = this.switchRelays()
+      .catch((error) => this.log("Failed to switch relays", error))
+      .finally(() => (this.switching = null));
   }
 
   /** Get the users pubkey */
@@ -386,6 +494,7 @@ export class NostrConnectSigner implements ISigner {
     const key = await this.makeRequest(NostrConnectMethod.GetPublicKey, []);
 
     if (!isHexKey(key)) throw new Error("Remote signer returned an invalid public key");
+    this.pubkey = key;
     return key;
   }
 
@@ -439,7 +548,7 @@ export class NostrConnectSigner implements ISigner {
    * @returns An array of relay URLs if the signer wants to switch relays, or null if no change
    */
   async switchRelays(): Promise<string[] | null> {
-    await this.requireConnection();
+    if (!this.isConnected || !this.listening) await this.requireConnection();
     const response = await this.makeRequest(NostrConnectMethod.SwitchRelays, []);
 
     // NIP-46 results are strings, so the relay list arrives JSON-stringified
@@ -455,10 +564,7 @@ export class NostrConnectSigner implements ISigner {
       this.relays = result;
 
       // Restart subscription with new relays
-      if (this.listening) {
-        await this.close();
-        await this.open();
-      }
+      if (this.listening) await this.subscribe();
     }
 
     return result;
@@ -471,19 +577,31 @@ export class NostrConnectSigner implements ISigner {
    * remote signer does not acknowledge it. The consumer is responsible for deleting any persisted
    * client keypair.
    */
-  async logout() {
+  async logout(options?: NostrConnectLogoutOptions) {
+    const timeout = options?.timeout ?? this.timeout;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
-      if (this.isConnected && this.remote) await this.makeRequest(NostrConnectMethod.Logout, []);
+      if (this.isConnected && this.remote) {
+        const { response } = await this.sendRequest(NostrConnectMethod.Logout, []);
+
+        // Wait for the acknowledgement, but give up after the timeout since it's only a courtesy
+        const timedOut = new Promise<void>((res) => {
+          if (timeout) timer = setTimeout(res, timeout);
+        });
+        await Promise.race([response, timedOut]);
+      }
     } catch (error) {
       this.log("Failed to send logout request", error);
     } finally {
+      clearTimeout(timer);
       this.isConnected = false;
       await this.close();
     }
   }
 
   /** Returns the nostrconnect:// URI for this signer */
-  getNostrConnectURI(metadata?: NostrConnectAppMetadata) {
+  getNostrConnectURI(metadata: NostrConnectAppMetadata | undefined = this.metadata) {
     return createNostrConnectURI({
       client: getPublicKey(this.signer.key),
       connectSecret: this.connectSecret,
@@ -541,6 +659,7 @@ export class NostrConnectSigner implements ISigner {
   static async fromNbunksec(
     encoded: string,
     options?: Omit<NostrConnectSignerOptions, "relays" | "remote" | "signer" | "bunkerSecret"> & {
+      /** @deprecated permissions are only sent with the initial `connect` request, use fromBunkerURI instead */
       permissions?: string[];
     },
   ) {
@@ -553,7 +672,9 @@ export class NostrConnectSigner implements ISigner {
       bunkerSecret,
       ...options,
     });
-    await client.connect(bunkerSecret, options?.permissions);
+
+    // The session already exists, so resume listening without re-sending `connect`
+    await client.requireConnection();
 
     return client;
   }

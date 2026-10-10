@@ -36,7 +36,8 @@ export enum NostrConnectMethod {
 }
 
 export type ConnectRequestParams = {
-  [NostrConnectMethod.Connect]: [string] | [string, string] | [string, string, string];
+  [NostrConnectMethod.Connect]:
+    [string] | [string, string] | [string, string, string] | [string, string, string, string];
   [NostrConnectMethod.CreateAccount]: [string, string] | [string, string, string] | [string, string, string, string];
   [NostrConnectMethod.GetPublicKey]: [];
   [NostrConnectMethod.SignEvent]: [string];
@@ -226,6 +227,18 @@ export function createNostrConnectURI(data: NostrConnectURI): string {
   for (const relay of data.relays) params.append("relay", relay);
 
   return `nostrconnect://${data.client}?` + params.toString();
+}
+
+/** Creates the JSON `optional_client_metadata` param for a `connect` request, or undefined if empty */
+export function createConnectMetadata(metadata?: NostrConnectAppMetadata): string | undefined {
+  if (!metadata) return undefined;
+
+  const json: Record<string, string> = {};
+  if (metadata.name) json.name = metadata.name;
+  if (metadata.url) json.url = String(metadata.url);
+  if (metadata.image) json.image = metadata.image;
+
+  return Object.keys(json).length > 0 ? JSON.stringify(json) : undefined;
 }
 
 /** Build an array of signing permissions for event kinds */

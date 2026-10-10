@@ -81,7 +81,7 @@ The released `secret` field is a deprecated alias for `connectSecret`; use the n
 
 ## Connecting to a remote signer
 
-The `NostrConnectSigner` can be created with a remote signer's public key, and will automatically connect to it.
+The `NostrConnectSigner` can be created with a remote signer's public key. Call `connect()` once to establish a new session.
 
 ```js
 import { NostrConnectSigner } from "applesauce-signers";
@@ -98,6 +98,8 @@ const signer = new NostrConnectSigner({
   onAuth: async (url) => {
     // Handle auth requests
   },
+  // Optional: Client metadata sent with the `connect` request
+  metadata: { name: "My App", url: "https://example.com" },
 });
 
 // start the connection process
@@ -107,6 +109,31 @@ console.log("Connected!");
 // get the users pubkey
 const pubkey = await signer.getPublicKey();
 console.log("Users pubkey is", pubkey);
+```
+
+## Resuming sessions
+
+Remote signers track sessions by the client pubkey, so an established session never needs another `connect` request. After `close()`, or when restoring a signer with a known `remote`, the next request reopens the relay subscription and continues the session.
+
+```js
+await signer.close();
+await signer.signEvent(draft); // Resubscribes and sends the request without reconnecting
+```
+
+## Timeouts and relay switching
+
+Requests reject if the remote signer doesn't respond within `timeout` milliseconds (default `60_000`, `0` disables). An `auth_url` challenge restarts the timer. Set `autoSwitchRelays` to send a `switch_relays` request after connecting so the remote signer can move the session to its preferred relays.
+
+```js
+const signer = new NostrConnectSigner({ relays, pool, timeout: 30_000, autoSwitchRelays: true });
+```
+
+## Ending a session
+
+`logout()` sends a `logout` request, waits for the remote signer to acknowledge it, then closes the connection. The acknowledgement is only a courtesy, so pass a `timeout` to close anyway if the remote signer doesn't respond in time.
+
+```js
+await signer.logout({ timeout: 5_000 }); // Defaults to the signer's request timeout
 ```
 
 ## Initiating connection from client
@@ -173,7 +200,7 @@ const { remote, relays, bunkerSecret } = NostrConnectSigner.parseBunkerURI(uri);
 
 ## Handling nbunksec sessions
 
-The `nbunksec` format stores a complete NIP-46 client session, including the local client private key. Treat it like a secret credential.
+The `nbunksec` format stores a complete NIP-46 client session, including the local client private key. Treat it like a secret credential. `fromNbunksec` resumes the stored session without sending a new `connect` request.
 
 ```js
 const signer = await NostrConnectSigner.fromNbunksec("nbunksec1...");
@@ -222,7 +249,7 @@ type NostrConnectAppMetadata = {
 };
 ```
 
-This metadata is used to display information about your application to the user when they connect their signer.
+This metadata is used to display information about your application to the user when they connect their signer. Pass it as the `metadata` option to also send it as the client metadata of `connect` requests in the `bunker://` flow.
 
 ## Encryption Methods
 

@@ -9,6 +9,7 @@ describe("exports", () => {
         "Permission",
         "buildSigningPermissions",
         "createBunkerURI",
+        "createConnectMetadata",
         "createNbunksec",
         "createNostrConnectURI",
         "decodeNbunksec",

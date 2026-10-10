@@ -86,10 +86,13 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
     }
   }, [manager, onLogin, pool]);
 
-  const stopQrSession = useCallback((resetRelayTimer = true) => {
+  const stopQrSession = useCallback((resetRelayTimer = true, closeSigner = true) => {
     qrSessionRef.current += 1;
-    qrAbortRef.current?.abort();
-    void qrSignerRef.current?.close();
+    // Keep the signer open after a successful login since the app is now using it
+    if (closeSigner) {
+      qrAbortRef.current?.abort();
+      void qrSignerRef.current?.close();
+    }
     qrAbortRef.current = null;
     qrSignerRef.current = null;
     setQrUri(null);
@@ -206,7 +209,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
         if (qrSessionRef.current !== session) return;
 
         await activateAccount(new NostrConnectAccount(pubkey, signer));
-        stopQrSession();
+        stopQrSession(true, false);
       } catch (err) {
         if (qrSessionRef.current !== session) return;
 

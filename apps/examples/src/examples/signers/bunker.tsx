@@ -183,6 +183,8 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
       const pubkey = await signer.getPublicKey();
       setUserPubkey(pubkey);
     } catch (err) {
+      // The request was cancelled by disconnecting
+      if (err instanceof Error && err.message === "Closed") return;
       console.error("Failed to get pubkey:", err);
       setError(err instanceof Error ? err.message : "Failed to get pubkey");
     } finally {
@@ -203,6 +205,7 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
       // Set the signed event to display
       setSignedEvent(signedNote);
     } catch (err) {
+      if (err instanceof Error && err.message === "Closed") return;
       console.error("Failed to sign note:", err);
       setError(err instanceof Error ? err.message : "Failed to sign note");
     } finally {
@@ -221,7 +224,8 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
     try {
       setIsLoggingOut(true);
       setError(null);
-      await signer.logout();
+      // Wait up to 5 seconds for the remote signer to acknowledge
+      await signer.logout({ timeout: 5_000 });
     } catch (err) {
       console.error("Failed to logout:", err);
       setError(err instanceof Error ? err.message : "Failed to logout");
@@ -246,7 +250,11 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
               readOnly
             />
           </div>
-          <button className="btn btn-primary w-full" onClick={handleGetPubkey} disabled={isLoadingPubkey}>
+          <button
+            className="btn btn-primary w-full"
+            onClick={handleGetPubkey}
+            disabled={isLoadingPubkey || isLoggingOut}
+          >
             {isLoadingPubkey ? "Loading..." : "Fetch Public Key"}
           </button>
         </div>
@@ -266,7 +274,7 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
           <button
             className="btn btn-primary w-full"
             onClick={handleSignNote}
-            disabled={!noteText.trim() || isSigningNote}
+            disabled={!noteText.trim() || isSigningNote || isLoggingOut}
           >
             {isSigningNote ? "Signing..." : "Sign Note"}
           </button>
@@ -285,9 +293,16 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
           Disconnect
         </button>
         <button className="btn btn-error btn-outline flex-1" onClick={handleLogout} disabled={isLoggingOut}>
+          {isLoggingOut && <span className="loading loading-spinner loading-sm" />}
           {isLoggingOut ? "Logging out..." : "Logout"}
         </button>
       </div>
+
+      {isLoggingOut && (
+        <p className="text-sm text-base-content/70 mt-2 text-center">
+          Waiting for the remote signer to acknowledge the logout (up to 5 seconds)...
+        </p>
+      )}
 
       {error && (
         <div className="alert alert-error mt-4">
