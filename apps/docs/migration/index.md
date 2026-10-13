@@ -7,6 +7,7 @@ description: Version-to-version upgrade guides for applesauce
 
 These guides are checklists for upgrading between major versions: import moves, API changes, and behavior differences. Start with the guide that matches your **current** version and work forward one major at a time.
 
+- [v6 → v7](/migration/v6-v7) — relay lifecycle, authentication, COUNT/sync outcomes, custom model types
 - [v5 → v6](/migration/v5-v6) — factory rewrite, relay `req` messages, React provider surface
 - [v4 → v5](/migration/v4-v5) — `applesauce-common`, `EventFactory`, signer and import moves
 - [v2 → v3](/migration/v2-v3) — async signers and accounts, NIP-07 changes

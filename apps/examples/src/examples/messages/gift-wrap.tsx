@@ -352,7 +352,9 @@ function HomeView({ user }: { user: User }) {
               SyncDirection.RECEIVE,
             )
             .pipe(
-              tap(() => setSynced((v) => v + 1)),
+              tap((message) => {
+                if (message.type === "received") setSynced((v) => v + 1);
+              }),
               // Ignore errors
               catchError(() => EMPTY),
             ),

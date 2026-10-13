@@ -311,7 +311,9 @@ function NotesView({ user }: { user: User }) {
         : pool
             .sync(dmRelays, eventStore, { kinds: [kinds.GiftWrap], "#p": [user.pubkey], since }, SyncDirection.RECEIVE)
             .pipe(
-              tap(() => setSynced((v) => v + 1)),
+              tap((message) => {
+                if (message.type === "received") setSynced((v) => v + 1);
+              }),
               // Ignore errors
               catchError(() => EMPTY),
             ),
