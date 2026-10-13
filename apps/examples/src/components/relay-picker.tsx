@@ -9,6 +9,7 @@ import {
 } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import {
+  ensureWebSocketURL,
   getDisplayName,
   getProfilePicture,
   getSeenRelays,
@@ -59,6 +60,16 @@ function storedPreference(key: string, fallback: string) {
     return fallback;
   }
 }
+/** Converts user input into a safe relay URL, defaulting to wss:// when the protocol is missing */
+function parseRelayInput(input: string): string | undefined {
+  try {
+    const url = ensureWebSocketURL(input.trim());
+    return isSafeRelayURL(url) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const preferences$ = new BehaviorSubject({
   monitor: storedPreference("relay-picker-discovery-monitor", DEFAULT_DISCOVERY_MONITOR),
   relay: storedPreference("relay-picker-discovery-relay", DEFAULT_DISCOVERY_RELAY),
@@ -411,9 +422,8 @@ function RelayPickerInput({ value, onChange, common = COMMON_RELAYS, className, 
   // Combine common relays with discovery relays
   const allRelayOptions = useMemo(() => {
     const combined = relaySet(common || [], discoveryRelays);
-    if (inputValue && isSafeRelayURL(inputValue) && !combined.includes(inputValue)) {
-      return [inputValue, ...combined];
-    }
+    const relay = inputValue && parseRelayInput(inputValue);
+    if (relay && !combined.includes(relay)) return [relay, ...combined];
     return combined;
   }, [common, discoveryRelays, inputValue]);
 
@@ -421,8 +431,10 @@ function RelayPickerInput({ value, onChange, common = COMMON_RELAYS, className, 
 
   const handleInputBlur = () => {
     // Only call onChange if the input value is a valid relay URL
-    if (inputValue && isSafeRelayURL(inputValue)) {
-      onChange(inputValue);
+    const relay = inputValue && parseRelayInput(inputValue);
+    if (relay) {
+      input$.next(relay);
+      onChange(relay);
     } else {
       // Reset to current value if invalid
       input$.next(value);
