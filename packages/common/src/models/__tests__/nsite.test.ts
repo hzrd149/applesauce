@@ -2,7 +2,9 @@ import { firstValueFrom } from "rxjs";
 import { EventStore } from "applesauce-core/event-store";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { NsiteFactory } from "../../factories/nsite.js";
+import { RootNsiteFactory } from "../../factories/root-nsite.js";
+import { NamedNsiteFactory } from "../../factories/named-nsite.js";
+import { NsiteSnapshotFactory } from "../../factories/nsite-snapshot.js";
 import { NSITE_ROOT_KIND } from "../../helpers/nsite.js";
 import { NsiteModel, NsitesByHashModel, RootNsiteModel, UserNsitesModel } from "../nsite.js";
 
@@ -12,8 +14,8 @@ const files = [{ path: "/index.html", sha256: "a".repeat(64) }];
 describe("nsite models", () => {
   it("resolves site and snapshot pointers and queries aggregate hashes", async () => {
     const store = new EventStore();
-    const site = await NsiteFactory.create("blog", files).sign(user);
-    const snapshot = await NsiteFactory.snapshot(site).sign(user);
+    const site = await NamedNsiteFactory.create("blog", files).sign(user);
+    const snapshot = await NsiteSnapshotFactory.create(site).sign(user);
     store.add(site);
     store.add(snapshot);
     expect(
@@ -29,7 +31,7 @@ describe("nsite models", () => {
     const store = new EventStore();
     const emissions: (string | undefined)[] = [];
     const subscription = store.model(RootNsiteModel, user.pubkey).subscribe((event) => emissions.push(event?.id));
-    const root = await NsiteFactory.createRoot(files).sign(user);
+    const root = await RootNsiteFactory.create(files).sign(user);
     store.add(root);
     const replacement = user.event({
       ...root,
@@ -49,10 +51,10 @@ describe("nsite models", () => {
     const sub = store
       .model(UserNsitesModel, { pubkey: user.pubkey })
       .subscribe((events) => emissions.push(events.map((e) => e.id)));
-    const site = await NsiteFactory.create("blog", files).sign(user);
+    const site = await NamedNsiteFactory.create("blog", files).sign(user);
     store.add(site);
-    store.add(await NsiteFactory.snapshot(site).sign(user));
-    store.add(await NsiteFactory.createRoot(files).sign(new FakeUser()));
+    store.add(await NsiteSnapshotFactory.create(site).sign(user));
+    store.add(await RootNsiteFactory.create(files).sign(new FakeUser()));
     expect(emissions.at(-1)).toEqual([site.id]);
     sub.unsubscribe();
   });

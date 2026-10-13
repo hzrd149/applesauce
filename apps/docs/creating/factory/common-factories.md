@@ -53,18 +53,32 @@ const contacts = await ContactsFactory.create().addContact(friend).addContact(ot
 
 ### Publish nsite manifests
 
-`NsiteFactory` creates NIP-5A root sites, named sites, and manifest snapshots. File edits refresh the aggregate hash; descriptions use a tag.
+`RootNsiteFactory`, `NamedNsiteFactory`, and `NsiteSnapshotFactory` each target one NIP-5A event kind. File edits refresh the aggregate hash; descriptions use a tag.
 
 ```ts
-import { NsiteFactory } from "applesauce-common/factories";
+import { NamedNsiteFactory, NsiteSnapshotFactory } from "applesauce-common/factories";
 
 const files = [{ path: "/index.html", sha256: indexHash }];
-const site = await NsiteFactory.create("blog", files).title("Blog").sign(signer);
-const snapshot = await NsiteFactory.snapshot(site).sign(signer);
-const copy = await NsiteFactory.copy(site, "mirror").sign(otherSigner);
+const site = await NamedNsiteFactory.create("blog", files).title("Blog").sign(signer);
+const snapshot = await NsiteSnapshotFactory.create(site).sign(signer);
+const copy = await NamedNsiteFactory.copy(site, "mirror").sign(otherSigner);
 ```
 
-Use `createRoot(files)` for a root site and `modify(site).file(path, hash)` to update a manifest. Named identifiers use 1–13 lowercase letters, digits, or hyphens and cannot end in a hyphen. Snapshots require the source site's aggregate hash and preserve it unchanged.
+Use `RootNsiteFactory.create(files)` for a root site and the matching factory's `modify(site).file(path, hash)` to update a manifest. Copy into a root with `RootNsiteFactory.copy(site)` or a named site with `NamedNsiteFactory.copy(site, identifier)`. Named identifiers use 1–13 lowercase letters, digits, or hyphens and cannot end in a hyphen. Snapshots require the source site's aggregate hash and preserve it unchanged.
+
+### Publish napplet manifests
+
+`RootNappletFactory`, `NamedNappletFactory`, and `NappletSnapshotFactory` each target one NIP-5D event kind.
+
+```ts
+import { RootNappletFactory, NamedNappletFactory, NappletSnapshotFactory } from "applesauce-common/factories";
+
+const root = await RootNappletFactory.create(artifactHash, "A feed viewer").sign(signer);
+const named = await NamedNappletFactory.create("feed", artifactHash, "A feed viewer").sign(signer);
+const snapshot = await NappletSnapshotFactory.create(named).sign(signer);
+```
+
+Use the matching factory's `modify(event)` to update a manifest. Napplet snapshots can also derive from existing snapshots, preserving their parent and root lineage.
 
 ### Publish NIP-89 app handlers
 

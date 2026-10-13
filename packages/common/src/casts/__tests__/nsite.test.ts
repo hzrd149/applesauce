@@ -2,7 +2,9 @@ import { EventStore } from "applesauce-core/event-store";
 import { firstValueFrom } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { NsiteFactory } from "../../factories/nsite.js";
+import { RootNsiteFactory } from "../../factories/root-nsite.js";
+import { NamedNsiteFactory } from "../../factories/named-nsite.js";
+import { NsiteSnapshotFactory } from "../../factories/nsite-snapshot.js";
 import { BLOSSOM_SERVER_LIST_KIND } from "../../helpers/blossom.js";
 import { COMMENT_KIND } from "../../helpers/comment.js";
 import { NamedNsite, Nsite, NsiteSnapshot, RootNsite } from "../nsite.js";
@@ -14,15 +16,15 @@ const HASH = "a".repeat(64);
 const files = [{ path: "/index.html", sha256: HASH }];
 async function setup() {
   const store = new EventStore();
-  const root = await NsiteFactory.createRoot(files).sign(user);
-  const named = await NsiteFactory.create("blog", files)
+  const root = await RootNsiteFactory.create(files).sign(user);
+  const named = await NamedNsiteFactory.create("blog", files)
     .title("Blog")
     .description("A blog")
     .server("https://hint.example.com")
     .app({ kind: 31990, pubkey: user.pubkey, identifier: "app", relays: ["wss://relay.example.com"] })
     .sign(user);
-  const snapshot = await NsiteFactory.snapshot(named).sign(user);
-  const copy = await NsiteFactory.copy(named, "copy").sign(new FakeUser());
+  const snapshot = await NsiteSnapshotFactory.create(named).sign(user);
+  const copy = await NamedNsiteFactory.copy(named, "copy").sign(new FakeUser());
   for (const event of [root, named, snapshot, copy]) store.add(event);
   return { store, root, named, snapshot, copy };
 }

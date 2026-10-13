@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { AppHandlerFactory } from "../../factories/app-handler.js";
 import { AppRecommendationFactory } from "../../factories/app-recommendation.js";
-import { NsiteFactory } from "../../factories/nsite.js";
+import { NamedNsiteFactory } from "../../factories/named-nsite.js";
 import { AppHandler } from "../app-handler.js";
 import { AppRecommendation } from "../app-recommendation.js";
 
@@ -14,7 +14,7 @@ const files = [{ path: "/index.html", sha256: "a".repeat(64) }];
 async function setup() {
   const store = new EventStore();
   const handler = await AppHandlerFactory.create("app").kind(1).latest(`35128:${user.pubkey}:app`).sign(user);
-  const site = await NsiteFactory.create("app", files).app(`31990:${user.pubkey}:app`).sign(user);
+  const site = await NamedNsiteFactory.create("app", files).app(`31990:${user.pubkey}:app`).sign(user);
   const recommendation = await AppRecommendationFactory.create(1)
     .handler(`31990:${user.pubkey}:app`, "web")
     .handler(`31990:${user.pubkey}:missing`)

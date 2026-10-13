@@ -270,6 +270,7 @@ Use this checklist whenever we introduce a new NIP-specific feature (e.g., NIP-5
 
 4. **Factories**
    - Add event factories in `packages/common/src/factories/` to wrap the operations behind fluent builders (`create()`/`modify()`).
+   - Each concrete event factory targets one event kind; related kinds may share operations and internal implementation.
    - Re-export each factory from `factories/index.ts` and add factory tests verifying both creation and modification scenarios.
 
 5. **Tests & Snapshots**

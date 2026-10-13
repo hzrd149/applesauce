@@ -44,8 +44,12 @@ export * from "./badge.js";
 export * from "./badge-award.js";
 export * from "./profile-badges.js";
 export * from "./nostr-web-token.js";
-export * from "./napplet.js";
+export * from "./root-napplet.js";
+export * from "./named-napplet.js";
+export * from "./napplet-snapshot.js";
 export * from "./app-handler.js";
 export * from "./app-recommendation.js";
 
-export * from "./nsite.js";
+export * from "./root-nsite.js";
+export * from "./named-nsite.js";
+export * from "./nsite-snapshot.js";
