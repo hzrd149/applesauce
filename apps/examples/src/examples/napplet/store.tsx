@@ -3,9 +3,20 @@
  * @tags nip-5d, napplet, nip-50, search, contacts, blossom
  * @related napplet/browser, search/relay
  */
-import { castUser, Comment, Napplet, User } from "applesauce-common/casts";
+import {
+  castEvent,
+  castUser,
+  Comment,
+  NamedNapplet,
+  Napplet,
+  NappletSnapshot,
+  RootNapplet,
+  User,
+} from "applesauce-common/casts";
 import {
   COMMENT_KIND,
+  getNappletIdentifier,
+  getNappletParentPointer,
   NAPPLET_KIND,
   NAPPLET_ROOT_KIND,
   NAPPLET_SNAPSHOT_KIND,
@@ -20,6 +31,7 @@ import {
   EventPointer,
   Filter,
   getEventUID,
+  getReplaceableAddressFromPointer,
   kinds,
   mergeRelaySets,
   NostrEvent,
@@ -130,7 +142,7 @@ function verifiedIcon$(napplet: Napplet): Observable<string | null> {
 
 function NappletIconImage({ napplet, size = "w-14 h-14" }: { napplet: Napplet; size?: string }) {
   const src = use$(() => verifiedIcon$(napplet), [napplet.id]);
-  const name = napplet.title || napplet.identifier || "?";
+  const name = napplet.title || getNappletIdentifier(napplet.event) || "?";
 
   // Missing, unavailable or unverified icons fall back to generic artwork
   if (!src)
@@ -152,7 +164,7 @@ function AuthorName({ user }: { user: User }) {
 }
 
 function nappletName(napplet: Napplet) {
-  return napplet.title || napplet.identifier || (napplet.isSnapshot ? "Snapshot" : "Root napplet");
+  return napplet.title || getNappletIdentifier(napplet.event) || (napplet.isSnapshot ? "Snapshot" : "Root napplet");
 }
 
 function snapshotLabel(napplet: Napplet) {
@@ -437,7 +449,7 @@ function ResultsGrid(props: { results?: Results; query: string; select: Select; 
 
 // ---------- Napplet details ----------
 
-/** Filters for every event that references a napplet: comments, reactions, zaps, shares and derived snapshots */
+/** Filters for every event that references a napplet: comments, reactions, zaps, shares, versions and derived snapshots */
 function relatedFilters(napplet: Napplet): Filter[] {
   const filters = buildCommonEventRelationFilters(
     { kinds: [COMMENT_KIND, kinds.Reaction, kinds.Zap, kinds.Repost, kinds.GenericRepost] },
@@ -451,6 +463,15 @@ function relatedFilters(napplet: Napplet): Filter[] {
     filters.push({ kinds: [NAPPLET_SNAPSHOT_KIND], "#A": [napplet.coordinate] });
   } else {
     filters.push({ kinds: [COMMENT_KIND], "#E": [napplet.id] });
+
+    // The other versions the parent's author pinned, for the snapshot's version history
+    const parent = getNappletParentPointer(napplet.event);
+    if (parent)
+      filters.push({
+        kinds: [NAPPLET_SNAPSHOT_KIND],
+        authors: [parent.pubkey],
+        "#a": [getReplaceableAddressFromPointer(parent)],
+      });
   }
 
   // The author's other napplets
@@ -554,7 +575,76 @@ function LineageLink({
   );
 }
 
-function SnapshotLineage({ napplet, select }: { napplet: Napplet; select: Select }) {
+/** Narrows a napplet to the root or named cast that snapshots derive from */
+function addressable(napplet: Napplet): RootNapplet | NamedNapplet | undefined {
+  if (napplet.isNamed) return castEvent(napplet.event, NamedNapplet, eventStore);
+  if (napplet.isRoot) return castEvent(napplet.event, RootNapplet, eventStore);
+}
+
+function VersionRow(props: { version: Napplet; label: string; viewing: boolean; select: Select }) {
+  const { version, label, viewing, select } = props;
+  return (
+    <button
+      className={`flex items-center gap-3 border rounded-lg p-2 text-left hover:bg-base-200 ${viewing ? "border-primary" : "border-base-300"}`}
+      onClick={() => select(version.pointer)}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">
+          {label}
+          {viewing && <span className="text-base-content/60"> · Viewing</span>}
+        </div>
+        <div className="text-sm text-base-content/60 font-mono truncate">{version.artifactHash}</div>
+      </div>
+      <span className="text-sm text-base-content/60 shrink-0">{version.createdAt.toLocaleString()}</span>
+    </button>
+  );
+}
+
+/** Lists the live manifest and the snapshots its author pinned from it, newest first */
+function VersionHistory({
+  napplet,
+  viewing,
+  select,
+}: {
+  napplet: RootNapplet | NamedNapplet;
+  viewing: Napplet;
+  select: Select;
+}) {
+  const snapshots = use$(napplet.snapshots$);
+  // Snapshots by other authors are derivations, not versions
+  const versions = snapshots?.filter((s) => s.event.pubkey === napplet.event.pubkey);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <VersionRow version={napplet} label="Latest" viewing={viewing.id === napplet.id} select={select} />
+      {versions?.map((version) => (
+        <VersionRow
+          key={version.id}
+          version={version}
+          label={version.artifactHash === napplet.artifactHash ? "Snapshot of latest" : "Snapshot"}
+          viewing={viewing.id === version.id}
+          select={select}
+        />
+      ))}
+      {versions?.length === 0 && <p className="text-base-content/60">The author has not pinned any snapshots yet.</p>}
+    </div>
+  );
+}
+
+/** Shows the version history of the napplet a snapshot was pinned from */
+function SnapshotVersionHistory({ snapshot, select }: { snapshot: NappletSnapshot; select: Select }) {
+  const parent = use$(snapshot.parent$);
+
+  // Only a snapshot of the author's own napplet is a version of it, others are derivations
+  if (snapshot.parentPointer?.pubkey !== snapshot.event.pubkey)
+    return <p className="text-base-content/60">This snapshot is not a version of one of its author's napplets.</p>;
+  const napplet = parent && addressable(parent);
+  if (!napplet) return <p className="text-base-content/60">Loading the napplet this snapshot was pinned from…</p>;
+
+  return <VersionHistory napplet={napplet} viewing={snapshot} select={select} />;
+}
+
+function SnapshotLineage({ napplet, select }: { napplet: NappletSnapshot; select: Select }) {
   const parent = use$(napplet.parent$);
   const root = use$(napplet.root$);
 
@@ -575,17 +665,17 @@ function SnapshotLineage({ napplet, select }: { napplet: Napplet; select: Select
   );
 }
 
-function NappletLineage({ napplet, select }: { napplet: Napplet; select: Select }) {
+function NappletLineage({ napplet, select }: { napplet: RootNapplet | NamedNapplet; select: Select }) {
   const snapshots = use$(napplet.snapshots$);
   const lineage = use$(napplet.lineage$);
+  // The author's own snapshots are listed in the version history
+  const derived = snapshots?.filter((s) => s.event.pubkey !== napplet.event.pubkey);
   const indirect = lineage?.filter((s) => !snapshots?.some((d) => d.id === s.id));
 
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-base-content/60">
-        Snapshots derived directly from this napplet ({snapshots?.length ?? 0})
-      </span>
-      {snapshots?.map((snapshot) => (
+      <span className="text-base-content/60">Snapshots derived directly by other authors ({derived?.length ?? 0})</span>
+      {derived?.map((snapshot) => (
         <NappletLink key={snapshot.id} napplet={snapshot} select={select} />
       ))}
       {indirect && indirect.length > 0 && (
@@ -714,9 +804,9 @@ function NappletDetails({ napplet, relay, select }: { napplet: Napplet; relay: s
 
       <Section title="Details">
         <div className="flex flex-col">
-          {napplet.identifier && (
+          {napplet.isNamed && (
             <DetailRow label="Identifier">
-              <code>{napplet.identifier}</code>
+              <code>{getNappletIdentifier(napplet.event)}</code>
             </DetailRow>
           )}
           <DetailRow label="Address">
@@ -751,11 +841,20 @@ function NappletDetails({ napplet, relay, select }: { napplet: Napplet; relay: s
         </div>
       </Section>
 
+      {/* Narrow to the per-kind cast for the version and lineage relationships */}
+      <Section title="Version history">
+        {napplet.isSnapshot ? (
+          <SnapshotVersionHistory snapshot={castEvent(napplet.event, NappletSnapshot, eventStore)} select={select} />
+        ) : (
+          <VersionHistory napplet={addressable(napplet)!} viewing={napplet} select={select} />
+        )}
+      </Section>
+
       <Section title="Lineage">
         {napplet.isSnapshot ? (
-          <SnapshotLineage napplet={napplet} select={select} />
+          <SnapshotLineage napplet={castEvent(napplet.event, NappletSnapshot, eventStore)} select={select} />
         ) : (
-          <NappletLineage napplet={napplet} select={select} />
+          <NappletLineage napplet={addressable(napplet)!} select={select} />
         )}
       </Section>
 
