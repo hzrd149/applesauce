@@ -6,6 +6,7 @@ These examples are reference implementations for developers and other agents. Wo
 
 - Build example pages, not standalone applications. The example shell app provides the surrounding layout and navigation.
 - Do not add app headers or footers to examples. Keep page content focused on the feature being demonstrated; feature-specific controls and section headings are appropriate.
+- Fill the available space with flexbox instead of viewport math. The example root is a child of a bounded flex column, so full-height layouts use `flex min-h-0 grow` and nested scroll areas use `min-h-0 flex-1 overflow-y-auto`; avoid `h-screen`, `min-h-screen`, and `h-[calc(100vh-...)]`.
 
 ## React and RxJS
 

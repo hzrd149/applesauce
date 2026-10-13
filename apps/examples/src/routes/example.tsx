@@ -96,11 +96,11 @@ export default function ExamplePage() {
   }
 
   return (
-    <div className="drawer lg:drawer-open h-full min-h-screen">
+    <div className="drawer lg:drawer-open h-screen">
       <input id="drawer" type="checkbox" className="drawer-toggle" />
 
       {/* Main content */}
-      <div className="drawer-content flex flex-col relative">
+      <div className="drawer-content flex min-h-0 flex-col overflow-y-auto relative">
         {/* Navbar */}
         <div className="navbar bg-base-300 w-full">
           <Link to="/" className="btn btn-ghost btn-square">
