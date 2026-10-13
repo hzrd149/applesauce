@@ -1,19 +1,20 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v7.0.0
-milestone_name: relay-method-layering
-current_phase: 0.0
 status: Awaiting next milestone
-stopped_at: "v7.0.0 milestone closed; release published manually by operator"
-last_updated: "2026-09-28T14:53:13.674Z"
-last_activity: 2026-09-28
+stopped_at: v7.0.0 milestone closed; release published manually by operator
+last_updated: "2026-10-13T18:50:38.672Z"
+last_activity: 2026-10-09
 last_activity_desc: Milestone v7.0.0 completed and archived
+state_head: 9624cdebe430efa1af226191214a462af07e40a7
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 81
   completed_plans: 79
   percent: 92
+milestone_name: relay-method-layering
+current_phase: "0.0"
 current_phase_name: —
 ---
 
@@ -31,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-04)
 Phase: Milestone v7.0.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-10-09 - Completed quick task 261009-kku: Fix useObservableState treating function values as setState updaters
+Last activity: 2026-10-13 - Completed quick task 261013-izi: Add full NIP-5A nsite support following NIP-5D napplets
 
 ## Performance Metrics
 
@@ -453,6 +454,7 @@ None yet.
 | 260907-g46 | Remove deprecated RelayPool.ignoreOffline flag | 2026-09-07 | 6131d0f0, 43a02481 | [260907-g46-remove-deprecated-relaypool-ignoreofflin](./quick/260907-g46-remove-deprecated-relaypool-ignoreofflin/) |
 | 261009-kku | Fix useObservableState treating function values as setState updaters | 2026-10-09 | 866d9701, 7fffaa3b, 6fc1f873 | [261009-kku-fix-useobservablestate-treating-function](./quick/261009-kku-fix-useobservablestate-treating-function/) |
 | 261013-i0r | Add NIP-5D napplet helpers, cast, operations, factory, User getters and example | 2026-10-13 | 79834f71, 860b0f6b, a125312e, 6c287da4, 32debe66, 816d2bd3, 217f5597 | [261013-i0r-add-nip-5d-napplet-helpers-cast-operatio](./quick/261013-i0r-add-nip-5d-napplet-helpers-cast-operatio/) |
+| 261013-izi | Add full NIP-5A nsite support following NIP-5D napplets | 2026-10-13 | 9624cdeb | [261013-izi-add-full-nip-5a-nsite-support-following-](./quick/261013-izi-add-full-nip-5a-nsite-support-following-/) |
 
 ### Roadmap Evolution
 
@@ -530,7 +532,6 @@ a major that is happening anyway is cheaper than cutting a second one later.
 
 **Still carried from v1.1:** three Nyquist validation gaps (`/gsd-validate-phase` on Phases 10, 12.1,
 12.2) and five accepted overrides. v1.2's own three phases are all `nyquist_compliant: true`.
-
 
 ### Acknowledged at v7.0.0 milestone close (2026-09-28)
 
