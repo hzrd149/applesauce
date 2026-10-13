@@ -10,6 +10,7 @@ import {
   NamedNapplet,
   Napplet,
   NappletSnapshot,
+  Reaction,
   RootNapplet,
   User,
 } from "applesauce-common/casts";
@@ -701,6 +702,26 @@ function CommentItem({ comment }: { comment: Comment }) {
   );
 }
 
+/** Shows a reaction with the reacting user's avatar */
+function ReactionItem({ reaction }: { reaction: Reaction }) {
+  const profile = use$(reaction.author.profile$);
+  const emoji = reaction.emoji;
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-base-300 py-0.5 pl-0.5 pr-2"
+      title={profile?.displayName || reaction.author.npub}
+    >
+      <img
+        className="w-6 h-6 rounded-full"
+        src={profile?.picture || `https://robohash.org/${reaction.author.pubkey}.png`}
+        alt=""
+      />
+      {emoji ? <img className="w-5 h-5" src={emoji.url} alt={`:${emoji.shortcode}:`} /> : reaction.content}
+    </span>
+  );
+}
+
 function Activity({ napplet }: { napplet: Napplet }) {
   const comments = use$(napplet.comments$);
   const reactions = use$(napplet.reactions$);
@@ -723,9 +744,7 @@ function Activity({ napplet }: { napplet: Napplet }) {
         </div>
         <div className="flex flex-wrap gap-1">
           {reactions?.map((reaction) => (
-            <span key={reaction.id} className="badge badge-outline">
-              {reaction.content || "+"}
-            </span>
+            <ReactionItem key={reaction.id} reaction={reaction} />
           ))}
         </div>
       </Section>
