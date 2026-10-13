@@ -120,14 +120,10 @@ describe("receiveAnimated", () => {
   });
 
   it.each([EMPTY, of("not a ur fragment")])("errors when input completes before decoding", async (input) => {
-    const terminal = await firstValueFrom(
-      receiveAnimated(input).pipe(ignoreElements(), materialize(), timeout(1000)),
-    );
+    const terminal = await firstValueFrom(receiveAnimated(input).pipe(ignoreElements(), materialize(), timeout(1000)));
 
     expect(terminal.kind).toBe("E");
-    expect(terminal.error).toEqual(
-      new Error("Animated QR input completed before a complete UR was decoded"),
-    );
+    expect(terminal.error).toEqual(new Error("Animated QR input completed before a complete UR was decoded"));
   });
 
   it("tears down the input subscription when unsubscribed", async () => {

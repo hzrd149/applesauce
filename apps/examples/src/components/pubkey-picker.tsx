@@ -476,7 +476,9 @@ function PubkeyPickerInput({
   const lookup = use$(
     () =>
       nip05
-        ? resolveNip05(nip05.name, nip05.domain).pipe(tap((l) => l.status === IdentityStatus.Found && onChange(l.pubkey)))
+        ? resolveNip05(nip05.name, nip05.domain).pipe(
+            tap((l) => l.status === IdentityStatus.Found && onChange(l.pubkey)),
+          )
         : undefined,
     [nip05?.name, nip05?.domain, onChange],
   );

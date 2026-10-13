@@ -2,7 +2,11 @@ import { relaySet } from "applesauce-core/helpers";
 import { BehaviorSubject } from "rxjs";
 
 /** The lookup relays used when no user settings are saved */
-export const DEFAULT_LOOKUP_RELAYS = relaySet(["wss://purplepag.es/", "wss://indexer.coracle.social", "wss://relay.vertexlab.io/"]);
+export const DEFAULT_LOOKUP_RELAYS = relaySet([
+  "wss://purplepag.es/",
+  "wss://indexer.coracle.social",
+  "wss://relay.vertexlab.io/",
+]);
 
 const LOOKUP_RELAYS_KEY = "settings:lookup-relays";
 
