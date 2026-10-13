@@ -18,7 +18,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -268,6 +268,8 @@ function AppDataManager({ user }: { user: User }) {
   const outboxes = use$(user.outboxes$);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   // Subscribe to the user's app data events on their outboxes
   useEffect(() => {
@@ -285,6 +287,34 @@ function AppDataManager({ user }: { user: User }) {
   const events = use$(() => eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [user.pubkey] }), [user.pubkey]);
 
   const selected = events?.find((e) => e.id === selectedId) ?? null;
+  // Only count checked ids that are still in the timeline
+  const checkedEvents = events?.filter((e) => checked.has(e.id)) ?? [];
+  const allChecked = !!events?.length && checkedEvents.length === events.length;
+
+  // Last checkbox clicked without shift, used as the start of shift-click ranges
+  const anchorId = useRef<string | null>(null);
+
+  const toggleChecked = (id: string, shiftKey: boolean) => {
+    const value = !checked.has(id);
+    const ids = events?.map((e) => e.id) ?? [];
+    const from = anchorId.current ? ids.indexOf(anchorId.current) : -1;
+    const to = ids.indexOf(id);
+
+    // Shift-click applies the clicked row's new state to every row between it and the anchor
+    const range = shiftKey && from !== -1 && to !== -1 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id];
+
+    setChecked((prev) => {
+      const next = new Set(prev);
+      for (const r of range) {
+        if (value) next.add(r);
+        else next.delete(r);
+      }
+      return next;
+    });
+    anchorId.current = id;
+  };
+
+  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
 
   const handleSave = async (updated: NostrEvent) => {
     eventStore.add(updated);
@@ -293,33 +323,67 @@ function AppDataManager({ user }: { user: User }) {
     setEditing(false);
   };
 
-  const handleDelete = async (event: NostrEvent) => {
-    if (!signer || !confirm("Delete this event?")) return;
+  // Publish a single NIP-09 deletion for all the events and remove them locally
+  const deleteEvents = async (toDelete: NostrEvent[]) => {
+    if (!signer || toDelete.length === 0) return;
+    const message = toDelete.length === 1 ? "Delete this event?" : `Delete ${toDelete.length} events?`;
+    if (!confirm(message)) return;
 
     try {
-      const signed = await DeleteFactory.fromEvents([event]).sign(signer);
+      setDeleting(true);
+      const signed = await DeleteFactory.fromEvents(toDelete).sign(signer);
       if (outboxes?.length) await pool.publish(outboxes, signed);
-      eventStore.remove(event.id);
-      if (selectedId === event.id) {
+
+      const ids = new Set(toDelete.map((e) => e.id));
+      for (const id of ids) eventStore.remove(id);
+      setChecked((prev) => new Set([...prev].filter((id) => !ids.has(id))));
+      if (selectedId && ids.has(selectedId)) {
         setSelectedId(null);
         setEditing(false);
       }
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete event");
+      alert(err instanceof Error ? err.message : "Failed to delete events");
+    } finally {
+      setDeleting(false);
     }
   };
 
   return (
     <div className="flex flex-1 min-h-0 max-h-dvh">
       <aside className="w-80 shrink-0 border-r border-base-300 flex flex-col bg-base-200 overflow-hidden">
-        <div className="px-4 py-3 font-semibold border-b border-base-300">Events ({events?.length ?? 0})</div>
+        <div className="px-4 py-2 border-b border-base-300 flex items-center gap-3 min-h-12">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={allChecked}
+            ref={(el) => {
+              if (el) el.indeterminate = checkedEvents.length > 0 && !allChecked;
+            }}
+            onChange={toggleAll}
+            disabled={!events?.length || deleting}
+            aria-label="Select all events"
+          />
+          <span className="font-semibold flex-1">
+            {checkedEvents.length > 0 ? `${checkedEvents.length} selected` : `Events (${events?.length ?? 0})`}
+          </span>
+          {checkedEvents.length > 0 && (
+            <button
+              className="btn btn-error btn-outline btn-sm"
+              onClick={() => deleteEvents(checkedEvents)}
+              disabled={deleting || !signer}
+            >
+              {deleting && <span className="loading loading-spinner loading-xs" />}
+              Delete
+            </button>
+          )}
+        </div>
         <div className="flex-1 overflow-y-auto">
           {!outboxes ? (
             <div className="p-4 opacity-60 text-center">Loading outboxes...</div>
           ) : !events || events.length === 0 ? (
             <div className="p-4 opacity-60 text-center">No app data events found.</div>
           ) : (
-            <ul className="menu w-full">
+            <ul className="menu w-full select-none">
               {events.map((event) => {
                 const enc = getAppDataEncryption(event);
                 return (
@@ -331,6 +395,18 @@ function AppDataManager({ user }: { user: User }) {
                         setEditing(false);
                       }}
                     >
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={checked.has(event.id)}
+                        readOnly
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleChecked(event.id, e.shiftKey);
+                        }}
+                        disabled={deleting}
+                        aria-label={`Select ${getReplaceableIdentifier(event)}`}
+                      />
                       <div className="flex flex-col gap-1 min-w-0 w-full">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-semibold truncate flex-1">{getReplaceableIdentifier(event)}</span>
@@ -365,7 +441,7 @@ function AppDataManager({ user }: { user: User }) {
             event={selected}
             signer={signer}
             onEdit={() => setEditing(true)}
-            onDelete={() => handleDelete(selected)}
+            onDelete={() => deleteEvents([selected])}
           />
         )}
       </main>
