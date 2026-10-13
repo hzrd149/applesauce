@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { naddrEncode, neventEncode, noteEncode, nprofileEncode, npubEncode } from "nostr-tools/nip19";
 import {
+  addRelayHintsToPointer,
   isEventPointerSame,
   mergeAddressPointers,
   mergeEventPointers,
@@ -11,6 +12,50 @@ import {
   normalizeToPubkey,
   parseReplaceableAddress,
 } from "../pointers.js";
+
+describe("addRelayHintsToPointer", () => {
+  it("preserves pointer fields exposed through prototype getters", () => {
+    class Pointer {
+      relays = ["wss://a.com/"];
+      extra = "preserved";
+      get pubkey() {
+        return "pubkey";
+      }
+      get id() {
+        return "event-id";
+      }
+      get kind() {
+        return 0;
+      }
+      get author() {
+        return "author";
+      }
+      get identifier() {
+        return "";
+      }
+    }
+    const pointer = new Pointer();
+    const result = addRelayHintsToPointer(pointer, ["wss://b.com/"]);
+
+    expect(result).toEqual({
+      pubkey: "pubkey",
+      id: "event-id",
+      kind: 0,
+      author: "author",
+      identifier: "",
+      relays: ["wss://b.com/", "wss://a.com/"],
+      extra: "preserved",
+    });
+    expect(pointer.relays).toEqual(["wss://a.com/"]);
+  });
+
+  it("does not add absent pointer fields", () => {
+    expect(addRelayHintsToPointer({ pubkey: "pubkey" }, ["wss://a.com/"])).toEqual({
+      pubkey: "pubkey",
+      relays: ["wss://a.com/"],
+    });
+  });
+});
 
 describe("normalizeToPubkey", () => {
   it("should get pubkey from npub", () => {

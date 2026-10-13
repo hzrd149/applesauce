@@ -14,7 +14,7 @@ import localforage from "localforage";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
 import { Fragment, useCallback, useMemo } from "react";
-import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime, of, startWith } from "rxjs";
+import { BehaviorSubject, firstValueFrom, map, shareReplay, switchMap, throttleTime, of, startWith } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { RelayStatusModal } from "../../components/relay-status-popover";
@@ -686,6 +686,8 @@ export default function RelaySelectionExample() {
     () =>
       contacts$.pipe(
         defined(),
+        // Convert user casts to plain pointers before adding relay hints
+        map((users) => users.map((user) => user.pointer)),
         // Load the NIP-65 outboxes for all contacts
         includeMailboxes(eventStore),
         // Ignore unhealthy relays from the liveness tracker

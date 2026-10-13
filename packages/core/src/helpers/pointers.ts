@@ -297,7 +297,13 @@ export function getPointerForEvent(event: NostrEvent, relays?: string[]): Decode
 /** Adds relay hints to a pointer object that has a relays array */
 export function addRelayHintsToPointer<T extends { relays?: string[] }>(pointer: T, relays?: Iterable<string>): T {
   if (!relays) return pointer;
-  else return { ...pointer, relays: relaySet(relays, pointer.relays) };
+
+  const result = { ...pointer, relays: relaySet(relays, pointer.relays) };
+  // Spread omits prototype getters, so copy the standard pointer fields explicitly.
+  for (const field of ["pubkey", "id", "kind", "author", "identifier"] as const) {
+    if (field in pointer) Object.assign(result, { [field]: Reflect.get(pointer, field) });
+  }
+  return result;
 }
 
 /** Parses any nip-19 encoded string into a hex pubkey. Returns null if the string is not a valid pubkey. */

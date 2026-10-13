@@ -100,6 +100,8 @@ const contacts$ = pubkey$.pipe(
 const contactsWithOutboxes$ = contacts$.pipe(
   // Wait for contacts to be fetched
   defined(),
+  // Convert user casts to plain pointers before adding relay hints
+  map((users) => users.map((user) => user.pointer)),
   // Load the NIP-65 outboxes for all contacts
   includeMailboxes(eventStore),
   // Ignore unhealthy relays from the liveness tracker
