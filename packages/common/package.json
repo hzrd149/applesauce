@@ -89,6 +89,7 @@
     }
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "@scure/base": "^2.2.0",
     "applesauce-core": "^6.2.0",
     "hash-sum": "^2.0.0",

@@ -51,7 +51,35 @@ import { ContactsFactory } from "applesauce-common/factories";
 const contacts = await ContactsFactory.create().addContact(friend).addContact(otherFriend, "teammate").sign(signer);
 ```
 
+### Publish nsite manifests
+
+`NsiteFactory` creates NIP-5A root sites, named sites, and manifest snapshots. File edits refresh the aggregate hash; descriptions use a tag.
+
+```ts
+import { NsiteFactory } from "applesauce-common/factories";
+
+const files = [{ path: "/index.html", sha256: indexHash }];
+const site = await NsiteFactory.create("blog", files).title("Blog").sign(signer);
+const snapshot = await NsiteFactory.snapshot(site).sign(signer);
+const copy = await NsiteFactory.copy(site, "mirror").sign(otherSigner);
+```
+
+Use `createRoot(files)` for a root site and `modify(site).file(path, hash)` to update a manifest. Named identifiers use 1–13 lowercase letters, digits, or hyphens and cannot end in a hyphen. Snapshots require the source site's aggregate hash and preserve it unchanged.
+
 ## Integration
+
+Nsite manifests integrate with the EventStore through `RootNsiteModel`, `UserNsitesModel`, and `NsiteSnapshotsModel`. Importing `applesauce-common/casts` adds `nsite$`, `nsites$`, and `nsiteSnapshots$` to User casts; Profile casts expose their author's sites.
+
+```ts
+import { castEvent } from "applesauce-core/casts";
+import { NamedNsite } from "applesauce-common/casts";
+
+const manifest = castEvent(site, NamedNsite, store);
+manifest.snapshots$.subscribe((versions) => renderVersions(versions));
+const index = manifest.resolvePath("/");
+```
+
+`Nsite` casts expose `copies$`, `lineage$` (on root and named casts), `parent$`, `root$`, and `apps$`. Existing addressable casts expose `nsites$` for manifests linked by `app` tags; this discovery filters locally because NIP-01 indexes single-letter tags. `servers$` combines manifest hints with the author's Blossom server list.
 
 Typed factories are the main event creation API used by `applesauce-actions`.
 
@@ -77,3 +105,5 @@ const signed = await draft.sign(signer);
 - Prefer `modify(event)` over rebuilding replaceable events from scratch
 - Keep event-specific behavior in the factory and reusable transforms in operations
 - Treat `GiftWrapFactory.create(...)` as a special case because it returns a signed event directly
+
+For nsites, use `.file()` and `.removeFile()` to keep the aggregate hash current, keep at least one file in a published manifest, and use `verifyNsiteAggregateHash(event)` before trusting an advertised site version.

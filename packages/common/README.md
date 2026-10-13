@@ -81,6 +81,7 @@ This package includes helpers, models, and operations for various NIPs including
 - NIP-52 (Calendar Events)
 - NIP-53 (Streams)
 - NIP-57 (Zaps)
+- NIP-5A (Nsites)
 - NIP-88 (Polls)
 - And many more...
 

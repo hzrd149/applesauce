@@ -46,6 +46,20 @@ describe("exports", () => {
         "ZapGoal",
         "ZapRequest",
         "ZapSplit",
+        "addNsiteApp",
+        "addNsiteServer",
+        "removeNsiteApp",
+        "removeNsiteFile",
+        "removeNsiteServer",
+        "setNsiteAggregateHash",
+        "setNsiteDescription",
+        "setNsiteFile",
+        "setNsiteIdentifier",
+        "setNsiteParent",
+        "setNsiteRoot",
+        "setNsiteSource",
+        "setNsiteTitle",
+        "updateNsiteAggregateHash",
       ]
     `);
   });
