@@ -7,6 +7,7 @@ import {
   ProfileContent,
   mergeRelaySets as relaySet,
 } from "applesauce-core/helpers";
+import { parseNIP05Address } from "applesauce-core/helpers/dns-identity";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import {
   DEFAULT_OPEN_RANKING_PROVIDER,
@@ -15,13 +16,28 @@ import {
   PrimalCache,
   Vertex,
 } from "applesauce-extra";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { Identity, IdentityStatus } from "applesauce-loaders/helpers";
+import { createEventLoaderForStore, DnsIdentityLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { BehaviorSubject, Subject, catchError, defer, map, of, startWith, switchMap, toArray, finalize } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  catchError,
+  defer,
+  finalize,
+  map,
+  of,
+  startWith,
+  switchMap,
+  tap,
+  timer,
+  toArray,
+} from "rxjs";
 import RelayPicker from "./relay-picker";
 import { lookupRelays$ } from "../settings";
 
@@ -43,6 +59,19 @@ createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
   lookupRelays: lookupRelays$,
 });
+
+// Create a NIP-05 loader to resolve and cache "name@domain" identities
+const dnsIdentityLoader = new DnsIdentityLoader();
+
+type Nip05Lookup = Identity | { status: "resolving" };
+
+/** Resolves a NIP-05 address after the user stops typing */
+function resolveNip05(name: string, domain: string): Observable<Nip05Lookup> {
+  return timer(500).pipe(
+    switchMap(() => dnsIdentityLoader.requestIdentity(name, domain)),
+    startWith({ status: "resolving" } as const),
+  );
+}
 
 type SearchMethod = "primal" | "vertex" | "nip50" | "open-ranking";
 
@@ -433,14 +462,27 @@ function PubkeyPickerInput({
   value,
   onChange,
   className,
-  placeholder = "Enter pubkey or nostr identifier...",
+  placeholder = "Enter pubkey, npub, or NIP-05 address...",
 }: PubkeyPickerProps) {
   const input$ = useMemo(() => new BehaviorSubject(value), []);
   const inputValue = use$(input$);
   const modal$ = useMemo(() => new BehaviorSubject(false), []);
   const isSearchModalOpen = use$(modal$);
-  const normalized = normalizeToPubkey(inputValue.trim());
-  const isValidPubkey = !!normalized;
+  const input = inputValue.trim();
+  const normalized = normalizeToPubkey(input);
+  const nip05 = normalized ? null : parseNIP05Address(input);
+
+  // Resolve NIP-05 addresses and pass the pubkey to the parent once found
+  const lookup = use$(
+    () =>
+      nip05
+        ? resolveNip05(nip05.name, nip05.domain).pipe(tap((l) => l.status === IdentityStatus.Found && onChange(l.pubkey)))
+        : undefined,
+    [nip05?.name, nip05?.domain, onChange],
+  );
+  const isResolving = lookup?.status === "resolving";
+  const isValidPubkey = !!normalized || lookup?.status === IdentityStatus.Found;
+  const isInvalid = !!input && !isValidPubkey && !isResolving;
   const change = useCallback(
     (input: string) => {
       input$.next(input);
@@ -481,7 +523,7 @@ function PubkeyPickerInput({
           value={inputValue}
           onChange={(e) => change(e.target.value)}
           className={`input input-bordered join-item flex-1 ${
-            inputValue.trim() && !isValidPubkey ? "input-error" : isValidPubkey ? "input-success" : ""
+            isInvalid ? "input-error" : isValidPubkey ? "input-success" : ""
           }`}
         />
         <button type="button" className="btn join-item" onClick={() => modal$.next(true)} title="Search profiles">
@@ -506,9 +548,20 @@ function PubkeyPickerInput({
           </button>
         )}
       </div>
-      {inputValue.trim() && !isValidPubkey && (
+      {isResolving && (
         <label className="label pt-1">
-          <span className="label-text-alt text-error">Invalid pubkey format</span>
+          <span className="label-text-alt">Resolving NIP-05 address...</span>
+        </label>
+      )}
+      {isInvalid && (
+        <label className="label pt-1">
+          <span className="label-text-alt text-error">
+            {lookup?.status === IdentityStatus.Error
+              ? `Failed to resolve NIP-05 address: ${lookup.error}`
+              : lookup?.status === IdentityStatus.Missing
+                ? "NIP-05 address not found"
+                : "Invalid pubkey format"}
+          </span>
         </label>
       )}
 
