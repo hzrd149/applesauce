@@ -12,6 +12,7 @@ import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 import { useMemo, useRef, useCallback } from "react";
 
+const eventStore = new EventStore();
 const pool = new RelayPool();
 
 const COLORS = ["red", "green", "blue", "orange", "purple", "darkcyan"];
@@ -56,7 +57,7 @@ export default function TimelineExample() {
     () =>
       loader(now - secondsThrottled).pipe(
         tap((event) => {
-          store.add(event);
+          eventStore.add(event);
           const from = Array.from(getSeenRelays(event) || [])[0];
           const context = ctx.current;
           if (!from || !context) return;
@@ -78,7 +79,6 @@ export default function TimelineExample() {
     },
     [loader, frame, relays],
   );
-  const store = useMemo(() => new EventStore(), []);
 
   return (
     <div className="flex flex-col gap-4 p-4">

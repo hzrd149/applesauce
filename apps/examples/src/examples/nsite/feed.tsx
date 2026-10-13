@@ -49,18 +49,14 @@ const NSITE_RELAYS = [DEFAULT_RELAY];
 type Pointer = AddressPointer | EventPointer;
 type Select = (site: Nsite) => void;
 type Tab = "overview" | "versions" | "activity" | "raw";
-type Session = ReturnType<typeof createSession>;
 
-function createSession() {
-  const store = new EventStore();
-  const pool = new RelayPool();
-  const relay$ = new BehaviorSubject(DEFAULT_RELAY);
-  createEventLoaderForStore(store, pool, {
-    lookupRelays: lookupRelays$,
-    extraRelays: relay$.pipe(map((relay) => [relay])),
-  });
-  return { store, pool, relay$ };
-}
+const eventStore = new EventStore();
+const pool = new RelayPool();
+const relay$ = new BehaviorSubject(DEFAULT_RELAY);
+createEventLoaderForStore(eventStore, pool, {
+  lookupRelays: lookupRelays$,
+  extraRelays: relay$.pipe(map((relay) => [relay])),
+});
 
 function siteName(site: Nsite) {
   return (
@@ -190,31 +186,35 @@ function LoadStatus({ status }: { status: { status: string; errors: string[] } |
   );
 }
 
-function UpstreamApp({ pointer, select, session }: { pointer: AddressPointer; select: Select; session: Session }) {
+function UpstreamApp({ pointer, select }: { pointer: AddressPointer; select: Select }) {
   // NIP-5A app tags can reference any addressable app kind; only NIP-89 handlers (kind 31990) are understood here
   const handler = use$(
     () =>
       pointer.kind === APP_HANDLER_KIND
-        ? session.store.replaceable(pointer).pipe(castEventStream(AppHandler, session.store))
+        ? eventStore.replaceable(pointer).pipe(castEventStream(AppHandler, eventStore))
         : undefined,
-    [pointer, session],
+    [pointer],
   );
   const address = getReplaceableAddressFromPointer(pointer);
   if (!handler) return <p className="break-all text-base-content/60">App unavailable: {address}</p>;
-  return <AppHandlerSites handler={handler} select={select} session={session} />;
+  return <AppHandlerSites handler={handler} select={select} />;
 }
-function AppHandlerSites({ handler, select, session }: { handler: AppHandler; select: Select; session: Session }) {
+function AppHandlerSites({ handler, select }: { handler: AppHandler; select: Select }) {
   const latest = use$(() => handler.latest$, [handler]);
   // Multi-letter app tags cannot be queried with a NIP-01 tag filter. Filter the loaded relay manifests locally through the cast.
   const sites = use$(() => handler.nsites$, [handler]);
   use$(
     () =>
-      relayTimeline(session.store, session.pool, [session.relay$.value], {
-        kinds: NSITE_KINDS,
-        authors: [handler.author.pubkey],
-        limit: 100,
-      }),
-    [session, handler],
+      relay$.pipe(
+        switchMap((relay) =>
+          relayTimeline(eventStore, pool, [relay], {
+            kinds: NSITE_KINDS,
+            authors: [handler.author.pubkey],
+            limit: 100,
+          }),
+        ),
+      ),
+    [handler],
   );
   return (
     <div className="border-l-2 border-base-300 pl-3 space-y-2">
@@ -225,7 +225,7 @@ function AppHandlerSites({ handler, select, session }: { handler: AppHandler; se
     </div>
   );
 }
-function Overview({ site, session, select }: { site: Nsite; session: Session; select: Select }) {
+function Overview({ site, select }: { site: Nsite; select: Select }) {
   const servers = use$(() => site.servers$, [site]);
   const address = use$(() => site.address$, [site]);
   const authorSites = use$(() => site.author.nsites$, [site]);
@@ -367,12 +367,7 @@ function Overview({ site, session, select }: { site: Nsite; session: Session; se
       <Section title="Upstream apps">
         {!site.appPointers.length && <p className="text-base-content/60">No upstream apps referenced.</p>}
         {site.appPointers.map((pointer) => (
-          <UpstreamApp
-            key={getReplaceableAddressFromPointer(pointer)}
-            pointer={pointer}
-            select={select}
-            session={session}
-          />
+          <UpstreamApp key={getReplaceableAddressFromPointer(pointer)} pointer={pointer} select={select} />
         ))}
       </Section>
       <Section title="More from this author">
@@ -472,17 +467,7 @@ function Versions({ site, select }: { site: Nsite; select: Select }) {
   );
 }
 
-function CommentItem({
-  comment,
-  session,
-  relay,
-  depth = 0,
-}: {
-  comment: Comment;
-  session: Session;
-  relay: string;
-  depth?: number;
-}) {
+function CommentItem({ comment, relay, depth = 0 }: { comment: Comment; relay: string; depth?: number }) {
   const expanded$ = useMemo(() => new BehaviorSubject(false), []);
   const expanded = use$(expanded$);
   const replies = use$(() => comment.replies$, [comment]);
@@ -491,13 +476,13 @@ function CommentItem({
     () =>
       expanded
         ? relayTimeline(
-            session.store,
-            session.pool,
+            eventStore,
+            pool,
             [relay],
             buildCommonEventRelationFilters({ kinds: [COMMENT_KIND, kinds.Reaction], limit: 100 }, comment.event),
           )
         : undefined,
-    [expanded, comment, relay, session],
+    [expanded, comment, relay],
   );
   return (
     <div className="border-l-2 border-base-300 pl-3 py-2 space-y-2">
@@ -515,9 +500,7 @@ function CommentItem({
         <div className="space-y-2">
           <LoadStatus status={related} />
           {replies?.length ? (
-            replies.map((reply) => (
-              <CommentItem key={reply.id} comment={reply} session={session} relay={relay} depth={depth + 1} />
-            ))
+            replies.map((reply) => <CommentItem key={reply.id} comment={reply} relay={relay} depth={depth + 1} />)
           ) : (
             <p className="text-sm text-base-content/60">No replies loaded.</p>
           )}
@@ -526,7 +509,7 @@ function CommentItem({
     </div>
   );
 }
-function Activity({ site, session, relay }: { site: Nsite; session: Session; relay: string }) {
+function Activity({ site, relay }: { site: Nsite; relay: string }) {
   const comments = use$(() => site.comments$, [site]);
   const reactions = use$(() => site.reactions$, [site]);
   const zaps = use$(() => site.zaps$, [site]);
@@ -536,7 +519,7 @@ function Activity({ site, session, relay }: { site: Nsite; session: Session; rel
     <>
       <Section title={`Comments (${comments?.length ?? 0})`}>
         {comments?.length ? (
-          comments.map((comment) => <CommentItem key={comment.id} comment={comment} session={session} relay={relay} />)
+          comments.map((comment) => <CommentItem key={comment.id} comment={comment} relay={relay} />)
         ) : (
           <p className="text-base-content/60">No comments found on this relay.</p>
         )}
@@ -589,13 +572,10 @@ function Activity({ site, session, relay }: { site: Nsite; session: Session; rel
   );
 }
 
-function Details({ site, session, relay, select }: { site: Nsite; session: Session; relay: string; select: Select }) {
+function Details({ site, relay, select }: { site: Nsite; relay: string; select: Select }) {
   const tab$ = useMemo(() => new BehaviorSubject<Tab>("overview"), []);
   const tab = use$(tab$);
-  const related = use$(
-    () => relayTimeline(session.store, session.pool, [relay], relatedFilters(site)),
-    [session, relay, site],
-  );
+  const related = use$(() => relayTimeline(eventStore, pool, [relay], relatedFilters(site)), [relay, site]);
   return (
     <>
       <h2 id="nsite-dialog-title" className="text-2xl font-bold break-words">
@@ -630,9 +610,9 @@ function Details({ site, session, relay, select }: { site: Nsite; session: Sessi
       </div>
       <LoadStatus status={related} />
       <div id="nsite-tab-panel" role="tabpanel" aria-labelledby={`nsite-tab-${tab}`}>
-        {tab === "overview" && <Overview site={site} session={session} select={select} />}
+        {tab === "overview" && <Overview site={site} select={select} />}
         {tab === "versions" && <Versions site={site} select={select} />}
-        {tab === "activity" && <Activity site={site} session={session} relay={relay} />}
+        {tab === "activity" && <Activity site={site} relay={relay} />}
         {tab === "raw" && (
           <div className="py-4">
             <JsonBlock value={site.event} />
@@ -642,21 +622,11 @@ function Details({ site, session, relay, select }: { site: Nsite; session: Sessi
     </>
   );
 }
-function DetailsDialog({
-  pointer,
-  session,
-  relay,
-  close,
-}: {
-  pointer: Pointer;
-  session: Session;
-  relay: string;
-  close: () => void;
-}) {
+function DetailsDialog({ pointer, relay, close }: { pointer: Pointer; relay: string; close: () => void }) {
   const history$ = useMemo(() => new BehaviorSubject<Pointer[]>([pointer]), [pointer]);
   const history = use$(history$);
   const current = history[history.length - 1];
-  const site = use$(() => session.store.event(current).pipe(castEventStream(Nsite, session.store)), [session, current]);
+  const site = use$(() => eventStore.event(current).pipe(castEventStream(Nsite, eventStore)), [current]);
   const select: Select = (next) => history$.next([...history$.value, next.pointer]);
   return (
     <dialog
@@ -682,7 +652,7 @@ function DetailsDialog({
           </button>
         </div>
         {site ? (
-          <Details key={site.uid} site={site} session={session} relay={relay} select={select} />
+          <Details key={site.uid} site={site} relay={relay} select={select} />
         ) : (
           <div>
             <h2 id="nsite-dialog-title" className="text-xl font-semibold">
@@ -703,7 +673,7 @@ function DetailsDialog({
 }
 
 // Keep one subscription to the stateful loader while scroll triggers advance its window.
-function pagedFeed(session: Session, relay: string, more$: Subject<void>) {
+function pagedFeed(relay: string, more$: Subject<void>) {
   return defer(() => {
     const filter = { kinds: [NSITE_ROOT_KIND, NSITE_KIND] };
     const seen = new Set<string>();
@@ -714,12 +684,12 @@ function pagedFeed(session: Session, relay: string, more$: Subject<void>) {
           let count = 0;
           let oldest = Infinity;
           page$.next({ loading: true, done: false, error: "" });
-          return session.pool.request(relays, filters).pipe(
+          return pool.request(relays, filters).pipe(
             tap((event) => {
               count++;
               oldest = Math.min(oldest, event.created_at);
               seen.add(getEventUID(event));
-              session.store.add(event);
+              eventStore.add(event);
             }),
             catchError((error) => {
               page$.next({ loading: false, done: false, error: String(error.message ?? error) });
@@ -747,8 +717,8 @@ function pagedFeed(session: Session, relay: string, more$: Subject<void>) {
       ),
     ).pipe(ignoreElements(), startWith(null));
     return combineLatest([
-      relayTimeline(session.store, session.pool, [relay], { ...filter, since: unixNow(), limit: 50 }),
-      session.store.timeline(filter),
+      relayTimeline(eventStore, pool, [relay], { ...filter, since: unixNow(), limit: 50 }),
+      eventStore.timeline(filter),
       page$,
       loading$,
     ]).pipe(
@@ -766,10 +736,7 @@ function pagedFeed(session: Session, relay: string, more$: Subject<void>) {
 }
 
 export default function NsiteFeed() {
-  const session = useMemo(createSession, []);
-  // This effect owns infrastructure cleanup, rather than mirroring observable data into state.
-  useEffect(() => () => session.pool.close(), [session]);
-  const relay = use$(session.relay$);
+  const relay = use$(relay$);
   const more$ = useMemo(() => new Subject<void>(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -779,17 +746,17 @@ export default function NsiteFeed() {
   const selected = use$(selected$);
   const feed = use$(
     () =>
-      pagedFeed(session, relay, more$).pipe(
+      pagedFeed(relay, more$).pipe(
         switchMap((result) =>
           of(result.events).pipe(
-            castTimelineStream(Nsite, session.store),
+            castTimelineStream(Nsite, eventStore),
             map((sites) => ({ ...result, sites })),
           ),
         ),
         // The relay helper scopes the store's revision-aware timeline to events received from this relay.
         // Cast only those events, not every nsite the detail loaders have added to the store.
       ),
-    [session, relay, more$, refresh],
+    [relay, more$, refresh],
   );
   const sites = feed?.sites;
   // Reobserve after each page: a sentinel that still fills the viewport loads another page.
@@ -807,7 +774,7 @@ export default function NsiteFeed() {
   }, [feed?.page, more$, relay, refresh]);
   const changeRelay = (value: string) => {
     selected$.next(null);
-    session.relay$.next(value);
+    relay$.next(value);
   };
   return (
     <div className="flex min-h-0 grow flex-col">
@@ -862,9 +829,7 @@ export default function NsiteFeed() {
           {feed?.page.loading ? "Loading more sites…" : feed?.page.done ? "All sites loaded." : "Scroll for more sites"}
         </div>
       </div>
-      {selected && (
-        <DetailsDialog pointer={selected} session={session} relay={relay} close={() => selected$.next(null)} />
-      )}
+      {selected && <DetailsDialog pointer={selected} relay={relay} close={() => selected$.next(null)} />}
     </div>
   );
 }
