@@ -14,13 +14,30 @@ import {
   EventPointer,
   Filter,
   getReplaceableAddressFromPointer,
+  getEventUID,
+  unixNow,
   kinds,
 } from "applesauce-core/helpers";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ReactNode, useEffect, useMemo } from "react";
-import { BehaviorSubject, map, of, switchMap } from "rxjs";
+import { ReactNode, useEffect, useMemo, useRef } from "react";
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  defer,
+  EMPTY,
+  finalize,
+  ignoreElements,
+  map,
+  merge,
+  of,
+  startWith,
+  Subject,
+  switchMap,
+  tap,
+} from "rxjs";
 import JsonBlock from "../../components/json-block";
 import NoteContent from "../../components/note-content";
 import RelayPicker from "../../components/relay-picker";
@@ -678,20 +695,84 @@ function DetailsDialog({
   );
 }
 
+// Keep one subscription to the stateful loader while scroll triggers advance its window.
+function pagedFeed(session: Session, relay: string, more$: Subject<void>) {
+  return defer(() => {
+    const filter = { kinds: [NSITE_ROOT_KIND, NSITE_KIND] };
+    const seen = new Set<string>();
+    const page$ = new BehaviorSubject({ loading: true, done: false, error: "" });
+    const loader = createTimelineLoader(
+      (relays, filters) =>
+        defer(() => {
+          let count = 0;
+          let oldest = Infinity;
+          page$.next({ loading: true, done: false, error: "" });
+          return session.pool.request(relays, filters).pipe(
+            tap((event) => {
+              count++;
+              oldest = Math.min(oldest, event.created_at);
+              seen.add(getEventUID(event));
+              session.store.add(event);
+            }),
+            catchError((error) => {
+              page$.next({ loading: false, done: false, error: String(error.message ?? error) });
+              return EMPTY;
+            }),
+            finalize(() => {
+              const until = filters[0]?.until;
+              page$.next({
+                ...page$.value,
+                loading: false,
+                done: !page$.value.error && (count === 0 || (until !== undefined && oldest - 1 >= until)),
+              });
+            }),
+          );
+        }),
+      [relay],
+      filter,
+      { limit: 50 },
+    );
+    const loading$ = merge(
+      loader({}), // Anchor the shared loader so later triggers preserve its cursor.
+      more$.pipe(
+        startWith(undefined),
+        switchMap(() => loader()),
+      ),
+    ).pipe(ignoreElements(), startWith(null));
+    return combineLatest([
+      relayTimeline(session.store, session.pool, [relay], { ...filter, since: unixNow(), limit: 50 }),
+      session.store.timeline(filter),
+      page$,
+      loading$,
+    ]).pipe(
+      map(([live, events, page]) => {
+        const liveSeen = new Set(live.events.map(getEventUID));
+        return {
+          ...live,
+          page,
+          errors: [...live.errors, ...(page.error ? [page.error] : [])],
+          events: events.filter((event) => seen.has(getEventUID(event)) || liveSeen.has(getEventUID(event))),
+        };
+      }),
+    );
+  });
+}
+
 export default function NsiteFeed() {
   const session = useMemo(createSession, []);
   // This effect owns infrastructure cleanup, rather than mirroring observable data into state.
   useEffect(() => () => session.pool.close(), [session]);
   const relay = use$(session.relay$);
-  const limit$ = useMemo(() => new BehaviorSubject(50), []);
-  const limit = use$(limit$);
+  const more$ = useMemo(() => new Subject<void>(), []);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const refresh$ = useMemo(() => new BehaviorSubject(0), []);
   const refresh = use$(refresh$);
   const selected$ = useMemo(() => new BehaviorSubject<Pointer | null>(null), []);
   const selected = use$(selected$);
   const feed = use$(
     () =>
-      relayTimeline(session.store, session.pool, [relay], { kinds: [NSITE_ROOT_KIND, NSITE_KIND], limit }).pipe(
+      pagedFeed(session, relay, more$).pipe(
         switchMap((result) =>
           of(result.events).pipe(
             castTimelineStream(Nsite, session.store),
@@ -701,12 +782,24 @@ export default function NsiteFeed() {
         // The relay helper scopes the store's revision-aware timeline to events received from this relay.
         // Cast only those events, not every nsite the detail loaders have added to the store.
       ),
-    [session, relay, limit, refresh],
+    [session, relay, more$, refresh],
   );
   const sites = feed?.sites;
+  // Reobserve after each page: a sentinel that still fills the viewport loads another page.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !feed || feed.page.loading || feed.page.done || feed.page.error) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) more$.next();
+      },
+      { root: scrollRef.current, rootMargin: "0px 0px 300px 0px" },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [feed?.page, more$, relay, refresh]);
   const changeRelay = (value: string) => {
     selected$.next(null);
-    limit$.next(50);
     session.relay$.next(value);
   };
   return (
@@ -724,7 +817,7 @@ export default function NsiteFeed() {
           {feed?.status === "live" ? "Live" : feed?.status === "closed" ? "Closed" : "Connecting…"}
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         {feed?.errors.length ? (
           <div role="alert" className="p-4 text-error">
             {feed.errors.join("; ")}
@@ -732,7 +825,7 @@ export default function NsiteFeed() {
         ) : null}
         {!sites?.length && (
           <p role="status" className="p-8 text-center text-base-content/60">
-            {!feed || feed.status === "loading"
+            {!feed || feed.page.loading
               ? "Loading nsites…"
               : feed.errors.length
                 ? "Unable to load sites from this relay."
@@ -758,17 +851,9 @@ export default function NsiteFeed() {
             </div>
           </button>
         ))}
-        {!!sites?.length && (
-          <div className="p-4 flex justify-center">
-            <button
-              className="btn btn-outline"
-              disabled={feed?.status === "loading"}
-              onClick={() => limit$.next(limit + 50)}
-            >
-              Load more sites
-            </button>
-          </div>
-        )}
+        <div ref={sentinelRef} role="status" className="p-4 text-center text-base-content/60">
+          {feed?.page.loading ? "Loading more sites…" : feed?.page.done ? "All sites loaded." : "Scroll for more sites"}
+        </div>
       </div>
       {selected && (
         <DetailsDialog pointer={selected} session={session} relay={relay} close={() => selected$.next(null)} />
