@@ -3,8 +3,8 @@
  * @tags nip-5a, nsite, casts, blossom, comments, reactions
  * @related napplet/store, notes/rendering
  */
-import { castEvent, Comment, EventCast, NamedNsite, Nsite, RootNsite, User } from "applesauce-common/casts";
-import { COMMENT_KIND, NSITE_KIND, NSITE_KINDS, NSITE_ROOT_KIND } from "applesauce-common/helpers";
+import { AppHandler, castEvent, Comment, NamedNsite, Nsite, RootNsite, User } from "applesauce-common/casts";
+import { APP_HANDLER_KIND, COMMENT_KIND, NSITE_KIND, NSITE_KINDS, NSITE_ROOT_KIND } from "applesauce-common/helpers";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core";
 import {
@@ -190,29 +190,43 @@ function LoadStatus({ status }: { status: { status: string; errors: string[] } |
   );
 }
 
-function AppDescriptor({ descriptor, select, session }: { descriptor: EventCast; select: Select; session: Session }) {
+function UpstreamApp({ pointer, select, session }: { pointer: AddressPointer; select: Select; session: Session }) {
+  // NIP-5A app tags can reference any addressable app kind; only NIP-89 handlers (kind 31990) are understood here
+  const handler = use$(
+    () =>
+      pointer.kind === APP_HANDLER_KIND
+        ? session.store.replaceable(pointer).pipe(castEventStream(AppHandler, session.store))
+        : undefined,
+    [pointer, session],
+  );
+  const address = getReplaceableAddressFromPointer(pointer);
+  if (!handler) return <p className="break-all text-base-content/60">App unavailable: {address}</p>;
+  return <AppHandlerSites handler={handler} select={select} session={session} />;
+}
+function AppHandlerSites({ handler, select, session }: { handler: AppHandler; select: Select; session: Session }) {
+  const latest = use$(() => handler.latest$, [handler]);
   // Multi-letter app tags cannot be queried with a NIP-01 tag filter. Filter the loaded relay manifests locally through the cast.
-  const sites = use$(() => descriptor.nsites$, [descriptor]);
+  const sites = use$(() => handler.nsites$, [handler]);
   use$(
     () =>
       relayTimeline(session.store, session.pool, [session.relay$.value], {
         kinds: NSITE_KINDS,
-        authors: [descriptor.author.pubkey],
+        authors: [handler.author.pubkey],
         limit: 100,
       }),
-    [session, descriptor],
+    [session, handler],
   );
   return (
     <div className="border-l-2 border-base-300 pl-3 space-y-2">
-      <p className="font-mono break-all">{descriptor.coordinate}</p>
-      <Author user={descriptor.author} />
+      <p className="font-semibold">{handler.name}</p>
+      <Author user={handler.author} />
+      {latest && <Sites sites={[latest]} select={select} empty="" />}
       <Sites sites={sites} select={select} empty="No linked manifests loaded." />
     </div>
   );
 }
 function Overview({ site, session, select }: { site: Nsite; session: Session; select: Select }) {
   const servers = use$(() => site.servers$, [site]);
-  const apps = use$(() => site.apps$, [site]);
   const address = use$(() => site.address$, [site]);
   const authorSites = use$(() => site.author.nsites$, [site]);
   const profile = use$(() => site.author.profile$, [site]);
@@ -352,20 +366,13 @@ function Overview({ site, session, select }: { site: Nsite; session: Session; se
       </Section>
       <Section title="Upstream apps">
         {!site.appPointers.length && <p className="text-base-content/60">No upstream apps referenced.</p>}
-        {site.appPointers.map((pointer, i) => (
-          <div key={getReplaceableAddressFromPointer(pointer)}>
-            {apps?.[i] ? (
-              <AppDescriptor
-                descriptor={castEvent(apps[i]!, EventCast, session.store)}
-                select={select}
-                session={session}
-              />
-            ) : (
-              <p className="break-all text-base-content/60">
-                App descriptor unavailable: {getReplaceableAddressFromPointer(pointer)}
-              </p>
-            )}
-          </div>
+        {site.appPointers.map((pointer) => (
+          <UpstreamApp
+            key={getReplaceableAddressFromPointer(pointer)}
+            pointer={pointer}
+            select={select}
+            session={session}
+          />
         ))}
       </Section>
       <Section title="More from this author">
