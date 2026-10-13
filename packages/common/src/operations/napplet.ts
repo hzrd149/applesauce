@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/factories";
+import { EventOperation, TagOperation } from "applesauce-core/factories";
 import {
   AddressPointer,
   getReplaceableAddressFromPointer,
@@ -26,6 +26,14 @@ function createLineageTag(name: "a" | "A", input: AddressPointer | string): [str
   return hint ? [name, address, normalizeURL(hint)] : [name, address];
 }
 
+/** Removes all but the first tag with a name */
+function keepFirstTag(name: string): TagOperation {
+  return (tags) => {
+    const first = tags.findIndex((t) => t[0] === name);
+    return tags.filter((t, i) => t[0] !== name || i === first);
+  };
+}
+
 /** Sets the `d` tag identifier of a named napplet */
 export function setNappletIdentifier(identifier: string): EventOperation {
   return includeSingletonTag(["d", identifier], true);
@@ -37,8 +45,8 @@ export function setNappletIdentifier(identifier: string): EventOperation {
  */
 export function setNappletArtifactHash(sha256: string): EventOperation {
   if (!isSha256(sha256)) throw new Error("Napplet artifact hash must be a lowercase hex sha256");
-  // Remove all "x" tags first since a manifest must carry exactly one
-  return modifyPublicTags(removeSingletonTag("x"), setSingletonTag(["x", sha256], true));
+  // Drop duplicate "x" tags since a manifest must carry exactly one
+  return modifyPublicTags(keepFirstTag("x"), setSingletonTag(["x", sha256], true));
 }
 
 /** Sets the plain-text description of the napplet */
