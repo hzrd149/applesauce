@@ -6,6 +6,16 @@ import SideNav from "../components/nav";
 import { CheckIcon, ExternalLinkIcon } from "../components/icons";
 import examples, { Example } from "../examples";
 
+function ExampleMount({ Component, error }: { Component?: (() => ReactElement) | null; error: unknown }) {
+  if (error !== null) throw error;
+  if (Component) return <Component />;
+  return (
+    <div className="flex flex-1 justify-center items-center" role="status" aria-label="Loading example">
+      <span className="loading loading-dots loading-xl"></span>
+    </div>
+  );
+}
+
 export default function ExamplePage() {
   const { "*": splat } = useParams();
   const exampleId = splat;
@@ -14,6 +24,9 @@ export default function ExamplePage() {
   const [metadata, setMetadata] = useState<Example["metadata"]>();
   const [Component, setComponent] = useState<(() => ReactElement) | null>();
   const [copied, setCopied] = useState(false);
+  const [loadedId, setLoadedId] = useState<string>();
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
 
   const example = examples.find((e) => e.id === exampleId);
 
@@ -34,22 +47,42 @@ export default function ExamplePage() {
   useEffect(() => {
     if (!example) return;
 
+    let active = true;
+    setComponent(null);
+    setLoadError(null);
+    setSource("");
+    setMetadata(undefined);
     setPath(example.path.replace(/^\.\//, ""));
-    example.load().then((module: any) => {
-      if (typeof module.default !== "function") {
-        throw new Error("Example must be a function");
-      }
 
-      console.log("Loaded React App", module.default);
-      setComponent(() => module.default);
-    });
+    Promise.resolve()
+      .then(() => example.load())
+      .then((module: any) => {
+        if (typeof module.default !== "function") throw new Error("Example must be a function");
+        if (active) {
+          setLoadedId(example.id);
+          setComponent(() => module.default);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setLoadedId(example.id);
+          setLoadError(error ?? new Error("Failed to load example"));
+        }
+      });
 
-    example.source().then((source: string) => {
-      setSource(source);
-      // Update metadata after source is loaded (it's parsed during source())
-      setMetadata(example.metadata);
-    });
-  }, [example]);
+    example
+      .source()
+      .then((source: string) => {
+        if (!active) return;
+        setSource(source);
+        setMetadata(example.metadata);
+      })
+      .catch((error: unknown) => console.error("Failed to load example source:", error));
+
+    return () => {
+      active = false;
+    };
+  }, [example, attempt]);
 
   if (!example) {
     return (
@@ -162,19 +195,31 @@ export default function ExamplePage() {
         )}
 
         {/* Page content */}
-        {Component ? (
-          <ErrorBoundary
-            fallbackRender={({ error }) => (
-              <div className="text-red-500">{error instanceof Error ? error.message : String(error)}</div>
-            )}
-          >
-            <Component />
-          </ErrorBoundary>
-        ) : (
-          <div className="flex justify-center items-center h-full">
-            <span className="loading loading-dots loading-xl"></span>
-          </div>
-        )}
+        <ErrorBoundary
+          key={example.id}
+          onReset={() => {
+            setComponent(null);
+            setLoadError(null);
+            setAttempt((value) => value + 1);
+          }}
+          fallbackRender={({ error, resetErrorBoundary }) => (
+            <div className="flex flex-1 flex-col items-start justify-center gap-4 p-6" role="alert">
+              <h2 className="text-xl font-semibold">This example encountered an error</h2>
+              <p className="text-error whitespace-pre-wrap break-words max-w-full">
+                {error instanceof Error ? error.message : String(error)}
+              </p>
+              <p>You can retry this example or choose another from the sidebar.</p>
+              <button className="btn btn-primary" onClick={resetErrorBoundary}>
+                Retry example
+              </button>
+            </div>
+          )}
+        >
+          <ExampleMount
+            Component={loadedId === example.id ? Component : null}
+            error={loadedId === example.id ? loadError : null}
+          />
+        </ErrorBoundary>
       </div>
 
       {/* Sidebar */}
