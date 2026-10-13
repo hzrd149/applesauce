@@ -13,7 +13,7 @@ These examples are reference implementations for developers and other agents. Wo
 - Demonstrate the simplicity and reactivity of RxJS by expressing data flow as chains of observables and using `use$` to connect their results to React components.
 - Use `use$` to consume observables and let the hook manage subscription lifetimes. Do not use `useEffect` plus `.subscribe()` plus `useState` to mirror observable values into React state; this is an anti-pattern.
 - Use the factory form with dependencies for streams that depend on props or changing inputs: `use$(() => castUser(pubkey, eventStore).profile$, [pubkey])`. Stable observable properties can be passed directly to `use$`.
-- Keep interactive reactive state in component-local `BehaviorSubject`s, created once with `useMemo`, and read it with `use$`. Update related values together to avoid intermediate inconsistent states.
+- Keep per-mount interactive state in component-local `BehaviorSubject`s, created once with `useMemo`, and read it with `use$`. State shared across components can be a module-level subject. Update related values together to avoid intermediate inconsistent states.
 - Derive values from their source instead of maintaining duplicate state or synchronizing it with effects. Use RxJS operators for stream composition; pure render calculations and `useMemo` are appropriate for presentation.
 - Keep loading, filtering, transformation, and related-data resolution in observable chains instead of coordinating them through effects and state setters. Subscribe to the resulting streams with `use$` at the component boundary.
 - Prefer `switchMap` for changing observable inputs so obsolete requests are unsubscribed. When using the `use$` factory form, include every input that should replace the subscription in its dependency array.
@@ -34,7 +34,9 @@ return <input value={query} onChange={(e) => query$.next(e.target.value)} />;
 
 ## Applesauce Integration
 
-- Reuse one `EventStore` and `RelayPool` for related data within an example, and create reusable loaders outside render. Keep infrastructure ownership and cleanup explicit.
+- Create the `EventStore`, `RelayPool`, loaders and other foundational classes at the top of the module. Do not create them in `useMemo`, in `useState` or in a factory function passed to a hook.
+- Examples are not only about React. Creating RxJS classes and subjects outside React is acceptable, and often expected, because it keeps examples simpler and more reactive.
+- Reuse one `EventStore` and `RelayPool` for related data within an example, and keep infrastructure ownership and cleanup explicit.
 - Route incoming events into the example's shared `EventStore`, then render reactive store queries and casts.
 - Let the EventStore handle replaceable-event revisions and deduplication rather than maintaining a second event collection in React state.
 - Use stable event addresses for selections that should survive replaceable-event revisions.
