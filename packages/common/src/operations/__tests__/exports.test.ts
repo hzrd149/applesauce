@@ -16,6 +16,7 @@ describe("exports", () => {
         "Client",
         "CodeSnippet",
         "Comment",
+        "ExternalIdentities",
         "FileMetadata",
         "ForumThread",
         "Geohash",

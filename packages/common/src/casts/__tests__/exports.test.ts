@@ -18,6 +18,7 @@ describe("exports", () => {
         "Comment",
         "EmojiPack",
         "EventCast",
+        "ExternalIdentities",
         "FavoriteEmojis",
         "FavoriteGitRepos",
         "FavoriteRelays",

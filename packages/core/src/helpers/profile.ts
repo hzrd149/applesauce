@@ -41,7 +41,11 @@ export type ProfileContent = {
     /** Birth day (1-31) */
     day?: number;
   };
-  /** An array of strings representing the author's preferred languages (in order of preference), each in IETF BCP 47 format (e.g., ["en", "ja"], ["es-AR", "en-US"]). The first element is the primary language. */
+  /**
+   * The author's preferred languages in order of preference, in IETF BCP 47 format (e.g. ["en", "ja"])
+   * @note proposed field, not yet merged into NIP-24
+   * @see https://github.com/nostr-protocol/nips/pull/2159
+   */
   languages?: string[];
 };
 

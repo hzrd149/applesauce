@@ -26,6 +26,7 @@ export * from "./bookmark-list.js";
 export * from "./bookmark-set.js";
 export * from "./relay-lists.js";
 export * from "./blossom-server-list.js";
+export * from "./external-identities.js";
 export * from "./git-grasp-list.js";
 export * from "./git-authors.js";
 export * from "./favorite-git-repos.js";

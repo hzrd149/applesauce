@@ -3,6 +3,7 @@ import { firstValueFrom } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures";
 import { FAVORITE_EMOJI_PACKS_KIND } from "../../helpers/emoji-pack";
+import { EXTERNAL_IDENTITIES_KIND } from "../../helpers/external-identities";
 import { GIT_GRASP_LIST_KIND } from "../../helpers/git-grasp-list";
 import { FAVORITE_GIT_REPOS_KIND, GIT_AUTHORS_KIND } from "../../helpers/git-lists";
 import { LOOKUP_RELAY_LIST_KIND } from "../../helpers/relay-list";
@@ -73,6 +74,20 @@ describe("user", () => {
       expect(gitRepositories?.repositoryPointers).toEqual([
         expect.objectContaining({ kind: 30617, pubkey: signer.pubkey, identifier: "applesauce" }),
       ]);
+    });
+
+    it("should resolve external identities", async () => {
+      const signer = new FakeUser();
+      const profile = signer.profile({ name: "John Doe" });
+      const identities = signer.event({ kind: EXTERNAL_IDENTITIES_KIND, tags: [["i", "github:john", "abc"]] });
+      const eventStore = new EventStore();
+      eventStore.add(profile);
+      eventStore.add(identities);
+
+      const user = castUser(profile, eventStore);
+      const list = await firstValueFrom(user.identities$);
+
+      expect(list?.identities).toEqual([{ platform: "github", identity: "john", proof: "abc" }]);
     });
 
     it("should resolve git grasp lists", async () => {
