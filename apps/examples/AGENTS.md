@@ -2,12 +2,19 @@
 
 These examples are reference implementations for developers and other agents. Working functionality is necessary, but each example must also demonstrate idiomatic applesauce APIs and reactive patterns that readers can reuse.
 
+## Example Shell
+
+- Build example pages, not standalone applications. The example shell app provides the surrounding layout and navigation.
+- Do not add app headers or footers to examples. Keep page content focused on the feature being demonstrated; feature-specific controls and section headings are appropriate.
+
 ## React and RxJS
 
+- Demonstrate the simplicity and reactivity of RxJS by expressing data flow as chains of observables and using `use$` to connect their results to React components.
 - Use `use$` to consume observables and let the hook manage subscription lifetimes. Do not use `useEffect` plus `.subscribe()` plus `useState` to mirror observable values into React state; this is an anti-pattern.
 - Use the factory form with dependencies for streams that depend on props or changing inputs: `use$(() => castUser(pubkey, eventStore).profile$, [pubkey])`. Stable observable properties can be passed directly to `use$`.
 - Keep interactive reactive state in component-local `BehaviorSubject`s, created once with `useMemo`, and read it with `use$`. Update related values together to avoid intermediate inconsistent states.
 - Derive values from their source instead of maintaining duplicate state or synchronizing it with effects. Use RxJS operators for stream composition; pure render calculations and `useMemo` are appropriate for presentation.
+- Keep loading, filtering, transformation, and related-data resolution in observable chains instead of coordinating them through effects and state setters. Subscribe to the resulting streams with `use$` at the component boundary.
 - Prefer `switchMap` for changing observable inputs so obsolete requests are unsubscribed. When using the `use$` factory form, include every input that should replace the subscription in its dependency array.
 - Compose loading, completion, and error status into streams. Handle errors per relay when one failed relay should not terminate the other subscriptions, and provide an initial loading value.
 - Keep accumulators inside `defer` or the subscription pipeline so each subscription starts with fresh state. Share streams with reference-counted sharing when multiple consumers need the same work.
