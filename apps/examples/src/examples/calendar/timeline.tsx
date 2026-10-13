@@ -21,6 +21,7 @@ import {
 import { CalendarEventRSVPsModel, MailboxesModel } from "applesauce-common/models";
 import { EventStore } from "applesauce-core";
 import {
+  Filter,
   getDisplayName,
   getSeenRelays,
   getTagValue,
@@ -33,7 +34,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ChevronLeft, ChevronRight, MapPin, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { BehaviorSubject, combineLatest, defer, map, materialize, of, scan, startWith, tap } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -44,6 +46,35 @@ const kinds = [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND];
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
 });
+
+type RelayStatus = { status: "loading" | "live" | "closed"; error?: string; addresses: Set<string> };
+
+function relayStatus(url: string, filters: Filter | Filter[]) {
+  // Keep relay membership separate from the store's reactive, revision-aware timeline.
+  return defer(() => {
+    const initial: RelayStatus = { status: "loading", addresses: new Set() };
+    return pool
+      .relay(url)
+      .subscription(filters)
+      .pipe(
+        tap((message) => {
+          if (message !== "EOSE") eventStore.add(message);
+        }),
+        materialize(),
+        scan((state: RelayStatus, notification): RelayStatus => {
+          if (notification.kind === "E")
+            return { ...state, status: "closed", error: String(notification.error?.message ?? notification.error) };
+          if (notification.kind === "C") return { ...state, status: "closed" };
+          if (notification.value === "EOSE") return { ...state, status: "live" };
+          const address = getReplaceableAddress(notification.value);
+          return address && !state.addresses.has(address)
+            ? { ...state, addresses: new Set([...state.addresses, address]) }
+            : state;
+        }, initial),
+        startWith(initial),
+      );
+  });
+}
 
 const months = Array.from({ length: 12 }, (_, month) =>
   new Date(2024, month, 1).toLocaleDateString(undefined, { month: "long" }),
@@ -136,8 +167,6 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
     [original.id, hints.join("|")],
   );
   const relays = relaySet(hints, mailboxes?.outboxes).filter(isSafeRelayURL);
-  const [pending, setPending] = useState<string[]>([]);
-  const [failures, setFailures] = useState<string[]>([]);
   const rsvps = use$(() => eventStore.model(CalendarEventRSVPsModel, event), [event.id]);
   const comments = use$(
     () =>
@@ -150,38 +179,29 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
     [event.id, address],
   );
 
-  useEffect(() => {
-    dialog.current?.showModal();
+  const openDialog = useCallback((node: HTMLDialogElement | null) => {
+    dialog.current = node;
+    if (node && !node.open) node.showModal();
   }, []);
-
-  useEffect(() => {
-    setPending(relays);
-    setFailures([]);
-    // Opening the modal discovers outboxes and fetches the latest revision and its related events.
-    const subscriptions = relays.map((url) =>
-      pool
-        .relay(url)
-        .subscription([
-          { kinds: [event.kind], authors: [event.pubkey], "#d": [identifier] },
-          { kinds: [CALENDAR_EVENT_RSVP_KIND, COMMENT_KIND, 1], "#a": [address] },
-          { kinds: [COMMENT_KIND], "#A": [address] },
-          { kinds: [CALENDAR_EVENT_RSVP_KIND, COMMENT_KIND, 1], "#e": [event.id] },
-          { kinds: [COMMENT_KIND], "#E": [event.id] },
-        ])
-        .subscribe({
-          next: (message) => {
-            if (message === "EOSE") setPending((values) => values.filter((value) => value !== url));
-            else eventStore.add(message);
-          },
-          error: (error: unknown) => {
-            setPending((values) => values.filter((value) => value !== url));
-            setFailures((values) => [...values, `${url}: ${error instanceof Error ? error.message : String(error)}`]);
-          },
-          complete: () => setPending((values) => values.filter((value) => value !== url)),
-        }),
-    );
-    return () => subscriptions.forEach((subscription) => subscription.unsubscribe());
+  const loading = use$(() => {
+    // Outbox discovery and event revisions replace the previous subscriptions automatically.
+    const filters: Filter[] = [
+      { kinds: [event.kind], authors: [event.pubkey], "#d": [identifier] },
+      { kinds: [CALENDAR_EVENT_RSVP_KIND, COMMENT_KIND, 1], "#a": [address] },
+      { kinds: [COMMENT_KIND], "#A": [address] },
+      { kinds: [CALENDAR_EVENT_RSVP_KIND, COMMENT_KIND, 1], "#e": [event.id] },
+      { kinds: [COMMENT_KIND], "#E": [event.id] },
+    ];
+    return relays.length
+      ? combineLatest(relays.map((url) => relayStatus(url, filters))).pipe(
+          map((states) => ({
+            pending: relays.filter((_, i) => states[i].status === "loading"),
+            failures: states.flatMap((state, i) => (state.error ? [`${relays[i]}: ${state.error}`] : [])),
+          })),
+        )
+      : of({ pending: [], failures: [] });
   }, [relays.join("|"), event.id, address, identifier]);
+  const { pending, failures } = loading ?? { pending: relays, failures: [] };
 
   const participants = getCalendarEventParticipants(event);
   const image = getCalendarEventImage(event);
@@ -193,7 +213,7 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
 
   return (
     <dialog
-      ref={dialog}
+      ref={openDialog}
       onClose={onClose}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -368,14 +388,14 @@ function timedLayout(entries: CalendarEntry[], day: Date) {
 function TimeCalendar({
   days,
   entries,
-  selectedId,
+  selectedAddress,
   onSelect,
   onDay,
 }: {
   days: Date[];
   entries: CalendarEntry[];
-  selectedId?: string;
-  onSelect: (id: string) => void;
+  selectedAddress?: string;
+  onSelect: (address: string) => void;
   onDay: (day: Date) => void;
 }) {
   const columns = `3.5rem repeat(${days.length}, minmax(0, 1fr))`;
@@ -400,7 +420,7 @@ function TimeCalendar({
                   <button
                     key={entry.event.id}
                     className="block w-full rounded bg-primary/15 text-primary p-1 text-xs text-left truncate"
-                    onClick={() => onSelect(entry.event.id)}
+                    onClick={() => onSelect(getReplaceableAddress(entry.event)!)}
                   >
                     {getCalendarEventTitle(entry.event) || "Untitled event"}
                   </button>
@@ -427,14 +447,14 @@ function TimeCalendar({
                   {positioned.map(({ entry, start, end, lane, columns }) => (
                     <button
                       key={entry.event.id}
-                      className={`absolute overflow-hidden rounded border-l-2 border-primary p-1 text-left text-xs hover:bg-primary/30 ${selectedId === entry.event.id ? "bg-primary/30" : "bg-base-200"}`}
+                      className={`absolute overflow-hidden rounded border-l-2 border-primary p-1 text-left text-xs hover:bg-primary/30 ${selectedAddress === getReplaceableAddress(entry.event) ? "bg-primary/30" : "bg-base-200"}`}
                       style={{
                         top: start * 0.8,
                         height: (end - start) * 0.8,
                         left: `${(lane * 100) / columns}%`,
                         width: `${100 / columns}%`,
                       }}
-                      onClick={() => onSelect(entry.event.id)}
+                      onClick={() => onSelect(getReplaceableAddress(entry.event)!)}
                       title={getCalendarEventTitle(entry.event)}
                     >
                       <span className="block text-base-content/60">
@@ -454,75 +474,50 @@ function TimeCalendar({
 }
 
 export default function CalendarTimeline() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-  const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(() => addDays(new Date(), 0));
-  const [selection, setSelection] = useState<CalendarView>("month");
-  const [yearInput, setYearInput] = useState(() => String(new Date().getFullYear()));
-  const [selectedId, setSelectedId] = useState<string>();
-  const [events, setEvents] = useState<NostrEvent[]>([]);
-  const [status, setStatus] = useState<"loading" | "live" | "closed">("loading");
-  const [error, setError] = useState<string>();
-
-  useEffect(() => setYearInput(String(month.getFullYear())), [month]);
-
-  useEffect(() => {
-    setEvents([]);
-    setSelectedId(undefined);
-    setStatus("loading");
-    setError(undefined);
-    const latest = new Map<string, NostrEvent>();
-    // Event creation dates differ from calendar dates, so fetch both kinds without a since/until filter.
-    const subscription = pool
-      .relay(relay)
-      .subscription({ kinds })
-      .subscribe({
-        next: (message) => {
-          if (message === "EOSE") setStatus("live");
-          else {
-            const event = message;
-            eventStore.add(event);
-            const key = `${event.kind}:${event.pubkey}:${getTagValue(event, "d") ?? event.id}`;
-            const previous = latest.get(key);
-            if (
-              !previous ||
-              event.created_at > previous.created_at ||
-              (event.created_at === previous.created_at && event.id < previous.id)
-            ) {
-              latest.set(key, event);
-              setEvents([...latest.values()]);
-            }
-          }
-        },
-        error: (err: unknown) => {
-          setStatus("closed");
-          setError(err instanceof Error ? err.message : String(err));
-        },
-        complete: () => setStatus("closed"),
-      });
-    return () => subscription.unsubscribe();
-  }, [relay]);
-
-  const entries = useMemo(
+  const state$ = useMemo(() => {
+    const date = addDays(new Date(), 0);
+    return new BehaviorSubject({
+      relay: "wss://relay.damus.io/",
+      selectedDate: date,
+      selection: "month" as CalendarView,
+      yearInput: String(date.getFullYear()),
+      selectedAddress: undefined as string | undefined,
+    });
+  }, []);
+  const { relay, selectedDate, selection, yearInput, selectedAddress } = use$(state$);
+  const month = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
+  const update = (value: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...value });
+  const setRelay = (relay: string) => update({ relay, selectedAddress: undefined });
+  const setSelectedAddress = (selectedAddress: string | undefined) => update({ selectedAddress });
+  const setYearInput = (yearInput: string) => update({ yearInput });
+  // Calendar dates are unrelated to created_at, so request both kinds without since/until.
+  const feed = use$(
     () =>
-      events
-        .map(calendarEntry)
-        .filter((entry): entry is CalendarEntry => !!entry)
-        .sort(
-          (a, b) =>
-            Number(b.allDay) - Number(a.allDay) ||
-            a.start.getTime() - b.start.getTime() ||
-            a.event.id.localeCompare(b.event.id),
-        ),
-    [events],
+      combineLatest([relayStatus(relay, { kinds }), eventStore.timeline({ kinds })]).pipe(
+        map(([state, events]) => ({
+          ...state,
+          entries: events
+            .filter((event) => state.addresses.has(getReplaceableAddress(event)!))
+            .map(calendarEntry)
+            .filter((entry): entry is CalendarEntry => !!entry)
+            .sort(
+              (a, b) =>
+                Number(b.allDay) - Number(a.allDay) ||
+                a.start.getTime() - b.start.getTime() ||
+                a.event.id.localeCompare(b.event.id),
+            ),
+        })),
+      ),
+    [relay],
   );
+  const { entries, status, error } = feed ?? { entries: [], status: "loading", error: undefined };
   const days = useMemo(() => viewDays(selection, selectedDate, month), [selection, selectedDate, month]);
   const byDay = useMemo(
     () => new Map(days.map((day) => [dayKey(day), entries.filter((entry) => occursOn(entry, day))])),
     [days, entries],
   );
   const agendaDays = selection === "month" ? [selectedDate] : days;
-  const active = entries.find((entry) => entry.event.id === selectedId);
+  const active = entries.find((entry) => getReplaceableAddress(entry.event) === selectedAddress);
   const today = dayKey(new Date());
   const monthCount = entries.filter(
     (entry) =>
@@ -530,17 +525,13 @@ export default function CalendarTimeline() {
       (entry.end > month || entry.start >= month),
   ).length;
 
-  function selectDate(date: Date, mode = selection) {
-    setSelectedDate(date);
-    setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
-    setSelection(mode);
-    setSelectedId(undefined);
+  function selectDate(date: Date, mode = selection, selectedAddress?: string) {
+    update({ selectedDate: date, selection: mode, yearInput: String(date.getFullYear()), selectedAddress });
   }
 
   function changeMonth(year: number, index: number) {
     const next = new Date(year, index, 1);
     if (next.getFullYear() < 100 || next.getFullYear() > 9999) return;
-    setMonth(next);
     selectDate(
       new Date(
         next.getFullYear(),
@@ -608,7 +599,6 @@ export default function CalendarTimeline() {
           className="btn btn-sm btn-ghost"
           onClick={() => {
             const now = new Date();
-            setMonth(new Date(now.getFullYear(), now.getMonth(), 1));
             selectDate(addDays(now, 0));
           }}
         >
@@ -651,8 +641,8 @@ export default function CalendarTimeline() {
             <TimeCalendar
               days={days}
               entries={entries}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              selectedAddress={selectedAddress}
+              onSelect={setSelectedAddress}
               onDay={(date) => selectDate(date, "day")}
             />
           ) : (
@@ -677,7 +667,6 @@ export default function CalendarTimeline() {
                       <button
                         className={`border-r border-base-300 text-xs hover:bg-base-200 text-base-content/40`}
                         aria-label={`Select week of ${week[0].toLocaleDateString()}`}
-
                         onClick={() => selectDate(week[0], "week")}
                       >
                         ›
@@ -709,10 +698,7 @@ export default function CalendarTimeline() {
                                   key={entry.event.id}
                                   className={`block w-full truncate rounded px-1.5 py-1 text-left text-xs hover:bg-primary/20 ${entry.allDay ? "bg-primary/15 text-primary" : "bg-base-200"}`}
                                   title={`${timeLabel(entry)} · ${getCalendarEventTitle(entry.event) || "Untitled event"}`}
-                                  onClick={() => {
-                                    selectDate(date);
-                                    setSelectedId(entry.event.id);
-                                  }}
+                                  onClick={() => selectDate(date, selection, getReplaceableAddress(entry.event)!)}
                                 >
                                   <span className="mr-1 opacity-60">{entry.allDay ? "•" : timeLabel(entry)}</span>
                                   {getCalendarEventTitle(entry.event) || "Untitled event"}
@@ -766,9 +752,9 @@ export default function CalendarTimeline() {
                       {items.map((entry) => (
                         <li key={entry.event.id}>
                           <button
-                            className={`w-full text-left p-2 border-l-2 hover:bg-base-200 ${selectedId === entry.event.id ? "border-primary bg-primary/10" : "border-base-300"}`}
-                            aria-pressed={selectedId === entry.event.id}
-                            onClick={() => setSelectedId(entry.event.id)}
+                            className={`w-full text-left p-2 border-l-2 hover:bg-base-200 ${selectedAddress === getReplaceableAddress(entry.event) ? "border-primary bg-primary/10" : "border-base-300"}`}
+                            aria-pressed={selectedAddress === getReplaceableAddress(entry.event)}
+                            onClick={() => setSelectedAddress(getReplaceableAddress(entry.event)!)}
                           >
                             <span className="block text-xs text-base-content/60">
                               {timeLabel(entry)}
@@ -794,7 +780,12 @@ export default function CalendarTimeline() {
         </aside>
       </div>
       {active && (
-        <EventDetails key={active.event.id} entry={active} relay={relay} onClose={() => setSelectedId(undefined)} />
+        <EventDetails
+          key={getReplaceableAddress(active.event)}
+          entry={active}
+          relay={relay}
+          onClose={() => setSelectedAddress(undefined)}
+        />
       )}
     </div>
   );
