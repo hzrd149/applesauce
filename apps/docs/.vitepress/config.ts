@@ -8,7 +8,7 @@ export default defineConfig({
   head: [["link", { rel: "icon", href: "/favicon.ico" }]],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
-    logo: "/logo.png",
+    logo: "/icon.png",
 
     editLink: {
       pattern: "https://github.com/hzrd149/applesauce/edit/master/apps/docs/:path",
