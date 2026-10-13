@@ -28,13 +28,16 @@ import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, Relay
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import pastellify from "pastellify";
+import pastellifyModule from "pastellify";
 import { useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
 import { useObservable } from "react-use";
 import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+
+// pastellify ships CommonJS with exports.default, so unwrap it when the bundler returns the module object
+const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ?? pastellifyModule;
 
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
