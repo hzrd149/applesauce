@@ -151,16 +151,12 @@ describe("NappletSnapshot", () => {
 });
 
 describe("User napplet getters", () => {
-  it("resolves napplets$, napplet$ and nappletSnapshots$", async () => {
-    const { store, root, named, snapshot } = setup();
+  it("resolves napplets$ and napplet$", async () => {
+    const { store, root, named } = setup();
     const author = castUser(user.pubkey, store);
 
     const napplets = await firstValueFrom(author.napplets$);
     expect(napplets.map((n) => n.id).sort()).toEqual([root.id, named.id].sort());
     expect(await firstValueFrom(author.napplet$)).toBeInstanceOf(RootNapplet);
-
-    const snapshots = await firstValueFrom(author.nappletSnapshots$);
-    expect(snapshots.map((n) => n.id)).toEqual([snapshot.id]);
-    expect(snapshots[0]).toBeInstanceOf(NappletSnapshot);
   });
 });

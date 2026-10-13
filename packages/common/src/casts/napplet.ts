@@ -260,25 +260,11 @@ Object.defineProperty(User.prototype, "napplet$", {
   enumerable: false,
 });
 
-Object.defineProperty(User.prototype, "nappletSnapshots$", {
-  get(this: User) {
-    return this.$$ref("nappletSnapshots$", (store) =>
-      store
-        .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], authors: [this.pubkey] })
-        .pipe(castTimelineStream(NappletSnapshot, store)),
-    );
-  },
-  configurable: true,
-  enumerable: false,
-});
-
 declare module "applesauce-core/casts" {
   interface User {
     /** Subscribes to the user's root and named napplets */
     get napplets$(): ChainableObservable<Napplet[]>;
     /** Subscribes to the user's root (kind 15129) napplet */
     get napplet$(): ChainableObservable<RootNapplet | undefined>;
-    /** Subscribes to the user's napplet snapshots */
-    get nappletSnapshots$(): ChainableObservable<NappletSnapshot[]>;
   }
 }

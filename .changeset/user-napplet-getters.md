@@ -2,4 +2,4 @@
 "applesauce-common": minor
 ---
 
-Add `napplets$`, `napplet$` and `nappletSnapshots$` getters to the `User` cast.
+Add `napplets$` and `napplet$` getters to the `User` cast.
