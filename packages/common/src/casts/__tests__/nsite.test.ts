@@ -5,7 +5,6 @@ import { FakeUser } from "../../__tests__/fixtures.js";
 import { NsiteFactory } from "../../factories/nsite.js";
 import { BLOSSOM_SERVER_LIST_KIND } from "../../helpers/blossom.js";
 import { COMMENT_KIND } from "../../helpers/comment.js";
-import { castEvent, EventCast } from "../cast.js";
 import { NamedNsite, Nsite, NsiteSnapshot, RootNsite } from "../nsite.js";
 import { Profile } from "../profile.js";
 import { castUser } from "../user.js";
@@ -64,18 +63,11 @@ describe("nsite casts", () => {
     expect((await firstValueFrom(new NsiteSnapshot(snapshot, store).parent$))?.id).toBe(named.id);
     expect(await firstValueFrom(site.root$)).toBeUndefined();
   });
-  it("resolves app descriptors and adds reverse relationships to existing casts", async () => {
-    const { store, named, snapshot, copy } = await setup();
-    const app = user.event({ kind: 31990, tags: [["d", "app"]] });
-    store.add(app);
-    expect((await firstValueFrom(new Nsite(named, store).apps$))[0]?.id).toBe(app.id);
-    const descriptor = castEvent(app, EventCast, store);
-    expect((await firstValueFrom(descriptor.nsites$)).map((s) => s.id).sort()).toEqual(
-      [named.id, snapshot.id, copy.id].sort(),
-    );
-    expect(
-      await firstValueFrom(new Nsite(user.event({ kind: 15128, tags: [["path", "/index.html", HASH]] }), store).apps$),
-    ).toEqual([]);
+  it("exposes upstream app pointers without resolving them", async () => {
+    const { store, named } = await setup();
+    expect(new NamedNsite(named, store).appPointers).toEqual([
+      { kind: 31990, pubkey: user.pubkey, identifier: "app", relays: ["wss://relay.example.com/"] },
+    ]);
   });
   it("merges manifest hints before the author's Blossom servers", async () => {
     const { store, named } = await setup();

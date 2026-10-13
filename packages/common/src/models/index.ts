@@ -1,3 +1,4 @@
+export * from "./app-handler.js";
 export * from "./blossom.js";
 export * from "./bookmarks.js";
 export * from "./calendar.js";

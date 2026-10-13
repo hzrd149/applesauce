@@ -1,4 +1,6 @@
 export * as AppData from "./app-data.js";
+export * as AppHandler from "./app-handler.js";
+export * as AppRecommendation from "./app-recommendation.js";
 export * as Badge from "./badge.js";
 export * as BadgeAward from "./badge-award.js";
 export * as CodeSnippet from "./code-snippet.js";

@@ -10,10 +10,9 @@ import {
   getAddressPointerForEvent,
   getEventPointerForEvent,
 } from "applesauce-core/helpers/pointers";
-import { combineLatest, map, Observable, of } from "rxjs";
+import { map, Observable, of } from "rxjs";
 import { normalizeBlossomServer } from "../helpers/blossom.js";
 import {
-  AppNsitesModel,
   NsiteCopiesModel,
   NsiteLineageModel,
   NsiteSnapshotsModel,
@@ -117,12 +116,6 @@ export class Nsite<T extends NsiteEvent = NsiteEvent> extends EventCast<T> {
   /** Resolves a request path with index and not-found fallbacks */
   resolvePath(path: string) {
     return resolveNsitePath(this.event, path);
-  }
-  /** Subscribes to upstream app descriptor events */
-  get apps$(): ChainableObservable<(NostrEvent | undefined)[]> {
-    return this.$$ref("apps$", (store) =>
-      this.appPointers.length ? combineLatest(this.appPointers.map((p) => store.replaceable(p))) : of([]),
-    );
   }
   /** Subscribes to manifest server hints followed by the author's Blossom servers */
   get servers$(): ChainableObservable<URL[]> {
@@ -347,28 +340,11 @@ Object.defineProperty(Profile.prototype, "nsites$", {
   enumerable: false,
 });
 
-// App descriptor kinds are generic, so every addressable cast can discover its linked manifests.
-Object.defineProperty(EventCast.prototype, "nsites$", {
-  get(this: EventCast) {
-    return this.$$ref("nsites$", (store) =>
-      this.coordinate ? store.model(AppNsitesModel, this.coordinate).pipe(castTimelineStream(Nsite, store)) : of([]),
-    );
-  },
-  configurable: true,
-  enumerable: false,
-});
-
 declare module "./profile.js" {
   interface Profile {
     /** Subscribes to the author's root site */
     get nsite$(): ChainableObservable<RootNsite | undefined>;
     /** Subscribes to the author's root and named sites */
-    get nsites$(): ChainableObservable<Nsite[]>;
-  }
-}
-declare module "applesauce-core/casts/event" {
-  interface EventCast {
-    /** Subscribes to nsite manifests linked to this app descriptor */
     get nsites$(): ChainableObservable<Nsite[]>;
   }
 }

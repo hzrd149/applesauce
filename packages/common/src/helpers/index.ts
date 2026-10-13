@@ -1,4 +1,5 @@
 export * from "./app-handler.js";
+export * from "./app-recommendation.js";
 export * from "./article.js";
 export * from "./forum-thread.js";
 export * from "./badge-award.js";

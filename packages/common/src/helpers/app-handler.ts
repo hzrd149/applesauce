@@ -1,8 +1,10 @@
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
+import { getReplaceableIdentifier, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   DecodeResult,
   EventPointer,
+  getAddressPointerFromATag,
   isAddressPointer,
   isEventPointer,
   naddrEncode,
@@ -14,9 +16,75 @@ import {
 } from "applesauce-core/helpers/pointers";
 import { getDisplayName, getProfileContent, getProfilePicture, isValidProfile } from "applesauce-core/helpers/profile";
 import { processTags } from "applesauce-core/helpers/tags";
+import { NSITE_KIND } from "./nsite.js";
+
+/** The event kind for NIP-89 handler information */
+export const APP_HANDLER_KIND = kinds.Handlerinformation;
+/** A validated NIP-89 handler information event */
+export type AppHandlerEvent = KnownEvent<typeof APP_HANDLER_KIND>;
 
 export type HandlerLinkPlatform = "web" | "ios" | "android";
 export type HandlerLinkType = DecodeResult["type"];
+
+/** A URL template for opening NIP-19 entities in a handler */
+export interface HandlerLink {
+  /** The URL with a `<bech32>` placeholder */
+  url: string;
+  /** The NIP-19 entity type the URL handles, or undefined for any type */
+  type?: HandlerLinkType;
+}
+
+/** A parsed NIP-89 `client` tag */
+export interface ClientTag {
+  /** The client's display name */
+  name: string;
+  /** The client's handler information address */
+  pointer?: AddressPointer;
+}
+
+const LatestSymbol = Symbol.for("app-handler-latest");
+const NextSymbol = Symbol.for("app-handler-next");
+
+/** Checks if an event is a valid NIP-89 handler information event (kind 31990) */
+export function isValidAppHandler(event?: NostrEvent): event is AppHandlerEvent {
+  return !!event && event.kind === APP_HANDLER_KIND && !!getReplaceableIdentifier(event);
+}
+
+/** Returns the handler's `d` tag identifier */
+export function getHandlerIdentifier(handler: NostrEvent): string {
+  return getReplaceableIdentifier(handler);
+}
+
+function nsiteTagPointer(handler: NostrEvent, name: string): AddressPointer | undefined {
+  const tag = handler.tags.find((t) => t[0] === name);
+  const pointer = tag && getAddressPointerFromATag(tag);
+  return pointer && pointer.kind === NSITE_KIND ? pointer : undefined;
+}
+
+/** Returns the named nsite (kind 35128) the handler currently serves from its `latest` tag */
+export function getHandlerLatestPointer(handler: NostrEvent): AddressPointer | undefined {
+  return getOrComputeCachedValue(handler, LatestSymbol, () => nsiteTagPointer(handler, "latest"));
+}
+
+/** Returns the named nsite (kind 35128) the handler is rolling out from its `next` tag */
+export function getHandlerNextPointer(handler: NostrEvent): AddressPointer | undefined {
+  return getOrComputeCachedValue(handler, NextSymbol, () => nsiteTagPointer(handler, "next"));
+}
+
+/** Returns all URL templates the handler advertises for a platform */
+export function getHandlerLinks(handler: NostrEvent, platform: HandlerLinkPlatform = "web"): HandlerLink[] {
+  return processTags(handler.tags, (t) =>
+    t[0] === platform && t[1] ? { url: t[1], type: (t[2] || undefined) as HandlerLinkType | undefined } : undefined,
+  );
+}
+
+/** Returns the NIP-89 `client` tag of an event */
+export function getClientTag(event: NostrEvent): ClientTag | undefined {
+  const tag = event.tags.find((t) => t[0] === "client" && t[1]);
+  if (!tag) return undefined;
+  const pointer = tag[2] ? getAddressPointerFromATag(tag.slice(1)) : null;
+  return pointer?.kind === APP_HANDLER_KIND ? { name: tag[1], pointer } : { name: tag[1] };
+}
 
 /** Returns an array of supported kinds for a given handler */
 export function getHandlerSupportedKinds(handler: NostrEvent): number[] {

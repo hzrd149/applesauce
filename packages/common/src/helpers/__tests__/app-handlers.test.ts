@@ -11,7 +11,12 @@ import {
   getHandlerLinkTemplate,
   getHandlerName,
   getHandlerPicture,
+  getClientTag,
+  getHandlerLatestPointer,
+  getHandlerLinks,
+  getHandlerNextPointer,
   getHandlerSupportedKinds,
+  isValidAppHandler,
 } from "../app-handler.js";
 
 // Create a fake user for testing
@@ -241,5 +246,55 @@ describe("createHandlerLink", () => {
     });
     const pointer = { pubkey: user.pubkey, relays: ["wss://relay.example.com"] };
     expect(createHandlerLink(handlerWithoutAndroid, pointer, "android", false)).toBeUndefined();
+  });
+});
+
+describe("isValidAppHandler", () => {
+  it("requires kind 31990 with a d tag", () => {
+    expect(isValidAppHandler(mockHandler)).toBe(true);
+    expect(isValidAppHandler(user.event({ kind: kinds.Handlerinformation }))).toBe(false);
+    expect(isValidAppHandler(user.note("hi"))).toBe(false);
+  });
+});
+
+describe("getHandlerLatestPointer and getHandlerNextPointer", () => {
+  it("only return named nsite addresses", () => {
+    const handler = user.event({
+      kind: kinds.Handlerinformation,
+      tags: [
+        ["d", "app"],
+        ["latest", `35128:${user.pubkey}:app`, "wss://relay.example.com"],
+        ["next", `15128:${user.pubkey}:`],
+      ],
+    });
+    expect(getHandlerLatestPointer(handler)).toEqual({
+      kind: 35128,
+      pubkey: user.pubkey,
+      identifier: "app",
+      relays: ["wss://relay.example.com/"],
+    });
+    expect(getHandlerNextPointer(handler)).toBeUndefined();
+  });
+});
+
+describe("getHandlerLinks", () => {
+  it("returns all templates for a platform", () => {
+    expect(getHandlerLinks(mockHandler, "ios")).toEqual([{ url: "testhandler://<bech32>", type: undefined }]);
+    expect(getHandlerLinks(mockHandler)).toHaveLength(5);
+  });
+});
+
+describe("getClientTag", () => {
+  it("parses the client name and handler address", () => {
+    const event = user.event({
+      kind: 1,
+      tags: [["client", "My Client", `31990:${user.pubkey}:app`, "wss://relay.example.com"]],
+    });
+    expect(getClientTag(event)).toEqual({
+      name: "My Client",
+      pointer: { kind: 31990, pubkey: user.pubkey, identifier: "app", relays: ["wss://relay.example.com/"] },
+    });
+    expect(getClientTag(user.event({ kind: 1, tags: [["client", "Bare"]] }))).toEqual({ name: "Bare" });
+    expect(getClientTag(user.note("hi"))).toBeUndefined();
   });
 });

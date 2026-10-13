@@ -6,6 +6,8 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "AppData",
+        "AppHandler",
+        "AppRecommendation",
         "Badge",
         "BadgeAward",
         "Calendar",

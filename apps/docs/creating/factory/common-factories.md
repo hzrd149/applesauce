@@ -66,6 +66,24 @@ const copy = await NsiteFactory.copy(site, "mirror").sign(otherSigner);
 
 Use `createRoot(files)` for a root site and `modify(site).file(path, hash)` to update a manifest. Named identifiers use 1–13 lowercase letters, digits, or hyphens and cannot end in a hyphen. Snapshots require the source site's aggregate hash and preserve it unchanged.
 
+### Publish NIP-89 app handlers
+
+`AppHandlerFactory` creates kind 31990 handler information, and `AppRecommendationFactory` creates kind 31989 recommendations for an event kind.
+
+```ts
+import { AppHandlerFactory, AppRecommendationFactory } from "applesauce-common/factories";
+
+const handler = await AppHandlerFactory.create("my-app")
+  .metadata({ name: "My App" })
+  .kind(1)
+  .link("web", "https://my.app/e/<bech32>", "nevent")
+  .latest(siteAddress)
+  .sign(signer);
+const rec = await AppRecommendationFactory.create(1).handler(handlerAddress, "web").sign(signer);
+```
+
+`.latest()` and `.next()` only accept named nsite (kind 35128) addresses.
+
 ## Integration
 
 Nsite manifests integrate with the EventStore through `RootNsiteModel`, `UserNsitesModel`, and `NsiteSnapshotsModel`. Importing `applesauce-common/casts` adds `nsite$`, `nsites$`, and `nsiteSnapshots$` to User casts; Profile casts expose their author's sites.
@@ -79,7 +97,15 @@ manifest.snapshots$.subscribe((versions) => renderVersions(versions));
 const index = manifest.resolvePath("/");
 ```
 
-`Nsite` casts expose `copies$`, `lineage$` (on root and named casts), `parent$`, `root$`, and `apps$`. Existing addressable casts expose `nsites$` for manifests linked by `app` tags; this discovery filters locally because NIP-01 indexes single-letter tags. `servers$` combines manifest hints with the author's Blossom server list.
+`Nsite` casts expose `copies$`, `lineage$` (on root and named casts), `parent$`, and `root$`. NIP-5A `app` tags can reference any addressable app kind, so `appPointers` is left unresolved. `servers$` combines manifest hints with the author's Blossom server list.
+
+The NIP-89 `AppHandler` cast links handlers back to their sites. `latest$` and `next$` resolve the named nsites from the handler's tags, and `nsites$` lists loaded manifests whose `app` tag references the handler. That lookup filters locally because NIP-01 only indexes single-letter tags. `AppRecommendation.handlers$` resolves recommended handlers in tag order.
+
+```ts
+const handler = castEvent(event, AppHandler, store);
+handler.latest$.subscribe((site) => site && open(site.url("nsite.run")));
+store.model(AppHandlersModel, 30023).subscribe(renderHandlers);
+```
 
 Typed factories are the main event creation API used by `applesauce-actions`.
 
@@ -107,3 +133,5 @@ const signed = await draft.sign(signer);
 - Treat `GiftWrapFactory.create(...)` as a special case because it returns a signed event directly
 
 For nsites, use `.file()` and `.removeFile()` to keep the aggregate hash current, keep at least one file in a published manifest, and use `verifyNsiteAggregateHash(event)` before trusting an advertised site version.
+
+For NIP-89, query `AppRecommendationsModel(kind, follows)` before `AppHandlersModel(kind)`, since anyone can publish a handler for any kind.
