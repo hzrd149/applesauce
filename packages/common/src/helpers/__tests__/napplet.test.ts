@@ -66,9 +66,23 @@ describe("isValidNapplet", () => {
   it("enforces d tag rules", () => {
     expect(isValidNapplet(user.event({ kind: NAPPLET_KIND, content: "x", tags: [["x", HASH]] }))).toBe(false);
     expect(isValidNapplet(named([["d", "other"]]))).toBe(false);
-    const root = user.event({ kind: NAPPLET_ROOT_KIND, content: "x", tags: [["d", "a"], ["x", HASH]] });
+    const root = user.event({
+      kind: NAPPLET_ROOT_KIND,
+      content: "x",
+      tags: [
+        ["d", "a"],
+        ["x", HASH],
+      ],
+    });
     expect(isValidNapplet(root)).toBe(false);
-    const snap = user.event({ kind: NAPPLET_SNAPSHOT_KIND, content: "x", tags: [["d", "a"], ["x", HASH]] });
+    const snap = user.event({
+      kind: NAPPLET_SNAPSHOT_KIND,
+      content: "x",
+      tags: [
+        ["d", "a"],
+        ["x", HASH],
+      ],
+    });
     expect(isValidNapplet(snap)).toBe(false);
   });
 });
