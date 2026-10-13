@@ -12,6 +12,7 @@ export * from "./git-lists.js";
 export * from "./git-repository.js";
 export * from "./groups.js";
 export * from "./mutes.js";
+export * from "./napplet.js";
 export * from "./note.js";
 export * from "./profile.js";
 export * from "./profile-badges.js";

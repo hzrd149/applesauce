@@ -29,6 +29,7 @@ describe("exports", () => {
         "GroupsList",
         "LookupRelayList",
         "Mutes",
+        "Napplet",
         "Note",
         "Profile",
         "ProfileBadges",
