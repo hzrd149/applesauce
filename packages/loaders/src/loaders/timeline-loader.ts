@@ -8,6 +8,7 @@ import { filterDuplicateEvents, mapEventsToStore } from "applesauce-core/observa
 import { nanoid } from "nanoid";
 import {
   BehaviorSubject,
+  catchError,
   distinctUntilChanged,
   EMPTY,
   filter,
@@ -288,7 +289,14 @@ export function loadBlocksFromFilterMap(
           if (existing && isFilterEqual(existing.filters, filters)) return existing.loader;
 
           // Create a new loader for this relay + filter set
-          const loader = source.pipe(loadBlocksFromRelay(pool, relay, filters, opts));
+          const loader = source.pipe(
+            loadBlocksFromRelay(pool, relay, filters, opts),
+            // Drop a failed relay so it does not terminate the loaders for the other relays
+            catchError((error) => {
+              opts?.logger?.(`Failed to load blocks from ${relay}`, error);
+              return EMPTY;
+            }),
+          );
           cache.set(relay, { filters, loader });
           return loader;
         }),

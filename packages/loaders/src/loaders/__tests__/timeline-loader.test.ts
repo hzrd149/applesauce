@@ -1,8 +1,8 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { Subject } from "rxjs";
+import { BehaviorSubject, Subject, of, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 
-import { TimelineWindow, loadBackwardBlocks } from "../timeline-loader.js";
+import { TimelineWindow, loadBackwardBlocks, loadBlocksFromFilterMap } from "../timeline-loader.js";
 
 function event(created_at: number): NostrEvent {
   return { created_at } as NostrEvent;
@@ -46,5 +46,38 @@ describe("loadBackwardBlocks", () => {
     expect(request).toHaveBeenLastCalledWith(98);
 
     sub.unsubscribe();
+  });
+});
+
+describe("loadBlocksFromFilterMap", () => {
+  it("should keep loading from other relays when one relay fails", () => {
+    const pool = vi.fn((relays: string[]) =>
+      relays[0] === "wss://a.com/" ? throwError(() => new Error("All relays failed")) : of(event(100)),
+    );
+    const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+    const next = vi.fn();
+    const error = vi.fn();
+
+    const sub = window$
+      .pipe(loadBlocksFromFilterMap(pool, { "wss://a.com/": { kinds: [1] }, "wss://b.com/": { kinds: [1] } }))
+      .subscribe({ next, error });
+
+    expect(next).toHaveBeenCalledWith(event(100));
+    expect(error).not.toHaveBeenCalled();
+    sub.unsubscribe();
+  });
+
+  it("should not error when every relay fails", () => {
+    const pool = vi.fn(() => throwError(() => new Error("All relays failed")));
+    const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+    const error = vi.fn();
+    const complete = vi.fn();
+
+    window$
+      .pipe(loadBlocksFromFilterMap(pool, { "wss://a.com/": { kinds: [1] }, "wss://b.com/": { kinds: [1] } }))
+      .subscribe({ error, complete });
+
+    expect(error).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalled();
   });
 });

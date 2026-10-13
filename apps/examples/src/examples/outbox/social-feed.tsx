@@ -36,7 +36,17 @@ import pastellifyModule from "pastellify";
 import { useMemo } from "react";
 import { SubmitHandler } from "react-hook-form";
 
-import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap, startWith } from "rxjs";
+import {
+  BehaviorSubject,
+  catchError,
+  debounceTime,
+  ignoreElements,
+  map,
+  of,
+  shareReplay,
+  startWith,
+  switchMap,
+} from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -116,8 +126,8 @@ const outboxMap$ = selection$.pipe(map(createOutboxMap));
 // Hard code start time for live so it does not change and cause filters to change (resubscribe to relays)
 const aMinuteAgo = unixNow() - 60;
 
-// Create a live subscription for users feeds
-const live$ = pool
+// Create a live subscription for users feeds that emits an error if every selected relay fails
+const liveError$ = pool
   .outboxSubscription(
     outboxMap$,
     // Subscribe to notes from the last minute
@@ -126,6 +136,10 @@ const live$ = pool
   .pipe(
     // Add events to the event store
     mapEventsToStore(eventStore),
+    // Events are rendered from the store, so only keep the failure
+    ignoreElements(),
+    // Report the failure instead of throwing it into render
+    catchError((error: Error) => of(error)),
   );
 
 // The current state of the timeline, {since, until}
@@ -664,7 +678,7 @@ export default function SocialFeedExample() {
   const maxRelaysPerUser = use$(maxRelaysPerUser$);
 
   // Start live and timeline subscriptions on mount (and stop them on unmount)
-  use$(live$);
+  const liveError = use$(liveError$);
   use$(timeline$);
 
   // Select the best relays for the contacts
@@ -714,6 +728,9 @@ export default function SocialFeedExample() {
                 <p className="text-base-content/60 text-sm">
                   Connected to {sortedRelays.length} relays • {selection?.length || 0} contacts
                 </p>
+                {liveError && (
+                  <div className="alert alert-warning mt-2">Live updates unavailable: {liveError.message}</div>
+                )}
               </div>
 
               {/* Feed Content */}
