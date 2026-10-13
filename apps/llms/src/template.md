@@ -203,7 +203,7 @@ store.event({ id }).subscribe((event) => console.log(event));
 Async functions receiving `ActionContext` with `events` (EventStore), `self` (user pubkey), `signer`, `publish`, and `run` (nest actions). `ActionRunner` orchestrates execution.
 
 ```ts
-const runner = new ActionRunner(store, signer, pool);
+const runner = new ActionRunner(store, signer, (event, relays) => pool.publish(relays ?? defaultRelays, event));
 await runner.run(FollowUser, targetPubkey);
 ```
 
@@ -266,7 +266,7 @@ const profile = use$(store.profile(pubkey));
 import { NoteFactory } from "applesauce-common/factories";
 
 const signed = await NoteFactory.create("Hello world").as(signer).sign();
-await pool.publish(signed, relays);
+await pool.publish(relays, signed);
 store.add(signed);
 ```
 
@@ -276,7 +276,7 @@ store.add(signed);
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser } from "applesauce-actions/actions";
 
-const runner = new ActionRunner(store, signer, pool);
+const runner = new ActionRunner(store, signer, (event, relays) => pool.publish(relays ?? defaultRelays, event));
 await runner.run(FollowUser, targetPubkey);
 ```
 
