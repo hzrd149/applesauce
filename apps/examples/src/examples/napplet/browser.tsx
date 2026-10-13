@@ -39,11 +39,28 @@ function Tags({ label, values }: { label: string; values: string[] }) {
     <div className="flex flex-wrap items-center gap-1 text-sm">
       <span className="text-base-content/60">{label}:</span>
       {values.map((value) => (
-        <span key={value} className="badge badge-outline badge-sm">
+        <span key={value} className="badge badge-outline">
           {value}
         </span>
       ))}
     </div>
+  );
+}
+
+/** Opens the napplet in the kehto paja runtime using its NIP-19 address with outbox relay hints */
+function OpenNapplet({ napplet }: { napplet: Napplet }) {
+  const address = use$(napplet.address$);
+
+  return (
+    <a
+      className="btn btn-primary btn-sm"
+      href={`https://kehto.github.io/web/paja/?pointer=${address ?? napplet.address}`}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+    >
+      Open
+    </a>
   );
 }
 
@@ -73,6 +90,7 @@ function NappletRow({ napplet, select }: { napplet: Napplet; select: Select }) {
         <span className="text-sm text-base-content/60">
           {reactions?.length ?? 0} reactions · {zaps?.length ?? 0} zaps
         </span>
+        <OpenNapplet napplet={napplet} />
       </div>
       <p className="whitespace-pre-wrap">{napplet.description}</p>
       <Tags label="Archetypes" values={napplet.archetypes} />
@@ -135,11 +153,14 @@ function NappletDetail({ napplet, relay, select }: { napplet: Napplet; relay: st
         Back to napplets
       </button>
 
-      <div>
-        <h1 className="text-3xl font-bold">{napplet.title || napplet.identifier || "Root napplet"}</h1>
-        <div className="text-sm text-base-content/60">
-          by <AuthorName user={napplet.author} /> · kind {napplet.kind}
+      <div className="flex items-start gap-4">
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold">{napplet.title || napplet.identifier || "Root napplet"}</h1>
+          <div className="text-sm text-base-content/60">
+            by <AuthorName user={napplet.author} /> · kind {napplet.kind}
+          </div>
         </div>
+        <OpenNapplet napplet={napplet} />
       </div>
       <p className="whitespace-pre-wrap">{napplet.description}</p>
 
