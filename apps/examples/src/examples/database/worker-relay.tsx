@@ -27,6 +27,7 @@ import { useDebounce } from "react-use";
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
 import ImportEventsButton from "../../components/import-events-button";
+import { lookupRelays$ } from "../../settings";
 
 // in dev mode import esm module, i have no idea why it has to work like this
 const workerScript = import.meta.env.DEV
@@ -115,7 +116,7 @@ const pool = new RelayPool();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 const viewEvent$ = new BehaviorSubject<NostrEvent | null>(null);

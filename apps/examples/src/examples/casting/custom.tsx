@@ -15,6 +15,7 @@ import { RelayPool } from "applesauce-relay";
 import { useState } from "react";
 import { map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 /**
  * STEP 1: Define your event kind and type
@@ -178,7 +179,7 @@ const pool = new RelayPool();
 
 // Create an event loader for the store to load profiles
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Component to display a single repository */

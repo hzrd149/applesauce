@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { lastValueFrom } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const DEFAULT_SEARCH_RELAY = "wss://relay.ditto.pub";
 
@@ -28,7 +29,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Create a hook for loading a users profile */

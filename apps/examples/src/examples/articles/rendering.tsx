@@ -18,6 +18,7 @@ import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
 const markdownComponents = {
@@ -38,7 +39,7 @@ const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
 
 // Create loaders so the event store can load profiles
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Component for a single article card in the list

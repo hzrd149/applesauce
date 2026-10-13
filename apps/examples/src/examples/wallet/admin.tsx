@@ -37,6 +37,7 @@ import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
+import { lookupRelays$ } from "../../settings";
 
 // ---- Application infrastructure (owned by the app, not the wallet) ----
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
@@ -57,7 +58,7 @@ persistEventsToCache(eventStore, (events) => Promise.all(events.map((event) => c
 
 // Bootstrap loader for wallet + mailbox events
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
   cacheRequest,
 });

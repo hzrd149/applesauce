@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
+import { lookupRelays$ } from "../../settings";
 
 // Application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -44,7 +45,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   cacheRequest,
 });
 

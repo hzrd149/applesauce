@@ -12,6 +12,7 @@ import { RelayPool } from "applesauce-relay";
 import { PrimalCache } from "applesauce-extra";
 import { npubEncode, nprofileEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -23,7 +24,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Create a hook for loading a users profile */

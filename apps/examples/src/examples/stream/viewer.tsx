@@ -18,6 +18,7 @@ import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
 import { map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const STREAM_DEBUG_MODAL_ID = "stream_debug_modal";
 
@@ -31,7 +32,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
+  lookupRelays: lookupRelays$,
 });
 
 function StreamCard({ stream }: { stream: Stream }) {

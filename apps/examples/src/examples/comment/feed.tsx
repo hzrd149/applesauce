@@ -18,6 +18,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useEffect, useState } from "react";
 import { BehaviorSubject, EMPTY } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -40,7 +41,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://relay.damus.io/"],
+  lookupRelays: lookupRelays$,
 });
 
 const appRelays = new BehaviorSubject<string[]>(["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"]);

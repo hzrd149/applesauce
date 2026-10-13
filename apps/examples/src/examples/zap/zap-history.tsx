@@ -25,6 +25,7 @@ import { Bar } from "react-chartjs-2";
 import { EMPTY } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, BarElement, Title, Tooltip, Legend);
@@ -36,7 +37,7 @@ const pool = new RelayPool();
 // Create a unified event loader so we can fetch profiles and NIP-65 mailbox lists
 // for any user the chart needs to inspect
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com", "wss://indexer.coracle.social"],
+  lookupRelays: lookupRelays$,
 });
 
 const DEFAULT_PUBKEY = "5c508c34f58866ec7341aaf10cc1af52e9232bb9f859c8103ca5ecf2aa93bf78";

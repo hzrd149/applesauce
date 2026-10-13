@@ -30,6 +30,7 @@ import { useMemo, useState } from "react";
 import { map } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -42,7 +43,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Create a hook for loading a users profile */

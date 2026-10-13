@@ -12,6 +12,7 @@ import { kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 const METADATA_KINDS: Record<string, number> = {
   Profile: kinds.Metadata,
@@ -32,7 +33,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // ─── Rx View ───────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -30,7 +31,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 function ReplyingTo({ note }: { note: Note }) {

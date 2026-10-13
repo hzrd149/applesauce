@@ -11,6 +11,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useEffect, useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const pool = new RelayPool();
 
@@ -20,7 +21,7 @@ const store = new EventStore();
 const upstream: UpstreamPool = pool;
 
 // Create the necessary loaders for the store to load profiles
-createEventLoaderForStore(store, upstream, { lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"] });
+createEventLoaderForStore(store, upstream, { lookupRelays: lookupRelays$ });
 
 function ReplyingTo({ note }: { note: Note }) {
   const profile = use$(note.author.profile$);

@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject } from "rxjs";
 
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 // Common Open Ranking providers to choose from
 const COMMON_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
@@ -35,7 +36,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Optional signer used to issue Nostr Web Tokens for authenticated requests

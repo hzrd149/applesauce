@@ -21,6 +21,7 @@ import { useCallback, useMemo, useState } from "react";
 import { catchError, EMPTY } from "rxjs";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -28,7 +29,7 @@ const pool = new RelayPool();
 // Create an address loader to load user profiles
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 type RecipientStats = {

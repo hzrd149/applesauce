@@ -25,6 +25,7 @@ import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 const pubkey$ = new BehaviorSubject<string>(
   normalizeToPubkey("npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr")!,
@@ -34,13 +35,12 @@ const selectedBadge$ = new BehaviorSubject<Badge | null>(null);
 /** List of hard-coded relays to always use */
 const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 /** List of relays to use for looking up profiles */
-const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: LOOKUP_RELAYS,
+  lookupRelays: lookupRelays$,
   extraRelays: RELAYS,
 });
 

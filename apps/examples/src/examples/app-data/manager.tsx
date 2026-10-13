@@ -21,6 +21,7 @@ import type { ISigner } from "applesauce-signers";
 import { useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -30,7 +31,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Describes how the content of an app-data event should be displayed

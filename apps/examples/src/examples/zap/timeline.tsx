@@ -14,6 +14,7 @@ import { RelayPool } from "applesauce-relay";
 import { useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -22,7 +23,7 @@ const pool = new RelayPool();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com", "wss://indexer.coracle.social"],
+  lookupRelays: lookupRelays$,
 });
 
 function LinkRenderer({ node: link }: { node: Link }) {

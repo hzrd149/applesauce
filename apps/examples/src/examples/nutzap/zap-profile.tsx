@@ -25,6 +25,7 @@ import { useEffect, useState } from "react";
 import { map } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Global state
 const eventStore = new EventStore();
@@ -38,7 +39,7 @@ const couch = new IndexedDBCouch();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Timeline item component for displaying nutzap info events

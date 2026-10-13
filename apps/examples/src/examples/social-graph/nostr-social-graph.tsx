@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, exhaustMap, Subscription, tap, throttleTime } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -28,7 +29,7 @@ const STORAGE_ROOT = "social-graph-root";
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Create a social graph loader

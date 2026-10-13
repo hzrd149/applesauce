@@ -11,13 +11,14 @@ import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 // Resolve replaceable events (like the user's relay list) that aren't in the store yet
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Create global sync loader

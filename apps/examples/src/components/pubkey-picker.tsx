@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { lastValueFrom } from "rxjs";
 import RelayPicker from "./relay-picker";
+import { lookupRelays$ } from "../settings";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]);
@@ -39,7 +40,7 @@ const pool = new RelayPool();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if profiles cant be found
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 type SearchMethod = "primal" | "vertex" | "nip50" | "open-ranking";

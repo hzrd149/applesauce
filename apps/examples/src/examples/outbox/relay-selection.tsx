@@ -16,6 +16,7 @@ import { BehaviorSubject, firstValueFrom, shareReplay, switchMap, throttleTime }
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { RelayStatusModal } from "../../components/relay-status-popover";
+import { lookupRelays$ } from "../../settings";
 
 // pastellify ships CommonJS with exports.default, so unwrap it when the bundler returns the module object
 const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ?? pastellifyModule;
@@ -31,7 +32,7 @@ const eventStore = new EventStore();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 

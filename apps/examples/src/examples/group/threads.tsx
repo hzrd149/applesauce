@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from "react";
 import { map, startWith } from "rxjs";
 
 import GroupPicker from "../../components/group-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -25,7 +26,7 @@ const signer = new ExtensionSigner();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/"],
+  lookupRelays: lookupRelays$,
 });
 
 function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event: NostrEvent) => void }) {

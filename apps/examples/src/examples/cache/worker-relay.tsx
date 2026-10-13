@@ -17,6 +17,7 @@ import RelayPicker from "../../components/relay-picker";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
+import { lookupRelays$ } from "../../settings";
 
 // in dev mode import esm module, i have no idea why it has to work like this
 const workerScript = import.meta.env.DEV
@@ -44,7 +45,7 @@ function cacheRequest(filters: Filter[]) {
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 const saved = new BehaviorSubject<string[]>([]);

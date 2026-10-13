@@ -14,6 +14,7 @@ import { NUTZAP_KIND } from "applesauce-wallet/helpers";
 import { useMemo } from "react";
 import { map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -25,7 +26,7 @@ const relay$ = new BehaviorSubject<string>("wss://relay.primal.net/");
 
 // Create loaders for the event store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: relay$.pipe(map((relay) => [relay])),
 });
 

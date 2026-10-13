@@ -17,6 +17,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { useState } from "react";
 import { BehaviorSubject, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 const totalRandomUsers = [
   "npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s",
@@ -40,7 +41,7 @@ const signer = new PrivateKeySigner();
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if events can't be found
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 const mailboxes$ = pubkey$.pipe(

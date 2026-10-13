@@ -25,6 +25,7 @@ import { npubEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Global instances
 const eventStore = new EventStore();
@@ -39,7 +40,7 @@ const pollResponseLoader = createTagValueLoader(pool, "e", {
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Create a hook for loading a users profile */

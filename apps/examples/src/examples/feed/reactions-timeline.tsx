@@ -14,6 +14,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -37,7 +38,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** A component for rendering user avatars */

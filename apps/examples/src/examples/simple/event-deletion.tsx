@@ -14,6 +14,7 @@ import { NostrEvent } from "applesauce-core/helpers";
 import { useEffect, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 // Setup application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -26,7 +27,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 

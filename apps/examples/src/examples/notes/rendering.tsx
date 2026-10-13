@@ -26,6 +26,7 @@ import "applesauce-content/text/imeta";
 import "applesauce-content/text/lightning";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -313,7 +314,7 @@ const components: ComponentMap = {
 
 const eventLoader = createEventLoaderForStore(eventStore, pool, {
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 const examples: EventPointer[] = [

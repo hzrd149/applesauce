@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map, of } from "rxjs";
 
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store and relay pool
 const eventStore = new EventStore();
@@ -21,7 +22,7 @@ const pool = new RelayPool();
 
 // Create unified event loader so profiles, contacts, mailboxes and assertion events are fetched on demand
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 

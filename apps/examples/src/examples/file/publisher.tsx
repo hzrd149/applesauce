@@ -17,16 +17,16 @@ import { npubEncode } from "applesauce-core/helpers/pointers";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
-const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: LOOKUP_RELAYS,
+  lookupRelays: lookupRelays$,
   extraRelays: FALLBACK_RELAYS,
 });
 

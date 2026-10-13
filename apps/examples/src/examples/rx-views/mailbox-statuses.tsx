@@ -14,12 +14,13 @@ import { useMemo, useState } from "react";
 import { catchError, isObservable, Observable, of, startWith, switchMap, takeUntil, timer } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 const DEFAULT_DISCOVERY_RELAY = "wss://relay.nostr.watch/";

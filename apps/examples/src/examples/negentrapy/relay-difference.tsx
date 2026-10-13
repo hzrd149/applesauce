@@ -12,6 +12,7 @@ import { Filter, kinds } from "applesauce-core/helpers";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, lastValueFrom, of, startWith, switchMap, tap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create relay pool for connections
 const pool = new RelayPool();
@@ -22,7 +23,7 @@ const eventStore = new EventStore();
 // Create loaders for the event store
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Pubkey of user to fetch sync data for

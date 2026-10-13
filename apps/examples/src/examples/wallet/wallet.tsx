@@ -37,6 +37,7 @@ import "applesauce-wallet/casts";
 import { generateSecretKey } from "applesauce-core/helpers";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup application state
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
@@ -65,7 +66,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
   cacheRequest,
 });

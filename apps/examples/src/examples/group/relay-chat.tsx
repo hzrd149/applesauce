@@ -16,6 +16,7 @@ import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import GroupPicker from "../../components/group-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const signer = new ExtensionSigner();
@@ -24,7 +25,7 @@ const pool = new RelayPool();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {

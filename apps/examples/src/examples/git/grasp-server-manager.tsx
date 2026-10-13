@@ -13,6 +13,7 @@ import type { ISigner } from "applesauce-signers";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -22,7 +23,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://relay.nostr.band/"],
 });
 

@@ -25,6 +25,7 @@ import { NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 // Setup application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -38,7 +39,7 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(define
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   // Few hard coded relays to load articles and notes without relay hints
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });

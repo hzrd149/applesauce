@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import examples from "../examples";
+import SettingsButton from "./settings-modal";
 
 export default function SideNav() {
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -12,15 +13,21 @@ export default function SideNav() {
   return (
     <div className="drawer-side">
       <label htmlFor="drawer" className="drawer-overlay"></label>
-      <div className="menu bg-base-200 text-base-content min-h-full">
-        <input
-          type="text"
-          placeholder="Search..."
-          className="input input-bordered w-full"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <ul className="menu menu-lg px-0 font-mono w-xs">
+      <div className="flex flex-col h-full bg-base-200 text-base-content p-2 gap-2">
+        <div className="flex flex-none items-center gap-2">
+          <a href="https://applesauce.build" className="flex-none">
+            <img src="./icon.svg" alt="applesauce" className="w-10 h-10" />
+          </a>
+          <input
+            type="text"
+            placeholder="Search..."
+            className="input input-bordered flex-1 min-w-0"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <SettingsButton />
+        </div>
+        <ul className="menu menu-lg flex-1 flex-nowrap min-h-0 overflow-y-auto px-0 font-mono w-xs">
           {filtered.map((item) => (
             <li key={item.id}>
               <Link to={`/example/${item.id}`} className={"text-sm " + (exampleId === item.id ? "menu-active" : "")}>
@@ -28,15 +35,6 @@ export default function SideNav() {
               </Link>
             </li>
           ))}
-        </ul>
-
-        <ul className="menu menu-horizontal px-1 mt-auto">
-          <li>
-            <a href="https://hzrd149.github.io/applesauce">Documentation</a>
-          </li>
-          <li>
-            <a href="https://applesauce.build/typedoc/">Reference</a>
-          </li>
         </ul>
       </div>
     </div>

@@ -21,13 +21,14 @@ import { map } from "rxjs";
 
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create stores and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | ProfilePointer }) {

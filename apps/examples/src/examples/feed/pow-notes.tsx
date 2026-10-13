@@ -20,6 +20,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -31,7 +32,7 @@ const pool = new RelayPool();
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // NIP-13 Proof of Work calculation

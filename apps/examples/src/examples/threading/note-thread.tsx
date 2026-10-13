@@ -12,6 +12,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useEffect, useState } from "react";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store
 const eventStore = new EventStore();
@@ -19,7 +20,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** Component to render a single zap */

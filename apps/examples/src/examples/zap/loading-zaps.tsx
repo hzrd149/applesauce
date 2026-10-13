@@ -13,6 +13,7 @@ import { RelayPool } from "applesauce-relay";
 import { useEffect, useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -22,7 +23,7 @@ const pool = new RelayPool();
 
 // Create a unified event loader for the store (used to fetch profiles, zapped events, etc.)
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com", "wss://indexer.coracle.social"],
+  lookupRelays: lookupRelays$,
 });
 
 // Create a loader that fetches zap receipts (kind 9735) for any event

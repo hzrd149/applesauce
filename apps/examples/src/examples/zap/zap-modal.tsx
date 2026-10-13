@@ -32,12 +32,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, startWith, Subscription } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // --- Setup ---
 const eventStore = new EventStore();
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: relaySet(["purplepag.es", "index.hzrd149.com", "indexer.coracle.social"]),
+  lookupRelays: lookupRelays$,
 });
 
 const signer = new ExtensionSigner();

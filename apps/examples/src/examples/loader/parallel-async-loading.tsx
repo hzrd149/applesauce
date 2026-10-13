@@ -13,6 +13,7 @@ import { RelayPool } from "applesauce-relay";
 import { useEffect, useState } from "react";
 import { lastValueFrom } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store and relay pool
 const eventStore = new EventStore();
@@ -20,7 +21,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 

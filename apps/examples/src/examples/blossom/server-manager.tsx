@@ -14,6 +14,7 @@ import { BehaviorSubject, firstValueFrom, toArray } from "rxjs";
 
 import { addRelayHintsToPointer } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { lookupRelays$ } from "../../settings";
 
 // Global state
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -32,7 +33,7 @@ const actions = new ActionRunner(eventStore, signer);
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Server item component with favicon and reordering

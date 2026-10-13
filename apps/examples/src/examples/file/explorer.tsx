@@ -12,6 +12,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { BehaviorSubject, combineLatest, EMPTY, map, shareReplay, switchMap } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const DEFAULT_RELAY = "wss://relay.primal.net/";
 const CURATED_MIME_TYPES = [
@@ -33,7 +34,7 @@ const mimeTypes$ = new BehaviorSubject<string[]>([]);
 const selectedFile$ = new BehaviorSubject<FileMetadata | null>(null);
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: relay$.pipe(map((relay) => (relay ? [relay] : []))),
 });
 

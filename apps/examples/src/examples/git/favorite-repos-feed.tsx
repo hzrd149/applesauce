@@ -19,6 +19,7 @@ import { RelayPool } from "applesauce-relay";
 import { useState } from "react";
 import { map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 type RepositoryFavorite = {
   pointer: AddressPointer;
@@ -30,7 +31,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://relay.nostr.band/"],
 });
 

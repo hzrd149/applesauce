@@ -17,6 +17,7 @@ import RelayPicker from "../../components/relay-picker";
 // Import window.nostrdb.js to polyfill window.nostrdb
 // The package provides its own TypeScript definitions
 import "window.nostrdb.js";
+import { lookupRelays$ } from "../../settings";
 
 // Setup event store and relay pool
 const eventStore = new EventStore();
@@ -31,7 +32,7 @@ function cacheRequest(filters: Filter[]) {
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 const saved = new BehaviorSubject<string[]>([]);

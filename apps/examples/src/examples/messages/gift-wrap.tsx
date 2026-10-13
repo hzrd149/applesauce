@@ -36,6 +36,7 @@ import LoginView from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
 
 import SecureStorage from "../../extra/encrypted-storage";
+import { lookupRelays$ } from "../../settings";
 
 const EXPIRATIONS: Record<string, number> = {
   "30m": 60 * 30,
@@ -57,7 +58,7 @@ const pool = new RelayPool();
 
 // Setup loaders for event store to load profiles
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Setup an action runner for running pre-built actions

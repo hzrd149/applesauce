@@ -20,6 +20,7 @@ import { BehaviorSubject, filter, firstValueFrom, map, Observable, of, take, tim
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // ---- Shared app infrastructure (owned by the app, reused by every backend) ----
 const eventStore = new EventStore();
@@ -38,19 +39,18 @@ const decryptionCache: EncryptedContentCache = {
 
 // In-memory bootstrap loader for the NutWallet's wallet/mailbox events (no local cache)
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 
 // Route the Nostr Wallet Connect transport through the shared relay pool
 WalletConnect.pool = pool;
 
-const LOOKUP_RELAYS = ["wss://purplepag.es", "wss://index.hzrd149.com"];
 const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 const SUGGESTED_MINTS = ["https://mint.minibits.cash/Bitcoin", "https://21mint.me"];
 
 // A broad relay set used to hunt for an existing NIP-60 wallet event before offering to create one
-const DISCOVERY_RELAYS = relaySet(DEFAULT_RELAYS, ["wss://relay.ditto.pub"], LOOKUP_RELAYS);
+const DISCOVERY_RELAYS = relaySet(DEFAULT_RELAYS, ["wss://relay.ditto.pub"], lookupRelays$.value);
 // How long to search for an existing wallet before concluding the user has none
 const WALLET_DISCOVERY_MS = 12_000;
 

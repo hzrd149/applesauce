@@ -23,6 +23,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
 import { map } from "rxjs";
+import { lookupRelays$ } from "../settings";
 
 // Common relay URLs that users might want to use
 export const COMMON_RELAYS = relaySet([
@@ -43,7 +44,7 @@ const eventStore = new EventStore();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, discoveryPool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Default monitor pubkey for relay discovery

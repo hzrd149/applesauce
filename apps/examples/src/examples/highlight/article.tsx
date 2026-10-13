@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { filter, of, take } from "rxjs";
+import { lookupRelays$ } from "../../settings";
 
 // Memoize plugins and components at module level
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
@@ -48,7 +49,7 @@ const pool = new RelayPool();
 // Create an address loader to fetch articles
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 const signer = new ExtensionSigner();

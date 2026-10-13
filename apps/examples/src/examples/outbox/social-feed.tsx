@@ -35,6 +35,7 @@ import { useObservable } from "react-use";
 import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // pastellify ships CommonJS with exports.default, so unwrap it when the bundler returns the module object
 const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ?? pastellifyModule;
@@ -56,7 +57,7 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/", "wss://indexer.coracle.social/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Create a liveness tracker and connect to the pool

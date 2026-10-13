@@ -32,6 +32,7 @@ import LoginView from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
 
 import SecureStorage from "../../extra/encrypted-storage";
+import { lookupRelays$ } from "../../settings";
 
 // Expiration times for notes and comments (in seconds from creation)
 // NIP-17 recommends shorter expirations for gift-wrapped messages to reduce relay storage
@@ -61,7 +62,7 @@ const pool = new RelayPool();
 
 // Setup loaders for event store to load profiles
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 // Setup an action runner for running pre-built actions

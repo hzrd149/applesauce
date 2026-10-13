@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 // Common Open Ranking providers to choose from
 const COMMON_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
@@ -28,7 +29,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store so profiles/contacts/mailboxes are fetched on demand
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
 });
 

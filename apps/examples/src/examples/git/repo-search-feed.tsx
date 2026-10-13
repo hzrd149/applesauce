@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { combineLatest, lastValueFrom, map, of } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 const DEFAULT_INDEX_RELAY = "wss://index.ngit.dev/";
 
@@ -36,7 +37,7 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
   extraRelays: ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://relay.ngit.dev/"],
 });
 

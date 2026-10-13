@@ -35,6 +35,7 @@ import UnlockView from "../../components/unlock-view";
 import { persistEncryptedContent, unlockLegacyMessage } from "applesauce-common/helpers";
 import { EncryptedContentModel, ProfileModel } from "applesauce-core/models";
 import SecureStorage from "../../extra/encrypted-storage";
+import { lookupRelays$ } from "../../settings";
 
 const EXPIRATIONS: Record<string, number> = {
   "30m": 60 * 30,
@@ -54,7 +55,7 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(define
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Persist encrypted content

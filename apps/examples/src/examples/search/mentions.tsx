@@ -15,12 +15,13 @@ import { neventEncode } from "applesauce-core/helpers/pointers";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { combineLatest, lastValueFrom, map, of, startWith } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com", "wss://indexer.coracle.social"],
+  lookupRelays: lookupRelays$,
 });
 
 function UserHeader({ user }: { user: User }) {

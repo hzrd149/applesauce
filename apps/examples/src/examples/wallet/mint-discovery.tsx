@@ -16,6 +16,7 @@ import RelayPicker from "../../components/relay-picker";
 
 // Make sure casts are registered
 import "applesauce-wallet/casts";
+import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -25,7 +26,7 @@ const pool = new RelayPool();
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 /** A component for rendering user avatars */

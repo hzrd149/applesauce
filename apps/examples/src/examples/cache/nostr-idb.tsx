@@ -14,6 +14,7 @@ import { NostrIDB } from "nostr-idb";
 import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, switchMap } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Open the IndexedDB database
 const nostrIDB = new NostrIDB<NostrEvent>();
@@ -32,7 +33,7 @@ function cacheRequest(filters: Filter[]) {
 // This will be called if the event store doesn't have the requested event
 createEventLoaderForStore(eventStore, pool, {
   cacheRequest,
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
+  lookupRelays: lookupRelays$,
 });
 
 const saved = new BehaviorSubject<string[]>([]);

@@ -14,6 +14,7 @@ import { useDebounce } from "react-use";
 import { BehaviorSubject, filter as rxFilter, map, NEVER, of } from "rxjs";
 import RelayAddForm from "../../components/add-relay-form";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { lookupRelays$ } from "../../settings";
 
 // Create a relay pool for connections
 const pool = new RelayPool();
@@ -24,7 +25,7 @@ const eventStore = new EventStore();
 // Create loaders for the event store
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Configured relays to sync with (using BehaviorSubject for dynamic management)

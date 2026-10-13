@@ -12,6 +12,7 @@ import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, filter as rxFilter, map, NEVER, of, startWith, switchMap } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
 
 // Create relay pool for connections
 const pool = new RelayPool();
@@ -22,7 +23,7 @@ const eventStore = new EventStore();
 // Create loaders for the event store
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es", "wss://index.hzrd149.com"],
+  lookupRelays: lookupRelays$,
 });
 
 // Pubkey of user to fetch mentions for
