@@ -4,7 +4,7 @@
  * @related loader/parallel-async-loading
  */
 import { castUser, User } from "applesauce-common/casts/user";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createSocialGraphLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -30,13 +30,11 @@ import {
   Observable,
 } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
-import RelayPicker from "../../components/relay-picker";
+import RelayAddForm from "../../components/add-relay-form";
 import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
-
-// Keep signature verification enabled for graph events received from relays.
 
 const STORAGE_GRAPH = "social-graph";
 const STORAGE_ROOT = "social-graph-root";
@@ -50,10 +48,13 @@ createEventLoaderForStore(eventStore, pool, {
 // Create a social graph loader
 const graphLoader = createSocialGraphLoader(pool, { eventStore });
 
+// Relays to crawl contact lists from, seeded from the shell's lookup relays
+const relays$ = new BehaviorSubject<string[]>(lookupRelays$.value);
+
 // Live social graph instance (mutated by handleEvent as events arrive)
 const socialGraph$ = new BehaviorSubject<SocialGraph | undefined>(undefined);
 
-const commands$ = new BehaviorSubject<{ relay: string; level: number; since?: number; pubkey: string } | null>(null);
+const commands$ = new BehaviorSubject<{ relays: string[]; level: number; since?: number; pubkey: string } | null>(null);
 
 // The current state of persisting the graph to local storage
 const saveState$ = new BehaviorSubject<"idle" | "saving" | "saved">("idle");
@@ -79,9 +80,9 @@ async function persistGraph() {
 }
 
 /** Starts a new crawler, replacing any previous run */
-function startSocialGraphSync(relay: string, level: number, since?: number) {
+function startSocialGraphSync(relays: string[], level: number, since?: number) {
   const pubkey = socialGraph$.value?.getRoot();
-  if (pubkey) commands$.next({ relay, level, since, pubkey });
+  if (pubkey) commands$.next({ relays, level, since, pubkey });
 }
 /** Cancels the current crawler */
 function stopSocialGraphSync() {
@@ -126,30 +127,35 @@ function UserAvatar({ user }: { user: User }) {
 }
 
 /** A row of avatars for a single follow distance */
-function DistanceRow({ distance }: { graph: SocialGraph; distance: number }) {
-  const pubkeys =
-    use$(
-      () =>
-        socialGraph$.pipe(
-          map((current) => (current ? Array.from(current.getUsersByFollowDistance(distance)).sort() : [])),
-        ),
-      [distance],
-    ) ?? [];
-  const preview = pubkeys.slice(0, 24);
-  const users = useMemo(() => preview.map((pubkey) => castUser(pubkey, eventStore)), [preview.join("|")]);
-
-  // Count contact events loaded into the store for users at this distance
-  const loaded = useMemo(
-    () => pubkeys.reduce((acc, pubkey) => acc + (eventStore.hasReplaceable(kinds.Contacts, pubkey) ? 1 : 0), 0) || 0,
-    [pubkeys],
+function DistanceRow({ distance }: { distance: number }) {
+  // Walk the distance set once per update to count loaded contact lists and pick a preview
+  const stats = use$(
+    () =>
+      socialGraph$.pipe(
+        map((graph) => {
+          const pubkeys = graph?.getUsersByFollowDistance(distance) ?? new Set<string>();
+          const preview: string[] = [];
+          let loaded = 0;
+          for (const pubkey of pubkeys) {
+            if (preview.length < 24) preview.push(pubkey);
+            if (eventStore.hasReplaceable(kinds.Contacts, pubkey)) loaded++;
+          }
+          return { count: pubkeys.size, loaded, preview };
+        }),
+      ),
+    [distance],
   );
+  const count = stats?.count ?? 0;
+  const loaded = stats?.loaded ?? 0;
+  const previewKey = stats?.preview.join("|") ?? "";
+  const users = useMemo(() => (stats?.preview ?? []).map((pubkey) => castUser(pubkey, eventStore)), [previewKey]);
 
   return (
     <tr>
       <td className="align-top w-16 font-bold text-lg">{distance}</td>
-      <td className="align-top w-24 text-base-content/60">{pubkeys.length}</td>
+      <td className="align-top w-24 text-base-content/60">{count}</td>
       <td className="align-top w-24 text-base-content/60">
-        {loaded} ({((loaded / pubkeys.length) * 100).toFixed(2)}%)
+        {loaded} ({count > 0 ? ((loaded / count) * 100).toFixed(2) : "0.00"}%)
       </td>
       <td>
         {users.length > 0 ? (
@@ -176,12 +182,12 @@ export default function NostrSocialGraphExample() {
           if (!command) return of(initial);
           return graphLoader({
             pubkey: command.pubkey,
-            relays: [command.relay],
+            relays: command.relays,
             distance: command.level,
             since: command.since,
           }).pipe(
+            // The loader already adds events to the store and drops duplicates from multiple relays
             tap((event) => socialGraph$.value?.handleEvent(event)),
-            mapEventsToStore(eventStore),
             scan((loaded) => loaded + 1, 0),
             auditTime(500),
             concatMap(async (loaded) => {
@@ -208,12 +214,11 @@ export default function NostrSocialGraphExample() {
   const saveState = use$(saveState$);
   const isRunning = operation?.running ?? false;
 
-  const relay$ = useMemo(() => new BehaviorSubject("wss://index.hzrd149.com/"), []);
-  const relay = use$(relay$);
+  const relays = use$(relays$);
 
+  // Default to loading root and friends contacts
   const level$ = useMemo(() => new BehaviorSubject(1), []);
   const level = use$(level$);
-  // Default to loading root and friends contacts
   // Lookback window in seconds, or null for "all time"
   const sinceSeconds$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
   const sinceSeconds = use$(sinceSeconds$);
@@ -249,8 +254,8 @@ export default function NostrSocialGraphExample() {
 
   const handleStart = useCallback(() => {
     const since = sinceSeconds != null ? Math.floor(Date.now() / 1000) - sinceSeconds : undefined;
-    startSocialGraphSync(relay, level, since);
-  }, [relay, level, sinceSeconds]);
+    startSocialGraphSync(relays, level, since);
+  }, [relays, level, sinceSeconds]);
 
   const handleSave = useCallback(async () => {
     await persistGraph();
@@ -291,15 +296,38 @@ export default function NostrSocialGraphExample() {
             <PubkeyPicker value={root} onChange={handleRootChange} placeholder="Enter an npub or nostr identifier..." />
           </div>
 
-          {/* Relay + distance + start/stop controls */}
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-80">
-              <label className="label pb-1">
-                <span className="label-text">Sync relay</span>
-              </label>
-              <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+          {/* Sync relays */}
+          <div>
+            <div className="flex items-center justify-between pb-1">
+              <span className="label-text">Sync relays</span>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => relays$.next(lookupRelays$.value)}
+                disabled={isRunning}
+              >
+                Reset to lookup relays
+              </button>
             </div>
+            <ul className="border border-base-300 rounded-box divide-y divide-base-300 mb-2">
+              {relays.map((relay) => (
+                <li key={relay} className="flex items-center justify-between px-3 py-2">
+                  <span className="font-mono text-sm truncate">{relay}</span>
+                  <button
+                    className="btn btn-sm btn-ghost text-error"
+                    onClick={() => relays$.next(relays$.value.filter((r) => r !== relay))}
+                    disabled={isRunning}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+              {relays.length === 0 && <li className="px-3 py-2 text-sm text-base-content/50">No sync relays</li>}
+            </ul>
+            <RelayAddForm onSubmit={(r) => relays$.value.includes(r) || relays$.next([...relays$.value, r])} />
+          </div>
 
+          {/* Distance + start/stop controls */}
+          <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="label pb-1">
                 <span className="label-text">Sync depth</span>
@@ -344,7 +372,11 @@ export default function NostrSocialGraphExample() {
                   Stop
                 </button>
               ) : (
-                <button className="btn btn-primary join-item" onClick={handleStart} disabled={!root}>
+                <button
+                  className="btn btn-primary join-item"
+                  onClick={handleStart}
+                  disabled={!root || relays.length === 0}
+                >
                   Start
                 </button>
               )}
@@ -397,7 +429,7 @@ export default function NostrSocialGraphExample() {
                 </thead>
                 <tbody>
                   {[0, 1, 2, 3, 4, 5].map((distance) => (
-                    <DistanceRow key={distance} graph={graph} distance={distance} />
+                    <DistanceRow key={distance} distance={distance} />
                   ))}
                 </tbody>
               </table>
