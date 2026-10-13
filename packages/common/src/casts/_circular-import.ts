@@ -7,6 +7,7 @@ export * from "./favorite-emojis.js";
 export * from "./external-identities.js";
 export * from "./git-grasp-list.js";
 export * from "./git-lists.js";
+export * from "./git-repository.js";
 export * from "./relay-lists.js";
 export * from "./groups.js";
 export * from "./trusted-assertions.js";

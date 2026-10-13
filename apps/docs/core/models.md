@@ -62,6 +62,28 @@ There are many more models in `applesauce-common/models` for common NIPs like re
 
 See the full list in [the API docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html) and [applesauce-common models](https://applesauce.build/typedoc/modules/applesauce-common.Models.html).
 
+## Git Models
+
+Import NIP-34 models from `applesauce-common/models`. Repository models list issues, PRs, and root patches; thread models expose comments and authorized statuses.
+
+```ts
+const issues$ = store.model(GitRepositoryIssuesModel, repoPointer);
+const state$ = store.model(GitPullRequestStateModel, pr);
+const series$ = store.model(GitPatchSeriesModel, patch);
+```
+
+`GitPullRequestUpdatesModel` filters to valid author updates, and `GitPullRequestStateModel` returns their current fetch state. `GitPatchSeriesRootModel`, `GitPatchOriginalRootModel`, and `GitPatchRevisionsModel` resolve patch relationships. `GitPatchStatusModel` applies revision acceptance rules; `GitStatusModel` and `GitStatusEventModel` accept explicit maintainer pubkeys for issues and PRs.
+
+### Integration
+
+[Git casts](/apps/casting/events#git-threads) compose these models with repository maintainer lookups. Use the casts for event-centric UI, or pass maintainers explicitly when consuming status models directly. Populate collection timelines with loaders or relay subscriptions; ancestor lookups use the store's event loader when configured.
+
+### Best Practices
+
+- Use `GitPatchStatusModel` for patches so revisions inherit the original status
+- Subscribe to `GitPullRequestStateModel` for a coherent fetch state
+- Reuse one EventStore for thread events, repository announcements, and related data
+
 ## Custom Models
 
 A custom model is simply a function that returns a [`Model`](https://applesauce.build/typedoc/types/applesauce-core.Model.html) function.

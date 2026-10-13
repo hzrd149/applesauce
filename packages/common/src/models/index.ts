@@ -4,6 +4,7 @@ export * from "./bookmarks.js";
 export * from "./calendar.js";
 export * from "./channels.js";
 export * from "./comments.js";
+export * from "./git.js";
 export * from "./legacy-messages.js";
 export * from "./mutes.js";
 export * from "./pins.js";

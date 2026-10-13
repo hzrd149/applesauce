@@ -21,8 +21,12 @@ import {
   GitRepositoryPointer,
   isValidGitRepository,
 } from "../helpers/git-repository.js";
+import { GitRepositoryIssuesModel, GitRepositoryPatchesModel, GitRepositoryPullRequestsModel } from "../models/git.js";
 import { ReactionsModel } from "../models/reactions.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
+import { GitIssue } from "./git-issue.js";
+import { GitPatch } from "./git-patch.js";
+import { GitPullRequest } from "./git-pull-request.js";
 import { Reaction } from "./reaction.js";
 
 /** Cast for NIP-34 repository announcement events. */
@@ -101,6 +105,27 @@ export class GitRepository extends EventCast<GitRepositoryEvent> {
   get reactions$(): ChainableObservable<Reaction[]> {
     return this.$$ref("reactions$", (store) =>
       store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
+    );
+  }
+
+  /** Subscribes to the issues of this repository */
+  get issues$(): ChainableObservable<GitIssue[]> {
+    return this.$$ref("issues$", (store) =>
+      store.model(GitRepositoryIssuesModel, this.pointer).pipe(castTimelineStream(GitIssue, store)),
+    );
+  }
+
+  /** Subscribes to the pull requests of this repository */
+  get pullRequests$(): ChainableObservable<GitPullRequest[]> {
+    return this.$$ref("pullRequests$", (store) =>
+      store.model(GitRepositoryPullRequestsModel, this.pointer).pipe(castTimelineStream(GitPullRequest, store)),
+    );
+  }
+
+  /** Subscribes to the root patches (the first patch of each series) of this repository */
+  get patches$(): ChainableObservable<GitPatch[]> {
+    return this.$$ref("patches$", (store) =>
+      store.model(GitRepositoryPatchesModel, this.pointer).pipe(castTimelineStream(GitPatch, store)),
     );
   }
 }

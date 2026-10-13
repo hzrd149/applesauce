@@ -7,11 +7,12 @@ import { FAVORITE_EMOJI_PACKS_KIND } from "../helpers/emoji-pack.js";
 import { EXTERNAL_IDENTITIES_KIND } from "../helpers/external-identities.js";
 import { GIT_GRASP_LIST_KIND } from "../helpers/git-grasp-list.js";
 import { GIT_AUTHORS_KIND, FAVORITE_GIT_REPOS_KIND } from "../helpers/git-lists.js";
+import { GIT_REPOSITORY_KIND } from "../helpers/git-repository.js";
 import { GROUPS_LIST_KIND } from "../helpers/groups.js";
 import { getRelaysFromList } from "../helpers/lists.js";
 import { FAVORITE_RELAYS_KIND, LOOKUP_RELAY_LIST_KIND } from "../helpers/relay-list.js";
 import { TRUSTED_PROVIDER_LIST_KIND } from "../helpers/trusted-assertions.js";
-import { castEventStream } from "../observable/cast-stream.js";
+import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
 import { ChainableObservable } from "../observable/chainable.js";
 
 // Re-export castUser and User from core so consumers don't need to change imports
@@ -194,6 +195,18 @@ defineGetter("graspServers$", function (this: User) {
   );
 });
 
+defineGetter("gitRepositories$", function (this: User) {
+  return this.$$ref("gitRepositories$", (store) =>
+    Circular.pipe(
+      switchMap(({ GitRepository }) =>
+        store
+          .timeline({ kinds: [GIT_REPOSITORY_KIND], authors: [this.pubkey] })
+          .pipe(castTimelineStream(GitRepository, store)),
+      ),
+    ),
+  );
+});
+
 defineGetter("searchRelays$", function (this: User) {
   return this.$$ref("searchRelays$", (store) =>
     combineLatest([Circular, this.outboxes$]).pipe(
@@ -296,6 +309,8 @@ declare module "applesauce-core/casts" {
     get favoriteGitRepos$(): ChainableObservable<import("./git-lists.js").FavoriteGitRepos | undefined>;
     get identities$(): ChainableObservable<import("./external-identities.js").ExternalIdentities | undefined>;
     get graspServers$(): ChainableObservable<import("./git-grasp-list.js").GitGraspList | undefined>;
+    /** Subscribes to the git repositories announced by the user that are in the event store */
+    get gitRepositories$(): ChainableObservable<import("./git-repository.js").GitRepository[]>;
     get searchRelays$(): ChainableObservable<import("./relay-lists.js").SearchRelays | undefined>;
     get lookupRelayList$(): ChainableObservable<import("./relay-lists.js").LookupRelayList | undefined>;
     get blockedRelays$(): ChainableObservable<import("./relay-lists.js").BlockedRelays | undefined>;

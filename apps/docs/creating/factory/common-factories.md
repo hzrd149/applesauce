@@ -98,7 +98,48 @@ const rec = await AppRecommendationFactory.create(1).handler(handlerAddress, "we
 
 `.latest()` and `.next()` only accept named nsite (kind 35128) addresses.
 
+### Publish NIP-34 issues, patches and pull requests
+
+Each factory targets one event kind. Repository arguments accept an announcement event or a `GitRepositoryPointer`; pass the full announcement to include its earliest unique commit in discovery tags.
+
+```ts
+import { GitIssueFactory, GitPullRequestFactory, GitPullRequestUpdateFactory } from "applesauce-common/factories";
+
+const issue = await GitIssueFactory.create(repo, "Bug", "Steps to reproduce").addLabel("bug").sign(signer);
+const pr = await GitPullRequestFactory.create(repo, "Fix", tip, cloneUrls, "Description").sign(signer);
+const update = await GitPullRequestUpdateFactory.create(pr, nextTip, cloneUrls).sign(signer);
+```
+
+Publish PR updates with the original PR author's signer. Each update supplies a complete tip and clone URL set; `.mergeBase(commit)` is optional, and omitting it clears that optional value in the current state.
+
+```ts
+import { GitPatchFactory, GitAppliedStatusFactory } from "applesauce-common/factories";
+
+const root = await GitPatchFactory.create(repo, formatPatch).sign(signer);
+const next = await GitPatchFactory.next(root, nextFormatPatch).sign(signer);
+const revision = await GitPatchFactory.revision(root, revisedFormatPatch).sign(signer);
+const applied = await GitAppliedStatusFactory.create(root)
+  .acceptedRevision(revision)
+  .appliedPatches([revision.id])
+  .appliedCommits([commit])
+  .sign(maintainer);
+```
+
+`GitOpenStatusFactory`, `GitAppliedStatusFactory`, `GitClosedStatusFactory`, and `GitDraftStatusFactory` target kinds 1630–1633 respectively. Statuses target the original root; only the applied factory exposes revision acceptance, applied patches, applied commits, and merge commits.
+
+Every factory provides `modify(event)` to revise a draft while preserving unrelated data. Issues, PRs, patches, updates, and statuses are regular events: signing a modified draft creates a new event, so use update and status events to change an existing thread's protocol state.
+
 ## Integration
+
+Publish Git threads to the repository's advertised relays, with author outboxes or configured relays as additional targets. Store accepted events in the same EventStore used by [Git casts](/apps/casting/events#git-threads).
+
+```ts
+const relays = relaySet(getGitRepositoryRelays(repo), outboxes);
+const results = await pool.publish(relays, issue);
+if (results.some((result) => result.ok)) store.add(issue);
+```
+
+Reply to issues, patches, and PRs with `CommentFactory.create(thread, text)`; it generates the NIP-22 threading tags.
 
 Nsite manifests integrate with the EventStore through `RootNsiteModel`, `UserNsitesModel`, and `NsiteSnapshotsModel`. Importing `applesauce-common/casts` adds `nsite$`, `nsites$`, and `nsiteSnapshots$` to User casts; Profile casts expose their author's sites.
 
@@ -149,3 +190,5 @@ const signed = await draft.sign(signer);
 For nsites, use `.file()` and `.removeFile()` to keep the aggregate hash current, keep at least one file in a published manifest, and use `verifyNsiteAggregateHash(event)` before trusting an advertised site version.
 
 For NIP-89, query `AppRecommendationsModel(kind, follows)` before `AppHandlersModel(kind)`, since anyone can publish a handler for any kind.
+
+For NIP-34, use `next()` and `revision()` to construct patch relationships, publish status events with the original author or a repository maintainer, and use `.mergeCommit()` or `.appliedCommits()` to keep discovery tags consistent.

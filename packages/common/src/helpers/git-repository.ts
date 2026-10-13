@@ -1,7 +1,7 @@
 import { isHexKey, relaySet } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
-import { AddressPointer } from "applesauce-core/helpers/pointers";
+import { AddressPointer, getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
 import { normalizeURL } from "applesauce-core/helpers/url";
 
@@ -16,6 +16,8 @@ export const GitRepositoryRelaysSymbol = Symbol.for("git-repository-relays");
 export const GitRepositoryMaintainersSymbol = Symbol.for("git-repository-maintainers");
 export const GitRepositoryHashtagsSymbol = Symbol.for("git-repository-hashtags");
 export const GitRepositoryUpstreamSymbol = Symbol.for("git-repository-upstream");
+/** The cache key for repository references on thread events */
+export const GitRepositoryReferenceSymbol = Symbol.for("git-repository-reference");
 
 function getTagValues(event: NostrEvent, name: string) {
   return event.tags.filter((tag) => tag[0] === name && tag[1]).flatMap((tag) => tag.slice(1));
@@ -83,6 +85,18 @@ export function getGitRepositoryMaintainers(event?: NostrEvent): string[] {
 export function getGitRepositoryHashtags(event?: NostrEvent): string[] {
   if (!isValidGitRepository(event)) return [];
   return getOrComputeCachedValue(event, GitRepositoryHashtagsSymbol, () => getTagValues(event, "t"));
+}
+
+/** Returns the repository pointer from the `a` tag of a NIP-34 issue, patch, pull request or status event */
+export function getGitRepositoryReference(event: NostrEvent): GitRepositoryPointer | undefined {
+  return getOrComputeCachedValue(event, GitRepositoryReferenceSymbol, () => {
+    for (const tag of event.tags) {
+      if (tag[0] !== "a") continue;
+      const pointer = getAddressPointerFromATag(tag);
+      if (pointer?.kind === GIT_REPOSITORY_KIND && pointer.identifier) return pointer as GitRepositoryPointer;
+    }
+    return undefined;
+  });
 }
 
 /**

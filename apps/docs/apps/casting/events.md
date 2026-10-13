@@ -231,6 +231,41 @@ const reactions = use$(comment.reactions$);
 
 **Example:** [Comment Feed](https://applesauce.build/examples#comment-feed)
 
+## Git Threads
+
+`GitIssue`, `GitPullRequest`, and `GitPatch` wrap NIP-34 threads. All expose `repository$`, `maintainers$`, `comments$`, `status$`, `statusEvent$`, and `updatedAt$`. `GitRepository` exposes `issues$`, `pullRequests$`, and `patches$`.
+
+```ts
+const pr = castEvent(event, GitPullRequest, store);
+const sub = pr.state$.subscribe(({ tipCommit, cloneUrls, mergeBase }) => {
+  showFetchInstructions(tipCommit, cloneUrls, mergeBase);
+});
+sub.unsubscribe();
+```
+
+`state$` returns the latest complete fetch state from a valid update by the PR author. Malformed updates, mismatched author tags, and updates predating the PR are ignored. `tipCommit`, `cloneUrls`, and `mergeBase` are immutable original metadata; `latestTipCommit$`, `latestCloneUrls$`, and `latestMergeBase$` follow updates. `patch$` resolves a patch revised by the PR, and `GitPullRequestUpdate.pullRequest$` resolves its target.
+
+```ts
+const patch = castEvent(event, GitPatch, store);
+const sub = patch.series$.subscribe((series) => renderPatches(series));
+const original = await patch.originalRoot$.$first();
+sub.unsubscribe();
+```
+
+`previous$` resolves the preceding patch, `seriesRoot$` resolves the current revision root, and `originalRoot$` resolves the original series root. `series$` lists patches in dependency order, and `revisions$` lists revision roots. Missing ancestors resolve to `undefined` until loaded; invalid or cyclic ancestry remains unresolved.
+
+### Integration
+
+Create events with the [NIP-34 factories](/creating/factory/common-factories#publish-nip-34-issues-patches-and-pull-requests). Wire an event loader for ancestor and repository lookups, and explicitly load collections, updates, statuses, and NIP-22 comments into the store; timeline models do not initiate relay queries.
+
+Status defaults to open. Only the original author or repository maintainers can set it. Patch revisions inherit the original root's status; after application, a revision is applied when its root is accepted or a member is referenced in the applied status, and otherwise closed. Before the repository loads, its owner is used as the maintainer fallback.
+
+### Best Practices
+
+- Read `state$` when displaying fetch instructions so the tip and clone URLs belong to the same update
+- Use `originalRoot$` as the target of a patch status, and `acceptedRevision()` to identify an applied revision
+- Keep ancestor lookups and collection subscriptions scoped to their consumers
+
 ## Mutes
 
 Cast for a mute list (kind 10000). Provides public and hidden mutes for hashtags, words, users, and threads.
