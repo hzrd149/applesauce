@@ -18,6 +18,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
+import { Lock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -45,6 +46,27 @@ type ContentDisplay =
 function isBinary(s: string) {
   // eslint-disable-next-line no-control-regex
   return /[\x00-\x08\x0E-\x1F]/.test(s);
+}
+
+// Format a unix timestamp as a short relative time (e.g. "5m ago")
+function timeAgo(ts: number): string {
+  const seconds = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
+const encoder = new TextEncoder();
+
+function getContentBytes(event: NostrEvent) {
+  return encoder.encode(event.content).length;
 }
 
 function getContentDisplay(event: NostrEvent): ContentDisplay {
@@ -172,11 +194,6 @@ function EventView({
             </div>
           </div>
         )}
-
-        <div className="opacity-60 font-mono break-all">
-          <div>id: {event.id}</div>
-          <div>pubkey: {event.pubkey}</div>
-        </div>
       </div>
     </>
   );
@@ -410,10 +427,16 @@ function AppDataManager({ user }: { user: User }) {
                       <div className="flex flex-col gap-1 min-w-0 w-full">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-semibold truncate flex-1">{getReplaceableIdentifier(event)}</span>
-                          {enc && <span className="badge badge-warning">{enc}</span>}
+                          <span
+                            className="opacity-60 shrink-0"
+                            title={new Date(event.created_at * 1000).toLocaleString()}
+                          >
+                            {timeAgo(event.created_at)}
+                          </span>
                         </div>
-                        <div className="opacity-60">
-                          {new Date(event.created_at * 1000).toLocaleDateString()} · {event.content.length} chars
+                        <div className="flex items-center gap-1 opacity-60">
+                          {getContentBytes(event)} bytes · {event.tags.length} tags
+                          {enc && <Lock className="size-3.5 ml-1" aria-label={`Encrypted with ${enc}`} />}
                         </div>
                       </div>
                     </a>
