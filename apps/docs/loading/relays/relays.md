@@ -418,6 +418,10 @@ relay.information$.subscribe((info) => {
   }
 });
 
+// Display name and icon (fall back to the URL and favicon until NIP-11 loads)
+relay.name$.subscribe((name) => console.log("Relay name:", name));
+relay.icon$.subscribe((icon) => console.log("Relay icon:", icon));
+
 // Check for specific NIP support
 relay.supported$.subscribe((nips) => {
   if (nips?.includes(77)) {

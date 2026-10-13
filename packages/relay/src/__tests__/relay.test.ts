@@ -932,6 +932,33 @@ describe("information$", () => {
   });
 });
 
+describe("name$", () => {
+  it("should emit the URL first and then the NIP-11 name", async () => {
+    const info$ = new Subject<RelayInformation>();
+    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(info$);
+
+    const sub = subscribeSpyTo(relay.name$);
+    expect(sub.getValues()).toEqual(["test"]);
+
+    info$.next({ ...defaultMockInfo, name: "Test Relay" });
+    expect(sub.getValues()).toEqual(["test", "Test Relay"]);
+  });
+
+  it("should keep the URL name when the fetch fails", async () => {
+    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(throwError(() => new Error("Failed to fetch")));
+
+    const sub = subscribeSpyTo(relay.name$);
+    expect(sub.getValues()).toEqual(["test"]);
+  });
+
+  it("should keep the URL name when the NIP-11 name is blank", async () => {
+    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(of({ ...defaultMockInfo, name: "  " }));
+
+    const sub = subscribeSpyTo(relay.name$);
+    expect(sub.getValues()).toEqual(["test"]);
+  });
+});
+
 describe("createReconnectTimer", () => {
   it("should create a reconnect timer when relay closes with error", async () => {
     const reconnectTimer = vi.fn().mockReturnValue(timer(1000));

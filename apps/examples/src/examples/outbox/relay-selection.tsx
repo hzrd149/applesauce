@@ -259,8 +259,7 @@ function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfileP
   const expanded$ = useMemo(() => new BehaviorSubject(false), []);
   const expanded = use$(expanded$);
 
-  const info = use$(() => pool.relay(relay).information$, [relay]);
-  const relayDisplayName = info?.name || relay.replace("wss://", "").replace("ws://", "");
+  const relayDisplayName = use$(() => pool.relay(relay).name$, [relay]);
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
 
   return (

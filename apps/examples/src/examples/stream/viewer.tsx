@@ -130,8 +130,8 @@ function ChatMessage({ message, relays }: { message: StreamChatMessage; relays: 
 }
 
 function RelayName({ pool, url }: { pool: RelayPool; url: string }) {
-  const name = use$(() => pool.relay(url).information$.pipe(map((i) => i?.name?.trim() || null)), [url]);
-  return <span>{name ?? url}</span>;
+  const name = use$(() => pool.relay(url).name$, [url]);
+  return <span>{name}</span>;
 }
 
 function RelayFavicon({ pool, url }: { pool: RelayPool; url: string }) {

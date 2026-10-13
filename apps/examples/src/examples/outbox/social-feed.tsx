@@ -167,9 +167,8 @@ const timeline$ = window$.pipe(
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
 
 function NoteRelay({ relay }: { relay: string }) {
-  const info = use$(() => pool.relay(relay).information$, [relay]);
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
-  const name = info?.name || relay.replace("wss://", "").replace("ws://", "");
+  const name = use$(() => pool.relay(relay).name$, [relay]);
   const color = pastellify(relay, { toCSS: true });
 
   return (
@@ -573,8 +572,7 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
 
 // Component to show relay connection and coverage
 function RelayConnection({ relay, userCount, totalUsers }: { relay: string; userCount: number; totalUsers: number }) {
-  const info = use$(() => pool.relay(relay).information$, [relay]);
-  const relayDisplayName = info?.name || relay.replace("wss://", "").replace("ws://", "");
+  const relayDisplayName = use$(() => pool.relay(relay).name$, [relay]);
   const coveragePercentage = totalUsers > 0 ? Math.round((userCount / totalUsers) * 100) : 0;
 
   const instance = useMemo(() => pool.relay(relay), [relay]);

@@ -195,9 +195,7 @@ function EndpointChip({ url, kind }: { url: string; kind: "relay" | "grasp" }) {
     if (!relayUrl) return of({ icon: undefined as string | undefined, name: url });
 
     const r = pool.relay(relayUrl);
-    return combineLatest([r.icon$, r.information$]).pipe(
-      map(([icon, info]) => ({ icon, name: info?.name?.trim() || endpointHostname(url) })),
-    );
+    return combineLatest({ icon: r.icon$, name: r.name$ });
   }, [url]);
 
   return (

@@ -32,7 +32,7 @@ createEventLoaderForStore(eventStore, pool, {
 function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void }) {
   const relay = useMemo(() => pool.relay(url), [url]);
   const iconUrl = use$(relay.icon$);
-  const name = use$(relay.information$.pipe(map((info) => info?.name)));
+  const name = use$(relay.name$);
 
   return (
     <div className="flex items-center gap-3 p-2 hover:bg-base-100 rounded">
@@ -49,7 +49,7 @@ function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void 
       </div>
 
       <div className="flex-1 min-w-0">
-        <span className="font-mono text-sm truncate">{name || url}</span>
+        <span className="font-mono text-sm truncate">{name}</span>
         <br />
         <small className="text-sm font-mono">{url}</small>
       </div>

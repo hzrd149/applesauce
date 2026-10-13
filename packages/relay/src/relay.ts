@@ -395,6 +395,9 @@ export class Relay {
   /** An observable that emits the icon URL for the relay, or the favicon.ico URL for the relay */
   icon$: Observable<string | undefined>;
 
+  /** An observable that emits the NIP-11 name of the relay, or its URL until the information document loads */
+  name$: Observable<string>;
+
   /** An observable that emits the limitations for the relay */
   limitations$: Observable<RelayInformation["limitation"] | null>;
 
@@ -634,6 +637,14 @@ export class Relay {
     );
     this.icon$ = this.information$.pipe(
       map((info) => info?.icon || new URL("/favicon.ico", ensureHttpURL(this.url)).toString()),
+    );
+
+    // Show the URL without the protocol until the NIP-11 name loads
+    const fallbackName = this.url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
+    this.name$ = this.information$.pipe(
+      map((info) => info?.name?.trim() || fallbackName),
+      startWith(fallbackName),
+      distinctUntilChanged(),
     );
 
     // Create status$ observable by combining state observables

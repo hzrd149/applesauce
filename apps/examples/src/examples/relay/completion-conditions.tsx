@@ -74,12 +74,12 @@ const STATE_STYLES: Record<RelayState, string> = {
 
 function RelayBadge({ relay, state }: { relay: string; state: RelayState }) {
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
-  const hostname = new URL(relay).hostname;
+  const name = use$(() => pool.relay(relay).name$, [relay]);
 
   return (
     <div className={`badge gap-1.5 ${STATE_STYLES[state]}`}>
       <img src={icon} alt="" className="w-4 h-4 rounded-sm" onError={(e) => (e.currentTarget.style.display = "none")} />
-      <span className="font-mono text-sm">{hostname}</span>
+      <span className="font-mono text-sm">{name}</span>
       <span className="text-sm opacity-70">{state}</span>
     </div>
   );

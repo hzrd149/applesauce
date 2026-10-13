@@ -281,8 +281,7 @@ function RelayItem({ relay }: { relay: string }) {
   const inst = useMemo(() => pool.relay(relay), [relay]);
   const supported = use$(inst.supported$);
   const icon = use$(inst.icon$);
-  const information = use$(inst.information$);
-  const name = information?.name || new URL(relay).hostname;
+  const name = use$(inst.name$);
 
   return (
     <div className="flex gap-2 items-center">

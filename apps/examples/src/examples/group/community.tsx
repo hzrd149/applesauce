@@ -98,6 +98,7 @@ function Avatar({ user, size = "size-10" }: { user: User; size?: string }) {
 function RelayInfo({ relay }: { relay: string }) {
   const info = use$(() => pool.relay(relay).information$, [relay]);
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
+  const name = use$(() => pool.relay(relay).name$, [relay]);
 
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -105,7 +106,7 @@ function RelayInfo({ relay }: { relay: string }) {
         <div className="size-10 rounded-lg bg-base-300">{icon && <img src={icon} alt="" />}</div>
       </div>
       <div className="min-w-0 text-left">
-        <div className="truncate font-bold">{info?.name || new URL(relay).host}</div>
+        <div className="truncate font-bold">{name}</div>
         {info?.description && <div className="truncate text-sm opacity-60">{info.description}</div>}
       </div>
     </div>
