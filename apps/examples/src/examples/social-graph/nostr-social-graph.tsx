@@ -11,7 +11,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { fromBinary, SocialGraph } from "nostr-social-graph";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   BehaviorSubject,
   tap,
@@ -217,11 +217,9 @@ export default function NostrSocialGraphExample() {
   const relays = use$(relays$);
 
   // Default to loading root and friends contacts
-  const level$ = useMemo(() => new BehaviorSubject(1), []);
-  const level = use$(level$);
+  const [level, setLevel] = useState(1);
   // Lookback window in seconds, or null for "all time"
-  const sinceSeconds$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
-  const sinceSeconds = use$(sinceSeconds$);
+  const [sinceSeconds, setSinceSeconds] = useState<number | null>(null);
 
   const restored = use$(
     () =>
@@ -335,7 +333,7 @@ export default function NostrSocialGraphExample() {
               <select
                 className="select select-bordered"
                 value={level}
-                onChange={(e) => level$.next(Number(e.target.value))}
+                onChange={(e) => setLevel(Number(e.target.value))}
                 disabled={isRunning}
               >
                 <option value={1}>1 (friends)</option>
@@ -353,7 +351,7 @@ export default function NostrSocialGraphExample() {
               <select
                 className="select select-bordered"
                 value={sinceSeconds ?? ""}
-                onChange={(e) => sinceSeconds$.next(e.target.value === "" ? null : Number(e.target.value))}
+                onChange={(e) => setSinceSeconds(e.target.value === "" ? null : Number(e.target.value))}
                 disabled={isRunning}
               >
                 <option value="">All time</option>

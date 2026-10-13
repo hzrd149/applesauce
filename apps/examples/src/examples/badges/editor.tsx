@@ -21,7 +21,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -240,25 +240,20 @@ function EditorView({ user }: { user: User }) {
   const profileBadges = use$(() => user.profileBadges$, [user.pubkey]);
   const mailboxes = use$(() => user.mailboxes$, [user.pubkey]);
 
-  const showPicker$ = useMemo(() => new BehaviorSubject(false), []);
-  const showPicker = use$(showPicker$);
+  const [showPicker, setShowPicker] = useState(false);
 
-  const busy$ = useMemo(() => new BehaviorSubject(false), []);
-  const busy = use$(busy$);
+  const [busy, setBusy] = useState(false);
 
-  const dragState$ = useMemo(() => new BehaviorSubject<DragState>({ dragging: null, over: null }), []);
-  const dragState = use$(dragState$);
+  const [dragState, setDragState] = useState<DragState>({ dragging: null, over: null });
 
-  const publishLog$ = useMemo(() => new BehaviorSubject<PublishLogEntry[]>([]), []);
-  const publishLog = use$(publishLog$);
+  const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([]);
 
   const badgesRef = useRef(profileBadges);
   badgesRef.current = profileBadges;
   const mailboxesRef = useRef(mailboxes);
   mailboxesRef.current = mailboxes;
 
-  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | undefined>(undefined);
   const slots = profileBadges?.slots ?? [];
 
   const publishRelays = useMemo(() => (mailboxes ? relaySet(RELAYS, mailboxes.outboxes) : RELAYS), [mailboxes]);
@@ -267,27 +262,27 @@ function EditorView({ user }: { user: User }) {
     const signer = signer$.value;
     if (!signer) return;
 
-    busy$.next(true);
-    error$.next(undefined);
+    setBusy(true);
+    setError(undefined);
     try {
       const signed = await factory.sign(signer);
       const relays = mailboxesRef.current ? relaySet(RELAYS, mailboxesRef.current.outboxes) : RELAYS;
       const responses = await publishEvent(pool, relays, signed);
       eventStore.add(signed);
 
-      publishLog$.next([
+      setPublishLog((log) => [
         {
           id: signed.id,
           action,
           timestamp: new Date(),
           results: responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })),
         },
-        ...publishLog$.value,
+        ...log,
       ]);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : `Failed to ${action}`);
+      setError(err instanceof Error ? err.message : `Failed to ${action}`);
     } finally {
-      busy$.next(false);
+      setBusy(false);
     }
   }, []);
 
@@ -312,17 +307,17 @@ function EditorView({ user }: { user: User }) {
   }, [slots]);
 
   // ---- drag handlers ----
-  const onDragStart = useCallback((i: number) => dragState$.next({ dragging: i, over: null }), []);
-  const onDragOver = useCallback((i: number) => dragState$.next({ ...dragState$.value, over: i }), []);
+  const onDragStart = useCallback((i: number) => setDragState({ dragging: i, over: null }), []);
+  const onDragOver = useCallback((i: number) => setDragState((state) => ({ ...state, over: i })), []);
   const onDragEnd = useCallback(() => {
-    const { dragging, over } = dragState$.value;
+    const { dragging, over } = dragState;
     if (dragging !== null && over !== null && dragging !== over) {
       const current = badgesRef.current?.slots ?? [];
       const reordered = reorder(current, dragging, over);
       void runAction("reorder", getFactory(badgesRef.current?.event).slots(reordered));
     }
-    dragState$.next({ dragging: null, over: null });
-  }, [runAction]);
+    setDragState({ dragging: null, over: null });
+  }, [dragState, runAction]);
 
   const handleRemove = useCallback(
     (index: number) => {
@@ -336,7 +331,7 @@ function EditorView({ user }: { user: User }) {
 
   const handleAdd = useCallback(
     (award: BadgeAward) => {
-      showPicker$.next(false);
+      setShowPicker(false);
       runAction(
         "add",
         getFactory(badgesRef.current?.event).addSlot({
@@ -369,7 +364,7 @@ function EditorView({ user }: { user: User }) {
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Pinned Badges ({slots.length})</h2>
-          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => showPicker$.next(true)}>
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => setShowPicker(true)}>
             + Add Badge
           </button>
         </div>
@@ -421,7 +416,7 @@ function EditorView({ user }: { user: User }) {
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Publish Log</h2>
-            <button className="btn btn-ghost btn-sm" onClick={() => publishLog$.next([])}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPublishLog([])}>
               Clear
             </button>
           </div>
@@ -452,7 +447,7 @@ function EditorView({ user }: { user: User }) {
           awards={awards}
           pinnedAddresses={pinnedAddresses}
           onAdd={handleAdd}
-          onClose={() => showPicker$.next(false)}
+          onClose={() => setShowPicker(false)}
         />
       )}
 

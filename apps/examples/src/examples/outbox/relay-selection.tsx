@@ -13,7 +13,7 @@ import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, Relay
 import localforage from "localforage";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
-import { Fragment, useCallback, useMemo } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, firstValueFrom, map, shareReplay, switchMap, throttleTime, of, startWith } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -56,8 +56,7 @@ const contacts$ = pubkey$.pipe(
 // User Preview Modal Component
 function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
   const previewUser = use$(preview$);
-  const refreshing$ = useMemo(() => new BehaviorSubject(false), []);
-  const refreshing = use$(refreshing$);
+  const [refreshing, setRefreshing] = useState(false);
 
   const profile = use$(() => (previewUser ? castUser(previewUser, eventStore).profile$ : undefined), [previewUser]);
   const mailboxes = use$(() => (previewUser ? castUser(previewUser, eventStore).mailboxes$ : undefined), [previewUser]);
@@ -76,7 +75,7 @@ function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
   const refresh = useCallback(async () => {
     if (!previewUser) return;
 
-    refreshing$.next(true);
+    setRefreshing(true);
     try {
       await firstValueFrom(
         eventStore.replaceable({ kind: 10002, pubkey: previewUser.pubkey, relays: previewUser.relays }),
@@ -84,7 +83,7 @@ function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
     } catch (error) {
       console.error("Failed to refresh mailboxes for user", previewUser.pubkey);
     }
-    refreshing$.next(false);
+    setRefreshing(false);
   }, [previewUser]);
 
   const closeModal = () => {
@@ -256,8 +255,7 @@ function UserAvatar({ user }: { user: ProfilePointer }) {
 
 // Relay Row Component
 function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfilePointer[]; totalUsers: number }) {
-  const expanded$ = useMemo(() => new BehaviorSubject(false), []);
-  const expanded = use$(expanded$);
+  const [expanded, setExpanded] = useState(false);
 
   const relayDisplayName = use$(() => pool.relay(relay).name$, [relay]);
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
@@ -269,7 +267,7 @@ function RelayRow({ relay, users, totalUsers }: { relay: string; users: ProfileP
           {/* Relay header row */}
           <div
             className="flex items-center justify-between p-4 hover:bg-base-100 cursor-pointer transition-colors"
-            onClick={() => expanded$.next(!expanded)}
+            onClick={() => setExpanded(!expanded)}
           >
             <div className="flex items-center gap-3">
               <div className="text-lg">{expanded ? "▼" : "▶"}</div>
@@ -400,8 +398,7 @@ function UsersByRelayCount({
   selection: ProfilePointer[] | null | undefined;
   contacts: ProfilePointer[] | null | undefined;
 }) {
-  const expandedSections$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
-  const expandedSections = use$(expandedSections$);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
   const missingRelaysUsers = useMemo(() => {
@@ -468,7 +465,7 @@ function UsersByRelayCount({
     } else {
       newExpanded.add(sectionId);
     }
-    expandedSections$.next(newExpanded);
+    setExpandedSections(newExpanded);
   };
 
   if (!selection) {
@@ -668,14 +665,11 @@ function UsersByRelayCount({
 // Main Component
 export default function RelaySelectionExample() {
   const pubkey = use$(pubkey$);
-  const maxConnections$ = useMemo(() => new BehaviorSubject(30), []);
-  const maxConnections = use$(maxConnections$);
+  const [maxConnections, setMaxConnections] = useState(30);
 
-  const maxRelaysPerUser$ = useMemo(() => new BehaviorSubject(8), []);
-  const maxRelaysPerUser = use$(maxRelaysPerUser$);
+  const [maxRelaysPerUser, setMaxRelaysPerUser] = useState(8);
 
-  const showRelayStatus$ = useMemo(() => new BehaviorSubject(false), []);
-  const showRelayStatus = use$(showRelayStatus$);
+  const [showRelayStatus, setShowRelayStatus] = useState(false);
 
   // Get pool status for the button
   const poolStatuses = use$(pool.status$);
@@ -719,7 +713,7 @@ export default function RelaySelectionExample() {
       <UserPreviewModal selection={selection} />
 
       {/* Relay Status Modal */}
-      <RelayStatusModal pool={pool} isOpen={showRelayStatus} onClose={() => showRelayStatus$.next(false)} />
+      <RelayStatusModal pool={pool} isOpen={showRelayStatus} onClose={() => setShowRelayStatus(false)} />
 
       {/* Header */}
       <div className="mb-6">
@@ -745,7 +739,7 @@ export default function RelaySelectionExample() {
               max="200"
               step="1"
               value={maxConnections}
-              onChange={(e) => maxConnections$.next(Number(e.target.value))}
+              onChange={(e) => setMaxConnections(Number(e.target.value))}
               className="range range-primary range-sm w-full"
             />
             <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
@@ -764,7 +758,7 @@ export default function RelaySelectionExample() {
               min="0"
               max="30"
               value={maxRelaysPerUser}
-              onChange={(e) => maxRelaysPerUser$.next(Number(e.target.value))}
+              onChange={(e) => setMaxRelaysPerUser(Number(e.target.value))}
               className="range range-primary range-sm w-full"
             />
             <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
@@ -784,7 +778,7 @@ export default function RelaySelectionExample() {
               <th colSpan={3} className="text-left">
                 <div className="flex items-center justify-between">
                   <span className="text-lg">Relays ({sortedRelays.length})</span>
-                  <button className="btn btn-sm btn-ghost gap-2" onClick={() => showRelayStatus$.next(true)}>
+                  <button className="btn btn-sm btn-ghost gap-2" onClick={() => setShowRelayStatus(true)}>
                     <span className="text-sm">Status:</span>
                     <div className="badge badge-md badge-primary">
                       {Object.values(poolStatuses || {}).filter((s) => s.ready).length}/

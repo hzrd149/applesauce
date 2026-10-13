@@ -17,8 +17,8 @@ import { getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/eve
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { map, BehaviorSubject, switchMap, of } from "rxjs";
+import { useState } from "react";
+import { map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -263,8 +263,7 @@ function RepositoryCard({ repo }: { repo: Repository }) {
 
 /** Main example component */
 export default function CustomCastExample() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   const feed = use$(
     () =>
@@ -282,7 +281,7 @@ export default function CustomCastExample() {
 
   return (
     <div className="max-w-6xl w-full mx-auto my-8 px-4 gap-2 flex flex-col">
-      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      <RelayPicker value={relay} onChange={setRelay} />
       {feed?.status === "loading" && <p role="status">Loading events…</p>}
       {feed?.errors.map((error) => (
         <p role="alert" className="text-error" key={error}>

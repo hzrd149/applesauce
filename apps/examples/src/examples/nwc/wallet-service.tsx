@@ -13,7 +13,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
 import { CommonWalletMethods, WalletInfo, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, defer, catchError, finalize, switchMap, NEVER, concat, of, startWith } from "rxjs";
 import QRCode from "../../components/qr-code";
 
@@ -339,39 +339,32 @@ const transactions$ = new BehaviorSubject<Transaction[]>([
 ]);
 
 export default function WalletServiceExample() {
-  const relays$ = useMemo(() => new BehaviorSubject<string[]>(DEFAULT_RELAYS), []);
-  const relays = use$(relays$);
+  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
 
-  const supportedMethods$ = useMemo(
-    () =>
-      new BehaviorSubject<string[]>(["get_balance", "get_info", "make_invoice", "pay_invoice", "list_transactions"]),
-    [],
-  );
-  const supportedMethods = use$(supportedMethods$);
+  const [supportedMethods, setSupportedMethods] = useState<string[]>([
+    "get_balance",
+    "get_info",
+    "make_invoice",
+    "pay_invoice",
+    "list_transactions",
+  ]);
 
-  const walletService$ = useMemo(() => new BehaviorSubject<WalletService | null>(null), []);
-  const walletService = use$(walletService$);
+  const [walletService, setWalletService] = useState<WalletService | null>(null);
 
-  const newRelay$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const newRelay = use$(newRelay$);
+  const [newRelay, setNewRelay] = useState("");
 
   const balance = use$(balance$);
   const walletInfo = use$(walletInfo$);
   const transactions = use$(transactions$);
 
   // New transaction form state
-  const newTransaction$ = useMemo(
-    () =>
-      new BehaviorSubject<Partial<Transaction>>({
-        type: "incoming",
-        state: "settled",
-        description: "",
-        amount: 0,
-        fees_paid: 0,
-      }),
-    [],
-  );
-  const newTransaction = use$(newTransaction$);
+  const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
+    type: "incoming",
+    state: "settled",
+    description: "",
+    amount: 0,
+    fees_paid: 0,
+  });
 
   // Create wallet service handlers
   const handlers = useMemo(() => {
@@ -477,7 +470,7 @@ export default function WalletServiceExample() {
         handlers,
       });
 
-      walletService$.next(service);
+      setWalletService(service);
     } catch (error) {
       console.error("Failed to start wallet service:", error);
       alert("Failed to start wallet service: " + (error as Error).message);
@@ -487,7 +480,7 @@ export default function WalletServiceExample() {
   const stopWalletService = useCallback(() => {
     if (walletService) {
       walletService.stop();
-      walletService$.next(null);
+      setWalletService(null);
     }
   }, [walletService]);
 
@@ -506,21 +499,17 @@ export default function WalletServiceExample() {
 
   const addRelay = useCallback(() => {
     if (newRelay && !relays.includes(newRelay)) {
-      relays$.next([...relays$.value, newRelay]);
-      newRelay$.next("");
+      setRelays((prev) => [...prev, newRelay]);
+      setNewRelay("");
     }
   }, [newRelay, relays]);
 
   const removeRelay = useCallback((relay: string) => {
-    relays$.next(relays$.value.filter((r) => r !== relay));
+    setRelays((prev) => prev.filter((r) => r !== relay));
   }, []);
 
   const toggleMethod = useCallback((method: string) => {
-    supportedMethods$.next(
-      supportedMethods$.value.includes(method)
-        ? supportedMethods$.value.filter((m) => m !== method)
-        : [...supportedMethods$.value, method],
-    );
+    setSupportedMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
   }, []);
 
   // Transaction management helpers
@@ -538,7 +527,7 @@ export default function WalletServiceExample() {
         preimage: newTransaction.state === "settled" ? Math.random().toString(36).substring(7) : undefined,
       };
       transactions$.next([transaction, ...transactions$.value]);
-      newTransaction$.next({
+      setNewTransaction({
         type: "incoming",
         state: "settled",
         description: "",
@@ -647,7 +636,7 @@ export default function WalletServiceExample() {
                     <input
                       type="text"
                       value={newRelay}
-                      onChange={(e) => newRelay$.next(e.target.value)}
+                      onChange={(e) => setNewRelay(e.target.value)}
                       placeholder="wss://relay.example.com"
                       className="flex-1 px-3 py-2 border rounded-md"
                     />
@@ -720,9 +709,7 @@ export default function WalletServiceExample() {
               <TransactionsCard
                 transactions={transactions}
                 newTransaction={newTransaction}
-                setNewTransaction={(value) =>
-                  newTransaction$.next(typeof value === "function" ? value(newTransaction$.value) : value)
-                }
+                setNewTransaction={setNewTransaction}
                 addTransaction={addTransaction}
                 removeTransaction={removeTransaction}
                 settleTransaction={settleTransaction}

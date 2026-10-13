@@ -33,7 +33,7 @@ import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
 
 import {
@@ -424,8 +424,7 @@ function UserIssuesSection({
   selection: any[] | null | undefined;
   contacts: any[] | null | undefined;
 }) {
-  const expandedSections$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
-  const expandedSections = use$(expandedSections$);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
   const missingRelaysUsers = useMemo(() => {
@@ -464,7 +463,7 @@ function UserIssuesSection({
     } else {
       newExpanded.add(sectionId);
     }
-    expandedSections$.next(newExpanded);
+    setExpandedSections(newExpanded);
   };
 
   const totalIssues = missingRelaysUsers.length + orphanedUsers.length;
@@ -689,8 +688,7 @@ function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
 }
 
 function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relays: string[]) => void }) {
-  const input$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState<string>("");
 
   const addRelay: SubmitHandler<any> = (e) => {
     e.preventDefault();
@@ -701,7 +699,7 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
     if (!url.startsWith("wss://") && !url.startsWith("ws://")) url = `wss://${input}`;
 
     onChange(relaySet(relays, url));
-    input$.next("");
+    setInput("");
   };
 
   const removeRelay = (relay: string) => {
@@ -719,12 +717,7 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
         </div>
       ))}
       <form className="flex gap-2" onSubmit={addRelay}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => input$.next(e.target.value)}
-          className="input input-sm flex-1"
-        />
+        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} className="input input-sm flex-1" />
         <button className="btn btn-square btn-primary btn-soft btn-sm text-lg" type="submit" disabled={!input}>
           +
         </button>

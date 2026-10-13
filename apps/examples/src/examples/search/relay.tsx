@@ -9,8 +9,8 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { BehaviorSubject, catchError, combineLatest, map, of, startWith, switchMap } from "rxjs";
+import { useState } from "react";
+import { catchError, map, of, startWith } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -65,55 +65,46 @@ import { kinds } from "applesauce-core/helpers";
 
 import RelayPicker from "../../components/relay-picker";
 export default function RelaySearch() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.ditto.pub"), []);
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
-  const commands$ = useMemo(() => new BehaviorSubject<{ relay: string; query: string } | null>(null), []);
-  const relay = use$(relay$);
-  const query = use$(query$);
-  const state = use$(
-    () =>
-      combineLatest([relay$, commands$]).pipe(
-        switchMap(([relay, command]) => {
-          if (!command || command.relay !== relay)
-            return of<SearchState<ProfilePointer>>({ status: "idle", results: [] });
-          return pool
-            .relay(relay)
-            .request({ kinds: [kinds.Metadata], search: command.query, limit: 50 }, { timeout: 10_000 })
-            .pipe(
-              mapEventsToStore(eventStore),
-              mapEventsToTimeline(),
-              map((events): SearchState<ProfilePointer> => ({
-                status: "ready",
-                results: events.map((event) => ({ pubkey: event.pubkey, relays: [relay] })),
-              })),
-              startWith<SearchState<ProfilePointer>>({ status: "loading", results: [] }),
-              catchError((error) =>
-                of<SearchState<ProfilePointer>>({
-                  status: "error",
-                  results: [],
-                  error: String(error.message ?? error),
-                }),
-              ),
-            );
-        }),
-      ),
-    [relay$, commands$],
-  );
+  const [relay, setRelay] = useState("wss://relay.ditto.pub");
+  const [query, setQuery] = useState("");
+  const [command, setCommand] = useState<{ relay: string; query: string } | null>(null);
+  const state = use$(() => {
+    if (!command || command.relay !== relay) return of<SearchState<ProfilePointer>>({ status: "idle", results: [] });
+    return pool
+      .relay(relay)
+      .request({ kinds: [kinds.Metadata], search: command.query, limit: 50 }, { timeout: 10_000 })
+      .pipe(
+        mapEventsToStore(eventStore),
+        mapEventsToTimeline(),
+        map((events): SearchState<ProfilePointer> => ({
+          status: "ready",
+          results: events.map((event) => ({ pubkey: event.pubkey, relays: [relay] })),
+        })),
+        startWith<SearchState<ProfilePointer>>({ status: "loading", results: [] }),
+        catchError((error) =>
+          of<SearchState<ProfilePointer>>({
+            status: "error",
+            results: [],
+            error: String(error.message ?? error),
+          }),
+        ),
+      );
+  }, [relay, command]);
   return (
     <div className="mx-auto max-w-4xl p-4 space-y-4">
-      <RelayPicker value={relay} onChange={(relay) => relay$.next(relay)} supportedNips={["50"]} />
+      <RelayPicker value={relay} onChange={setRelay} supportedNips={["50"]} />
       <form
         className="flex gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          if (query.trim()) commands$.next({ relay, query: query.trim() });
+          if (query.trim()) setCommand({ relay, query: query.trim() });
         }}
       >
         <input
           className="input input-bordered flex-1"
           placeholder="Search profiles"
           value={query}
-          onChange={(event) => query$.next(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
         />
         <button className="btn btn-primary" disabled={!query.trim() || state?.status === "loading"}>
           Search

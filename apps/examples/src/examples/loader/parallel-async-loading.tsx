@@ -12,8 +12,8 @@ import { mapEventsToTimeline } from "applesauce-core/observable";
 import { loadAsyncMap } from "applesauce-loaders/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { lastValueFrom, BehaviorSubject, defer, from, map, catchError, of, startWith } from "rxjs";
+import { useState } from "react";
+import { lastValueFrom, defer, from, map, catchError, of, startWith } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -59,11 +59,9 @@ async function loadUserData(pubkey: string, timeout: number) {
 }
 
 export default function ParallelAsyncLoadingExample() {
-  const pubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState("");
 
-  const timeout$ = useMemo(() => new BehaviorSubject<number>(30000), []);
-  const timeout = use$(timeout$);
+  const [timeout, setTimeoutMs] = useState(30000);
 
   const result = use$(() => {
     if (!pubkey.trim()) return of({ data: null, loading: false, error: null, loadTime: null });
@@ -89,11 +87,7 @@ export default function ParallelAsyncLoadingExample() {
       </p>
 
       <div className="mb-6 space-y-4">
-        <PubkeyPicker
-          value={pubkey}
-          onChange={(value: typeof pubkey$.value) => pubkey$.next(value)}
-          placeholder="Enter pubkey or nostr identifier..."
-        />
+        <PubkeyPicker value={pubkey} onChange={setPubkey} placeholder="Enter pubkey or nostr identifier..." />
         <div className="flex items-center gap-2">
           <label htmlFor="timeout" className="font-semibold">
             Timeout (ms):
@@ -104,7 +98,7 @@ export default function ParallelAsyncLoadingExample() {
             min="100"
             step="100"
             value={timeout}
-            onChange={(e) => timeout$.next(Number(e.target.value))}
+            onChange={(e) => setTimeoutMs(Number(e.target.value))}
             className="input input-bordered w-32"
           />
         </div>

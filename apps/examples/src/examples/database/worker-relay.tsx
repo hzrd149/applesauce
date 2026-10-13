@@ -24,7 +24,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { nanoid } from "nanoid";
-import { ChangeEvent, FormEvent, useRef, useMemo } from "react";
+import { ChangeEvent, FormEvent, useRef, useMemo, useState } from "react";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
@@ -343,17 +343,11 @@ function WorkerRelaySearch() {
   const searchQuery$ = useMemo(() => new BehaviorSubject(""), []);
   const searchQuery = use$(searchQuery$);
 
-  const isLoading$ = useMemo(() => new BehaviorSubject(false), []);
-  const isLoading = use$(isLoading$);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<OperationError | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<OperationError | null>(null);
 
-  const importStats$ = useMemo(
-    () => new BehaviorSubject<{ total: number; added: number; failed: number } | null>(null),
-    [],
-  );
-  const importStats = use$(importStats$);
+  const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
 
   const viewEvent = useObservableEagerState(viewEvent$);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -392,17 +386,17 @@ function WorkerRelaySearch() {
   };
 
   const importFile = async (file: File) => {
-    isLoading$.next(true);
-    error$.next(null);
+    setIsLoading(true);
+    setError(null);
 
     try {
       const stats = await importEventsFromJsonl(file, eventStore);
-      importStats$.next(stats);
+      setImportStats(stats);
       await loadEvents(); // Reload events after import
     } catch {
-      error$.next({ message: "Import failed. Choose a valid .jsonl file and try again.", retry: "import" });
+      setError({ message: "Import failed. Choose a valid .jsonl file and try again.", retry: "import" });
     } finally {
-      isLoading$.next(false);
+      setIsLoading(false);
     }
   };
 
@@ -412,7 +406,7 @@ function WorkerRelaySearch() {
     if (!file) return;
 
     if (!file.name.endsWith(".jsonl")) {
-      error$.next({ message: "Please select a .jsonl file" });
+      setError({ message: "Please select a .jsonl file" });
       return;
     }
 
@@ -428,7 +422,7 @@ function WorkerRelaySearch() {
   // Handle export
   const handleExport = () => {
     if (searchResults.length === 0) {
-      error$.next({ message: "No events to export" });
+      setError({ message: "No events to export" });
       return;
     }
 
@@ -438,19 +432,19 @@ function WorkerRelaySearch() {
   };
 
   const clearDatabase = async () => {
-    isLoading$.next(true);
-    error$.next(null);
+    setIsLoading(true);
+    setError(null);
 
     try {
       // Use removeByFilters with empty filter to clear all events
       await eventStore.removeByFilters({});
 
       loadEvents();
-      importStats$.next(null);
+      setImportStats(null);
     } catch {
-      error$.next({ message: "Database couldn't be cleared. Try again.", retry: "clear" });
+      setError({ message: "Database couldn't be cleared. Try again.", retry: "clear" });
     } finally {
-      isLoading$.next(false);
+      setIsLoading(false);
     }
   };
 

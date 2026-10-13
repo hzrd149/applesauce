@@ -16,7 +16,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { FormEvent, useMemo } from "react";
+import { FormEvent, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -98,23 +98,21 @@ function ServerManager({ user }: { user: User }) {
   const servers = use$(() => user.blossomServers$, [user.pubkey]);
   const outboxes = use$(() => user.outboxes$, [user.pubkey]);
 
-  const busy$ = useMemo(() => new BehaviorSubject(false), []);
-  const busy = use$(busy$);
+  const [busy, setBusy] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const run = async <Args extends unknown[]>(action: (...args: Args) => Action, ...args: Args) => {
-    busy$.next(true);
-    error$.next(null);
+    setBusy(true);
+    setError(null);
     try {
       await actions.run(action, ...args);
       return true;
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err));
       return false;
     } finally {
-      busy$.next(false);
+      setBusy(false);
     }
   };
 
@@ -128,7 +126,7 @@ function ServerManager({ user }: { user: User }) {
     try {
       url = new URL(/^https?:\/\//.test(value) ? value : `https://${value}`);
     } catch {
-      return error$.next("Invalid URL");
+      return setError("Invalid URL");
     }
 
     if (await run(AddBlossomServer, url)) form.reset();

@@ -6,7 +6,7 @@
 import { castEventStream } from "applesauce-common/observable";
 import { Article } from "applesauce-common/casts";
 import { publishEvent } from "../../extra/publish";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 
 import { HighlightFactory } from "applesauce-common/factories";
 
@@ -21,7 +21,7 @@ import { decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
 import React, { useImperativeHandle, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { of, BehaviorSubject, map } from "rxjs";
+import { of, map } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 
 // Memoize plugins and components at module level
@@ -150,46 +150,40 @@ interface HighlightModalProps {
 }
 
 function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: HighlightModalProps) {
-  const comment$ = useMemo(() => new BehaviorSubject(""), []);
-  const comment = use$(comment$);
+  const [comment, setComment] = useState("");
 
-  const selectedRelays$ = useMemo(() => new BehaviorSubject<string[]>(["wss://relay.damus.io/"]), []);
-  const selectedRelays = use$(selectedRelays$);
+  const [selectedRelays, setSelectedRelays] = useState<string[]>(["wss://relay.damus.io/"]);
 
-  const customRelay$ = useMemo(() => new BehaviorSubject(""), []);
-  const customRelay = use$(customRelay$);
+  const [customRelay, setCustomRelay] = useState("");
 
   const defaultRelays = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://nostr.wine/"];
 
   const handleAddCustomRelay = () => {
     if (customRelay && !selectedRelays.includes(customRelay)) {
-      selectedRelays$.next([...selectedRelays, customRelay]);
-      customRelay$.next("");
+      setSelectedRelays([...selectedRelays, customRelay]);
+      setCustomRelay("");
     }
   };
 
   const toggleRelay = (relay: string) => {
-    selectedRelays$.next(
-      selectedRelays$.value.includes(relay)
-        ? selectedRelays$.value.filter((r) => r !== relay)
-        : [...selectedRelays$.value, relay],
+    setSelectedRelays((selected) =>
+      selected.includes(relay) ? selected.filter((r) => r !== relay) : [...selected, relay],
     );
   };
 
-  const publishState$ = useMemo(() => new BehaviorSubject({ publishing: false, error: "" }), []);
-  const publishState = use$(publishState$);
+  const [publishState, setPublishState] = useState({ publishing: false, error: "" });
   const handlePublish = async () => {
     if (!selectedText || !selectedRelays.length || publishState.publishing) return;
-    publishState$.next({ publishing: true, error: "" });
+    setPublishState({ publishing: true, error: "" });
     try {
       await onPublish(comment, selectedRelays);
-      comment$.next("");
+      setComment("");
       onClose();
     } catch (error) {
-      publishState$.next({ publishing: false, error: String(error) });
+      setPublishState({ publishing: false, error: String(error) });
       return;
     }
-    publishState$.next({ publishing: false, error: "" });
+    setPublishState({ publishing: false, error: "" });
   };
 
   if (!isOpen) return null;
@@ -212,7 +206,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
             className="textarea textarea-bordered h-24 w-full"
             placeholder="Add your thoughts about this highlight..."
             value={comment}
-            onChange={(e) => comment$.next(e.target.value)}
+            onChange={(e) => setComment(e.target.value)}
           />
         </div>
 
@@ -242,7 +236,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
               className="input input-bordered flex-1"
               placeholder="wss://custom.relay.com/"
               value={customRelay}
-              onChange={(e) => customRelay$.next(e.target.value)}
+              onChange={(e) => setCustomRelay(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleAddCustomRelay()}
             />
             <button type="button" className="btn btn-outline" onClick={handleAddCustomRelay} disabled={!customRelay}>
@@ -299,11 +293,9 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
 }
 
 function ArticleRenderer({ article }: { article: Article }) {
-  const showModal$ = useMemo(() => new BehaviorSubject(false), []);
-  const showModal = use$(showModal$);
+  const [showModal, setShowModal] = useState(false);
 
-  const selectedText$ = useMemo(() => new BehaviorSubject(""), []);
-  const selectedText = use$(selectedText$);
+  const [selectedText, setSelectedText] = useState("");
 
   const contentRef = useRef<HTMLDivElement>(null);
   const highlightButtonRef = useRef<HighlightButtonRef>(null);
@@ -329,8 +321,8 @@ function ArticleRenderer({ article }: { article: Article }) {
   }, []);
 
   const handleHighlight = useCallback((text: string) => {
-    selectedText$.next(text);
-    showModal$.next(true);
+    setSelectedText(text);
+    setShowModal(true);
     highlightButtonRef.current?.hide();
     window.getSelection()?.removeAllRanges();
   }, []);
@@ -388,7 +380,7 @@ function ArticleRenderer({ article }: { article: Article }) {
 
         <HighlightModal
           isOpen={showModal}
-          onClose={() => showModal$.next(false)}
+          onClose={() => setShowModal(false)}
           selectedText={selectedText}
           article={article}
           onPublish={handlePublishHighlight}
@@ -399,8 +391,7 @@ function ArticleRenderer({ article }: { article: Article }) {
 }
 
 export default function ArticleHighlighter() {
-  const naddr$ = useMemo(() => new BehaviorSubject(""), []);
-  const naddr = use$(naddr$);
+  const [naddr, setNaddr] = useState("");
 
   const { addressPointer, error } = useMemo(() => {
     if (!naddr.trim()) return { addressPointer: null, error: null };
@@ -449,7 +440,7 @@ export default function ArticleHighlighter() {
                   className={`input input-bordered flex-1 ${error ? "input-error" : ""}`}
                   placeholder="naddr1qqs..."
                   value={naddr}
-                  onChange={(e) => naddr$.next(e.target.value)}
+                  onChange={(e) => setNaddr(e.target.value)}
                 />
               </div>
               {error && (

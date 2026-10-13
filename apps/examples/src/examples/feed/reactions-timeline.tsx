@@ -7,7 +7,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 
 import NoteContent from "../../components/note-content";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, map, switchMap, of } from "rxjs";
+import { map, switchMap, of } from "rxjs";
 
 import { castUser, Reaction, User } from "applesauce-common/casts";
 
@@ -18,7 +18,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -119,8 +119,7 @@ function ReactionEvent({ reaction }: { reaction: Reaction }) {
 }
 
 export default function ReactionsTimeline() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.primal.net/");
 
   const feed = use$(
     () =>
@@ -139,7 +138,7 @@ export default function ReactionsTimeline() {
   return (
     <div className="max-w-4xl mx-auto my-8">
       <div className="flex gap-2 mb-4">
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={setRelay} />
         {feed?.status === "loading" && <p role="status">Loading events…</p>}
         {feed?.errors.map((error) => (
           <p role="alert" className="text-error" key={error}>

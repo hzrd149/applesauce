@@ -20,8 +20,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useCallback, useMemo, useState } from "react";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -70,11 +69,9 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
 }
 
 export default function GiftWrapDashboard() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
 
-  const pubkey$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState<string | null>(null);
 
   // Subscribe to authentication state
   const challenge = use$(() => pool.relay(relay).challenge$, [relay]);
@@ -97,7 +94,7 @@ export default function GiftWrapDashboard() {
       const signer = new ExtensionSigner();
 
       // get the users pubkey
-      pubkey$.next(await signer.getPublicKey());
+      setPubkey(await signer.getPublicKey());
 
       // Authenticate with the relay
       await pool
@@ -158,7 +155,7 @@ export default function GiftWrapDashboard() {
             <div className="flex items-center gap-2">
               <RelayPicker
                 value={relay}
-                onChange={(value) => relay$.next(value)}
+                onChange={(value) => setRelay(value)}
                 common={["wss://auth.nostr1.com/", "wss://nip17.com/", "wss://inbox.relays.land/", ...COMMON_RELAYS]}
               />
               {needsAuth && (

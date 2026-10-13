@@ -10,7 +10,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, map, of, combineLatest, startWith } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -106,17 +106,10 @@ function ContactAssertions({ user }: { user: User }) {
   // The providers trusted specifically for the 30382:rank assertion (includes hidden ones once unlocked)
   const rankProviders = use$(() => (trustedList ? trustedList.userRank$ : of<AssertionProvider[]>([])), [trustedList]);
 
-  const selectedPubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedPubkey = use$(selectedPubkey$);
-
-  const sortField$ = useMemo(() => new BehaviorSubject<string>("rank"), []);
-  const sortField = use$(sortField$);
-
-  const sortDir$ = useMemo(() => new BehaviorSubject<"asc" | "desc">("desc"), []);
-  const sortDir = use$(sortDir$);
-
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [selectedPubkey, setSelectedPubkey] = useState("");
+  const [sortField, setSortField] = useState("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [unlocking, setUnlocking] = useState(false);
 
   const providers = rankProviders ?? [];
   const supported = providers.length > 0;
@@ -159,12 +152,12 @@ function ContactAssertions({ user }: { user: User }) {
   const handleUnlock = async () => {
     if (!trustedList || !signer || unlocking) return;
     try {
-      unlocking$.next(true);
+      setUnlocking(true);
       await trustedList.unlock(signer);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unlock private providers");
     } finally {
-      unlocking$.next(false);
+      setUnlocking(false);
     }
   };
 
@@ -210,7 +203,7 @@ function ContactAssertions({ user }: { user: User }) {
               <select
                 className="select select-bordered"
                 value={selectedProvider?.pubkey ?? ""}
-                onChange={(e) => selectedPubkey$.next(e.target.value)}
+                onChange={(e) => setSelectedPubkey(e.target.value)}
               >
                 {providers.map((p) => (
                   <option key={p.pubkey} value={p.pubkey}>
@@ -238,7 +231,7 @@ function ContactAssertions({ user }: { user: User }) {
             <select
               className="select select-bordered select-sm join-item"
               value={sortField}
-              onChange={(e) => sortField$.next(e.target.value)}
+              onChange={(e) => setSortField(e.target.value)}
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -248,7 +241,7 @@ function ContactAssertions({ user }: { user: User }) {
             </select>
             <button
               className="btn btn-sm join-item"
-              onClick={() => sortDir$.next(sortDir$.value === "desc" ? "asc" : "desc")}
+              onClick={() => setSortDir((dir) => (dir === "desc" ? "asc" : "desc"))}
               title={sortDir === "desc" ? "Descending (highest first)" : "Ascending (lowest first)"}
             >
               {sortDir === "desc" ? "↓" : "↑"}

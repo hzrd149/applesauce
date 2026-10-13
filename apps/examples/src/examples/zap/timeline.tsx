@@ -5,7 +5,7 @@
  */
 import { castTimelineStream } from "applesauce-common/observable";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, shareReplay, map } from "rxjs";
+import { shareReplay, map } from "rxjs";
 
 import { castUser, User, Zap } from "applesauce-common/casts";
 
@@ -15,7 +15,7 @@ import { isAudioURL, isImageURL, isVideoURL, kinds } from "applesauce-core/helpe
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -177,8 +177,7 @@ function ZapEvent({ zap }: { zap: Zap }) {
 }
 
 export default function ZapsTimeline() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
   const feed$ = useMemo(
     () =>
@@ -206,7 +205,7 @@ export default function ZapsTimeline() {
             {error}
           </p>
         ))}
-        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+        <RelayPicker value={relay} onChange={(next: typeof relay) => setRelay(next)} />
       </div>
 
       <div className="flex flex-col gap-4">

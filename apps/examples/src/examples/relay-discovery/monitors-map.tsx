@@ -4,7 +4,7 @@
  * @related relay-discovery/monitor-feed, relay-discovery/mailbox-map
  */
 import { castUser, RelayMonitor } from "applesauce-common/casts";
-import { BehaviorSubject, map } from "rxjs";
+import { map } from "rxjs";
 
 import { isValidRelayMonitorAnnouncement, RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { EventStore, mapEventsToStore, mapEventsToTimeline, castEvent } from "applesauce-core";
@@ -22,7 +22,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -175,8 +175,7 @@ function AvatarMarker({ event }: { event: MonitorEventWithLocation }) {
 }
 
 export default function MonitorsMap() {
-  const relayUrl$ = useMemo(() => new BehaviorSubject<string>("wss://relay.nostr.watch/"), []);
-  const relayUrl = use$(relayUrl$);
+  const [relayUrl, setRelayUrl] = useState("wss://relay.nostr.watch/");
 
   // Get relay instance
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
@@ -266,7 +265,7 @@ export default function MonitorsMap() {
         </p>
 
         <div className="flex gap-2 flex-wrap items-center">
-          <RelayPicker value={relayUrl} onChange={(next: typeof relayUrl$.value) => relayUrl$.next(next)} />
+          <RelayPicker value={relayUrl} onChange={setRelayUrl} />
 
           {events && (
             <p className="text-sm text-base-content/70 ms-auto">

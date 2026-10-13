@@ -19,8 +19,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useRef, useMemo } from "react";
-import { BehaviorSubject, of } from "rxjs";
+import { useCallback, useRef, useMemo, useState } from "react";
+import { of } from "rxjs";
 
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
@@ -110,15 +110,12 @@ function ThreadReply({ comment }: { comment: Comment }) {
 }
 
 function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointer }) {
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
-
-  const content$ = useMemo(() => new BehaviorSubject(""), []);
-  const content = use$(content$);
+  const [sending, setSending] = useState(false);
+  const [content, setContent] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    sending$.next(true);
+    setSending(true);
     try {
       // Create a comment and include the group h tag
       const signed = await CommentFactory.create(event, content).group(pointer).sign(signer);
@@ -126,11 +123,11 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
       await publishEvent(pool, [pointer.relay], signed);
       // Add to the event store for the app
       eventStore.add(signed);
-      content$.next("");
+      setContent("");
     } catch (error) {
       alert(String(error));
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
@@ -139,7 +136,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
       <textarea
         className="textarea textarea-bordered flex-grow w-full"
         value={content}
-        onChange={(e) => content$.next(e.target.value)}
+        onChange={(e) => setContent(e.target.value)}
         placeholder="Type your reply..."
         required
       />
@@ -192,18 +189,13 @@ function NewThreadForm({
   onCancel: () => void;
   onSuccess: (event: NostrEvent) => void;
 }) {
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
-
-  const content$ = useMemo(() => new BehaviorSubject(""), []);
-  const content = use$(content$);
-
-  const title$ = useMemo(() => new BehaviorSubject(""), []);
-  const title = use$(title$);
+  const [sending, setSending] = useState(false);
+  const [content, setContent] = useState("");
+  const [title, setTitle] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    sending$.next(true);
+    setSending(true);
     try {
       const signed = await GroupThreadFactory.create(pointer, title, content).sign(signer);
       // Publish the event
@@ -215,7 +207,7 @@ function NewThreadForm({
     } catch (error) {
       alert(String(error));
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
@@ -225,14 +217,14 @@ function NewThreadForm({
         type="text"
         className="input input-bordered flex-grow w-full"
         value={title}
-        onChange={(e) => title$.next(e.target.value)}
+        onChange={(e) => setTitle(e.target.value)}
         placeholder="Title"
         required
       />
       <textarea
         className="textarea textarea-bordered flex-grow w-full"
         value={content}
-        onChange={(e) => content$.next(e.target.value)}
+        onChange={(e) => setContent(e.target.value)}
         placeholder="Type your message..."
         required
       />
@@ -273,8 +265,7 @@ function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (
 }
 
 export default function ThreadsExample() {
-  const identifier$ = useMemo(() => new BehaviorSubject(""), []);
-  const identifier = use$(identifier$);
+  const [identifier, setIdentifier] = useState("");
 
   const pointer = useMemo(() => {
     try {
@@ -283,21 +274,15 @@ export default function ThreadsExample() {
       return undefined;
     }
   }, [identifier]);
-  const selectedThread$ = useMemo(() => new BehaviorSubject<NostrEvent | undefined>(undefined), []);
-  const selectedThread = use$(selectedThread$);
+  const [selectedThread, setSelectedThread] = useState<NostrEvent | undefined>(undefined);
+  const [createThread, setCreateThread] = useState(false);
 
-  const createThread$ = useMemo(() => new BehaviorSubject(false), []);
-  const createThread = use$(createThread$);
-
-  const setGroup = useCallback(
-    (identifier: string) => {
-      try {
-        identifier$.next(identifier);
-        selectedThread$.next(undefined);
-      } catch (error) {}
-    },
-    [identifier$],
-  );
+  const setGroup = useCallback((identifier: string) => {
+    try {
+      setIdentifier(identifier);
+      setSelectedThread(undefined);
+    } catch (error) {}
+  }, []);
 
   return (
     <div className="container mx-auto p-2 h-full">
@@ -305,7 +290,7 @@ export default function ThreadsExample() {
         <GroupPicker identifier={identifier} setIdentifier={setGroup} />
 
         {pointer && !createThread && !selectedThread && (
-          <button className="btn btn-primary ms-auto" onClick={() => createThread$.next(true)}>
+          <button className="btn btn-primary ms-auto" onClick={() => setCreateThread(true)}>
             New Thread
           </button>
         )}
@@ -314,20 +299,15 @@ export default function ThreadsExample() {
       {pointer && createThread && !selectedThread && (
         <NewThreadForm
           pointer={pointer}
-          onCancel={() => createThread$.next(false)}
-          onSuccess={() => createThread$.next(false)}
+          onCancel={() => setCreateThread(false)}
+          onSuccess={() => setCreateThread(false)}
         />
       )}
 
-      {pointer && !selectedThread && (
-        <ThreadsList
-          pointer={pointer}
-          onSelect={(value: typeof selectedThread$.value) => selectedThread$.next(value)}
-        />
-      )}
+      {pointer && !selectedThread && <ThreadsList pointer={pointer} onSelect={(value) => setSelectedThread(value)} />}
       {pointer && selectedThread && (
         <>
-          <button className="btn btn-ghost mb-4" onClick={() => selectedThread$.next(undefined)}>
+          <button className="btn btn-ghost mb-4" onClick={() => setSelectedThread(undefined)}>
             ← Back to Threads
           </button>
           <ThreadView event={selectedThread} pointer={pointer} />

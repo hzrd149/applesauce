@@ -16,7 +16,7 @@ import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } fr
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BehaviorSubject, shareReplay, map } from "rxjs";
@@ -439,8 +439,7 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
 }
 
 export default function TorrentFeed() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.primal.net/");
 
   const selectedTorrent = use$(selectedTorrent$);
 
@@ -478,7 +477,7 @@ export default function TorrentFeed() {
             {error}
           </p>
         ))}
-        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+        <RelayPicker value={relay} onChange={setRelay} />
       </div>
 
       <div className="flex flex-col gap-4">

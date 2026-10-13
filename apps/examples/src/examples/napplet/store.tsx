@@ -42,11 +42,9 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  BehaviorSubject,
   catchError,
-  combineLatest,
   connect,
   count,
   defer,
@@ -330,13 +328,13 @@ function ContactsFilter(props: {
 
 function FilterSidebar(props: {
   filters: Filters;
-  query$: BehaviorSubject<string>;
+  query: string;
+  setQuery: (query: string) => void;
   update: Update;
   known: { archetypes: string[]; domains: string[] };
   contacts: React.ComponentProps<typeof ContactsFilter>;
 }) {
-  const { filters, query$, update, known } = props;
-  const query = use$(query$);
+  const { filters, query, setQuery, update, known } = props;
 
   return (
     <aside className="w-80 shrink-0 border-r border-base-300 overflow-y-auto p-4 flex flex-col gap-5">
@@ -358,7 +356,7 @@ function FilterSidebar(props: {
             className="input input-bordered join-item flex-1"
             placeholder="NIP-50 search query"
             value={query}
-            onChange={(e) => query$.next(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
           />
           <button className="btn join-item">Search</button>
         </div>
@@ -410,7 +408,7 @@ function FilterSidebar(props: {
       <button
         className="btn btn-ghost"
         onClick={() => {
-          query$.next("");
+          setQuery("");
           update({ ...DEFAULT_FILTERS, relay: filters.relay });
         }}
       >
@@ -902,52 +900,30 @@ function SelectedNapplet(props: { pointer: AddressPointer | EventPointer; relay:
 // ---------- App ----------
 
 export default function NappletStore() {
-  const filters$ = useMemo(() => new BehaviorSubject<Filters>(DEFAULT_FILTERS), []);
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
-  const view$ = useMemo(
-    () =>
-      new BehaviorSubject({
-        selected: null as AddressPointer | EventPointer | null,
-        login: false,
-        account: null as User | null,
-      }),
-    [],
-  );
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<AddressPointer | EventPointer | null>(null);
+  const [login, setLogin] = useState(false);
+  const [account, setAccount] = useState<User | null>(null);
 
-  const filters = use$(filters$);
-  const { selected, login, account } = use$(view$);
-  const update: Update = (changes) => filters$.next({ ...filters$.value, ...changes });
-  const setView = (changes: Partial<typeof view$.value>) => view$.next({ ...view$.value, ...changes });
-  const select: Select = (pointer) => setView({ selected: pointer });
+  const update: Update = (changes) => setFilters((filters) => ({ ...filters, ...changes }));
+  const select: Select = (pointer) => setSelected(pointer);
 
   // The signed-in user's contact pubkeys, loaded from their outboxes
-  const contacts$ = useMemo(
-    () =>
-      view$.pipe(
-        map((v) => v.account),
-        distinctUntilChanged(),
-        switchMap((user) => (user ? user.contacts$.pipe(map((users) => users.map((u) => u.pubkey))) : of(undefined))),
-        shareReplay({ bufferSize: 1, refCount: true }),
-      ),
-    [view$],
+  const contacts = use$(
+    () => (account ? account.contacts$.pipe(map((users) => users.map((u) => u.pubkey))) : of(undefined)),
+    [account],
   );
-  const contacts = use$(contacts$);
 
   // Re-run the relay query whenever the filters or contacts change
-  const results = use$(
-    () =>
-      combineLatest([filters$, contacts$.pipe(startWith(undefined), distinctUntilChanged())]).pipe(
-        switchMap(([filters, contacts]): Observable<Results> => {
-          if (filters.contactsOnly && !contacts?.length)
-            return of({ status: "waiting", message: "Waiting for your contact list…", napplets: [] });
+  const results = use$((): Observable<Results> => {
+    if (filters.contactsOnly && !contacts?.length)
+      return of({ status: "waiting", message: "Waiting for your contact list…", napplets: [] });
 
-          const filter = buildFilter(filters, contacts);
-          if (!filter) return of({ status: "ready", napplets: [] });
-          return searchNapplets(filters.relay, filter);
-        }),
-      ),
-    [filters$, contacts$],
-  );
+    const filter = buildFilter(filters, contacts);
+    if (!filter) return of({ status: "ready", napplets: [] });
+    return searchNapplets(filters.relay, filter);
+  }, [filters, contacts]);
 
   // Suggest archetypes and capabilities from the current results
   const known = useMemo(
@@ -960,7 +936,12 @@ export default function NappletStore() {
 
   if (login)
     return (
-      <LoginView onLogin={(_signer, pubkey) => setView({ login: false, account: castUser(pubkey, eventStore) })} />
+      <LoginView
+        onLogin={(_signer, pubkey) => {
+          setLogin(false);
+          setAccount(castUser(pubkey, eventStore));
+        }}
+      />
     );
 
   return (
@@ -969,7 +950,8 @@ export default function NappletStore() {
       <div className={selected ? "hidden" : "flex min-h-0 grow overflow-hidden"}>
         <FilterSidebar
           filters={filters}
-          query$={query$}
+          query={query}
+          setQuery={setQuery}
           update={update}
           known={known}
           contacts={{
@@ -977,9 +959,9 @@ export default function NappletStore() {
             contacts,
             contactsOnly: filters.contactsOnly,
             update,
-            login: () => setView({ login: true }),
+            login: () => setLogin(true),
             logout: () => {
-              setView({ account: null });
+              setAccount(null);
               update({ contactsOnly: false });
             },
           }}

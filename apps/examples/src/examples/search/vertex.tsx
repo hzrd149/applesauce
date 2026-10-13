@@ -9,7 +9,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, defer, map, Observable, of, startWith, switchMap } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
@@ -65,10 +65,9 @@ import { Vertex } from "applesauce-extra";
 import { type ISigner } from "applesauce-signers";
 import LoginView from "../../components/login-view";
 function Search({ signer }: { signer: ISigner }) {
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
+  const [query, setQuery] = useState("");
   const commands$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const creditRefresh$ = useMemo(() => new BehaviorSubject(0), []);
-  const query = use$(query$);
+  const [creditRefresh, setCreditRefresh] = useState(0);
   const vertex = use$(
     () =>
       new Observable<Vertex>((subscriber) => {
@@ -81,19 +80,13 @@ function Search({ signer }: { signer: ISigner }) {
   const balance = use$(
     () =>
       vertex
-        ? creditRefresh$.pipe(
-            switchMap(() =>
-              defer(() => vertex.getCreditBalance()).pipe(
-                map((credits) => ({ status: "ready" as const, credits, error: "" })),
-                startWith({ status: "loading" as const, credits: 0, error: "" }),
-                catchError((error) =>
-                  of({ status: "error" as const, credits: 0, error: String(error.message ?? error) }),
-                ),
-              ),
-            ),
+        ? defer(() => vertex.getCreditBalance()).pipe(
+            map((credits) => ({ status: "ready" as const, credits, error: "" })),
+            startWith({ status: "loading" as const, credits: 0, error: "" }),
+            catchError((error) => of({ status: "error" as const, credits: 0, error: String(error.message ?? error) })),
           )
         : undefined,
-    [vertex, creditRefresh$],
+    [vertex, creditRefresh],
   );
   const state = use$(
     () =>
@@ -128,7 +121,7 @@ function Search({ signer }: { signer: ISigner }) {
               ? balance.error
               : "Loading credits…"}
         </p>
-        <button className="btn btn-sm" onClick={() => creditRefresh$.next(creditRefresh$.value + 1)}>
+        <button className="btn btn-sm" onClick={() => setCreditRefresh((n) => n + 1)}>
           Refresh credits
         </button>
       </div>
@@ -143,7 +136,7 @@ function Search({ signer }: { signer: ISigner }) {
           className="input input-bordered flex-1"
           placeholder="Search Vertex profiles"
           value={query}
-          onChange={(event) => query$.next(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
         />
         <button className="btn btn-primary" disabled={!query.trim() || state?.status === "loading"}>
           Search
@@ -154,11 +147,10 @@ function Search({ signer }: { signer: ISigner }) {
   );
 }
 export default function VertexSearch() {
-  const session$ = useMemo(() => new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null), []);
-  const session = use$(session$);
+  const [session, setSession] = useState<{ signer: ISigner; pubkey: string } | null>(null);
   return session ? (
     <Search signer={session.signer} />
   ) : (
-    <LoginView onLogin={(signer, pubkey) => session$.next({ signer, pubkey })} />
+    <LoginView onLogin={(signer, pubkey) => setSession({ signer, pubkey })} />
   );
 }

@@ -32,7 +32,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -69,18 +69,16 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function MuteHashtagForm({ onAdd }: { onAdd: (hashtag: string, hidden: boolean) => Promise<boolean> }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
-  const hidden = use$(hidden$);
+  const [hidden, setHidden] = useState(false);
 
   const handleAdd = async () => {
     const hashtag = input.trim().toLowerCase().replace(/^#/, "");
     if (!hashtag) return;
     if (!(await onAdd(hashtag, hidden))) return;
-    input$.next("");
-    hidden$.next(false);
+    setInput("");
+    setHidden(false);
   };
 
   return (
@@ -94,19 +92,14 @@ function MuteHashtagForm({ onAdd }: { onAdd: (hashtag: string, hidden: boolean) 
           className="input input-bordered w-full"
           placeholder="Enter hashtag (without #)..."
           value={input}
-          onChange={(e) => input$.next(e.target.value)}
+          onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && handleAdd()}
         />
       </div>
       <div className="flex flex-col gap-2">
         <label className="label cursor-pointer">
           <span className="label-text">Hidden</span>
-          <input
-            type="checkbox"
-            checked={hidden}
-            onChange={(e) => hidden$.next(e.target.checked)}
-            className="checkbox"
-          />
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!input.trim()}>
           Add
@@ -117,18 +110,16 @@ function MuteHashtagForm({ onAdd }: { onAdd: (hashtag: string, hidden: boolean) 
 }
 
 function MuteWordForm({ onAdd }: { onAdd: (word: string, hidden: boolean) => Promise<boolean> }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
-  const hidden = use$(hidden$);
+  const [hidden, setHidden] = useState(false);
 
   const handleAdd = async () => {
     const word = input.trim().toLowerCase();
     if (!word) return;
     if (!(await onAdd(word, hidden))) return;
-    input$.next("");
-    hidden$.next(false);
+    setInput("");
+    setHidden(false);
   };
 
   return (
@@ -142,19 +133,14 @@ function MuteWordForm({ onAdd }: { onAdd: (word: string, hidden: boolean) => Pro
           className="input input-bordered w-full"
           placeholder="Enter word to mute..."
           value={input}
-          onChange={(e) => input$.next(e.target.value)}
+          onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === "Enter" && handleAdd()}
         />
       </div>
       <div className="flex flex-col gap-2">
         <label className="label cursor-pointer">
           <span className="label-text">Hidden</span>
-          <input
-            type="checkbox"
-            checked={hidden}
-            onChange={(e) => hidden$.next(e.target.checked)}
-            className="checkbox"
-          />
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!input.trim()}>
           Add
@@ -165,17 +151,15 @@ function MuteWordForm({ onAdd }: { onAdd: (word: string, hidden: boolean) => Pro
 }
 
 function MutePubkeyForm({ onAdd }: { onAdd: (pubkey: string, hidden: boolean) => Promise<boolean> }) {
-  const pubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState("");
 
-  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
-  const hidden = use$(hidden$);
+  const [hidden, setHidden] = useState(false);
 
   const handleAdd = async () => {
     if (!pubkey) return;
     if (!(await onAdd(pubkey, hidden))) return;
-    pubkey$.next("");
-    hidden$.next(false);
+    setPubkey("");
+    setHidden(false);
   };
 
   return (
@@ -184,17 +168,12 @@ function MutePubkeyForm({ onAdd }: { onAdd: (pubkey: string, hidden: boolean) =>
         <label className="label">
           <span className="label-text">User</span>
         </label>
-        <PubkeyPicker value={pubkey} onChange={(value: typeof pubkey$.value) => pubkey$.next(value)} />
+        <PubkeyPicker value={pubkey} onChange={(value: string) => setPubkey(value)} />
       </div>
       <div className="flex flex-col gap-2">
         <label className="label cursor-pointer">
           <span className="label-text">Hidden</span>
-          <input
-            type="checkbox"
-            checked={hidden}
-            onChange={(e) => hidden$.next(e.target.checked)}
-            className="checkbox"
-          />
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!pubkey}>
           Add
@@ -205,11 +184,9 @@ function MutePubkeyForm({ onAdd }: { onAdd: (pubkey: string, hidden: boolean) =>
 }
 
 function MuteThreadForm({ onAdd }: { onAdd: (thread: EventPointer, hidden: boolean) => Promise<boolean> }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
-  const hidden = use$(hidden$);
+  const [hidden, setHidden] = useState(false);
 
   const pointer = useMemo(() => {
     if (!input.trim()) return null;
@@ -229,8 +206,8 @@ function MuteThreadForm({ onAdd }: { onAdd: (thread: EventPointer, hidden: boole
   const handleAdd = async () => {
     if (!pointer || !event || !isEventPointer(pointer)) return;
     if (!(await onAdd(pointer, hidden))) return;
-    input$.next("");
-    hidden$.next(false);
+    setInput("");
+    setHidden(false);
   };
 
   const isValid = pointer && isEventPointer(pointer);
@@ -243,7 +220,7 @@ function MuteThreadForm({ onAdd }: { onAdd: (thread: EventPointer, hidden: boole
         className={`input input-bordered w-full ${showError ? "input-error" : ""}`}
         placeholder="Paste nevent here..."
         value={input}
-        onChange={(e) => input$.next(e.target.value)}
+        onChange={(e) => setInput(e.target.value)}
       />
       {showError && (
         <label className="label">
@@ -261,12 +238,7 @@ function MuteThreadForm({ onAdd }: { onAdd: (thread: EventPointer, hidden: boole
       <div className="flex gap-2 justify-end mt-2">
         <label className="label cursor-pointer">
           <span className="label-text">Hidden</span>
-          <input
-            type="checkbox"
-            checked={hidden}
-            onChange={(e) => hidden$.next(e.target.checked)}
-            className="checkbox"
-          />
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid || !event}>
           Add
@@ -490,8 +462,7 @@ function MuteManager({ user }: { user: User }) {
   const hiddenPubkeys = useMemo(() => Array.from(hidden?.pubkeys ?? []), [hidden?.pubkeys]);
   const hiddenThreads = useMemo(() => Array.from(hidden?.threads ?? []), [hidden?.threads]);
 
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [unlocking, setUnlocking] = useState(false);
 
   const handleMuteHashtag = async (hashtag: string, hidden: boolean) => {
     return actions
@@ -577,12 +548,12 @@ function MuteManager({ user }: { user: User }) {
     if (!mutes || !signer || unlocking) return;
 
     try {
-      unlocking$.next(true);
+      setUnlocking(true);
       await mutes.unlock(signer);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unlock hidden mutes");
     } finally {
-      unlocking$.next(false);
+      setUnlocking(false);
     }
   };
 

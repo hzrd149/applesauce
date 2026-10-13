@@ -5,7 +5,6 @@
  */
 import { use$ } from "applesauce-react/hooks";
 import {
-  BehaviorSubject,
   Subject,
   defer,
   exhaustMap,
@@ -26,11 +25,12 @@ import { RelayPool } from "applesauce-relay";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
+const relays = mergeRelaySets(["wss://relay.damus.io", "wss://nos.lol", "wss://nostr.land"]);
 
 import { NostrEvent } from "applesauce-core/helpers";
 
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 function EventRow({ event, relays }: { event: NostrEvent; relays: string[] }) {
   const seen = getSeenRelays(event);
@@ -62,22 +62,14 @@ function EventRow({ event, relays }: { event: NostrEvent; relays: string[] }) {
 }
 
 export default function PaginatedTimelineExample() {
-  const limit$ = useMemo(() => new BehaviorSubject(20), []);
-  const limit = use$(limit$);
-
-  const relays$ = useMemo(
-    () => new BehaviorSubject(mergeRelaySets(["wss://relay.damus.io", "wss://nos.lol", "wss://nostr.land"])),
-    [],
-  );
-  const relays = use$(relays$);
+  const [limit, setLimit] = useState(20);
 
   const loader = useMemo(() => {
     return createTimelineLoader(pool, relays, [{ kinds: [1] }], { limit, eventStore });
   }, [relays, limit]);
 
   const pages$ = useMemo(() => new Subject<void>(), [loader]);
-  const reset$ = useMemo(() => new BehaviorSubject(0), []);
-  const reset = use$(reset$);
+  const [reset, setReset] = useState(0);
   const request = use$(
     () =>
       defer(() => {
@@ -109,9 +101,9 @@ export default function PaginatedTimelineExample() {
   return (
     <div className="container mx-auto my-8">
       <div className="flex gap-2">
-        <input type="number" value={limit} onChange={(e) => limit$.next(Number(e.target.value))} />
+        <input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
 
-        <button className="btn" onClick={() => reset$.next(reset$.value + 1)}>
+        <button className="btn" onClick={() => setReset((n) => n + 1)}>
           Clear
         </button>
       </div>

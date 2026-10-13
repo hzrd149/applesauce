@@ -18,8 +18,8 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { map, BehaviorSubject, of } from "rxjs";
+import { useState } from "react";
+import { map, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -145,8 +145,7 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
 }
 
 export default function FavoriteRepositoriesFeed() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.ngit.dev/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.ngit.dev/");
 
   const feed = use$(
     () => relayTimeline(eventStore, pool, [relay], { kinds: [FAVORITE_GIT_REPOS_KIND], limit: 100 }),
@@ -185,7 +184,7 @@ export default function FavoriteRepositoriesFeed() {
       <div className="mb-5 flex gap-4 justify-between items-center">
         <RelayPicker
           value={relay}
-          onChange={(value: typeof relay$.value) => relay$.next(value)}
+          onChange={(value: typeof relay) => setRelay(value)}
           common={["wss://relay.ngit.dev/", "wss://gitnostr.com/"]}
         />
 

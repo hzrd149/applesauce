@@ -11,7 +11,7 @@ import { EventStore } from "applesauce-core";
 import { UpstreamPool } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   from,
   map,
@@ -94,8 +94,7 @@ function NoteEvent({ note }: { note: Note }) {
 }
 
 export default function UsingNostrifyExample() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   const loader = useMemo(
     () => createTimelineLoader(upstream, [relay], [{ kinds: [1] }], { eventStore: store, limit: 20 }),
@@ -130,7 +129,7 @@ export default function UsingNostrifyExample() {
 
   return (
     <div className="container mx-auto my-8 px-4">
-      <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
+      <RelayPicker value={relay} onChange={setRelay} />
       {request?.error && (
         <p role="alert" className="text-error">
           {request.error}

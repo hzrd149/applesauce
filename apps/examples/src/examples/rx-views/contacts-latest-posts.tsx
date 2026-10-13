@@ -5,7 +5,6 @@
  */
 import { default as NoteContent } from "../../components/note-content";
 import {
-  BehaviorSubject,
   catchError,
   combineLatest,
   isObservable,
@@ -30,7 +29,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { kinds } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
@@ -220,14 +219,9 @@ function ContactLatestRow({
 }
 
 export default function ContactsLatestPosts() {
-  const discoveryRelay$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_RELAY), []);
-  const discoveryRelay = use$(discoveryRelay$);
-
-  const selectedMonitorPubkey$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_MONITOR), []);
-  const selectedMonitorPubkey = use$(selectedMonitorPubkey$);
-
-  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const selectedPubkey = use$(selectedPubkey$);
+  const [discoveryRelay, setDiscoveryRelay] = useState(DEFAULT_DISCOVERY_RELAY);
+  const [selectedMonitorPubkey, setSelectedMonitorPubkey] = useState(DEFAULT_DISCOVERY_MONITOR);
+  const [selectedPubkey, setSelectedPubkey] = useState("");
 
   const monitors = use$(
     () =>
@@ -271,17 +265,14 @@ export default function ContactsLatestPosts() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <RelayPicker
-          value={discoveryRelay}
-          onChange={(next: typeof discoveryRelay$.value) => discoveryRelay$.next(next)}
-        />
+        <RelayPicker value={discoveryRelay} onChange={(next) => setDiscoveryRelay(next)} />
         {monitors && monitors.length > 0 && (
           <>
             <label className="text-sm font-medium text-base-content/60">Monitor (single, for RTT)</label>
             <select
               className="select select-bordered select-sm w-full"
               value={selectedMonitorPubkey}
-              onChange={(e) => selectedMonitorPubkey$.next(e.target.value)}
+              onChange={(e) => setSelectedMonitorPubkey(e.target.value)}
             >
               {monitors.map((m) => (
                 <MonitorOption key={m.uid} monitor={m} />
@@ -289,10 +280,7 @@ export default function ContactsLatestPosts() {
             </select>
           </>
         )}
-        <PubkeyPicker
-          value={selectedPubkey}
-          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
-        />
+        <PubkeyPicker value={selectedPubkey} onChange={(next) => setSelectedPubkey(next)} />
       </div>
 
       {!selectedPubkey && (

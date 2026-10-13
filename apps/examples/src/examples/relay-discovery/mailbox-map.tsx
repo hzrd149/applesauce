@@ -3,7 +3,7 @@
  * @tags nip-65, nip-66, relay-discovery, mailbox, map
  * @related relay-discovery/monitors-map, relay-discovery/contacts-relays
  */
-import { BehaviorSubject, combineLatest, map } from "rxjs";
+import { combineLatest, map } from "rxjs";
 
 import { RelayMonitor, castUser } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
@@ -15,7 +15,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { addEvents, openDB, getEventsForFilters } from "nostr-idb";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -188,14 +188,11 @@ function MonitorPicker({
 }
 
 export default function OutboxMap() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_RELAY), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
 
-  const selectedMonitor$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_MONITOR), []);
-  const selectedMonitor = use$(selectedMonitor$);
+  const [selectedMonitor, setSelectedMonitor] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
 
-  const selectedPubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedPubkey = use$(selectedPubkey$);
+  const [selectedPubkey, setSelectedPubkey] = useState<string>("");
 
   // Get the monitor's announcement event
   const monitors = use$(
@@ -363,20 +360,11 @@ export default function OutboxMap() {
         </p>
 
         <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
-          {monitors && (
-            <MonitorPicker
-              monitors={monitors}
-              onChange={(next: typeof selectedMonitor$.value) => selectedMonitor$.next(next)}
-              value={selectedMonitor}
-            />
-          )}
+          <RelayPicker value={relay} onChange={setRelay} />
+          {monitors && <MonitorPicker monitors={monitors} onChange={setSelectedMonitor} value={selectedMonitor} />}
         </div>
 
-        <PubkeyPicker
-          value={selectedPubkey}
-          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
-        />
+        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
 
         {!monitor && <div className="text-sm text-base-content/70">Select a monitor to view relay discovery data</div>}
 

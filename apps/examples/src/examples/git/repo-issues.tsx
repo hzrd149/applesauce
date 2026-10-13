@@ -43,7 +43,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { ChevronDown, CircleCheck, CircleDot, CircleSlash, MessageSquare } from "lucide-react";
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   auditTime,
   BehaviorSubject,
@@ -452,8 +452,7 @@ function SyncBanner({ summary }: { summary?: SyncSummary }) {
 
 /** Pick a repository by pasting an naddr, or from your own repositories when signed in */
 function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => void }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
   const selected = use$(repo$);
 
   // Sync your repository announcements from your outboxes when signed in
@@ -474,7 +473,7 @@ function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => voi
   const open = () => {
     if (pointer?.kind !== GIT_REPOSITORY_KIND) return;
     repo$.next(pointer as GitRepositoryPointer);
-    input$.next("");
+    setInput("");
   };
   const select = (repo: GitRepository) => repo$.next({ ...repo.pointer, relays: repo.relays.slice(0, 3) });
 
@@ -484,7 +483,7 @@ function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => voi
         className={`input flex-1 min-w-64 ${invalid ? "input-error" : ""}`}
         placeholder="Paste a repository naddr..."
         value={input}
-        onChange={(e) => input$.next(e.target.value)}
+        onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && open()}
       />
       <button className="btn" disabled={invalid || !pointer} onClick={open}>
@@ -566,19 +565,20 @@ function IssueComposer({
   onCancel: () => void;
   onPublished: () => void;
 }) {
-  const form$ = useMemo(() => new BehaviorSubject({ subject: "", content: "", busy: false, message: "" }), []);
-  const form = use$(form$);
+  const [subject, setSubject] = useState("");
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
   const signer = use$(signer$);
   const repo = use$(
     () => eventStore.replaceable(pointer).pipe(castEventStream(GitRepository, eventStore)),
     [getReplaceableAddressFromPointer(pointer)],
   );
-  const set = (changes: Partial<typeof form>) => form$.next({ ...form$.value, ...changes });
 
   const submit = async () => {
-    if (!signer || form$.value.busy) return;
-    const { subject, content } = form$.value;
-    set({ busy: true, message: "" });
+    if (!signer || busy) return;
+    setBusy(true);
+    setMessage("");
     try {
       const event = await GitIssueFactory.create(repo?.event ?? pointer, subject.trim() || null, content).sign(signer);
       const outboxes = await user.outboxes$.$first(3000, []);
@@ -587,9 +587,9 @@ function IssueComposer({
       eventStore.add(event);
       onPublished();
     } catch (error) {
-      set({ message: error instanceof Error ? error.message : String(error) });
+      setMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      set({ busy: false });
+      setBusy(false);
     }
   };
 
@@ -608,9 +608,9 @@ function IssueComposer({
           <input
             className="input w-full"
             placeholder="Subject (optional)"
-            value={form.subject}
-            disabled={form.busy}
-            onChange={(event) => set({ subject: event.target.value })}
+            value={subject}
+            disabled={busy}
+            onChange={(event) => setSubject(event.target.value)}
           />
         </label>
         <label className="block space-y-2">
@@ -619,22 +619,22 @@ function IssueComposer({
             className="textarea w-full"
             rows={10}
             placeholder="Describe the issue"
-            value={form.content}
-            disabled={form.busy}
-            onChange={(event) => set({ content: event.target.value })}
+            value={content}
+            disabled={busy}
+            onChange={(event) => setContent(event.target.value)}
           />
         </label>
         <div className="flex gap-2">
-          <button className="btn btn-primary" disabled={!signer || form.busy || !form.content.trim()}>
-            {form.busy ? "Publishing..." : "Publish issue"}
+          <button className="btn btn-primary" disabled={!signer || busy || !content.trim()}>
+            {busy ? "Publishing..." : "Publish issue"}
           </button>
-          <button type="button" className="btn btn-ghost" disabled={form.busy} onClick={onCancel}>
+          <button type="button" className="btn btn-ghost" disabled={busy} onClick={onCancel}>
             Cancel
           </button>
         </div>
-        {form.message ? (
+        {message ? (
           <p role="status" className="text-sm">
-            {form.message}
+            {message}
           </p>
         ) : null}
       </form>
@@ -644,11 +644,9 @@ function IssueComposer({
 
 function IssuesView({ pointer, user }: { pointer: GitRepositoryPointer; user?: User }) {
   const coord = getReplaceableAddressFromPointer(pointer);
-  const query$ = useMemo(() => new BehaviorSubject<Query>(DEFAULT_QUERY), []);
-  const query = use$(query$);
-  const update = (changes: Partial<Query>) => query$.next({ ...query$.value, ...changes });
-  const limit$ = useMemo(() => new BehaviorSubject(PAGE_SIZE), []);
-  const limit = use$(limit$);
+  const [query, setQuery] = useState<Query>(DEFAULT_QUERY);
+  const update = (changes: Partial<Query>) => setQuery((q) => ({ ...q, ...changes }));
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   const summary = use$(() => issuesSync$(pointer), [coord]);
   const rows = use$(() => issueRows$(pointer), [coord]);
@@ -690,7 +688,7 @@ function IssuesView({ pointer, user }: { pointer: GitRepositoryPointer; user?: U
               pointer={pointer}
               user={user}
               onCancel={() => update({ view: "all" })}
-              onPublished={() => query$.next(DEFAULT_QUERY)}
+              onPublished={() => setQuery(DEFAULT_QUERY)}
             />
           ) : (
             <>
@@ -757,7 +755,7 @@ function IssuesView({ pointer, user }: { pointer: GitRepositoryPointer; user?: U
                     .map((row) => <IssueRow key={row.issue.id} row={row} onLabel={(label) => update({ label })} />)
                 )}
                 {visible.length > limit ? (
-                  <button className="btn btn-ghost w-full text-primary" onClick={() => limit$.next(limit + PAGE_SIZE)}>
+                  <button className="btn btn-ghost w-full text-primary" onClick={() => setLimit(limit + PAGE_SIZE)}>
                     Load more
                   </button>
                 ) : null}
@@ -786,13 +784,12 @@ function ClearCache() {
 export default function RepositoryIssues() {
   const user = use$(user$);
   const pointer = use$(repo$);
-  const signIn$ = useMemo(() => new BehaviorSubject(false), []);
-  const signingIn = use$(signIn$);
+  const [signingIn, setSigningIn] = useState(false);
 
   const handleLogin = useCallback(async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     pubkey$.next(pubkey);
-    signIn$.next(false);
+    setSigningIn(false);
   }, []);
 
   if (signingIn) return <LoginView onLogin={handleLogin} />;
@@ -800,7 +797,7 @@ export default function RepositoryIssues() {
   return (
     <div className="flex flex-col min-h-0 grow w-full">
       <div className="border-b border-base-300 p-3">
-        <RepositoryPicker user={user} onSignIn={() => signIn$.next(true)} />
+        <RepositoryPicker user={user} onSignIn={() => setSigningIn(true)} />
       </div>
       {pointer ? (
         <IssuesView key={getReplaceableAddressFromPointer(pointer)} pointer={pointer} user={user} />

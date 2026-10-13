@@ -46,7 +46,7 @@ import {
   GitPullRequestDraft,
   MessageSquare,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   auditTime,
   BehaviorSubject,
@@ -447,14 +447,12 @@ function ThreadRow({ row }: { row: Row }) {
 const PAGE_SIZE = 10;
 
 function ThreadSection({ section }: { section: Section }) {
-  const open$ = useMemo(() => new BehaviorSubject(true), []);
-  const open = use$(open$);
-  const limit$ = useMemo(() => new BehaviorSubject(PAGE_SIZE), []);
-  const limit = use$(limit$);
+  const [open, setOpen] = useState(true);
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   return (
     <section className="space-y-2">
-      <button className="flex items-center gap-2 font-semibold" onClick={() => open$.next(!open)}>
+      <button className="flex items-center gap-2 font-semibold" onClick={() => setOpen(!open)}>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         {section.title}
         <span className="badge">{section.rows.length}</span>
@@ -465,7 +463,7 @@ function ThreadSection({ section }: { section: Section }) {
             <ThreadRow key={row.thread.id} row={row} />
           ))}
           {section.rows.length > limit ? (
-            <button className="btn btn-ghost w-full text-primary" onClick={() => limit$.next(limit + PAGE_SIZE)}>
+            <button className="btn btn-ghost w-full text-primary" onClick={() => setLimit(limit + PAGE_SIZE)}>
               Load more
             </button>
           ) : null}
@@ -542,14 +540,10 @@ const SIDEBAR: { filter: ViewFilter; label: string }[] = [
 ];
 
 function DashboardView({ user }: { user: User }) {
-  const view$ = useMemo(() => new BehaviorSubject<ViewFilter>("inbox"), []);
-  const view = use$(view$);
-  const state$ = useMemo(() => new BehaviorSubject<GitStatus>("open"), []);
-  const state = use$(state$);
-  const range$ = useMemo(() => new BehaviorSubject(RANGES[1]), []);
-  const range = use$(range$);
-  const selected$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
-  const selected = use$(selected$);
+  const [view, setView] = useState<ViewFilter>("inbox");
+  const [state, setState] = useState<GitStatus>("open");
+  const [range, setRange] = useState(RANGES[1]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const profile = use$(user.profile$);
 
@@ -608,7 +602,7 @@ function DashboardView({ user }: { user: User }) {
           <li className="menu-title">Pull requests</li>
           {SIDEBAR.map((item) => (
             <li key={item.filter}>
-              <button className={view === item.filter ? "menu-active" : ""} onClick={() => view$.next(item.filter)}>
+              <button className={view === item.filter ? "menu-active" : ""} onClick={() => setView(item.filter)}>
                 {item.label}
               </button>
             </li>
@@ -620,11 +614,11 @@ function DashboardView({ user }: { user: User }) {
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold flex-1">{title}</h1>
-            <RepositoryPicker repos={repos ?? []} selected={selected} onChange={(s) => selected$.next(s)} />
+            <RepositoryPicker repos={repos ?? []} selected={selected} onChange={setSelected} />
             <select
               className="select w-40"
               value={range.label}
-              onChange={(e) => range$.next(RANGES.find((r) => r.label === e.target.value)!)}
+              onChange={(e) => setRange(RANGES.find((r) => r.label === e.target.value)!)}
             >
               {RANGES.map((r) => (
                 <option key={r.label}>{r.label}</option>
@@ -647,7 +641,7 @@ function DashboardView({ user }: { user: User }) {
               <button
                 key={s}
                 className={`btn btn-ghost ${state === s ? "font-semibold" : "text-base-content/60"}`}
-                onClick={() => state$.next(s)}
+                onClick={() => setState(s)}
               >
                 <StatusIcon status={s} />
                 {STATUS_LABELS[s]}

@@ -19,7 +19,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Controller, useForm, useWatch, type Control, type UseFormSetValue } from "react-hook-form";
 import { BehaviorSubject, EMPTY, map, of } from "rxjs";
 import LoginView from "../../components/login-view";
@@ -138,14 +138,13 @@ function StringListEditor({
   normalize?: (value: string) => string;
   empty: string;
 }) {
-  const draft$ = useMemo(() => new BehaviorSubject(""), []);
-  const draft = use$(draft$);
+  const [draft, setDraft] = useState("");
 
   const add = () => {
     const entry = draft.trim() && normalize(draft.trim());
     if (!entry || value.includes(entry)) return;
     onChange([...value, entry]);
-    draft$.next("");
+    setDraft("");
   };
 
   return (
@@ -168,7 +167,7 @@ function StringListEditor({
           className="input input-sm w-full font-mono"
           value={draft}
           placeholder={placeholder}
-          onChange={(e) => draft$.next(e.target.value)}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();
@@ -279,8 +278,7 @@ function GeneralSettings({ repository, control }: SettingsProps & { repository: 
 }
 
 function CollaboratorSettings({ user, control }: SettingsProps & { user: User }) {
-  const draft$ = useMemo(() => new BehaviorSubject(""), []);
-  const draft = use$(draft$);
+  const [draft, setDraft] = useState("");
 
   return (
     <Controller
@@ -308,7 +306,7 @@ function CollaboratorSettings({ user, control }: SettingsProps & { user: User })
             <div className="flex gap-2 items-start">
               <PubkeyPicker
                 value={draft}
-                onChange={(pk) => draft$.next(pk)}
+                onChange={(pk) => setDraft(pk)}
                 placeholder="Search or paste a maintainer pubkey"
                 className="flex-1"
               />
@@ -318,7 +316,7 @@ function CollaboratorSettings({ user, control }: SettingsProps & { user: User })
                 disabled={!canAdd}
                 onClick={() => {
                   field.onChange([...field.value, draft]);
-                  draft$.next("");
+                  setDraft("");
                 }}
               >
                 Add maintainer
@@ -457,8 +455,7 @@ function RelaySettings({ control }: SettingsProps) {
 }
 
 function TopicSettings({ control }: SettingsProps) {
-  const draft$ = useMemo(() => new BehaviorSubject(""), []);
-  const draft = use$(draft$);
+  const [draft, setDraft] = useState("");
 
   return (
     <Section title="Topics" description="Hashtags (t tags) that help people discover the repository.">
@@ -470,7 +467,7 @@ function TopicSettings({ control }: SettingsProps) {
             const topic = draft.trim().replace(/^#/, "").toLowerCase();
             if (topic && topic !== PERSONAL_FORK_TAG && !field.value.includes(topic))
               field.onChange([...field.value, topic]);
-            draft$.next("");
+            setDraft("");
           };
 
           return (
@@ -494,7 +491,7 @@ function TopicSettings({ control }: SettingsProps) {
                   className="input w-full"
                   placeholder="Add a topic"
                   value={draft}
-                  onChange={(e) => draft$.next(e.target.value)}
+                  onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter" && e.key !== ",") return;
                     e.preventDefault();
@@ -643,19 +640,16 @@ function DangerZone({
   repository: GitRepository;
   onDelete: (reason: string) => Promise<void>;
 }) {
-  const confirm$ = useMemo(() => new BehaviorSubject(""), []);
-  const confirm = use$(confirm$);
-  const reason$ = useMemo(() => new BehaviorSubject(""), []);
-  const reason = use$(reason$);
-  const deleting$ = useMemo(() => new BehaviorSubject(false), []);
-  const deleting = use$(deleting$);
+  const [confirm, setConfirm] = useState("");
+  const [reason, setReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    deleting$.next(true);
+    setDeleting(true);
     try {
       await onDelete(reason.trim());
     } finally {
-      deleting$.next(false);
+      setDeleting(false);
     }
   };
 
@@ -673,13 +667,13 @@ function DangerZone({
           className="input w-full"
           placeholder="Reason (optional)"
           value={reason}
-          onChange={(e) => reason$.next(e.target.value)}
+          onChange={(e) => setReason(e.target.value)}
         />
         <div>
           <label className="label">
             Type <code className="font-mono">{repository.identifier}</code> to confirm
           </label>
-          <input className="input w-full font-mono" value={confirm} onChange={(e) => confirm$.next(e.target.value)} />
+          <input className="input w-full font-mono" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </div>
         <button
           type="button"
@@ -713,8 +707,7 @@ function RepositorySettings({
   const outboxes = use$(user.outboxes$);
   const graspServers = use$(user.graspServers$)?.servers;
 
-  const status$ = useMemo(() => new BehaviorSubject<{ type: "success" | "error"; message: string } | null>(null), []);
-  const status = use$(status$);
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   // Passing `values` resets the form whenever a new revision of the announcement arrives
   const settings = useMemo(() => toSettings(repository), [repository]);
@@ -740,7 +733,7 @@ function RepositorySettings({
   const save = handleSubmit(async (values) => {
     if (!signer) return;
     try {
-      status$.next(null);
+      setStatus(null);
       const signed = await GitRepositoryFactory.modify(repository.event)
         .name(values.name.trim() || null)
         .description(values.description.trim() || null)
@@ -755,22 +748,22 @@ function RepositorySettings({
 
       await publish(signed, values.relays);
       eventStore.add(signed);
-      status$.next({ type: "success", message: "Repository settings saved." });
+      setStatus({ type: "success", message: "Repository settings saved." });
     } catch (err) {
-      status$.next({ type: "error", message: err instanceof Error ? err.message : "Failed to save repository" });
+      setStatus({ type: "error", message: err instanceof Error ? err.message : "Failed to save repository" });
     }
   });
 
   const deleteRepository = async (reason: string) => {
     if (!signer) return;
     try {
-      status$.next(null);
+      setStatus(null);
       const signed = await DeleteFactory.fromEvents([repository.event], reason).sign(signer);
       await publish(signed, repository.relays);
       // The event store applies the deletion and removes the announcement from the timeline
       eventStore.add(signed);
     } catch (err) {
-      status$.next({ type: "error", message: err instanceof Error ? err.message : "Failed to delete repository" });
+      setStatus({ type: "error", message: err instanceof Error ? err.message : "Failed to delete repository" });
     }
   };
 
@@ -851,10 +844,8 @@ function RepositoryManagerView({ user }: { user: User }) {
   );
 
   // Select by address (uid) so the selection survives new revisions
-  const selectedUid$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedUid = use$(selectedUid$);
-  const tab$ = useMemo(() => new BehaviorSubject<TabId>("general"), []);
-  const tab = use$(tab$);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>("general");
 
   const selected = repositories?.find((repo) => repo.uid === selectedUid) ?? repositories?.[0];
 
@@ -876,11 +867,7 @@ function RepositoryManagerView({ user }: { user: User }) {
           <h1 className="text-2xl font-semibold truncate">{selected.name || selected.identifier}</h1>
           {selected.description ? <p className="text-base-content/60 truncate">{selected.description}</p> : null}
         </div>
-        <select
-          className="select w-full sm:w-72"
-          value={selected.uid}
-          onChange={(e) => selectedUid$.next(e.target.value)}
-        >
+        <select className="select w-full sm:w-72" value={selected.uid} onChange={(e) => setSelectedUid(e.target.value)}>
           {repositories.map((repo) => (
             <option key={repo.uid} value={repo.uid}>
               {repo.name || repo.identifier}
@@ -894,7 +881,7 @@ function RepositoryManagerView({ user }: { user: User }) {
         repository={selected}
         user={user}
         tab={tab}
-        onTabChange={(t) => tab$.next(t)}
+        onTabChange={(t) => setTab(t)}
       />
     </div>
   );

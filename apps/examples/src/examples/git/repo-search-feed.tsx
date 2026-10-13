@@ -22,9 +22,8 @@ import { processTags } from "applesauce-core/helpers/tags";
 import { createEventLoaderForStore, createReactionsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
-  BehaviorSubject,
   catchError,
   combineLatest,
   defer,
@@ -420,13 +419,9 @@ function RepoRow({ repo, onSelect }: { repo: GitRepository; onSelect: () => void
 }
 
 export default function RepoSearchFeed() {
-  const relay$ = useMemo(() => new BehaviorSubject(DEFAULT_INDEX_RELAY), []);
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
-  const selected$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-
-  const relay = use$(relay$);
-  const query = use$(query$);
-  const selected = use$(selected$);
+  const [relay, setRelay] = useState(DEFAULT_INDEX_RELAY);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<string | null>(null);
 
   const search = use$(() => searchRepos(relay, query), [relay, query]);
   const repos = search?.repos ?? [];
@@ -439,7 +434,7 @@ export default function RepoSearchFeed() {
           className="join flex flex-1"
           onSubmit={(e) => {
             e.preventDefault();
-            query$.next(String(new FormData(e.currentTarget).get("q") ?? "").trim());
+            setQuery(String(new FormData(e.currentTarget).get("q") ?? "").trim());
           }}
         >
           <input
@@ -456,7 +451,7 @@ export default function RepoSearchFeed() {
         </form>
         <RelayPicker
           value={relay}
-          onChange={(r) => relay$.next(r)}
+          onChange={(r) => setRelay(r)}
           common={[DEFAULT_INDEX_RELAY, "wss://relay.ngit.dev/", "wss://search.nos.today"]}
         />
       </div>
@@ -470,7 +465,7 @@ export default function RepoSearchFeed() {
       {repos.length > 0 ? (
         <ul className="border border-base-300 divide-y divide-base-300">
           {repos.map((repo) => (
-            <RepoRow key={repo.uid} repo={repo} onSelect={() => selected$.next(repo.uid)} />
+            <RepoRow key={repo.uid} repo={repo} onSelect={() => setSelected(repo.uid)} />
           ))}
         </ul>
       ) : !search || search.status === "loading" ? (
@@ -486,7 +481,7 @@ export default function RepoSearchFeed() {
       )}
 
       {selectedRepo && (
-        <RepoDetails key={selectedRepo.uid} repo={selectedRepo} relay={relay} onClose={() => selected$.next(null)} />
+        <RepoDetails key={selectedRepo.uid} repo={selectedRepo} relay={relay} onClose={() => setSelected(null)} />
       )}
     </div>
   );

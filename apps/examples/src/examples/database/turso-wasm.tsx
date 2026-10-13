@@ -4,13 +4,13 @@
  * @related database/worker-relay
  */
 import { use$ } from "applesauce-react/hooks";
-import { BehaviorSubject, defer, catchError, of, combineLatest, switchMap, map, startWith } from "rxjs";
+import { defer, catchError, of, map, startWith } from "rxjs";
 
 import { AsyncEventStore } from "applesauce-core";
 import { NostrEvent, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
 import { connect } from "@tursodatabase/database-wasm/vite";
-import { ChangeEvent, FormEvent, useRef, useMemo } from "react";
+import { ChangeEvent, FormEvent, useRef, useState } from "react";
 
 // Initialize database and event store
 let eventDatabase: TursoWasmEventDatabase | null = null;
@@ -142,20 +142,13 @@ function EventsTable({ events }: { events: NostrEvent[] }) {
 
 // Main component
 export default function TursoWasmExample() {
-  const isLoading$ = useMemo(() => new BehaviorSubject(false), []);
-  const isLoading = use$(isLoading$);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const operationError = use$(error$);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
-  const kindFilter$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
-  const kindFilter = use$(kindFilter$);
+  const [kindFilter, setKindFilter] = useState<number | null>(null);
 
-  const importStats$ = useMemo(
-    () => new BehaviorSubject<{ total: number; added: number; failed: number } | null>(null),
-    [],
-  );
-  const importStats = use$(importStats$);
+  const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,33 +163,29 @@ export default function TursoWasmExample() {
     [],
   );
   const isInitialized = startup?.ready ?? false;
-  const refresh$ = useMemo(() => new BehaviorSubject(0), []);
+  const [refresh, setRefresh] = useState(0);
   const query = use$(
     () =>
       isInitialized && eventStore
-        ? combineLatest([kindFilter$, refresh$]).pipe(
-            switchMap(([kind]) =>
-              eventStore!.timeline({ limit: 1000, ...(kind === null ? {} : { kinds: [kind] }) }).pipe(
-                map((events) => ({ events, loading: false, error: undefined as string | undefined })),
-                catchError((error) =>
-                  of({ events: [] as NostrEvent[], loading: false, error: String(error.message ?? error) }),
-                ),
-                startWith({ events: [] as NostrEvent[], loading: true, error: undefined as string | undefined }),
-              ),
+        ? eventStore!.timeline({ limit: 1000, ...(kindFilter === null ? {} : { kinds: [kindFilter] }) }).pipe(
+            map((events) => ({ events, loading: false, error: undefined as string | undefined })),
+            catchError((error) =>
+              of({ events: [] as NostrEvent[], loading: false, error: String(error.message ?? error) }),
             ),
+            startWith({ events: [] as NostrEvent[], loading: true, error: undefined as string | undefined }),
           )
         : of(undefined),
-    [isInitialized],
+    [isInitialized, kindFilter, refresh],
   );
   const events = query?.events ?? [];
   const error = operationError ?? startup?.error ?? query?.error;
   const loadAllEvents = () => {
-    kindFilter$.next(null);
-    refresh$.next(refresh$.value + 1);
+    setKindFilter(null);
+    setRefresh((refresh) => refresh + 1);
   };
   const handleFilter = (e: FormEvent) => {
     e.preventDefault();
-    refresh$.next(refresh$.value + 1);
+    setRefresh((refresh) => refresh + 1);
   };
 
   // Handle file import
@@ -205,21 +194,21 @@ export default function TursoWasmExample() {
     if (!file) return;
 
     if (!file.name.endsWith(".jsonl")) {
-      error$.next("Please select a .jsonl file");
+      setOperationError("Please select a .jsonl file");
       return;
     }
 
-    isLoading$.next(true);
-    error$.next(null);
+    setIsLoading(true);
+    setOperationError(null);
 
     try {
       const stats = await importEventsFromJsonl(file);
-      importStats$.next(stats);
+      setImportStats(stats);
       await loadAllEvents(); // Reload events after import
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Import failed");
+      setOperationError(err instanceof Error ? err.message : "Import failed");
     } finally {
-      isLoading$.next(false);
+      setIsLoading(false);
     }
 
     // Reset file input
@@ -231,7 +220,7 @@ export default function TursoWasmExample() {
   // Handle export
   const handleExport = () => {
     if (events.length === 0) {
-      error$.next("No events to export");
+      setOperationError("No events to export");
       return;
     }
 
@@ -248,19 +237,19 @@ export default function TursoWasmExample() {
 
     if (!eventStore) return;
 
-    isLoading$.next(true);
-    error$.next(null);
+    setIsLoading(true);
+    setOperationError(null);
 
     try {
       // Use removeByFilters with empty filter to clear all events
       await eventStore.removeByFilters({});
 
-      refresh$.next(refresh$.value + 1);
-      importStats$.next(null);
+      setRefresh((refresh) => refresh + 1);
+      setImportStats(null);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to clear database");
+      setOperationError(err instanceof Error ? err.message : "Failed to clear database");
     } finally {
-      isLoading$.next(false);
+      setIsLoading(false);
     }
   };
 
@@ -385,7 +374,7 @@ export default function TursoWasmExample() {
             <label className="block text-sm font-medium mb-2">Event Kind</label>
             <select
               value={kindFilter ?? ""}
-              onChange={(e) => kindFilter$.next(e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) => setKindFilter(e.target.value === "" ? null : Number(e.target.value))}
               className="select select-bordered w-48"
               disabled={isLoading || query?.loading}
             >

@@ -42,7 +42,7 @@ import { type ComponentMap, use$, useRenderedContent } from "applesauce-react/ho
 import { RelayPool } from "applesauce-relay";
 import { AtSign, MessageSquare, MessagesSquare } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   auditTime,
   BehaviorSubject,
@@ -684,10 +684,8 @@ function ThreadView({ event, user }: { event: NostrEvent; user: User }) {
 }
 
 function NotificationsView({ user, range }: { user: User; range: Range }) {
-  const selected$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const selected = use$(selected$);
-  const limit$ = useMemo(() => new BehaviorSubject(PAGE_SIZE), []);
-  const limit = use$(limit$);
+  const [selected, setSelected] = useState<string | undefined>(undefined);
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   // Re-syncing a range that overlaps an earlier one is cheap, negentropy only transfers what the store is missing
   const summary = use$(() => mentionsSync$(user, range), [user.pubkey, range]);
@@ -724,12 +722,12 @@ function NotificationsView({ user, range }: { user: User; range: Range }) {
                   key={mention.id}
                   event={mention}
                   selected={mention.id === selected}
-                  onSelect={() => selected$.next(mention.id)}
+                  onSelect={() => setSelected(mention.id)}
                 />
               ))
           )}
           {mentions && mentions.length > limit ? (
-            <button className="btn btn-ghost w-full text-primary" onClick={() => limit$.next(limit + PAGE_SIZE)}>
+            <button className="btn btn-ghost w-full text-primary" onClick={() => setLimit(limit + PAGE_SIZE)}>
               Load more
             </button>
           ) : null}

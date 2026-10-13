@@ -16,8 +16,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer, decodePointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useRef, useMemo } from "react";
-import { map, BehaviorSubject } from "rxjs";
+import { useRef, useMemo, useState } from "react";
+import { map } from "rxjs";
 
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import RelayPicker from "../../components/relay-picker";
@@ -32,8 +32,7 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | ProfilePointer }) {
-  const isExpanded$ = useMemo(() => new BehaviorSubject(false), []);
-  const isExpanded = use$(isExpanded$);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Load event for event pointers or address pointers
   const event = use$(() => {
@@ -51,7 +50,7 @@ function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | 
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-semibold">Decoded Data</h2>
           {(isEventPointer(pointer) || isAddressPointer(pointer)) && (
-            <button className="btn btn-sm" onClick={() => isExpanded$.next(!isExpanded)}>
+            <button className="btn btn-sm" onClick={() => setIsExpanded(!isExpanded)}>
               {isExpanded ? "Hide" : "Show"} Event Preview
             </button>
           )}
@@ -137,11 +136,9 @@ function HandlerCard({
 }
 
 export default function LinkHandlerExample() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
 
-  const input$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState<string>("");
 
   const { pointer, error } = useMemo(() => {
     if (!input.trim()) return { pointer: null, error: null };
@@ -206,14 +203,14 @@ export default function LinkHandlerExample() {
             className="input input-bordered w-full join-item min-w-xs"
             placeholder="Enter NIP-19 entity (e.g., npub1, note1, nevent1, naddr1, nprofile1)"
             value={input}
-            onChange={(e) => input$.next(e.target.value)}
+            onChange={(e) => setInput(e.target.value)}
           />
-          <div className="btn join-item" onClick={() => input$.next("")}>
+          <div className="btn join-item" onClick={() => setInput("")}>
             Reset
           </div>
         </div>
 
-        <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={(value: typeof relay) => setRelay(value)} />
       </div>
 
       {error && (

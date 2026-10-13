@@ -10,7 +10,7 @@ import { EventStore } from "applesauce-core";
 import { getSeenRelays, mergeRelaySets, unixNow } from "applesauce-core/helpers";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useRef, useCallback } from "react";
+import { useMemo, useRef, useCallback, useState } from "react";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -19,27 +19,18 @@ const COLORS = ["red", "green", "blue", "orange", "purple", "darkcyan"];
 
 export default function TimelineExample() {
   const now = useMemo(() => unixNow(), []);
-  const limit$ = useMemo(() => new BehaviorSubject(50), []);
-  const limit = use$(limit$);
-
-  const frame$ = useMemo(() => new BehaviorSubject(60 * 60), []);
-  const frame = use$(frame$);
-
-  const relays$ = useMemo(
-    () =>
-      new BehaviorSubject(
-        mergeRelaySets([
-          "wss://nostrue.com/",
-          "wss://nos.lol/",
-          "wss://nostr.bitcoiner.social/",
-          "wss://relay.damus.io/",
-          "wss://nostrelites.org/",
-          "wss://nostr.wine/",
-        ]),
-      ),
-    [],
+  const [limit, setLimit] = useState(50);
+  const [frame] = useState(60 * 60);
+  const [relays] = useState(() =>
+    mergeRelaySets([
+      "wss://nostrue.com/",
+      "wss://nos.lol/",
+      "wss://nostr.bitcoiner.social/",
+      "wss://relay.damus.io/",
+      "wss://nostrelites.org/",
+      "wss://nostr.wine/",
+    ]),
   );
-  const relays = use$(relays$);
 
   const seconds$ = useMemo(() => new BehaviorSubject(0), []);
   const seconds = use$(seconds$);
@@ -83,13 +74,13 @@ export default function TimelineExample() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="join">
-        <button className="btn join-item" onClick={() => limit$.next(50)}>
+        <button className="btn join-item" onClick={() => setLimit(50)}>
           50
         </button>
-        <button className="btn join-item" onClick={() => limit$.next(100)}>
+        <button className="btn join-item" onClick={() => setLimit(100)}>
           100
         </button>
-        <button className="btn join-item" onClick={() => limit$.next(200)}>
+        <button className="btn join-item" onClick={() => setLimit(200)}>
           200
         </button>
       </div>

@@ -15,8 +15,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers/event";
 
-import { useMemo } from "react";
-import { map, BehaviorSubject, Subject, materialize, scan, startWith } from "rxjs";
+import { useMemo, useState } from "react";
+import { map, Subject, materialize, scan, startWith } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -137,8 +137,7 @@ function NoteItem({ note }: { note: Note }) {
 }
 
 export default function FeedWithReactions() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   const filter = useMemo(
     () => ({
@@ -162,7 +161,7 @@ export default function FeedWithReactions() {
     <div className="container mx-auto my-8 px-4">
       <div className="mb-4">
         <h1 className="text-2xl font-bold mb-4">Feed with Reactions</h1>
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
       </div>
 
       {page?.error && (

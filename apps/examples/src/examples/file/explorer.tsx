@@ -6,7 +6,7 @@
 import { castTimelineStream } from "applesauce-common/observable";
 
 import { relayTimeline } from "../../extra/relay-timeline";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { FileMetadata } from "applesauce-common/casts";
 
@@ -15,7 +15,7 @@ import { getDisplayName, getProfilePicture, kinds } from "applesauce-core/helper
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { BehaviorSubject, combineLatest, map, shareReplay, switchMap, distinctUntilChanged, of } from "rxjs";
+import { map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -285,65 +285,46 @@ function FileCard({ file, onSelect }: { file: FileMetadata; onSelect: () => void
 }
 
 export default function FileExplorerExample() {
-  const state$ = useMemo(
+  const [relay, setRelay] = useState(DEFAULT_RELAY);
+  const [search, setSearch] = useState("");
+  const [selectedMimeTypes, setSelectedMimeTypes] = useState<string[]>([]);
+  const [selected, setSelected] = useState<FileMetadata | null>(null);
+  const feed = use$(
     () =>
-      new BehaviorSubject({
-        relay: DEFAULT_RELAY,
-        search: "",
-        mimeTypes: [] as string[],
-        selected: null as FileMetadata | null,
-      }),
-    [],
-  );
-  const { relay, search, mimeTypes: selectedMimeTypes, selected } = use$(state$);
-  const update = (value: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...value });
-  const feed$ = useMemo(
-    () =>
-      state$.pipe(
-        map(({ relay, mimeTypes }) => ({
-          relay,
-          filter: { kinds: [kinds.FileMetadata], limit: 500, ...(mimeTypes.length ? { "#m": mimeTypes } : {}) },
-        })),
-        distinctUntilChanged((a, b) => a.relay === b.relay && JSON.stringify(a.filter) === JSON.stringify(b.filter)),
-        switchMap(({ relay, filter }) =>
-          relayTimeline(eventStore, pool, relay ? [relay] : [], filter).pipe(
-            switchMap((result) =>
-              of(result.events).pipe(
-                castTimelineStream(FileMetadata, eventStore),
-                map((events) => ({ ...result, events })),
-              ),
-            ),
+      relayTimeline(eventStore, pool, relay ? [relay] : [], {
+        kinds: [kinds.FileMetadata],
+        limit: 500,
+        ...(selectedMimeTypes.length ? { "#m": selectedMimeTypes } : {}),
+      }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(FileMetadata, eventStore),
+            map((events) => ({ ...result, events })),
           ),
         ),
-        shareReplay({ bufferSize: 1, refCount: true }),
       ),
-    [state$],
+    [relay, selectedMimeTypes.join(",")],
   );
-  const result = use$(
-    () =>
-      combineLatest([feed$, state$]).pipe(
-        map(([feed, state]) => {
-          const allFiles = feed.events;
-          const query = state.search.trim().toLowerCase();
-          return {
-            ...feed,
-            files: allFiles.filter(
-              (file) =>
-                !query ||
-                [file.url, file.type, file.summary, file.alt, file.author.pubkey, file.sha256]
-                  .filter(Boolean)
-                  .join(" ")
-                  .toLowerCase()
-                  .includes(query),
-            ),
-            availableMimeTypes: [
-              ...new Set([...CURATED_MIME_TYPES, ...allFiles.flatMap((file) => (file.type ? [file.type] : []))]),
-            ].sort(),
-          };
-        }),
+  const result = useMemo(() => {
+    if (!feed) return undefined;
+    const allFiles = feed.events;
+    const query = search.trim().toLowerCase();
+    return {
+      ...feed,
+      files: allFiles.filter(
+        (file) =>
+          !query ||
+          [file.url, file.type, file.summary, file.alt, file.author.pubkey, file.sha256]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
       ),
-    [feed$, state$],
-  );
+      availableMimeTypes: [
+        ...new Set([...CURATED_MIME_TYPES, ...allFiles.flatMap((file) => (file.type ? [file.type] : []))]),
+      ].sort(),
+    };
+  }, [feed, search]);
   const files = result?.files ?? [];
 
   return (
@@ -353,7 +334,13 @@ export default function FileExplorerExample() {
           <div>
             <div className="text-sm font-semibold">Relay</div>
             <div className="mt-2">
-              <RelayPicker value={relay} onChange={(relay) => update({ relay, selected: null })} />
+              <RelayPicker
+                value={relay}
+                onChange={(relay) => {
+                  setRelay(relay);
+                  setSelected(null);
+                }}
+              />
             </div>
           </div>
 
@@ -362,7 +349,7 @@ export default function FileExplorerExample() {
             <input
               type="text"
               value={search}
-              onChange={(event) => update({ search: event.target.value })}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search by URL, summary, alt text, hash, or author"
               className="input input-bordered mt-2 w-full"
             />
@@ -378,7 +365,7 @@ export default function FileExplorerExample() {
       <MimeTypeFilter
         availableMimeTypes={result?.availableMimeTypes ?? CURATED_MIME_TYPES}
         selectedMimeTypes={selectedMimeTypes}
-        onChange={(mimeTypes) => update({ mimeTypes })}
+        onChange={setSelectedMimeTypes}
       />
 
       <section className="space-y-4">
@@ -394,13 +381,11 @@ export default function FileExplorerExample() {
             No file events match the current relay and filters.
           </div>
         ) : (
-          files.map((file: FileMetadata) => (
-            <FileCard key={file.uid} file={file} onSelect={() => update({ selected: file })} />
-          ))
+          files.map((file: FileMetadata) => <FileCard key={file.uid} file={file} onSelect={() => setSelected(file)} />)
         )}
       </section>
 
-      <FileMetadataDialog file={selected} onClose={() => update({ selected: null })} />
+      <FileMetadataDialog file={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

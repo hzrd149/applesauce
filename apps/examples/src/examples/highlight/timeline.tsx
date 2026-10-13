@@ -29,8 +29,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { naddrEncode, neventEncode, nprofileEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -187,8 +186,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
 }
 
 export default function HighlightTimeline() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   // Highlight metadata has no built-in cast; its dedicated helpers describe this event kind.
   const feed = use$(() => relayTimeline(eventStore, pool, [relay], { kinds: [kinds.Highlights] }), [relay]);
@@ -207,7 +205,7 @@ export default function HighlightTimeline() {
         </p>
       ))}
       {feed?.status === "loading" && <p>Loading highlights…</p>}
-      <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
+      <RelayPicker value={relay} onChange={(value: string) => setRelay(value)} />
 
       <div className="flex flex-col gap-6 py-4">
         {highlights?.length === 0 ? (

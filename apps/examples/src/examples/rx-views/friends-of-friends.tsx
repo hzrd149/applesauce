@@ -7,7 +7,7 @@ import { combineLatestByValue, EventStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, combineLatest, filter, map, Observable, of, switchMap, timeout } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -126,8 +126,7 @@ function BreadcrumbItem({ user, isLast, onClick }: { user: User; isLast: boolean
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function FriendsOfFriends() {
-  const history$ = useMemo(() => new BehaviorSubject<User[]>([]), []);
-  const history = use$(history$);
+  const [history, setHistory] = useState<User[]>([]);
 
   // Single stable subject — pushing here drives the entire view
   const user$ = useMemo(() => new BehaviorSubject<User | null>(null), []);
@@ -143,17 +142,17 @@ export default function FriendsOfFriends() {
     if (!pubkey) return;
     const user = castUser(pubkey, eventStore);
     user$.next(user);
-    history$.next([user]);
+    setHistory([user]);
   };
 
   const navigateTo = (contact: User) => {
     user$.next(contact);
-    history$.next(((prev: typeof history$.value) => [...prev, contact])(history$.value));
+    setHistory((prev) => [...prev, contact]);
   };
 
   const navigateToHistoryItem = (index: number) => {
     user$.next(history[index]);
-    history$.next(((prev: typeof history$.value) => prev.slice(0, index + 1))(history$.value));
+    setHistory((prev) => prev.slice(0, index + 1));
   };
 
   const contacts = contactsMap ? [...contactsMap.entries()] : null;

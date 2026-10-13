@@ -21,7 +21,7 @@ import {
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { ReactNode, useEffect, useMemo, useRef } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   catchError,
@@ -231,10 +231,8 @@ function Overview({ site, select }: { site: Nsite; select: Select }) {
   const authorSites = use$(() => site.author.nsites$, [site]);
   const profile = use$(() => site.author.profile$, [site]);
   const rootSite = use$(() => profile?.nsite$, [profile]);
-  const host$ = useMemo(() => new BehaviorSubject("nsite.run"), []);
-  const host = use$(host$);
-  const path$ = useMemo(() => new BehaviorSubject("/"), []);
-  const path = use$(path$);
+  const [host, setHost] = useState("nsite.run");
+  const [path, setPath] = useState("/");
   const resolved = site.resolvePath(path);
   let siteURL: string | undefined;
   try {
@@ -292,7 +290,7 @@ function Overview({ site, select }: { site: Nsite; select: Select }) {
             aria-label="Nsite host domain"
             className="input border-base-300"
             value={host}
-            onChange={(event) => host$.next(event.target.value)}
+            onChange={(event) => setHost(event.target.value)}
           />
         </label>
         {siteURL ? (
@@ -310,7 +308,7 @@ function Overview({ site, select }: { site: Nsite; select: Select }) {
             aria-label="Resolve a path"
             className="input border-base-300"
             value={path}
-            onChange={(event) => path$.next(event.target.value)}
+            onChange={(event) => setPath(event.target.value)}
           />
         </label>
         <p className="text-sm text-base-content/60">
@@ -468,8 +466,7 @@ function Versions({ site, select }: { site: Nsite; select: Select }) {
 }
 
 function CommentItem({ comment, relay, depth = 0 }: { comment: Comment; relay: string; depth?: number }) {
-  const expanded$ = useMemo(() => new BehaviorSubject(false), []);
-  const expanded = use$(expanded$);
+  const [expanded, setExpanded] = useState(false);
   const replies = use$(() => comment.replies$, [comment]);
   const reactions = use$(() => comment.reactions$, [comment]);
   const related = use$(
@@ -492,7 +489,7 @@ function CommentItem({ comment, relay, depth = 0 }: { comment: Comment; relay: s
       </div>
       <NoteContent event={comment.event} />
       {depth < 3 && (
-        <button className="btn btn-sm btn-ghost" aria-expanded={expanded} onClick={() => expanded$.next(!expanded)}>
+        <button className="btn btn-sm btn-ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
           {expanded ? "Hide replies" : "Show replies"} ({replies?.length ?? 0}) · {reactions?.length ?? 0} reactions
         </button>
       )}
@@ -573,8 +570,7 @@ function Activity({ site, relay }: { site: Nsite; relay: string }) {
 }
 
 function Details({ site, relay, select }: { site: Nsite; relay: string; select: Select }) {
-  const tab$ = useMemo(() => new BehaviorSubject<Tab>("overview"), []);
-  const tab = use$(tab$);
+  const [tab, setTab] = useState<Tab>("overview");
   const related = use$(() => relayTimeline(eventStore, pool, [relay], relatedFilters(site)), [relay, site]);
   return (
     <>
@@ -602,7 +598,7 @@ function Details({ site, relay, select }: { site: Nsite; relay: string; select: 
             aria-selected={tab === value}
             aria-controls="nsite-tab-panel"
             className={`px-4 py-3 border-b-2 ${tab === value ? "border-primary text-primary" : "border-transparent"}`}
-            onClick={() => tab$.next(value)}
+            onClick={() => setTab(value)}
           >
             {label}
           </button>
@@ -623,11 +619,10 @@ function Details({ site, relay, select }: { site: Nsite; relay: string; select: 
   );
 }
 function DetailsDialog({ pointer, relay, close }: { pointer: Pointer; relay: string; close: () => void }) {
-  const history$ = useMemo(() => new BehaviorSubject<Pointer[]>([pointer]), [pointer]);
-  const history = use$(history$);
+  const [history, setHistory] = useState<Pointer[]>([pointer]);
   const current = history[history.length - 1];
   const site = use$(() => eventStore.event(current).pipe(castEventStream(Nsite, eventStore)), [current]);
-  const select: Select = (next) => history$.next([...history$.value, next.pointer]);
+  const select: Select = (next) => setHistory((history) => [...history, next.pointer]);
   return (
     <dialog
       ref={(dialog) => {
@@ -643,7 +638,7 @@ function DetailsDialog({ pointer, relay, close }: { pointer: Pointer; relay: str
           <button
             className="btn btn-sm btn-ghost"
             disabled={history.length < 2}
-            onClick={() => history$.next(history$.value.slice(0, -1))}
+            onClick={() => setHistory((history) => history.slice(0, -1))}
           >
             ← Back
           </button>
@@ -740,10 +735,8 @@ export default function NsiteFeed() {
   const more$ = useMemo(() => new Subject<void>(), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const refresh$ = useMemo(() => new BehaviorSubject(0), []);
-  const refresh = use$(refresh$);
-  const selected$ = useMemo(() => new BehaviorSubject<Pointer | null>(null), []);
-  const selected = use$(selected$);
+  const [refresh, setRefresh] = useState(0);
+  const [selected, setSelected] = useState<Pointer | null>(null);
   const feed = use$(
     () =>
       pagedFeed(relay, more$).pipe(
@@ -773,7 +766,7 @@ export default function NsiteFeed() {
     return () => observer.disconnect();
   }, [feed?.page, more$, relay, refresh]);
   const changeRelay = (value: string) => {
-    selected$.next(null);
+    setSelected(null);
     relay$.next(value);
   };
   return (
@@ -783,7 +776,7 @@ export default function NsiteFeed() {
           <span>Relay</span>
           <RelayPicker value={relay} onChange={changeRelay} common={NSITE_RELAYS} className="w-full" />
         </label>
-        <button className="btn btn-outline" onClick={() => refresh$.next(refresh + 1)}>
+        <button className="btn btn-outline" onClick={() => setRefresh(refresh + 1)}>
           Reload feed
         </button>
         <span className="pb-3 text-base-content/60">
@@ -810,7 +803,7 @@ export default function NsiteFeed() {
           <button
             key={site.uid}
             className="w-full text-left p-5 border-b border-base-300 hover:bg-base-200 flex flex-col gap-2"
-            onClick={() => selected$.next(site.pointer)}
+            onClick={() => setSelected(site.pointer)}
           >
             <div className="flex flex-wrap items-baseline gap-3">
               <h2 className="text-xl font-semibold break-words">{siteName(site)}</h2>
@@ -829,7 +822,7 @@ export default function NsiteFeed() {
           {feed?.page.loading ? "Loading more sites…" : feed?.page.done ? "All sites loaded." : "Scroll for more sites"}
         </div>
       </div>
-      {selected && <DetailsDialog pointer={selected} relay={relay} close={() => selected$.next(null)} />}
+      {selected && <DetailsDialog pointer={selected} relay={relay} close={() => setSelected(null)} />}
     </div>
   );
 }

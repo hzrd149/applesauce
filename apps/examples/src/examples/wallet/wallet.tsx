@@ -29,7 +29,7 @@ import { Nutzap, WalletHistory, WalletToken, MintInfo as CashuMintInfo } from "a
 import { NUTZAP_KIND } from "applesauce-wallet/helpers";
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, Observable, of, Subject, exhaustMap, defer, startWith, catchError } from "rxjs";
 import LoginView from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
@@ -83,11 +83,9 @@ const MINT_ANNOUNCEMENT_KIND = 38172;
 
 // Component to discover mints from Nostr relays
 function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[]) => void }) {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
 
-  const selectedMints$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
-  const selectedMints = use$(selectedMints$);
+  const [selectedMints, setSelectedMints] = useState<string[]>([]);
 
   // Query for kind:38172 events from common relays
   const mintEvents = use$(
@@ -106,7 +104,7 @@ function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[])
 
   const handleToggleMint = (url: string) => {
     const next = selectedMints.includes(url) ? selectedMints.filter((m) => m !== url) : [...selectedMints, url];
-    selectedMints$.next(next);
+    setSelectedMints(next);
     onMintsSelected(next);
   };
 
@@ -120,7 +118,7 @@ function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[])
       </div>
 
       <div className="mb-4">
-        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+        <RelayPicker value={relay} onChange={setRelay} />
       </div>
       <div className="space-y-2 max-h-96 overflow-y-auto">
         {allMints.map((mint) => {
@@ -169,19 +167,16 @@ function MintDiscovery({ onMintsSelected }: { onMintsSelected: (mints: string[])
 
 // Create Wallet View Component
 function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNutzaps: boolean) => Promise<void> }) {
-  const selectedMints$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
-  const selectedMints = use$(selectedMints$);
+  const [selectedMints, setSelectedMints] = useState<string[]>([]);
 
-  const creating$ = useMemo(() => new BehaviorSubject(false), []);
-  const creating = use$(creating$);
+  const [creating, setCreating] = useState(false);
 
-  const receiveNutzaps$ = useMemo(() => new BehaviorSubject(false), []);
-  const receiveNutzaps = use$(receiveNutzaps$);
+  const [receiveNutzaps, setReceiveNutzaps] = useState(false);
 
   const handleCreate = useCallback(async () => {
     if (selectedMints.length === 0) return;
-    creating$.next(true);
-    await onCreate(selectedMints, receiveNutzaps).finally(() => creating$.next(false));
+    setCreating(true);
+    await onCreate(selectedMints, receiveNutzaps).finally(() => setCreating(false));
   }, [onCreate, selectedMints, receiveNutzaps]);
 
   return (
@@ -191,7 +186,7 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
         <h2 className="text-xl font-bold mb-2">No Wallet Found</h2>
 
         <div className="mb-6">
-          <MintDiscovery onMintsSelected={(next: typeof selectedMints$.value) => selectedMints$.next(next)} />
+          <MintDiscovery onMintsSelected={setSelectedMints} />
         </div>
 
         <div className="mb-6 flex gap-2 items-center justify-between">
@@ -201,7 +196,7 @@ function CreateWalletView({ onCreate }: { onCreate: (mints: string[], receiveNut
               type="checkbox"
               className="checkbox checkbox-primary"
               checked={receiveNutzaps}
-              onChange={(e) => receiveNutzaps$.next(e.target.checked)}
+              onChange={(e) => setReceiveNutzaps(e.target.checked)}
             />
           </label>
           <button className="btn btn-primary " onClick={handleCreate} disabled={creating || selectedMints.length === 0}>
@@ -217,8 +212,7 @@ function OverviewTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const unlocked = use$(wallet.unlocked$);
   const ops = use$(wallet.operationsState$) ?? {};
-  const autoUnlock$ = useMemo(() => new BehaviorSubject(wallet.autoUnlock), []);
-  const autoUnlock = use$(autoUnlock$);
+  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
 
   if (!unlocked) {
     return (
@@ -232,7 +226,7 @@ function OverviewTab({ wallet }: { wallet: NutWallet }) {
             checked={autoUnlock}
             onChange={(e) => {
               wallet.setAutoUnlock(e.target.checked);
-              autoUnlock$.next(e.target.checked);
+              setAutoUnlock(e.target.checked);
             }}
           />
         </label>
@@ -296,8 +290,7 @@ function TokenEntry({ token }: { token: WalletToken }) {
   const isUnlocked = token.unlocked;
   const meta = use$(token.meta$);
   const amount = use$(token.amount$);
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
   const encodedToken = useMemo(() => {
     if (!token.mint || !token.proofs) return undefined;
@@ -307,8 +300,8 @@ function TokenEntry({ token }: { token: WalletToken }) {
   const handleCopy = useCallback(() => {
     if (!encodedToken) return;
     navigator.clipboard.writeText(encodedToken);
-    copied$.next(true);
-    setTimeout(() => copied$.next(false), 2000);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [encodedToken]);
 
   if (!isUnlocked || !meta) {
@@ -343,28 +336,26 @@ function NutzapEntry({ nutzap, wallet, isReceived }: { nutzap: Nutzap; wallet: N
   const zappedEvent = use$(nutzap.zapped$);
   const senderProfile = use$(nutzap.sender.profile$);
   const createdDate = nutzap.createdAt;
-  const receiving$ = useMemo(() => new BehaviorSubject(false), []);
-  const receiving = use$(receiving$);
+  const [receiving, setReceiving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleReceive = useCallback(async () => {
     if (!unlocked) {
-      error$.next("Wallet must be unlocked to receive nutzaps");
+      setError("Wallet must be unlocked to receive nutzaps");
       return;
     }
 
-    receiving$.next(true);
-    error$.next(null);
+    setReceiving(true);
+    setError(null);
 
     try {
       await wallet.receiveNutzaps(nutzap.event);
     } catch (err) {
       console.error("Failed to receive nutzap:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to receive nutzap");
+      setError(err instanceof Error ? err.message : "Failed to receive nutzap");
     } finally {
-      receiving$.next(false);
+      setReceiving(false);
     }
   }, [wallet, nutzap, unlocked]);
 
@@ -429,11 +420,9 @@ function NutzapsTab({ user, wallet }: { user: User; wallet: NutWallet }) {
   const walletEvent = use$(wallet.wallet$);
   const unlocked = use$(wallet.unlocked$);
   const received = use$(walletEvent?.received$);
-  const receiving$ = useMemo(() => new BehaviorSubject(false), []);
-  const receiving = use$(receiving$);
+  const [receiving, setReceiving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const nutzaps = use$(
     () =>
@@ -448,20 +437,20 @@ function NutzapsTab({ user, wallet }: { user: User; wallet: NutWallet }) {
   }, [nutzaps, received]);
 
   const handleReceiveAll = useCallback(async () => {
-    if (!unlocked) return error$.next("Wallet must be unlocked to receive nutzaps");
-    if (unclaimed.length === 0) return error$.next("No new nutzaps to receive");
+    if (!unlocked) return setError("Wallet must be unlocked to receive nutzaps");
+    if (unclaimed.length === 0) return setError("No new nutzaps to receive");
 
-    receiving$.next(true);
-    error$.next(null);
+    setReceiving(true);
+    setError(null);
 
     try {
       const nutzapEvents = unclaimed.map((nutzap) => nutzap.event);
       await wallet.receiveNutzaps(nutzapEvents);
     } catch (err) {
       console.error("Failed to receive nutzaps:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to receive nutzaps");
+      setError(err instanceof Error ? err.message : "Failed to receive nutzaps");
     } finally {
-      receiving$.next(false);
+      setReceiving(false);
     }
   }, [wallet, unlocked, unclaimed]);
 
@@ -502,27 +491,25 @@ function NutzapsTab({ user, wallet }: { user: User; wallet: NutWallet }) {
 }
 
 function SyncTokensTool({ wallet }: { wallet: NutWallet }) {
-  const syncing$ = useMemo(() => new BehaviorSubject(false), []);
-  const syncing = use$(syncing$);
+  const [syncing, setSyncing] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const unlocked = use$(wallet.unlocked$);
   const ops = use$(wallet.operationsState$) ?? {};
 
   const handleSync = useCallback(async () => {
-    syncing$.next(true);
-    error$.next(null);
+    setSyncing(true);
+    setError(null);
 
     try {
       if (!unlocked) throw new Error("Wallet must be unlocked to sync tokens");
       await wallet.syncTokens();
     } catch (err) {
       console.error("Failed to sync tokens:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to sync tokens");
+      setError(err instanceof Error ? err.message : "Failed to sync tokens");
     } finally {
-      syncing$.next(false);
+      setSyncing(false);
     }
   }, [wallet, unlocked]);
 
@@ -549,23 +536,21 @@ function SyncTokensTool({ wallet }: { wallet: NutWallet }) {
 }
 
 function ConsolidateTool({ wallet }: { wallet: NutWallet }) {
-  const consolidating$ = useMemo(() => new BehaviorSubject(false), []);
-  const consolidating = use$(consolidating$);
+  const [consolidating, setConsolidating] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleConsolidate = useCallback(async () => {
-    consolidating$.next(true);
-    error$.next(null);
+    setConsolidating(true);
+    setError(null);
 
     try {
       await wallet.consolidateTokens();
     } catch (err) {
       console.error("Failed to consolidate tokens:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to consolidate tokens");
+      setError(err instanceof Error ? err.message : "Failed to consolidate tokens");
     } finally {
-      consolidating$.next(false);
+      setConsolidating(false);
     }
   }, [wallet]);
 
@@ -592,23 +577,21 @@ function ConsolidateTool({ wallet }: { wallet: NutWallet }) {
 }
 
 function RecoverFromCouchTool({ wallet }: { wallet: NutWallet }) {
-  const recovering$ = useMemo(() => new BehaviorSubject(false), []);
-  const recovering = use$(recovering$);
+  const [recovering, setRecovering] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleRecover = useCallback(async () => {
-    recovering$.next(true);
-    error$.next(null);
+    setRecovering(true);
+    setError(null);
 
     try {
       await wallet.recoverFromCouch();
     } catch (err) {
       console.error("Failed to recover tokens from couch:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to recover tokens from couch");
+      setError(err instanceof Error ? err.message : "Failed to recover tokens from couch");
     } finally {
-      recovering$.next(false);
+      setRecovering(false);
     }
   }, [wallet]);
 
@@ -641,14 +624,11 @@ function RecoverFromCouchTool({ wallet }: { wallet: NutWallet }) {
 function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
   const relays = use$(wallet.walletRelays$);
   const tokens = use$(wallet.tokens$);
-  const newRelay$ = useMemo(() => new BehaviorSubject(""), []);
-  const newRelay = use$(newRelay$);
+  const [newRelay, setNewRelay] = useState("");
 
-  const saving$ = useMemo(() => new BehaviorSubject(false), []);
-  const saving = use$(saving$);
+  const [saving, setSaving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   // Count how many tokens were seen on each relay
   const relayTokenCounts = useMemo(() => {
@@ -672,25 +652,25 @@ function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
   }, [relays, tokens]);
 
   const handleAddRelay = useCallback(async () => {
-    if (!newRelay.trim()) return error$.next("Please enter a relay URL");
+    if (!newRelay.trim()) return setError("Please enter a relay URL");
 
     const currentRelays = relays || [];
     const relayUrl = newRelay.trim();
 
     // Check if relay already exists
-    if (currentRelays.includes(relayUrl)) return error$.next("This relay is already in your list");
+    if (currentRelays.includes(relayUrl)) return setError("This relay is already in your list");
 
-    saving$.next(true);
-    error$.next(null);
+    setSaving(true);
+    setError(null);
 
     try {
       await wallet.setRelays([...currentRelays, relayUrl]);
-      newRelay$.next("");
+      setNewRelay("");
     } catch (err) {
       console.error("Failed to add relay:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to add relay");
+      setError(err instanceof Error ? err.message : "Failed to add relay");
     } finally {
-      saving$.next(false);
+      setSaving(false);
     }
   }, [newRelay, relays, wallet]);
 
@@ -699,16 +679,16 @@ function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
       const currentRelays = relays || [];
       const updatedRelays = currentRelays.filter((r) => r !== relayToRemove);
 
-      saving$.next(true);
-      error$.next(null);
+      setSaving(true);
+      setError(null);
 
       try {
         await wallet.setRelays(updatedRelays);
       } catch (err) {
         console.error("Failed to remove relay:", err);
-        error$.next(err instanceof Error ? err.message : "Failed to remove relay");
+        setError(err instanceof Error ? err.message : "Failed to remove relay");
       } finally {
-        saving$.next(false);
+        setSaving(false);
       }
     },
     [relays, wallet],
@@ -751,7 +731,7 @@ function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
           className="input input-bordered flex-1"
           placeholder="wss://relay.example.com"
           value={newRelay}
-          onChange={(e) => newRelay$.next(e.target.value)}
+          onChange={(e) => setNewRelay(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleAddRelay();
@@ -783,35 +763,32 @@ function RelayManagementTool({ wallet }: { wallet: NutWallet }) {
 function MintManagementTool({ wallet }: { wallet: NutWallet }) {
   const mints = use$(wallet.mintUrls$);
   const balance = use$(wallet.balance$);
-  const newMint$ = useMemo(() => new BehaviorSubject(""), []);
-  const newMint = use$(newMint$);
+  const [newMint, setNewMint] = useState("");
 
-  const saving$ = useMemo(() => new BehaviorSubject(false), []);
-  const saving = use$(saving$);
+  const [saving, setSaving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAddMint = useCallback(async () => {
-    if (!newMint.trim()) return error$.next("Please enter a mint URL");
+    if (!newMint.trim()) return setError("Please enter a mint URL");
 
     const currentMints = mints || [];
     const mintUrl = newMint.trim();
 
     // Check if mint already exists
-    if (currentMints.includes(mintUrl)) return error$.next("This mint is already in your list");
+    if (currentMints.includes(mintUrl)) return setError("This mint is already in your list");
 
-    saving$.next(true);
-    error$.next(null);
+    setSaving(true);
+    setError(null);
 
     try {
       await wallet.setMints([...currentMints, mintUrl]);
-      newMint$.next("");
+      setNewMint("");
     } catch (err) {
       console.error("Failed to add mint:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to add mint");
+      setError(err instanceof Error ? err.message : "Failed to add mint");
     } finally {
-      saving$.next(false);
+      setSaving(false);
     }
   }, [newMint, mints, wallet]);
 
@@ -831,16 +808,16 @@ function MintManagementTool({ wallet }: { wallet: NutWallet }) {
       const currentMints = mints || [];
       const updatedMints = currentMints.filter((m) => m !== mintToRemove);
 
-      saving$.next(true);
-      error$.next(null);
+      setSaving(true);
+      setError(null);
 
       try {
         await wallet.setMints(updatedMints);
       } catch (err) {
         console.error("Failed to remove mint:", err);
-        error$.next(err instanceof Error ? err.message : "Failed to remove mint");
+        setError(err instanceof Error ? err.message : "Failed to remove mint");
       } finally {
-        saving$.next(false);
+        setSaving(false);
       }
     },
     [mints, balance, wallet],
@@ -879,7 +856,7 @@ function MintManagementTool({ wallet }: { wallet: NutWallet }) {
           className="input input-bordered flex-1"
           placeholder="https://mint.example.com"
           value={newMint}
-          onChange={(e) => newMint$.next(e.target.value)}
+          onChange={(e) => setNewMint(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleAddMint();
@@ -926,23 +903,17 @@ function SettingsTab({ wallet }: { wallet: NutWallet }) {
 function SendTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const unlocked = use$(wallet.unlocked$);
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState("");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const selectedMint = use$(selectedMint$);
+  const [selectedMint, setSelectedMint] = useState<string | undefined>(undefined);
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const createdToken$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const createdToken = use$(createdToken$);
+  const [createdToken, setCreatedToken] = useState<string | null>(null);
 
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
   // Get available mints from balance (mints that have tokens)
   const availableMints = useMemo(() => {
@@ -951,43 +922,43 @@ function SendTab({ wallet }: { wallet: NutWallet }) {
   }, [balance]);
 
   const handleSend = useCallback(async () => {
-    if (!unlocked) return error$.next("Wallet must be unlocked to send tokens");
-    if (!amount.trim()) return error$.next("Please enter an amount");
+    if (!unlocked) return setError("Wallet must be unlocked to send tokens");
+    if (!amount.trim()) return setError("Please enter an amount");
 
     const sendAmount = parseInt(amount.trim(), 10);
-    if (isNaN(sendAmount) || sendAmount <= 0) return error$.next("Please enter a valid amount");
+    if (isNaN(sendAmount) || sendAmount <= 0) return setError("Please enter a valid amount");
 
     // Check if selected mint has sufficient balance
     if (selectedMint && balance) {
       const mintBalance = balance[selectedMint] || 0;
       if (mintBalance < sendAmount) {
-        return error$.next(`Insufficient balance. Available: ${mintBalance} sats`);
+        return setError(`Insufficient balance. Available: ${mintBalance} sats`);
       }
     }
 
-    sending$.next(true);
-    error$.next(null);
-    createdToken$.next(null);
+    setSending(true);
+    setError(null);
+    setCreatedToken(null);
 
     try {
-      createdToken$.next(await wallet.sendToken(sendAmount, { mint: selectedMint }));
+      setCreatedToken(await wallet.sendToken(sendAmount, { mint: selectedMint }));
 
       // Clear amount after successful send
-      amount$.next("");
+      setAmount("");
     } catch (err) {
       console.error("Failed to send tokens:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to send tokens");
-      createdToken$.next(null);
+      setError(err instanceof Error ? err.message : "Failed to send tokens");
+      setCreatedToken(null);
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   }, [wallet, unlocked, amount, selectedMint, balance]);
 
   const handleCopy = useCallback(() => {
     if (!createdToken) return;
     navigator.clipboard.writeText(createdToken);
-    copied$.next(true);
-    setTimeout(() => copied$.next(false), 2000);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [createdToken]);
 
   if (!unlocked) {
@@ -1033,8 +1004,8 @@ function SendTab({ wallet }: { wallet: NutWallet }) {
             <button
               className="btn btn-secondary"
               onClick={() => {
-                createdToken$.next(null);
-                amount$.next("");
+                setCreatedToken(null);
+                setAmount("");
               }}
             >
               Create Another
@@ -1053,8 +1024,8 @@ function SendTab({ wallet }: { wallet: NutWallet }) {
               placeholder="Enter amount in sats"
               value={amount}
               onChange={(e) => {
-                amount$.next(e.target.value);
-                error$.next(null);
+                setAmount(e.target.value);
+                setError(null);
               }}
               disabled={sending}
               min="1"
@@ -1073,8 +1044,8 @@ function SendTab({ wallet }: { wallet: NutWallet }) {
                 className="select select-bordered w-full"
                 value={selectedMint || ""}
                 onChange={(e) => {
-                  selectedMint$.next(e.target.value || undefined);
-                  error$.next(null);
+                  setSelectedMint(e.target.value || undefined);
+                  setError(null);
                 }}
                 disabled={sending}
               >
@@ -1116,31 +1087,28 @@ function SendTab({ wallet }: { wallet: NutWallet }) {
 
 function ReceiveTab({ wallet }: { wallet: NutWallet }) {
   const unlocked = use$(wallet.unlocked$);
-  const tokenString$ = useMemo(() => new BehaviorSubject(""), []);
-  const tokenString = use$(tokenString$);
+  const [tokenString, setTokenString] = useState("");
 
-  const receiving$ = useMemo(() => new BehaviorSubject(false), []);
-  const receiving = use$(receiving$);
+  const [receiving, setReceiving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleReceive = useCallback(async () => {
-    if (!unlocked) return error$.next("Wallet must be unlocked to receive tokens");
-    if (!tokenString.trim()) return error$.next("Please paste a cashu token");
+    if (!unlocked) return setError("Wallet must be unlocked to receive tokens");
+    if (!tokenString.trim()) return setError("Please paste a cashu token");
 
-    receiving$.next(true);
-    error$.next(null);
+    setReceiving(true);
+    setError(null);
 
     try {
       await wallet.receiveToken(tokenString.trim());
 
-      tokenString$.next("");
+      setTokenString("");
     } catch (err) {
       console.error("Failed to receive token:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to receive token");
+      setError(err instanceof Error ? err.message : "Failed to receive token");
     } finally {
-      receiving$.next(false);
+      setReceiving(false);
     }
   }, [wallet, unlocked, tokenString]);
 
@@ -1172,8 +1140,8 @@ function ReceiveTab({ wallet }: { wallet: NutWallet }) {
           placeholder="Paste cashu token here (e.g., cashuAeyJ...)"
           value={tokenString}
           onChange={(e) => {
-            tokenString$.next(e.target.value);
-            error$.next(null);
+            setTokenString(e.target.value);
+            setError(null);
           }}
           disabled={receiving}
         />
@@ -1241,20 +1209,15 @@ function LegacyProofRecovery() {
 function DepositTab({ wallet }: { wallet: NutWallet }) {
   const mints = use$(wallet.mintUrls$) ?? [];
   const unlocked = use$(wallet.unlocked$);
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState("");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedMint = use$(selectedMint$);
+  const [selectedMint, setSelectedMint] = useState<string>("");
 
-  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
-  const quote = use$(quote$);
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -1263,10 +1226,13 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
   const reset = useCallback(() => {
     abortRef.current?.abort();
 
-    error$.next(null);
+    setError(null);
   }, []);
 
-  const depositCommands$ = useMemo(() => new Subject<"create" | "resume">(), []);
+  const depositCommands$ = useMemo(
+    () => new Subject<{ type: "create" | "resume"; mint: string; amount: string }>(),
+    [],
+  );
   const deposit = use$(
     () =>
       depositCommands$.pipe(
@@ -1277,18 +1243,18 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
               const controller = new AbortController();
               abortRef.current = controller;
               subscriber.next({ busy: true, error: null });
-              const onQuote = (quote: MintQuoteBolt11Response) => quote$.next(quote);
+              const onQuote = (quote: MintQuoteBolt11Response) => setQuote(quote);
               const work = async () => {
                 if (!storage) throw new Error("Unlock encrypted storage first");
-                if (command === "resume")
+                if (command.type === "resume")
                   await resumeDeposit(storage, wallet, {
                     onQuote,
                     signal: controller.signal,
                     namespace: "wallet-deposit",
                   });
                 else {
-                  const target = selectedMint$.value || mints[0];
-                  const sats = Number(amount$.value);
+                  const target = command.mint || mints[0];
+                  const sats = Number(command.amount);
                   if (!target || !Number.isSafeInteger(sats) || sats <= 0)
                     throw new Error("Choose a mint and a positive whole amount in sats");
                   await recoverableDeposit(storage, wallet, {
@@ -1299,8 +1265,8 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
                     namespace: "wallet-deposit",
                   });
                 }
-                quote$.next(null);
-                amount$.next("");
+                setQuote(null);
+                setAmount("");
               };
               void work()
                 .then(() => {
@@ -1322,15 +1288,15 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
       ),
     [wallet, depositCommands$, mints.join("|")],
   );
-  const handleDeposit = () => depositCommands$.next("create");
-  const handleResume = () => depositCommands$.next("resume");
+  const handleDeposit = () => depositCommands$.next({ type: "create", mint: selectedMint, amount });
+  const handleResume = () => depositCommands$.next({ type: "resume", mint: selectedMint, amount });
   const depositBusy = deposit?.busy ?? false;
 
   const handleCopy = useCallback(() => {
     if (!quote) return;
     navigator.clipboard.writeText(quote.request);
-    copied$.next(true);
-    setTimeout(() => copied$.next(false), 2000);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [quote]);
 
   if (!unlocked) {
@@ -1401,8 +1367,8 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
               placeholder="Enter amount in sats"
               value={amount}
               onChange={(e) => {
-                amount$.next(e.target.value);
-                error$.next(null);
+                setAmount(e.target.value);
+                setError(null);
               }}
               min="1"
             />
@@ -1416,7 +1382,7 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
               <select
                 className="select select-bordered w-full"
                 value={selectedMint || mints[0] || ""}
-                onChange={(e) => selectedMint$.next(e.target.value)}
+                onChange={(e) => setSelectedMint(e.target.value)}
               >
                 {mints.map((mint) => (
                   <option key={mint} value={mint}>
@@ -1449,20 +1415,15 @@ function DepositTab({ wallet }: { wallet: NutWallet }) {
 function WithdrawTab({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const unlocked = use$(wallet.unlocked$);
-  const invoice$ = useMemo(() => new BehaviorSubject(""), []);
-  const invoice = use$(invoice$);
+  const [invoice, setInvoice] = useState("");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedMint = use$(selectedMint$);
+  const [selectedMint, setSelectedMint] = useState<string>("");
 
-  const paying$ = useMemo(() => new BehaviorSubject(false), []);
-  const paying = use$(paying$);
+  const [paying, setPaying] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const success$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const success = use$(success$);
+  const [success, setSuccess] = useState<string | null>(null);
 
   // Mints that currently hold a balance to pay from
   const availableMints = useMemo(() => {
@@ -1471,25 +1432,25 @@ function WithdrawTab({ wallet }: { wallet: NutWallet }) {
   }, [balance]);
 
   const handlePay = useCallback(async () => {
-    if (!unlocked) return error$.next("Wallet must be unlocked to withdraw");
+    if (!unlocked) return setError("Wallet must be unlocked to withdraw");
     const mint = selectedMint || availableMints[0];
-    if (!mint) return error$.next("No mint with a balance to pay from");
-    if (!invoice.trim()) return error$.next("Please paste a lightning invoice");
+    if (!mint) return setError("No mint with a balance to pay from");
+    if (!invoice.trim()) return setError("Please paste a lightning invoice");
 
-    paying$.next(true);
-    error$.next(null);
-    success$.next(null);
+    setPaying(true);
+    setError(null);
+    setSuccess(null);
 
     try {
       const response = await wallet.payInvoice(mint, invoice.trim());
       const change = response.change.reduce((sum, proof) => sum + proof.amount.toNumber(), 0);
-      success$.next(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
-      invoice$.next("");
+      setSuccess(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
+      setInvoice("");
     } catch (err) {
       console.error("Failed to pay invoice:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to pay invoice");
+      setError(err instanceof Error ? err.message : "Failed to pay invoice");
     } finally {
-      paying$.next(false);
+      setPaying(false);
     }
   }, [wallet, unlocked, invoice, selectedMint, availableMints]);
 
@@ -1521,8 +1482,8 @@ function WithdrawTab({ wallet }: { wallet: NutWallet }) {
           placeholder="Paste a bolt11 invoice here (e.g., lnbc...)"
           value={invoice}
           onChange={(e) => {
-            invoice$.next(e.target.value);
-            error$.next(null);
+            setInvoice(e.target.value);
+            setError(null);
           }}
           disabled={paying}
         />
@@ -1536,7 +1497,7 @@ function WithdrawTab({ wallet }: { wallet: NutWallet }) {
           <select
             className="select select-bordered w-full"
             value={selectedMint || availableMints[0] || ""}
-            onChange={(e) => selectedMint$.next(e.target.value)}
+            onChange={(e) => setSelectedMint(e.target.value)}
             disabled={paying}
           >
             {availableMints.map((mint) => (
@@ -1582,8 +1543,7 @@ function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
   const nutzapInfo = use$(user.nutzap$);
   const nutzapRelays = nutzapInfo?.relays;
   const nutzapMints = nutzapInfo?.mints.map(({ mint }) => mint);
-  const autoUnlock$ = useMemo(() => new BehaviorSubject(wallet.autoUnlock), []);
-  const autoUnlock = use$(autoUnlock$);
+  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
 
   // Subscribe to incoming nutzap events
   use$(() => {
@@ -1606,7 +1566,7 @@ function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
             checked={autoUnlock}
             onChange={(e) => {
               wallet.setAutoUnlock(e.target.checked);
-              autoUnlock$.next(e.target.checked);
+              setAutoUnlock(e.target.checked);
             }}
           />
           Auto unlock

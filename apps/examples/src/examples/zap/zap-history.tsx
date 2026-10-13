@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "chart.js";
 import { Filter, kinds, relaySet } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -96,15 +96,12 @@ function prepareChartData(zaps: Zap[], userPubkey: string, mode: ChartMode) {
 }
 
 export default function ZapGraph() {
-  const pubkey$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_PUBKEY), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState<string>(DEFAULT_PUBKEY);
 
   const limit = 50;
-  const chartMode$ = useMemo(() => new BehaviorSubject<ChartMode>("amount"), []);
-  const chartMode = use$(chartMode$);
+  const [chartMode, setChartMode] = useState<ChartMode>("amount");
 
-  const scaleType$ = useMemo(() => new BehaviorSubject<ScaleType>("linear"), []);
-  const scaleType = use$(scaleType$);
+  const [scaleType, setScaleType] = useState<ScaleType>("linear");
 
   // Cast the pubkey into a User and subscribe to its outbox relays (NIP-65)
   const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
@@ -193,7 +190,7 @@ export default function ZapGraph() {
         </p>
       )}
       <div className="mb-6">
-        <PubkeyPicker value={pubkey} onChange={(next: typeof pubkey$.value) => pubkey$.next(next)} />
+        <PubkeyPicker value={pubkey} onChange={setPubkey} />
       </div>
 
       {pubkey ? (
@@ -209,13 +206,13 @@ export default function ZapGraph() {
               <div className="join">
                 <button
                   className={`btn join-item ${chartMode === "amount" ? "btn-active" : ""}`}
-                  onClick={() => chartMode$.next("amount")}
+                  onClick={() => setChartMode("amount")}
                 >
                   Amount
                 </button>
                 <button
                   className={`btn join-item ${chartMode === "count" ? "btn-active" : ""}`}
-                  onClick={() => chartMode$.next("count")}
+                  onClick={() => setChartMode("count")}
                 >
                   Count
                 </button>
@@ -223,13 +220,13 @@ export default function ZapGraph() {
               <div className="join">
                 <button
                   className={`btn join-item ${scaleType === "linear" ? "btn-active" : ""}`}
-                  onClick={() => scaleType$.next("linear")}
+                  onClick={() => setScaleType("linear")}
                 >
                   Linear
                 </button>
                 <button
                   className={`btn join-item ${scaleType === "logarithmic" ? "btn-active" : ""}`}
-                  onClick={() => scaleType$.next("logarithmic")}
+                  onClick={() => setScaleType("logarithmic")}
                 >
                   Log
                 </button>

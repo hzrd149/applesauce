@@ -28,7 +28,7 @@ import { ExtensionSigner } from "applesauce-signers";
 import { SerializedWalletConnect, WalletConnect } from "applesauce-wallet-connect";
 import { ZapIcon } from "lucide-react";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   map,
@@ -284,14 +284,11 @@ async function fetchZapInvoice(callback: string, zapRequest: NostrEvent, amount:
 // --- Connect Wallet Step ---
 
 function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletConnect) => void; onBack: () => void }) {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.getalby.com/v1"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.getalby.com/v1");
 
-  const pasteUri$ = useMemo(() => new BehaviorSubject(""), []);
-  const pasteUri = use$(pasteUri$);
+  const [pasteUri, setPasteUri] = useState("");
 
-  const pasteError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const pasteError = use$(pasteError$);
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const nwcWallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
@@ -326,8 +323,8 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
 
   const connectionError = connection?.error;
   const handlePaste = (value: string) => {
-    pasteUri$.next(value);
-    pasteError$.next(null);
+    setPasteUri(value);
+    setPasteError(null);
 
     if (!value.trim()) return;
 
@@ -336,7 +333,7 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
       wallet$.next(w);
       onConnect(w);
     } catch (err) {
-      pasteError$.next(err instanceof Error ? err.message : "Invalid connection string");
+      setPasteError(err instanceof Error ? err.message : "Invalid connection string");
     }
   };
 
@@ -368,7 +365,7 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
         </a>
         <RelayPicker
           value={relay}
-          onChange={(next: typeof relay$.value) => relay$.next(next)}
+          onChange={(next: typeof relay) => setRelay(next)}
           common={["wss://relay.getalby.com/v1"]}
           className="w-full"
         />
@@ -410,11 +407,9 @@ type ZapStep =
   | "error";
 
 function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
-  const sliderPosition$ = useMemo(() => new BehaviorSubject(DEFAULT_SLIDER_POSITION), []);
-  const sliderPosition = use$(sliderPosition$);
+  const [sliderPosition, setSliderPosition] = useState(DEFAULT_SLIDER_POSITION);
 
-  const message$ = useMemo(() => new BehaviorSubject(""), []);
-  const message = use$(message$);
+  const [message, setMessage] = useState("");
 
   const wallet = use$(wallet$);
   const profile = use$(note.author.profile$);
@@ -634,7 +629,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
               min="0"
               max={SLIDER_STEPS}
               value={sliderPosition}
-              onChange={(e) => sliderPosition$.next(Number(e.target.value))}
+              onChange={(e) => setSliderPosition(Number(e.target.value))}
               className="range range-warning range-sm w-full"
             />
             <div className="relative text-sm opacity-40 h-4">
@@ -674,7 +669,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
               className="textarea textarea-bordered textarea-sm w-full"
               placeholder="Say something nice..."
               value={message}
-              onChange={(e) => message$.next(e.target.value)}
+              onChange={(e) => setMessage(e.target.value)}
               rows={2}
             />
           </div>
@@ -872,16 +867,10 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
 
 function ZapModal({ note }: { note: Note }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const formKey$ = useMemo(() => new BehaviorSubject(0), []);
-  const formKey = use$(formKey$);
+  const [formKey, setFormKey] = useState(0);
 
   return (
-    <dialog
-      id="zap_modal"
-      ref={dialogRef}
-      onClose={() => formKey$.next(((key: typeof formKey$.value) => key + 1)(formKey$.value))}
-      className="modal"
-    >
+    <dialog id="zap_modal" ref={dialogRef} onClose={() => setFormKey((key) => key + 1)} className="modal">
       <div className="modal-box max-w-md">
         <ZapForm key={formKey} note={note} onClose={() => dialogRef.current?.close()} />
       </div>

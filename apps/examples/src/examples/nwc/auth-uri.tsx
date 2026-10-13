@@ -3,8 +3,6 @@
  * @tags nwc, wallet, nip-47, authentication
  * @related nwc/connection-string, nwc/simple-wallet
  */
-import { use$ } from "applesauce-react/hooks";
-import { BehaviorSubject } from "rxjs";
 
 import {
   CommonWalletMethods,
@@ -14,7 +12,7 @@ import {
   WalletAuthURI,
 } from "applesauce-wallet-connect/helpers";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import QRCode from "../../components/qr-code";
 
@@ -220,11 +218,9 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
   const watchedMetadata = watch("metadata") || {};
   const watchedRelays = watch("relays") || [];
 
-  const metadataKey$ = useMemo(() => new BehaviorSubject(""), []);
-  const metadataKey = use$(metadataKey$);
+  const [metadataKey, setMetadataKey] = useState("");
 
-  const metadataValue$ = useMemo(() => new BehaviorSubject(""), []);
-  const metadataValue = use$(metadataValue$);
+  const [metadataValue, setMetadataValue] = useState("");
 
   const addRelay = () => {
     const currentRelays = [...watchedRelays];
@@ -266,8 +262,8 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
       const currentMetadata = { ...watchedMetadata };
       currentMetadata[metadataKey] = metadataValue;
       setValue("metadata", currentMetadata);
-      metadataKey$.next("");
-      metadataValue$.next("");
+      setMetadataKey("");
+      setMetadataValue("");
     }
   };
 
@@ -490,14 +486,14 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
               <input
                 type="text"
                 value={metadataKey}
-                onChange={(e) => metadataKey$.next(e.target.value)}
+                onChange={(e) => setMetadataKey(e.target.value)}
                 placeholder="Key"
                 className="input input-bordered flex-1"
               />
               <input
                 type="text"
                 value={metadataValue}
-                onChange={(e) => metadataValue$.next(e.target.value)}
+                onChange={(e) => setMetadataValue(e.target.value)}
                 placeholder="Value"
                 className="input input-bordered flex-1"
               />
@@ -531,11 +527,9 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
 }
 
 export default function AuthUriExample() {
-  const inputUri$ = useMemo(() => new BehaviorSubject(""), []);
-  const inputUri = use$(inputUri$);
+  const [inputUri, setInputUri] = useState("");
 
-  const generatedUri$ = useMemo(() => new BehaviorSubject(""), []);
-  const generatedUri = use$(generatedUri$);
+  const [generatedUri, setGeneratedUri] = useState("");
 
   const { parsedUri, error } = useMemo(() => {
     if (!inputUri.trim()) return { parsedUri: null, error: null };
@@ -545,10 +539,10 @@ export default function AuthUriExample() {
       return { parsedUri: null, error: String(error) };
     }
   }, [inputUri]);
-  const handleUriChange = (value: string) => inputUri$.next(value);
+  const handleUriChange = (value: string) => setInputUri(value);
   const handleUriGenerated = (uri: string) => {
-    generatedUri$.next(uri);
-    inputUri$.next(uri);
+    setGeneratedUri(uri);
+    setInputUri(uri);
   };
 
   return (

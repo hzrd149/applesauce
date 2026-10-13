@@ -13,7 +13,7 @@ import { Filter, isFromCache, persistEventsToCache, unixNow } from "applesauce-c
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   BehaviorSubject,
   debounceTime,
@@ -187,11 +187,8 @@ function CacheStats() {
 
 function WorkerRelayCacheExample() {
   const cacheError = use$(cacheError$);
-  const live$ = useMemo(() => new BehaviorSubject(true), []);
-  const live = use$(live$);
-
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [live, setLive] = useState(true);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
   // Create a timeline loader that loads from the cache and the relay
   const loader = useMemo(
@@ -254,8 +251,8 @@ function WorkerRelayCacheExample() {
       )}
 
       <div className="flex gap-2 mt-2">
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
-        <button className="btn btn-primary" onClick={() => live$.next(!live)}>
+        <RelayPicker value={relay} onChange={setRelay} />
+        <button className="btn btn-primary" onClick={() => setLive(!live)}>
           {live ? "Stop Live" : "Start Live"}
         </button>
       </div>

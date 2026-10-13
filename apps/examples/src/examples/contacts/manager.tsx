@@ -15,7 +15,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -68,24 +68,22 @@ function ContactCard({ user, onUnfollow }: { user: User; onUnfollow: () => void 
 }
 
 function AddContactForm({ onAdd }: { onAdd: (pubkey: string) => Promise<void> }) {
-  const pubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState("");
 
-  const adding$ = useMemo(() => new BehaviorSubject(false), []);
-  const adding = use$(adding$);
+  const [adding, setAdding] = useState(false);
 
   const handleAdd = useCallback(async () => {
     if (!pubkey.trim()) return;
 
     try {
-      adding$.next(true);
+      setAdding(true);
       await onAdd(pubkey.trim());
-      pubkey$.next("");
+      setPubkey("");
     } catch (err) {
       console.error("Failed to add contact:", err);
       alert(err instanceof Error ? err.message : "Failed to add contact");
     } finally {
-      adding$.next(false);
+      setAdding(false);
     }
   }, [pubkey, onAdd]);
 
@@ -94,7 +92,7 @@ function AddContactForm({ onAdd }: { onAdd: (pubkey: string) => Promise<void> })
       <div className="p-4 space-y-3">
         <h3 className="font-semibold text-lg mb-2">Add Contact</h3>
         <div className="flex gap-2">
-          <PubkeyPicker value={pubkey} onChange={(value) => pubkey$.next(value)} className="flex-1" />
+          <PubkeyPicker value={pubkey} onChange={(value) => setPubkey(value)} className="flex-1" />
           <button className="btn btn-primary" onClick={handleAdd} disabled={!pubkey.trim() || adding}>
             {adding ? <span className="loading loading-spinner loading-sm" /> : "Add"}
           </button>

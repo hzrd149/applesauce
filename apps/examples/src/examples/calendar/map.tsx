@@ -4,7 +4,7 @@
  * @related calendar/timeline
  */
 import { paginatedTimeline } from "../../extra/pagination";
-import { BehaviorSubject, Subject } from "rxjs";
+import { Subject } from "rxjs";
 
 import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
@@ -24,7 +24,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { decode } from "ngeohash";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -106,11 +106,8 @@ function CalendarEventPopup({ event }: { event: NostrEvent }) {
 }
 
 export default function CalendarMap() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
-
-  const showPastEvents$ = useMemo(() => new BehaviorSubject(false), []);
-  const showPastEvents = use$(showPastEvents$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const [showPastEvents, setShowPastEvents] = useState(false);
 
   const timeline = useMemo(
     () =>
@@ -177,7 +174,7 @@ export default function CalendarMap() {
   }, [filteredEvents]);
 
   const handleRelayChange = (relay: string) => {
-    relay$.next(relay);
+    setRelay(relay);
   };
 
   // Default map center (San Francisco)
@@ -202,7 +199,7 @@ export default function CalendarMap() {
             <input
               type="checkbox"
               checked={showPastEvents}
-              onChange={() => showPastEvents$.next(!showPastEvents)}
+              onChange={() => setShowPastEvents(!showPastEvents)}
               className="toggle"
             />
             Show past events

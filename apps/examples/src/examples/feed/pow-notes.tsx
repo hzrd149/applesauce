@@ -6,7 +6,7 @@
 import { Note, castEvent } from "applesauce-common/casts";
 import NoteContent from "../../components/note-content";
 import { paginatedTimeline } from "../../extra/pagination";
-import { BehaviorSubject, Subject } from "rxjs";
+import { Subject } from "rxjs";
 
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getOrComputeCachedValue, getProfilePicture } from "applesauce-core/helpers";
@@ -15,7 +15,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -158,14 +158,11 @@ function PoWDistributionGraph({ notes, minDifficulty }: { notes: NostrEvent[]; m
 }
 
 export default function PoWNotes() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
-  const minDifficulty$ = useMemo(() => new BehaviorSubject(0), []);
-  const minDifficulty = use$(minDifficulty$);
+  const [minDifficulty, setMinDifficulty] = useState(0);
 
-  const sortBy$ = useMemo(() => new BehaviorSubject<"date" | "pow">("date"), []);
-  const sortBy = use$(sortBy$);
+  const [sortBy, setSortBy] = useState<"date" | "pow">("date");
 
   // Create a timeline loader
   const timelineLoader = useMemo(() => createTimelineLoader(pool, [relay], { kinds: [1] }, { eventStore }), [relay]);
@@ -209,7 +206,7 @@ export default function PoWNotes() {
       )}
       {page?.loading && <p role="status">Loading events…</p>}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={setRelay} />
         <button className="btn btn-primary" onClick={handleLoadMore} disabled={loading}>
           {loading ? (
             <>
@@ -234,7 +231,7 @@ export default function PoWNotes() {
               min="0"
               max="20"
               value={minDifficulty}
-              onChange={(e) => minDifficulty$.next(parseInt(e.target.value))}
+              onChange={(e) => setMinDifficulty(parseInt(e.target.value))}
               className="range range-primary"
               step="1"
             />
@@ -254,7 +251,7 @@ export default function PoWNotes() {
             <select
               className="select select-bordered w-full"
               value={sortBy}
-              onChange={(e) => sortBy$.next(e.target.value as "date" | "pow")}
+              onChange={(e) => setSortBy(e.target.value as "date" | "pow")}
             >
               <option value="date">Most Recent First</option>
               <option value="pow">Highest PoW First</option>

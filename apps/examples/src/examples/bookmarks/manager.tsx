@@ -25,7 +25,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { NostrEvent } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -50,11 +50,9 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boolean) => Promise<void> }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
-  const hidden = use$(hidden$);
+  const [hidden, setHidden] = useState(false);
 
   const pointer = useMemo(() => {
     if (!input.trim()) return null;
@@ -82,8 +80,8 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
     }
 
     // Clear input after add
-    input$.next("");
-    hidden$.next(false);
+    setInput("");
+    setHidden(false);
   };
 
   return (
@@ -93,7 +91,7 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
         className="input input-bordered w-full"
         placeholder="Paste nevent or naddr here..."
         value={input}
-        onChange={(e) => input$.next(e.target.value)}
+        onChange={(e) => setInput(e.target.value)}
       />
 
       {pointer ? (
@@ -111,7 +109,7 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
       <div className="flex gap-2 justify-end mt-2">
         <label className="label">
           <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => hidden$.next(e.target.checked)} />
+          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!event}>
           Add
@@ -267,8 +265,7 @@ function BookmarkManager({ user }: { user: User }) {
   const hiddenNotes = useMemo(() => hidden?.filter((pointer) => isEventPointer(pointer)), [hidden]);
   const hiddenArticles = useMemo(() => hidden?.filter((pointer) => isAddressPointer(pointer)), [hidden]);
 
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [unlocking, setUnlocking] = useState(false);
 
   const handleAdd = async (event: NostrEvent, hidden: boolean) => {
     if (!signer) return;
@@ -294,12 +291,12 @@ function BookmarkManager({ user }: { user: User }) {
     if (!bookmarks || !signer || unlocking) return;
 
     try {
-      unlocking$.next(true);
+      setUnlocking(true);
       await bookmarks.unlock(signer);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unlock hidden bookmarks");
     } finally {
-      unlocking$.next(false);
+      setUnlocking(false);
     }
   };
 

@@ -16,9 +16,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  BehaviorSubject,
   switchMap,
   Subject,
   defer,
@@ -518,22 +517,16 @@ async function generateNIP17DMWithRandomBase64(pubkey: string): Promise<NostrEve
 }
 
 export default function BrokenGiftWrapGenerator() {
-  const pubkey$ = useMemo(
-    () => new BehaviorSubject<string | null>(totalRandomUsers[Math.floor(Math.random() * totalRandomUsers.length)]),
-    [],
+  const [pubkey, setPubkey] = useState<string | null>(
+    () => totalRandomUsers[Math.floor(Math.random() * totalRandomUsers.length)],
   );
-  const pubkey = use$(pubkey$);
-  const count$ = useMemo(() => new BehaviorSubject<number>(100), []);
-  const count = use$(count$);
+  const [count, setCount] = useState<number>(100);
 
-  const minDelay$ = useMemo(() => new BehaviorSubject<number>(100), []);
-  const minDelay = use$(minDelay$);
+  const [minDelay, setMinDelay] = useState<number>(100);
 
-  const maxDelay$ = useMemo(() => new BehaviorSubject<number>(1000), []);
-  const maxDelay = use$(maxDelay$);
+  const [maxDelay, setMaxDelay] = useState<number>(1000);
 
-  const brokenType$ = useMemo(() => new BehaviorSubject<BrokenGiftWrapType>(BrokenGiftWrapType.BrokenGiftWrap), []);
-  const brokenType = use$(brokenType$);
+  const [brokenType, setBrokenType] = useState<BrokenGiftWrapType>(BrokenGiftWrapType.BrokenGiftWrap);
 
   const mailboxes = use$(() => (pubkey ? castUser(pubkey, eventStore).mailboxes$ : undefined), [pubkey]);
   const commands$ = useMemo(
@@ -696,7 +689,7 @@ export default function BrokenGiftWrapGenerator() {
             </label>
             <PubkeyPicker
               value={pubkey ?? ""}
-              onChange={(pubkey) => pubkey$.next(pubkey)}
+              onChange={(pubkey) => setPubkey(pubkey)}
               placeholder="Enter pubkey or nostr identifier..."
             />
             <label className="label">
@@ -712,7 +705,7 @@ export default function BrokenGiftWrapGenerator() {
             inboxes={mailboxes?.inboxes ?? null}
           />
 
-          <BrokenTypeSelector selectedType={brokenType} onTypeChange={(value) => brokenType$.next(value)} />
+          <BrokenTypeSelector selectedType={brokenType} onTypeChange={(value) => setBrokenType(value)} />
 
           <div className="flex flex-col gap-2 w-full mb-4">
             <label className="label">
@@ -724,7 +717,7 @@ export default function BrokenGiftWrapGenerator() {
               max="100"
               className="input input-bordered w-full"
               value={count}
-              onChange={(e) => count$.next(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+              onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
             />
             <label className="label">
               <span className="label-text-alt">Generate between 1 and 100 broken events</span>
@@ -734,8 +727,8 @@ export default function BrokenGiftWrapGenerator() {
           <DelayConfigInput
             minDelay={minDelay}
             maxDelay={maxDelay}
-            onMinDelayChange={(value) => minDelay$.next(value)}
-            onMaxDelayChange={(value) => maxDelay$.next(value)}
+            onMinDelayChange={(value) => setMinDelay(value)}
+            onMaxDelayChange={(value) => setMaxDelay(value)}
           />
 
           {error && (

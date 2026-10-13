@@ -11,8 +11,7 @@ import { getTagValue, NostrEvent } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useCallback, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
 // NIP-29 Group Metadata Event kind
@@ -95,8 +94,7 @@ function GroupsGrid({ groups, relay }: { groups: NostrEvent[]; relay: string }) 
 }
 
 export default function GroupsExample() {
-  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://pyramid.fiatjaf.com/"), []);
-  const selectedRelay = use$(selectedRelay$);
+  const [selectedRelay, setSelectedRelay] = useState("wss://pyramid.fiatjaf.com/");
 
   // NIP-29 metadata currently has helpers, rather than an event cast.
   const feed = use$(
@@ -131,7 +129,7 @@ export default function GroupsExample() {
   }, [selectedRelay, authenticated]);
 
   const handleRelayChange = useCallback((relay: string) => {
-    selectedRelay$.next(relay);
+    setSelectedRelay(relay);
   }, []);
 
   return (

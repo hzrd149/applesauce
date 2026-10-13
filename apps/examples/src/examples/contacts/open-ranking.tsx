@@ -11,7 +11,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, map, defer, from, mergeMap, scan, startWith, catchError, of } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -110,22 +110,15 @@ function ContactScores({ user }: { user: User }) {
   const pubkey = use$(pubkey$);
   const contacts = use$(() => user.contacts$, [user.pubkey]);
 
-  const provider$ = useMemo(() => new BehaviorSubject(DEFAULT_OPEN_RANKING_PROVIDER), []);
-  const provider = use$(provider$);
-
-  const algorithm$ = useMemo(() => new BehaviorSubject(""), []);
-  const requestedAlgorithm = use$(algorithm$);
-  const authorize$ = useMemo(() => new BehaviorSubject(false), []);
-  const authorized = use$(authorize$);
+  const [provider, setProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
+  const [requestedAlgorithm, setRequestedAlgorithm] = useState("");
+  const [authorized, setAuthorized] = useState(false);
   const setAlgorithm = (value: string) => {
-    algorithm$.next(value);
-    authorize$.next(false);
+    setRequestedAlgorithm(value);
+    setAuthorized(false);
   };
-  const sortField$ = useMemo(() => new BehaviorSubject<SortField>("rank"), []);
-  const sortField = use$(sortField$);
-
-  const sortDir$ = useMemo(() => new BehaviorSubject<"asc" | "desc">("desc"), []);
-  const sortDir = use$(sortDir$);
+  const [sortField, setSortField] = useState<SortField>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   // Keep one client per provider; discovery never recreates it when algorithms change.
   const openRanking = useMemo(() => new OpenRanking(provider), [provider]);
@@ -219,7 +212,7 @@ function ContactScores({ user }: { user: User }) {
             placeholder="https://provider.example.com"
             className="input input-bordered w-full"
             value={provider}
-            onChange={(e) => provider$.next(e.target.value)}
+            onChange={(e) => setProvider(e.target.value)}
           />
           <datalist id="open-ranking-providers">
             {COMMON_PROVIDERS.map((p) => (
@@ -262,7 +255,7 @@ function ContactScores({ user }: { user: User }) {
       )}
 
       {requiresPov && (
-        <button className="btn btn-primary mb-4" disabled={!signer} onClick={() => authorize$.next(true)}>
+        <button className="btn btn-primary mb-4" disabled={!signer} onClick={() => setAuthorized(true)}>
           Load personalized scores
         </button>
       )}
@@ -275,7 +268,7 @@ function ContactScores({ user }: { user: User }) {
             <select
               className="select select-bordered select-sm join-item"
               value={sortField}
-              onChange={(e) => sortField$.next(e.target.value as SortField)}
+              onChange={(e) => setSortField(e.target.value as SortField)}
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -285,7 +278,7 @@ function ContactScores({ user }: { user: User }) {
             </select>
             <button
               className="btn btn-sm join-item"
-              onClick={() => sortDir$.next(sortDir$.value === "desc" ? "asc" : "desc")}
+              onClick={() => setSortDir((dir) => (dir === "desc" ? "asc" : "desc"))}
               title={sortDir === "desc" ? "Descending (highest first)" : "Ascending (lowest first)"}
             >
               {sortDir === "desc" ? "↓" : "↑"}

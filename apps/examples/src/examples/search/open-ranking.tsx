@@ -9,8 +9,8 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { BehaviorSubject, catchError, defer, map, of, startWith, switchMap } from "rxjs";
+import { useMemo, useState } from "react";
+import { catchError, defer, map, of, startWith } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
 const pool = new RelayPool();
@@ -70,21 +70,18 @@ import {
 import { type ISigner } from "applesauce-signers";
 import LoginView from "../../components/login-view";
 export default function OpenRankingSearch() {
-  const input$ = useMemo(
-    () => new BehaviorSubject({ provider: DEFAULT_OPEN_RANKING_PROVIDER, query: "", algorithm: "", showLogin: false }),
-    [],
-  );
-  const session$ = useMemo(() => new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null), []);
-  const commands$ = useMemo(
-    () => new BehaviorSubject<{ query: string; provider: string; algorithm: string; pubkey?: string } | null>(null),
-    [],
-  );
-  const input = use$(input$);
-  const session = use$(session$);
-  const client = useMemo(
-    () => new OpenRanking(input.provider, { signer: session?.signer }),
-    [input.provider, session?.signer],
-  );
+  const [provider, setProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
+  const [query, setQuery] = useState("");
+  const [algorithmId, setAlgorithmId] = useState("");
+  const [showLogin, setShowLogin] = useState(false);
+  const [session, setSession] = useState<{ signer: ISigner; pubkey: string } | null>(null);
+  const [command, setCommand] = useState<{
+    query: string;
+    provider: string;
+    algorithm: string;
+    pubkey?: string;
+  } | null>(null);
+  const client = useMemo(() => new OpenRanking(provider, { signer: session?.signer }), [provider, session?.signer]);
   const capabilities = use$(
     () =>
       defer(() => client.discover()).pipe(
@@ -101,54 +98,47 @@ export default function OpenRankingSearch() {
     [client],
   );
   const algorithms = capabilities?.algorithms ?? [];
-  const algorithm = algorithms.find((algorithm) => algorithm.id === input.algorithm) ?? algorithms[0];
-  const state = use$(
-    () =>
-      commands$.pipe(
-        switchMap((command) => {
-          if (!command || command.provider !== input.provider || command.pubkey !== session?.pubkey)
-            return of<SearchState<OpenRankingSearchResult>>({ status: "idle", results: [] });
-          return defer(() =>
-            client.userSearch(command.query, 20, {
-              algorithm: command.algorithm || undefined,
-              pov: algorithm?.pov ? session?.pubkey : undefined,
-            }),
-          ).pipe(
-            map((results): SearchState<OpenRankingSearchResult> => ({ status: "ready", results })),
-            startWith<SearchState<OpenRankingSearchResult>>({ status: "loading", results: [] }),
-            catchError((error) =>
-              of<SearchState<OpenRankingSearchResult>>({
-                status: "error",
-                results: [],
-                error: String(error.message ?? error),
-              }),
-            ),
-          );
+  const algorithm = algorithms.find((algorithm) => algorithm.id === algorithmId) ?? algorithms[0];
+  const state = use$(() => {
+    if (!command || command.provider !== provider || command.pubkey !== session?.pubkey)
+      return of<SearchState<OpenRankingSearchResult>>({ status: "idle", results: [] });
+    return defer(() =>
+      client.userSearch(command.query, 20, {
+        algorithm: command.algorithm || undefined,
+        pov: algorithm?.pov ? session?.pubkey : undefined,
+      }),
+    ).pipe(
+      map((results): SearchState<OpenRankingSearchResult> => ({ status: "ready", results })),
+      startWith<SearchState<OpenRankingSearchResult>>({ status: "loading", results: [] }),
+      catchError((error) =>
+        of<SearchState<OpenRankingSearchResult>>({
+          status: "error",
+          results: [],
+          error: String(error.message ?? error),
         }),
       ),
-    [client, input.provider, session?.pubkey, algorithm, commands$],
-  );
-  const update = (value: Partial<typeof input>) => input$.next({ ...input$.value, ...value });
-  if (input.showLogin)
+    );
+  }, [client, provider, session?.pubkey, algorithm, command]);
+  if (showLogin)
     return (
       <LoginView
         onLogin={(signer, pubkey) => {
-          session$.next({ signer, pubkey });
-          update({ showLogin: false });
+          setSession({ signer, pubkey });
+          setShowLogin(false);
         }}
       />
     );
   return (
     <div className="mx-auto max-w-4xl p-4 space-y-4">
-      <button className="btn btn-sm" onClick={() => (session ? session$.next(null) : update({ showLogin: true }))}>
+      <button className="btn btn-sm" onClick={() => (session ? setSession(null) : setShowLogin(true))}>
         {session ? "Sign out" : "Sign in for personalized ranking"}
       </button>
       <label className="flex flex-col gap-2">
         Provider
         <input
           className="input input-bordered"
-          value={input.provider}
-          onChange={(event) => update({ provider: event.target.value })}
+          value={provider}
+          onChange={(event) => setProvider(event.target.value)}
         />
       </label>
       {capabilities?.error && (
@@ -160,10 +150,10 @@ export default function OpenRankingSearch() {
         className="flex flex-wrap gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          if (input.query.trim())
-            commands$.next({
-              query: input.query.trim(),
-              provider: input.provider,
+          if (query.trim())
+            setCommand({
+              query: query.trim(),
+              provider,
               algorithm: algorithm?.id ?? "",
               pubkey: session?.pubkey,
             });
@@ -171,14 +161,14 @@ export default function OpenRankingSearch() {
       >
         <input
           className="input input-bordered flex-1"
-          value={input.query}
+          value={query}
           placeholder="Search ranked profiles"
-          onChange={(event) => update({ query: event.target.value })}
+          onChange={(event) => setQuery(event.target.value)}
         />
         <select
           className="select select-bordered"
           value={algorithm?.id ?? ""}
-          onChange={(event) => update({ algorithm: event.target.value })}
+          onChange={(event) => setAlgorithmId(event.target.value)}
         >
           {algorithms.map((algorithm) => (
             <option key={algorithm.id} value={algorithm.id} disabled={algorithm.pov && !session}>
@@ -189,10 +179,7 @@ export default function OpenRankingSearch() {
         <button
           className="btn btn-primary"
           disabled={
-            !input.query.trim() ||
-            state?.status === "loading" ||
-            capabilities?.loading ||
-            !!(algorithm?.pov && !session)
+            !query.trim() || state?.status === "loading" || capabilities?.loading || !!(algorithm?.pov && !session)
           }
         >
           Search

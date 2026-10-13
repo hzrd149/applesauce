@@ -9,7 +9,7 @@ import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, defer, map, Observable, of, startWith, switchMap } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
@@ -63,9 +63,8 @@ function Results({ state }: { state: SearchState<ProfilePointer> | undefined }) 
 }
 import { PrimalCache } from "applesauce-extra";
 export default function PrimalSearch() {
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
+  const [query, setQuery] = useState("");
   const commands$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const query = use$(query$);
   const state = use$(
     () =>
       new Observable<SearchState<ProfilePointer>>((subscriber) => {
@@ -112,7 +111,7 @@ export default function PrimalSearch() {
           className="input input-bordered flex-1"
           value={query}
           placeholder="Search Primal profiles"
-          onChange={(event) => query$.next(event.target.value)}
+          onChange={(event) => setQuery(event.target.value)}
         />
         <button className="btn btn-primary" disabled={!query.trim() || state?.status === "loading"}>
           Search

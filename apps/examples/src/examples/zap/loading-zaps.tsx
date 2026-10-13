@@ -13,7 +13,7 @@ import { normalizeToPubkey } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -122,8 +122,7 @@ function NoteCard({ note }: { note: Note }) {
 }
 
 export default function LoadingZaps() {
-  const pubkey$ = useMemo(() => new BehaviorSubject(AUTHOR), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState(AUTHOR);
 
   // Cast the pubkey into a User instance
   const author = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
@@ -174,7 +173,7 @@ export default function LoadingZaps() {
           {paging.error}
         </p>
       )}
-      <PubkeyPicker value={pubkey} onChange={(next: typeof pubkey$.value) => pubkey$.next(next)} />
+      <PubkeyPicker value={pubkey} onChange={setPubkey} />
 
       <div className="flex flex-col gap-4 py-4">
         {notes?.map((note) => (

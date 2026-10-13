@@ -6,7 +6,7 @@
 import { castTimelineStream } from "applesauce-common/observable";
 
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, map, switchMap, of } from "rxjs";
+import { map, switchMap, of } from "rxjs";
 
 import { EmojiPack } from "applesauce-common/casts";
 import { EMOJI_PACK_KIND } from "applesauce-common/helpers";
@@ -16,7 +16,7 @@ import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -146,14 +146,11 @@ function PackDetail({ pack }: { pack: EmojiPack }) {
 }
 
 export default function EmojiPacksExample() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.ditto.pub"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.ditto.pub");
 
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
-  const query = use$(query$);
+  const [query, setQuery] = useState("");
 
-  const selectedId$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedId = use$(selectedId$);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const feed = use$(
     () =>
@@ -188,7 +185,7 @@ export default function EmojiPacksExample() {
 
   return (
     <div className="flex w-full h-[calc(100vh-7rem)] flex-col gap-4 p-4 overflow-hidden">
-      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
       {feed?.status === "loading" && <p role="status">Loading events…</p>}
       {feed?.errors.map((error) => (
         <p role="alert" className="text-error" key={error}>
@@ -208,7 +205,7 @@ export default function EmojiPacksExample() {
             <input
               type="text"
               value={query}
-              onChange={(e) => query$.next(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter by name, identifier, or author"
               className="input input-bordered w-full"
             />
@@ -238,7 +235,7 @@ export default function EmojiPacksExample() {
                 key={pack.uid}
                 pack={pack}
                 selected={pack.uid === selectedPack?.uid}
-                onSelect={() => selectedId$.next(pack.uid)}
+                onSelect={() => setSelectedId(pack.uid)}
               />
             ))}
           </div>

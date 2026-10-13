@@ -10,8 +10,7 @@ import { EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -103,8 +102,7 @@ function NappletItem({ napplet }: { napplet: Napplet }) {
 }
 
 export default function NappletBrowser() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.primal.net/");
 
   use$(
     () => pool.relay(relay).subscription({ kinds: NAPPLET_KINDS, limit: 200 }).pipe(mapEventsToStore(eventStore)),
@@ -121,7 +119,7 @@ export default function NappletBrowser() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Napplet Timeline</h1>
         <p className="text-base-content/60 mb-4">Sandboxed Nostr web applets (NIP-5D) published as manifest events</p>
-        <RelayPicker value={relay} onChange={(url) => relay$.next(url)} />
+        <RelayPicker value={relay} onChange={(url) => setRelay(url)} />
       </div>
 
       {napplets === undefined ? (

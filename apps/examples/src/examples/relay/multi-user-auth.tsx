@@ -8,8 +8,8 @@ import { getPublicKey, NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useMemo } from "react";
-import { BehaviorSubject, catchError, EMPTY, filter, map, merge, of, scan, startWith, Subject, tap } from "rxjs";
+import { useMemo, useState } from "react";
+import { catchError, EMPTY, filter, map, merge, of, scan, startWith, Subject, tap } from "rxjs";
 
 // Relays that support multiple authenticated users on one connection.
 // Both will CLOSED a kind 1059 REQ until all #p pubkeys are authenticated.
@@ -63,26 +63,21 @@ function AuthStateBadge({ state }: { state?: { response: { ok: boolean; message?
 }
 
 export default function MultiUserAuthExample() {
-  const state$ = useMemo(
-    () => new BehaviorSubject({ url: RELAYS[0], published: null as string | null, requested: false }),
-    [],
-  );
-  const state = use$(state$);
-  const url = state.url;
-  const published = state.published;
-  const requested = state.requested;
-  const setUrl = (url: string) => state$.next({ url, published: null, requested: false });
-  const setPublished = (published: string | null) => state$.next({ ...state$.value, published });
-  const setSubscribing = (requested: boolean) => state$.next({ ...state$.value, requested });
-  const users$ = useMemo(() => new BehaviorSubject<User[]>([createUser(0), createUser(1)]), []);
-  const addUser = () => users$.next([...users$.value, createUser(users$.value.length)]);
+  const [url, setRelayUrl] = useState(RELAYS[0]);
+  const [published, setPublished] = useState<string | null>(null);
+  const [requested, setSubscribing] = useState(false);
+  const setUrl = (url: string) => {
+    setRelayUrl(url);
+    setPublished(null);
+    setSubscribing(false);
+  };
+  const [users, setUsers] = useState<User[]>(() => [createUser(0), createUser(1)]);
+  const addUser = () => setUsers((users) => [...users, createUser(users.length)]);
   const actions$ = useMemo(() => new Subject<string>(), []);
   const logAction = (message: string) => actions$.next(message);
 
   const relay = pool.relay(url);
 
-  // Subscribe to the dynamic list of users
-  const users = use$(users$);
   const pubkeys = users.map((u) => u.pubkey);
 
   // Subscribe to the relay status (connection, challenge, and multi-user auth state)
@@ -160,7 +155,7 @@ export default function MultiUserAuthExample() {
 
   // Authenticate every user that is not authenticated yet, one at a time
   const authenticateAll = async () => {
-    for (const { name, signer, pubkey } of users$.value) {
+    for (const { name, signer, pubkey } of users) {
       if (!relay.isAuthenticated(pubkey)) await authenticate(signer, name);
     }
   };

@@ -13,7 +13,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
 
-import { useMemo } from "react";
+import { useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -98,17 +98,13 @@ function NoteItem({
 function NotesList({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
-  const selectedIds$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
-  const selectedIds = use$(selectedIds$);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  const isDeleting$ = useMemo(() => new BehaviorSubject(false), []);
-  const isDeleting = use$(isDeleting$);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const success$ = useMemo(() => new BehaviorSubject(false), []);
-  const success = use$(success$);
+  const [success, setSuccess] = useState(false);
 
   // Load user's kind 1 notes
   use$(() => {
@@ -132,28 +128,26 @@ function NotesList({ user }: { user: User }) {
   const hasSelection = selectedIds.size > 0;
 
   const handleToggleSelect = (noteId: string) => {
-    selectedIds$.next(
-      ((prev: typeof selectedIds$.value) => {
-        const next = new Set(prev);
-        if (next.has(noteId)) {
-          next.delete(noteId);
-        } else {
-          next.add(noteId);
-        }
-        return next;
-      })(selectedIds$.value),
-    );
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) {
+        next.delete(noteId);
+      } else {
+        next.add(noteId);
+      }
+      return next;
+    });
   };
 
   const handleDelete = async (eventsToDelete: (string | NostrEvent)[]) => {
     if (!signer || !outboxes || outboxes.length === 0) {
-      error$.next("Missing signer or outboxes. Cannot delete events.");
+      setError("Missing signer or outboxes. Cannot delete events.");
       return;
     }
 
-    isDeleting$.next(true);
-    error$.next(null);
-    success$.next(false);
+    setIsDeleting(true);
+    setError(null);
+    setSuccess(false);
 
     try {
       const signed = await DeleteFactory.fromEvents(eventsToDelete).sign(signer);
@@ -165,14 +159,14 @@ function NotesList({ user }: { user: User }) {
       eventStore.add(signed);
 
       // Clear selection
-      selectedIds$.next(new Set());
-      success$.next(true);
-      setTimeout(() => success$.next(false), 3000);
+      setSelectedIds(new Set());
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to delete events:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to delete events");
+      setError(err instanceof Error ? err.message : "Failed to delete events");
     } finally {
-      isDeleting$.next(false);
+      setIsDeleting(false);
     }
   };
 

@@ -15,7 +15,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller, useWatch } from "react-hook-form";
@@ -89,14 +89,11 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 function ProfileEditor({ user }: { user: User }) {
   const profile = use$(() => user.profile$, [user.pubkey]);
-  const saving$ = useMemo(() => new BehaviorSubject(false), []);
-  const saving = use$(saving$);
+  const [saving, setSaving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const success$ = useMemo(() => new BehaviorSubject(false), []);
-  const success = use$(success$);
+  const [success, setSuccess] = useState(false);
 
   // Convert profile to form data, handling undefined values
   const defaultValues = useMemo<ProfileFormData>(() => {
@@ -153,9 +150,9 @@ function ProfileEditor({ user }: { user: User }) {
   }, [defaultValues, reset]);
 
   const onSubmit = async (data: ProfileFormData) => {
-    saving$.next(true);
-    error$.next(null);
-    success$.next(false);
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
 
     try {
       // Convert form data to ProfileContent, removing empty strings
@@ -175,13 +172,13 @@ function ProfileEditor({ user }: { user: User }) {
       if (data.languages && data.languages.length > 0) profileUpdate.languages = data.languages;
 
       await actions.run(UpdateProfile, profileUpdate);
-      success$.next(true);
-      setTimeout(() => success$.next(false), 3000);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       console.error("Failed to update profile:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to update profile");
+      setError(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
-      saving$.next(false);
+      setSaving(false);
     }
   };
 

@@ -4,9 +4,7 @@
  * @related feed/relay-timeline, outbox/relay-selection
  */
 import {
-  BehaviorSubject,
   Observable,
-  switchMap,
   defer,
   takeUntil,
   takeLast,
@@ -31,7 +29,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayGroup, RelayPool } from "applesauce-relay";
 import { completeWhen } from "applesauce-relay/operators/complete-when";
 import { GroupReqMessage } from "applesauce-relay/types";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -86,197 +84,168 @@ function RelayBadge({ relay, state }: { relay: string; state: RelayState }) {
 }
 
 export default function CompletionConditions() {
-  const relays$ = useMemo(
-    () =>
-      new BehaviorSubject<string[]>(
-        relaySet([
-          "wss://relay.damus.io",
-          "wss://relay.snort.social",
-          "wss://nos.lol",
-          "wss://relay.primal.net",
-          "wss://nostr.wine",
-          "wss://nostr-pub.wellorder.net",
-          "wss://relay.nostr.band", // Intentionally add dead relay
-        ]),
-      ),
-    [],
+  const [relays, setRelays] = useState<string[]>(() =>
+    relaySet([
+      "wss://relay.damus.io",
+      "wss://relay.snort.social",
+      "wss://nos.lol",
+      "wss://relay.primal.net",
+      "wss://nostr.wine",
+      "wss://nostr-pub.wellorder.net",
+      "wss://relay.nostr.band", // Intentionally add dead relay
+    ]),
   );
-  const relays = use$(relays$);
 
-  const currentRelay$ = useMemo(() => new BehaviorSubject(""), []);
-  const currentRelay = use$(currentRelay$);
+  const [currentRelay, setCurrentRelay] = useState("");
 
-  const filterJson$ = useMemo(() => new BehaviorSubject('{"kinds":[1],"limit":20}'), []);
-  const filterJson = use$(filterJson$);
+  const [filterJson, setFilterJson] = useState('{"kinds":[1],"limit":20}');
 
-  const filterError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const filterError = use$(filterError$);
+  const [filterError, setFilterError] = useState<string | null>(null);
 
   // Completion configuration
-  const eventCountThreshold$ = useMemo(() => new BehaviorSubject(20), []);
-  const eventCountThreshold = use$(eventCountThreshold$);
+  const [eventCountThreshold, setEventCountThreshold] = useState(20);
 
-  const firstEoseTimeout$ = useMemo(() => new BehaviorSubject(5000), []);
-  const firstEoseTimeout = use$(firstEoseTimeout$);
+  const [firstEoseTimeout, setFirstEoseTimeout] = useState(5000);
 
-  const firstNRelaysCount$ = useMemo(() => new BehaviorSubject(2), []);
-  const firstNRelaysCount = use$(firstNRelaysCount$);
+  const [firstNRelaysCount, setFirstNRelaysCount] = useState(2);
 
-  const timeLimitMs$ = useMemo(() => new BehaviorSubject(10000), []);
-  const timeLimitMs = use$(timeLimitMs$);
+  const [timeLimitMs, setTimeLimitMs] = useState(10000);
 
-  const commands$ = useMemo(
-    () =>
-      new BehaviorSubject<{
-        relays: string[];
-        filter: Filter;
-        eventCountThreshold: number;
-        firstEoseTimeout: number;
-        firstNRelaysCount: number;
-        timeLimitMs: number;
-      } | null>(null),
-    [],
-  );
-  const queryState = use$(
-    () =>
-      commands$.pipe(
-        switchMap((config) => {
-          const initial = {
-            timelineMessages: [] as TimelineMessage[],
-            completionMarkers: [] as CompletionMarker[],
-            events: [] as NostrEvent[],
-            querying: false,
-            error: "",
-          };
-          if (!config) return of(initial);
-          return defer(() => {
-            const started = Date.now();
-            const last = new Map<string, number>();
-            const messages$ = pool
-              .group(config.relays)
-              .req(config.filter)
-              .pipe(
-                takeUntil(timer(config.timeLimitMs)),
-                map((message) => {
-                  const timestamp = Date.now() - started;
-                  const deltaTime = timestamp - (last.get(message.from) ?? 0);
-                  last.set(message.from, timestamp);
-                  return { ...message, timestamp, deltaTime } as TimelineMessage;
-                }),
-                shareReplay({ bufferSize: 100, refCount: true }),
-              );
-            const marker = (
-              type: CompletionMarker["type"],
-              label: string,
-              color: string,
-              condition: Observable<GroupReqMessage>,
-              explanation: string,
-            ) =>
-              condition.pipe(
-                scan(
-                  (seen, message) => (message.type === "EVENT" ? new Set([...seen, message.event.id]) : seen),
-                  new Set<string>(),
-                ),
-                takeLast(1),
-                defaultIfEmpty(new Set<string>()),
-                map((seen) => ({
-                  marker: {
-                    type,
-                    label,
-                    color,
-                    explanation,
-                    eventCount: seen.size,
-                    time: Date.now() - started,
-                  } as CompletionMarker,
-                })),
-              );
-            const firstEose$ = messages$.pipe(
-              completeWhen((source) =>
-                source.pipe(
-                  rxFilter((message) => message.type === "EOSE"),
-                  take(1),
-                  map(() => true),
-                ),
-              ),
-            );
-            const eventCount$ = messages$.pipe(
-              completeWhen((source) =>
-                source.pipe(
-                  rxFilter((message) => message.type === "EVENT"),
-                  scan((count) => count + 1, 0),
-                  rxFilter((count) => count >= config.eventCountThreshold),
-                  take(1),
-                  map(() => true),
-                ),
-              ),
-            );
-            const firstN$ = messages$.pipe(
-              completeWhen((source) =>
-                source.pipe(
-                  rxFilter((message) => message.type === "EOSE"),
-                  scan((seen, message) => new Set([...seen, message.from]), new Set<string>()),
-                  rxFilter((seen) => seen.size >= config.firstNRelaysCount),
-                  take(1),
-                  map(() => true),
-                ),
-              ),
-            );
-            const items$ = merge(
-              messages$.pipe(map((message) => ({ message }))),
-              marker("firstEose", "First EOSE", "bg-yellow-500", firstEose$, "First EOSE or request time limit"),
-              marker("eventCount", "Event Count", "bg-blue-500", eventCount$, "Event threshold or request time limit"),
-              marker(
-                "firstNRelays",
-                "First N Relays",
-                "bg-green-500",
-                firstN$,
-                "Relay threshold or request time limit",
-              ),
-              marker(
-                "firstEosePlusTimeout",
-                "First EOSE + Timeout",
-                "bg-orange-500",
-                messages$.pipe(completeWhen(RelayGroup.completeAfterFirstRelay(config.firstEoseTimeout))),
-                "Grace period after first EOSE or request time limit",
-              ),
-              marker(
-                "allComplete",
-                "All Complete",
-                "bg-purple-500",
-                messages$.pipe(completeWhen(RelayGroup.completeOnAllEose())),
-                "All relays finished or request time limit",
-              ),
-              marker("timeLimit", "Time Limit", "bg-red-500", messages$, "Overall request time limit"),
-            );
-            return items$.pipe(
-              scan(
-                (state, item) => {
-                  if ("marker" in item)
-                    return { ...state, completionMarkers: [...state.completionMarkers, item.marker] };
-                  const message = item.message;
-                  const events =
-                    message.type === "EVENT" && !state.events.some((event) => event.id === message.event.id)
-                      ? [...state.events, message.event]
-                      : state.events;
-                  return { ...state, timelineMessages: [...state.timelineMessages, message], events };
-                },
-                { ...initial, querying: true },
-              ),
-              materialize(),
-              scan(
-                (state, notification) =>
-                  notification.kind === "N"
-                    ? notification.value
-                    : { ...state, querying: false, error: notification.kind === "E" ? String(notification.error) : "" },
-                { ...initial, querying: true },
-              ),
-              startWith({ ...initial, querying: true }),
-            );
-          });
-        }),
-      ),
-    [commands$],
-  );
+  const [config, setConfig] = useState<{
+    relays: string[];
+    filter: Filter;
+    eventCountThreshold: number;
+    firstEoseTimeout: number;
+    firstNRelaysCount: number;
+    timeLimitMs: number;
+  } | null>(null);
+  const queryState = use$(() => {
+    const initial = {
+      timelineMessages: [] as TimelineMessage[],
+      completionMarkers: [] as CompletionMarker[],
+      events: [] as NostrEvent[],
+      querying: false,
+      error: "",
+    };
+    if (!config) return of(initial);
+    return defer(() => {
+      const started = Date.now();
+      const last = new Map<string, number>();
+      const messages$ = pool
+        .group(config.relays)
+        .req(config.filter)
+        .pipe(
+          takeUntil(timer(config.timeLimitMs)),
+          map((message) => {
+            const timestamp = Date.now() - started;
+            const deltaTime = timestamp - (last.get(message.from) ?? 0);
+            last.set(message.from, timestamp);
+            return { ...message, timestamp, deltaTime } as TimelineMessage;
+          }),
+          shareReplay({ bufferSize: 100, refCount: true }),
+        );
+      const marker = (
+        type: CompletionMarker["type"],
+        label: string,
+        color: string,
+        condition: Observable<GroupReqMessage>,
+        explanation: string,
+      ) =>
+        condition.pipe(
+          scan(
+            (seen, message) => (message.type === "EVENT" ? new Set([...seen, message.event.id]) : seen),
+            new Set<string>(),
+          ),
+          takeLast(1),
+          defaultIfEmpty(new Set<string>()),
+          map((seen) => ({
+            marker: {
+              type,
+              label,
+              color,
+              explanation,
+              eventCount: seen.size,
+              time: Date.now() - started,
+            } as CompletionMarker,
+          })),
+        );
+      const firstEose$ = messages$.pipe(
+        completeWhen((source) =>
+          source.pipe(
+            rxFilter((message) => message.type === "EOSE"),
+            take(1),
+            map(() => true),
+          ),
+        ),
+      );
+      const eventCount$ = messages$.pipe(
+        completeWhen((source) =>
+          source.pipe(
+            rxFilter((message) => message.type === "EVENT"),
+            scan((count) => count + 1, 0),
+            rxFilter((count) => count >= config.eventCountThreshold),
+            take(1),
+            map(() => true),
+          ),
+        ),
+      );
+      const firstN$ = messages$.pipe(
+        completeWhen((source) =>
+          source.pipe(
+            rxFilter((message) => message.type === "EOSE"),
+            scan((seen, message) => new Set([...seen, message.from]), new Set<string>()),
+            rxFilter((seen) => seen.size >= config.firstNRelaysCount),
+            take(1),
+            map(() => true),
+          ),
+        ),
+      );
+      const items$ = merge(
+        messages$.pipe(map((message) => ({ message }))),
+        marker("firstEose", "First EOSE", "bg-yellow-500", firstEose$, "First EOSE or request time limit"),
+        marker("eventCount", "Event Count", "bg-blue-500", eventCount$, "Event threshold or request time limit"),
+        marker("firstNRelays", "First N Relays", "bg-green-500", firstN$, "Relay threshold or request time limit"),
+        marker(
+          "firstEosePlusTimeout",
+          "First EOSE + Timeout",
+          "bg-orange-500",
+          messages$.pipe(completeWhen(RelayGroup.completeAfterFirstRelay(config.firstEoseTimeout))),
+          "Grace period after first EOSE or request time limit",
+        ),
+        marker(
+          "allComplete",
+          "All Complete",
+          "bg-purple-500",
+          messages$.pipe(completeWhen(RelayGroup.completeOnAllEose())),
+          "All relays finished or request time limit",
+        ),
+        marker("timeLimit", "Time Limit", "bg-red-500", messages$, "Overall request time limit"),
+      );
+      return items$.pipe(
+        scan(
+          (state, item) => {
+            if ("marker" in item) return { ...state, completionMarkers: [...state.completionMarkers, item.marker] };
+            const message = item.message;
+            const events =
+              message.type === "EVENT" && !state.events.some((event) => event.id === message.event.id)
+                ? [...state.events, message.event]
+                : state.events;
+            return { ...state, timelineMessages: [...state.timelineMessages, message], events };
+          },
+          { ...initial, querying: true },
+        ),
+        materialize(),
+        scan(
+          (state, notification) =>
+            notification.kind === "N"
+              ? notification.value
+              : { ...state, querying: false, error: notification.kind === "E" ? String(notification.error) : "" },
+          { ...initial, querying: true },
+        ),
+        startWith({ ...initial, querying: true }),
+      );
+    });
+  }, [config]);
   const timelineMessages = queryState?.timelineMessages ?? [];
   const completionMarkers = queryState?.completionMarkers ?? [];
   const events = queryState?.events ?? [];
@@ -302,10 +271,10 @@ export default function CompletionConditions() {
   const validateFilter = useCallback((json: string) => {
     try {
       JSON.parse(json);
-      filterError$.next(null);
+      setFilterError(null);
       return true;
     } catch (e) {
-      filterError$.next("Invalid JSON");
+      setFilterError("Invalid JSON");
       return false;
     }
   }, []);
@@ -313,56 +282,50 @@ export default function CompletionConditions() {
   // Add relay to list
   const handleAddRelay = useCallback(() => {
     if (currentRelay && !relays.includes(currentRelay)) {
-      relays$.next([...relays, currentRelay]);
-      currentRelay$.next("");
+      setRelays([...relays, currentRelay]);
+      setCurrentRelay("");
     }
   }, [currentRelay, relays]);
 
   // Remove relay from list
   const handleRemoveRelay = useCallback(
     (relay: string) => {
-      relays$.next(relays.filter((r) => r !== relay));
+      setRelays(relays.filter((r) => r !== relay));
     },
     [relays],
   );
 
-  const random$ = useMemo(() => new BehaviorSubject(0), []);
+  const [attempt, setAttempt] = useState(0);
   const randomRelays = use$(
     () =>
-      random$.pipe(
-        switchMap((attempt) =>
-          attempt
-            ? pool
-                .relay("wss://relay.nostr.watch")
-                .request({ kinds: [30166], limit: 200 }, { timeout: 10_000 })
-                .pipe(
-                  mapEventsToTimeline(),
-                  last(),
-                  map((events) => ({
-                    loading: false,
-                    relays: relaySet(
-                      events.map((event) => getTagValue(event, "d")).filter((value) => value !== undefined),
-                    )
-                      .sort(() => Math.random() - 0.5)
-                      .slice(0, 10),
-                    error: "",
-                  })),
-                  startWith({ loading: true, relays: [] as string[], error: "" }),
-                  catchError((error) => of({ loading: false, relays: [] as string[], error: String(error) })),
-                )
-            : of({ loading: false, relays: [] as string[], error: "" }),
-        ),
-      ),
-    [random$],
+      attempt
+        ? pool
+            .relay("wss://relay.nostr.watch")
+            .request({ kinds: [30166], limit: 200 }, { timeout: 10_000 })
+            .pipe(
+              mapEventsToTimeline(),
+              last(),
+              map((events) => ({
+                loading: false,
+                relays: relaySet(events.map((event) => getTagValue(event, "d")).filter((value) => value !== undefined))
+                  .sort(() => Math.random() - 0.5)
+                  .slice(0, 10),
+                error: "",
+              })),
+              startWith({ loading: true, relays: [] as string[], error: "" }),
+              catchError((error) => of({ loading: false, relays: [] as string[], error: String(error) })),
+            )
+        : of({ loading: false, relays: [] as string[], error: "" }),
+    [attempt],
   );
-  const handleRandomRelays = () => random$.next(random$.value + 1);
+  const handleRandomRelays = () => setAttempt((attempt) => attempt + 1);
   const handleUseRandomRelays = () => {
-    if (randomRelays?.relays.length) relays$.next(randomRelays.relays);
+    if (randomRelays?.relays.length) setRelays(randomRelays.relays);
   };
-  const handleReset = () => commands$.next(null);
+  const handleReset = () => setConfig(null);
   const handleQuery = () => {
     if (!validateFilter(filterJson) || !relays.length) return;
-    commands$.next({
+    setConfig({
       relays,
       filter: JSON.parse(filterJson),
       eventCountThreshold,
@@ -404,11 +367,7 @@ export default function CompletionConditions() {
               <span className="label-text font-semibold">Relays ({relays.length})</span>
             </label>
             <div className="flex gap-2 mb-2">
-              <RelayPicker
-                value={currentRelay}
-                onChange={(next: typeof currentRelay$.value) => currentRelay$.next(next)}
-                className="flex-1"
-              />
+              <RelayPicker value={currentRelay} onChange={(next: string) => setCurrentRelay(next)} className="flex-1" />
               <button
                 className="btn btn-primary"
                 onClick={handleAddRelay}
@@ -445,7 +404,7 @@ export default function CompletionConditions() {
               rows={3}
               value={filterJson}
               onChange={(e) => {
-                filterJson$.next(e.target.value);
+                setFilterJson(e.target.value);
                 validateFilter(e.target.value);
               }}
             />
@@ -462,7 +421,7 @@ export default function CompletionConditions() {
                 min="5"
                 max="50"
                 value={eventCountThreshold}
-                onChange={(e) => eventCountThreshold$.next(Number(e.target.value))}
+                onChange={(e) => setEventCountThreshold(Number(e.target.value))}
                 className="range range-sm"
               />
             </div>
@@ -477,7 +436,7 @@ export default function CompletionConditions() {
                 max="10000"
                 step="100"
                 value={firstEoseTimeout}
-                onChange={(e) => firstEoseTimeout$.next(Number(e.target.value))}
+                onChange={(e) => setFirstEoseTimeout(Number(e.target.value))}
                 className="range range-sm"
               />
             </div>
@@ -491,7 +450,7 @@ export default function CompletionConditions() {
                 min="1"
                 max={Math.max(relays.length, 5)}
                 value={Math.min(firstNRelaysCount, relays.length)}
-                onChange={(e) => firstNRelaysCount$.next(Number(e.target.value))}
+                onChange={(e) => setFirstNRelaysCount(Number(e.target.value))}
                 className="range range-sm"
                 disabled={relays.length === 0}
               />
@@ -507,7 +466,7 @@ export default function CompletionConditions() {
                 max="30000"
                 step="100"
                 value={timeLimitMs}
-                onChange={(e) => timeLimitMs$.next(Number(e.target.value))}
+                onChange={(e) => setTimeLimitMs(Number(e.target.value))}
                 className="range range-sm"
               />
             </div>

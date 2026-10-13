@@ -4,16 +4,16 @@ import { relayTimeline } from "../../extra/relay-timeline";
  * @tags nip-57, zap, force-graph, live, visualization, screensaver
  * @related zap/timeline, zap/zap-history
  */
-import { BehaviorSubject, defer, tap, map, startWith, auditTime, ignoreElements } from "rxjs";
+import { defer, tap, map, startWith, auditTime } from "rxjs";
 
 import { Zap } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { castUser, EventStore, combineLatestByValue } from "applesauce-core";
-import { getDisplayName, getProfilePicture, kinds, safeParse } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D, { ForceGraphMethods, LinkObject, NodeObject } from "react-force-graph-2d";
 import { useLocalStorage } from "react-use";
 import { lookupRelays$ } from "../../settings";
@@ -91,8 +91,7 @@ function linkColor(amount: number): string {
 // ---------------------------------------------------------------------------
 
 function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange: (relays: string[]) => void }) {
-  const custom$ = useMemo(() => new BehaviorSubject(""), []);
-  const custom = use$(custom$);
+  const [custom, setCustom] = useState("");
 
   const [known, setKnown] = useLocalStorage<string[]>("zap-live-graph-known-relays", DEFAULT_RELAYS);
 
@@ -111,7 +110,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
     if (!url || !url.startsWith("wss://")) return;
     setKnown(Array.from(new Set([...(known ?? []), url])));
     if (!selected.includes(url)) onChange([...selected, url]);
-    custom$.next("");
+    setCustom("");
   };
 
   return (
@@ -139,7 +138,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
             placeholder="wss://your-relay.example"
             className="input input-sm input-bordered join-item flex-1"
             value={custom}
-            onChange={(e) => custom$.next(e.target.value)}
+            onChange={(e) => setCustom(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addCustom()}
           />
           <button className="btn btn-sm btn-warning join-item" onClick={addCustom}>
@@ -156,59 +155,33 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
 // ---------------------------------------------------------------------------
 
 export default function ZapLiveGraph() {
-  const selectedRelays$ = useMemo(
-    () =>
-      new BehaviorSubject(
-        safeParse<string[]>(localStorage.getItem("zap-live-graph-relays") ?? "") ?? DEFAULT_RELAYS.slice(0, 3),
-      ),
-    [],
+  const [relays = DEFAULT_RELAYS.slice(0, 3), setRelays] = useLocalStorage<string[]>(
+    "zap-live-graph-relays",
+    DEFAULT_RELAYS.slice(0, 3),
   );
-  const relays = use$(selectedRelays$);
-  const timeRange$ = useMemo(
-    () => new BehaviorSubject(safeParse<TimeRange>(localStorage.getItem("zap-live-graph-range") ?? "") ?? "live"),
-    [],
-  );
-  const range = use$(timeRange$);
-  use$(
-    () =>
-      selectedRelays$.pipe(
-        tap((relays) => localStorage.setItem("zap-live-graph-relays", JSON.stringify(relays))),
-        ignoreElements(),
-      ),
-    [selectedRelays$],
-  );
-  use$(
-    () =>
-      timeRange$.pipe(
-        tap((range) => localStorage.setItem("zap-live-graph-range", JSON.stringify(range))),
-        ignoreElements(),
-      ),
-    [timeRange$],
-  );
+  const [range = "live", setRange] = useLocalStorage<TimeRange>("zap-live-graph-range", "live");
 
   // Resizable container
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const size$ = useMemo(() => new BehaviorSubject({ width: 800, height: 600 }), []);
-  const size = use$(size$);
+  const [size, setSize] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const ro = new ResizeObserver(() => {
-      size$.next({ width: el.clientWidth, height: el.clientHeight });
+      setSize({ width: el.clientWidth, height: el.clientHeight });
     });
     ro.observe(el);
-    size$.next({ width: el.clientWidth, height: el.clientHeight });
+    setSize({ width: el.clientWidth, height: el.clientHeight });
     return () => ro.disconnect();
   }, []);
 
   // Fullscreen toggle — the container element becomes the fullscreen target so
   // the canvas resizes correctly via our existing ResizeObserver.
-  const isFullscreen$ = useMemo(() => new BehaviorSubject(false), []);
-  const isFullscreen = use$(isFullscreen$);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    const onChange = () => isFullscreen$.next(document.fullscreenElement === containerRef.current);
+    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -509,7 +482,7 @@ export default function ZapLiveGraph() {
         <select
           className="select select-sm bg-black/40 border border-white/20 text-white hover:bg-black/60"
           value={range}
-          onChange={(e) => timeRange$.next(e.target.value as TimeRange)}
+          onChange={(e) => setRange(e.target.value as TimeRange)}
           title="Time range"
         >
           {TIME_RANGE_OPTIONS.map((opt) => (
@@ -518,7 +491,7 @@ export default function ZapLiveGraph() {
             </option>
           ))}
         </select>
-        <RelayMultiSelect selected={relays} onChange={(r) => selectedRelays$.next(r)} />
+        <RelayMultiSelect selected={relays} onChange={(r) => setRelays(r)} />
         <button
           className="btn btn-sm bg-black/40 border border-white/20 text-white hover:bg-black/60"
           onClick={toggleFullscreen}

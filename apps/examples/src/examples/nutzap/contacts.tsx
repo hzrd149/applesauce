@@ -21,7 +21,7 @@ import { NutzapProfile } from "applesauce-wallet/actions";
 
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
@@ -88,23 +88,17 @@ function InvoiceQRCode({ value }: { value: string }) {
 
 // Zap modal component
 function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: () => void; onClose: () => void }) {
-  const amount$ = useMemo(() => new BehaviorSubject(21), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState(21);
 
-  const comment$ = useMemo(() => new BehaviorSubject(""), []);
-  const comment = use$(comment$);
+  const [comment, setComment] = useState("");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedMintOverride = use$(selectedMint$);
+  const [selectedMintOverride, setSelectedMint] = useState("");
 
-  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
-  const quote = use$(quote$);
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
 
-  const isProcessing$ = useMemo(() => new BehaviorSubject(false), []);
-  const isProcessing = use$(isProcessing$);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const status$ = useMemo(() => new BehaviorSubject<"input" | "invoice" | "paid">("input"), []);
-  const status = use$(status$);
+  const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
 
   const nutzapInfo = use$(contact.nutzap$);
 
@@ -114,22 +108,22 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
   const storage = use$(nutzapStorage$);
   const resume = async () => {
     if (!storage) return;
-    isProcessing$.next(true);
+    setIsProcessing(true);
     try {
       await resumeNutzap(
         storage,
         (recipient, token, comment, couch) => actions.run(NutzapProfile, recipient, token, { comment, couch }),
         (quote) => {
-          quote$.next(quote);
-          status$.next("invoice");
+          setQuote(quote);
+          setStatus("invoice");
         },
       );
-      status$.next("paid");
+      setStatus("paid");
       onZapSent?.();
     } catch (error) {
       alert(String(error));
     } finally {
-      isProcessing$.next(false);
+      setIsProcessing(false);
     }
   };
   const handleZap = async () => {
@@ -149,9 +143,9 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
   };
 
   const handleClose = () => {
-    status$.next("input");
-    quote$.next(null);
-    comment$.next("");
+    setStatus("input");
+    setQuote(null);
+    setComment("");
     onClose();
   };
 
@@ -198,7 +192,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
               <select
                 className="select select-bordered w-full"
                 value={selectedMint}
-                onChange={(e) => selectedMint$.next(e.target.value)}
+                onChange={(e) => setSelectedMint(e.target.value)}
                 disabled={nutzapInfo.mints.length === 0}
               >
                 {nutzapInfo.mints.length === 0 ? (
@@ -220,7 +214,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
                 type="number"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => amount$.next(Number(e.target.value))}
+                onChange={(e) => setAmount(Number(e.target.value))}
                 min="1"
               />
             </div>
@@ -230,7 +224,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
               <textarea
                 className="textarea textarea-bordered w-full"
                 value={comment}
-                onChange={(e) => comment$.next(e.target.value)}
+                onChange={(e) => setComment(e.target.value)}
                 placeholder="Say something nice..."
               />
             </div>
@@ -309,18 +303,17 @@ function ContactCard({ contact, onZap }: { contact: User; onZap: (user: User) =>
 
 // Main contacts view component
 function ContactsView({ user }: { user: User }) {
-  const selected$ = useMemo(() => new BehaviorSubject<User | null>(null), []);
-  const selected = use$(selected$);
+  const [selected, setSelected] = useState<User | null>(null);
 
   // Get contacts from user.contacts$
   const contacts = use$(user.contacts$);
 
   const handleZap = (user: User) => {
-    selected$.next(user);
+    setSelected(user);
   };
 
   const handleCloseModal = () => {
-    selected$.next(null);
+    setSelected(null);
   };
 
   return (

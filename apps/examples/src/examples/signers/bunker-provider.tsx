@@ -4,13 +4,13 @@
  * @related signers/bunker, cli/bunker-login
  */
 import { use$ } from "applesauce-react/hooks";
-import { BehaviorSubject, Observable } from "rxjs";
+import { Observable } from "rxjs";
 
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
-import { useCallback, useRef, useMemo } from "react";
+import { useCallback, useRef, useState } from "react";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
@@ -84,14 +84,11 @@ const SignerSelector = ({
 
 // Component for starting provider with nostrconnect:// URI
 const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: string) => void }) => {
-  const uri$ = useMemo(() => new BehaviorSubject(""), []);
-  const uri = use$(uri$);
+  const [uri, setUri] = useState("");
 
-  const parsedUri$ = useMemo(() => new BehaviorSubject<any>(null), []);
-  const parsedUri = use$(parsedUri$);
+  const [parsedUri, setParsedUri] = useState<any>(null);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const parseURI = () => {
     try {
@@ -108,15 +105,15 @@ const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: st
         permissions: url.searchParams.get("permissions") ? url.searchParams.get("permissions")!.split(",") : [],
       };
 
-      parsedUri$.next({
+      setParsedUri({
         client: url.hostname,
         secret: url.searchParams.get("secret") || "",
         metadata,
       });
-      error$.next(null);
+      setError(null);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to parse URI");
-      parsedUri$.next(null);
+      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      setParsedUri(null);
     }
   };
 
@@ -139,7 +136,7 @@ const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: st
             placeholder="nostrconnect://..."
             className="input input-bordered w-full"
             value={uri}
-            onChange={(e) => uri$.next(e.target.value)}
+            onChange={(e) => setUri(e.target.value)}
           />
         </div>
         <button className="btn btn-primary mt-2" onClick={parseURI} disabled={!uri.trim()}>
@@ -226,29 +223,21 @@ const BunkerURISection = ({
 
 // Main component
 export default function BunkerProvider() {
-  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://bucket.coracle.social/"), []);
-  const selectedRelay = use$(selectedRelay$);
+  const [selectedRelay, setSelectedRelay] = useState("wss://bucket.coracle.social/");
 
-  const selectedSigner$ = useMemo(() => new BehaviorSubject<"extension" | "generated">("extension"), []);
-  const selectedSigner = use$(selectedSigner$);
+  const [selectedSigner, setSelectedSigner] = useState<"extension" | "generated">("extension");
 
-  const generatedKey$ = useMemo(() => new BehaviorSubject<PrivateKeySigner | null>(null), []);
-  const generatedKey = use$(generatedKey$);
+  const [generatedKey, setGeneratedKey] = useState<PrivateKeySigner | null>(null);
 
-  const provider$ = useMemo(() => new BehaviorSubject<NostrConnectProvider | null>(null), []);
-  const provider = use$(provider$);
+  const [provider, setProvider] = useState<NostrConnectProvider | null>(null);
 
-  const logs$ = useMemo(() => new BehaviorSubject<LogEntry[]>([]), []);
-  const logs = use$(logs$);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
 
-  const bunkerUri$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const bunkerUri = use$(bunkerUri$);
+  const [bunkerUri, setBunkerUri] = useState<string>("");
 
-  const showBunkerURI$ = useMemo(() => new BehaviorSubject(false), []);
-  const showBunkerURI = use$(showBunkerURI$);
+  const [showBunkerURI, setShowBunkerURI] = useState(false);
 
-  const isProviderRunning$ = useMemo(() => new BehaviorSubject(false), []);
-  const isProviderRunning = use$(isProviderRunning$);
+  const [isProviderRunning, setIsProviderRunning] = useState(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   use$(
@@ -273,14 +262,14 @@ export default function BunkerProvider() {
       message,
       details,
     };
-    logs$.next(((prev: typeof logs$.value) => [...prev, entry])(logs$.value));
+    setLogs((prev) => [...prev, entry]);
     setTimeout(scrollToBottom, 100);
   }, []);
 
   // Generate new key
   const handleGenerateKey = useCallback(async () => {
     const signer = new PrivateKeySigner();
-    generatedKey$.next(signer);
+    setGeneratedKey(signer);
     const pubkey = await signer.getPublicKey();
     addLog("info", "Generated new key", { pubkey: pubkey, nsec: bytesToHex(signer.key) });
   }, [addLog]);
@@ -296,7 +285,7 @@ export default function BunkerProvider() {
       } else {
         const signer = generatedKey || new PrivateKeySigner();
         if (!generatedKey) {
-          generatedKey$.next(signer);
+          setGeneratedKey(signer);
         }
         const pubkey = await signer.getPublicKey();
         addLog("info", "Using generated key signer", { pubkey });
@@ -324,7 +313,7 @@ export default function BunkerProvider() {
           relays: [selectedRelay],
           upstream: signer,
           onClientConnect: (client) => {
-            showBunkerURI$.next(false);
+            setShowBunkerURI(false);
             addLog("connect", "Client connected", { client });
           },
           onClientDisconnect: (client) => {
@@ -361,8 +350,8 @@ export default function BunkerProvider() {
 
         await newProvider.start(uri);
 
-        provider$.next(newProvider);
-        isProviderRunning$.next(true);
+        setProvider(newProvider);
+        setIsProviderRunning(true);
         addLog("info", "Provider started successfully with URI");
       } catch (error) {
         addLog("error", "Failed to start provider with URI", {
@@ -387,7 +376,7 @@ export default function BunkerProvider() {
         signer: new PrivateKeySigner(),
         bunkerSecret: nanoid(16), // Generate random secret clients must present to connect
         onClientConnect: (client) => {
-          showBunkerURI$.next(false);
+          setShowBunkerURI(false);
           addLog("connect", "Client connected", { client });
         },
         onClientDisconnect: (client) => {
@@ -426,11 +415,11 @@ export default function BunkerProvider() {
 
       // Get bunker URI
       const uri = await newProvider.getBunkerURI();
-      bunkerUri$.next(uri);
+      setBunkerUri(uri);
 
-      provider$.next(newProvider);
-      isProviderRunning$.next(true);
-      showBunkerURI$.next(true);
+      setProvider(newProvider);
+      setIsProviderRunning(true);
+      setShowBunkerURI(true);
       addLog("info", "Provider started successfully, waiting for client", { bunkerUri: uri });
     } catch (error) {
       addLog("error", "Failed to start provider", { error: error instanceof Error ? error.message : "Unknown error" });
@@ -442,10 +431,10 @@ export default function BunkerProvider() {
     if (provider) {
       try {
         await provider.stop();
-        provider$.next(null);
-        isProviderRunning$.next(false);
-        bunkerUri$.next("");
-        showBunkerURI$.next(false);
+        setProvider(null);
+        setIsProviderRunning(false);
+        setBunkerUri("");
+        setShowBunkerURI(false);
         addLog("info", "Provider stopped");
       } catch (error) {
         addLog("error", "Failed to stop provider", { error: error instanceof Error ? error.message : "Unknown error" });
@@ -455,7 +444,7 @@ export default function BunkerProvider() {
 
   // Clear logs
   const clearLogs = useCallback(() => {
-    logs$.next([]);
+    setLogs([]);
   }, []);
 
   return (
@@ -471,7 +460,7 @@ export default function BunkerProvider() {
 
               <RelayPicker
                 value={selectedRelay}
-                onChange={(next: typeof selectedRelay$.value) => selectedRelay$.next(next)}
+                onChange={(next: string) => setSelectedRelay(next)}
                 common={["wss://relay.nsec.app/", "wss://bucket.coracle.social/"]}
               />
 
@@ -479,7 +468,7 @@ export default function BunkerProvider() {
 
               <SignerSelector
                 selectedSigner={selectedSigner}
-                onSignerChange={(next: typeof selectedSigner$.value) => selectedSigner$.next(next)}
+                onSignerChange={(next: "extension" | "generated") => setSelectedSigner(next)}
                 onGenerateKey={handleGenerateKey}
               />
             </div>

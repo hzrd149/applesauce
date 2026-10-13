@@ -5,7 +5,7 @@
  */
 import { relayTimeline } from "../../extra/relay-timeline";
 
-import { useMemo } from "react";
+import { useState } from "react";
 
 import { Article } from "applesauce-common/casts";
 import { castTimelineStream, castEventStream } from "applesauce-common/observable";
@@ -18,7 +18,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BehaviorSubject, map, switchMap, of } from "rxjs";
+import { map, switchMap, of } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -149,23 +149,17 @@ function ArticleReadView({ article, onBack }: { article: Article; onBack: () => 
 }
 
 export default function Blog() {
-  const state$ = useMemo(
-    () =>
-      new BehaviorSubject({
-        pubkey: normalizeToPubkey("npub1klkk3vrzme455yh9rl2jshq7rc8dpegj3ndf82c3ks2sk40dxt7qulx3vt"),
-        selected: undefined as AddressPointer | undefined,
-      }),
-    [],
+  const [pubkey, setPubkey] = useState(
+    normalizeToPubkey("npub1klkk3vrzme455yh9rl2jshq7rc8dpegj3ndf82c3ks2sk40dxt7qulx3vt"),
   );
-  const { pubkey, selected: pointer } = use$(state$);
-  const update = (value: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...value });
+  const [pointer, setPointer] = useState<AddressPointer | undefined>(undefined);
   const selected = use$(
     () => (pointer ? eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)) : undefined),
     [pointer],
   );
 
   if (selected) {
-    return <ArticleReadView article={selected} onBack={() => update({ selected: undefined })} />;
+    return <ArticleReadView article={selected} onBack={() => setPointer(undefined)} />;
   }
 
   return (
@@ -176,12 +170,15 @@ export default function Blog() {
         <div className="mb-8">
           <PubkeyPicker
             value={pubkey}
-            onChange={(pubkey) => update({ pubkey, selected: undefined })}
+            onChange={(pubkey) => {
+              setPubkey(pubkey);
+              setPointer(undefined);
+            }}
             placeholder="Enter author pubkey or nostr identifier..."
           />
         </div>
 
-        {pubkey && <ArticleListView pubkey={pubkey} onSelect={(article) => update({ selected: article.pointer })} />}
+        {pubkey && <ArticleListView pubkey={pubkey} onSelect={(article) => setPointer(article.pointer)} />}
       </div>
     </div>
   );

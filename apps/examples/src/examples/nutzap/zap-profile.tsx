@@ -24,8 +24,8 @@ import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
 import { NUTZAP_INFO_KIND } from "applesauce-wallet/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
-import { BehaviorSubject, of } from "rxjs";
+import { useState } from "react";
+import { of } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -175,23 +175,17 @@ function InvoiceQRCode({ value }: { value: string }) {
 
 // Zap modal component
 function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent?: () => void }) {
-  const amount$ = useMemo(() => new BehaviorSubject(21), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState(21);
 
-  const comment$ = useMemo(() => new BehaviorSubject(""), []);
-  const comment = use$(comment$);
+  const [comment, setComment] = useState("");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const selectedMintOverride = use$(selectedMint$);
+  const [selectedMintOverride, setSelectedMintOverride] = useState<string>("");
 
-  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
-  const quote = use$(quote$);
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
 
-  const isProcessing$ = useMemo(() => new BehaviorSubject(false), []);
-  const isProcessing = use$(isProcessing$);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const status$ = useMemo(() => new BehaviorSubject<"input" | "invoice" | "paid">("input"), []);
-  const status = use$(status$);
+  const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
 
   const mints = nutzapInfo.mints;
 
@@ -202,22 +196,22 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
   const storage = use$(nutzapStorage$);
   const resume = async () => {
     if (!storage) return;
-    isProcessing$.next(true);
+    setIsProcessing(true);
     try {
       await resumeNutzap(
         storage,
         (recipient, token, comment, couch) => actions.run(NutzapProfile, recipient, token, { comment, couch }),
         (quote) => {
-          quote$.next(quote);
-          status$.next("invoice");
+          setQuote(quote);
+          setStatus("invoice");
         },
       );
-      status$.next("paid");
+      setStatus("paid");
       onZapSent?.();
     } catch (error) {
       alert(String(error));
     } finally {
-      isProcessing$.next(false);
+      setIsProcessing(false);
     }
   };
   const handleZap = async () => {
@@ -256,7 +250,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
               <select
                 className="select select-bordered w-full"
                 value={selectedMint}
-                onChange={(e) => selectedMint$.next(e.target.value)}
+                onChange={(e) => setSelectedMintOverride(e.target.value)}
                 disabled={mints.length === 0}
               >
                 {mints.length === 0 ? (
@@ -278,7 +272,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
                 type="number"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => amount$.next(Number(e.target.value))}
+                onChange={(e) => setAmount(Number(e.target.value))}
                 min="1"
               />
             </div>
@@ -288,7 +282,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
               <textarea
                 className="textarea textarea-bordered w-full"
                 value={comment}
-                onChange={(e) => comment$.next(e.target.value)}
+                onChange={(e) => setComment(e.target.value)}
                 placeholder="Say something nice..."
               />
             </div>
@@ -339,10 +333,8 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
 }
 
 export default function ZapProfile() {
-  const selectedAddress$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedAddress = use$(selectedAddress$);
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
 
   const feed = use$(
     () => relayTimeline(eventStore, pool, relay ? [relay] : [], { kinds: [NUTZAP_INFO_KIND] }),
@@ -350,7 +342,7 @@ export default function ZapProfile() {
   );
   const timeline = use$(() => of(feed?.events ?? []).pipe(castTimelineStream(NutzapInfo, eventStore)), [feed]);
   const selectedNutzapInfo = timeline?.find((event) => event.uid === selectedAddress);
-  const setSelectedNutzapInfo = (event: NutzapInfo | null) => selectedAddress$.next(event?.uid ?? null);
+  const setSelectedNutzapInfo = (event: NutzapInfo | null) => setSelectedAddress(event?.uid ?? null);
 
   const storage = use$(nutzapStorage$);
   if (!storage) return <UnlockView onUnlock={(storage) => nutzapStorage$.next(storage)} />;
@@ -381,7 +373,7 @@ export default function ZapProfile() {
       ) : (
         <div className="space-y-4">
           {/* Relay Selection */}
-          <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} className="flex-1" />
+          <RelayPicker value={relay} onChange={(value: string) => setRelay(value)} className="flex-1" />
 
           <div className="mb-4">
             <h2 className="text-xl font-semibold mb-2">Recent Nutzap Profiles</h2>

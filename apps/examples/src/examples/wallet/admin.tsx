@@ -23,7 +23,7 @@ import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-conne
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { NostrIDB } from "nostr-idb";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   combineLatest,
@@ -374,8 +374,7 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 // ---- Lock controls ----
 function LockControls({ wallet }: { wallet: NutWallet }) {
   const unlocked = use$(wallet.unlocked$);
-  const autoUnlock$ = useMemo(() => new BehaviorSubject(wallet.autoUnlock), []);
-  const autoUnlock = use$(autoUnlock$);
+  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
 
   const ops = use$(wallet.operationsState$) ?? {};
 
@@ -389,7 +388,7 @@ function LockControls({ wallet }: { wallet: NutWallet }) {
           checked={autoUnlock}
           onChange={(e) => {
             wallet.setAutoUnlock(e.target.checked);
-            autoUnlock$.next(e.target.checked);
+            setAutoUnlock(e.target.checked);
           }}
         />
       </label>
@@ -522,8 +521,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
   const couchTokens = use$(wallet.couchTokens$) ?? [];
   const staleCount = use$(wallet.staleTokenCount$) ?? 0;
   const ops = use$(wallet.operationsState$) ?? {};
-  const useDeleteEvents$ = useMemo(() => new BehaviorSubject(wallet.useDeleteEvents), []);
-  const useDeleteEvents = use$(useDeleteEvents$);
+  const [useDeleteEvents, setUseDeleteEvents] = useState(wallet.useDeleteEvents);
 
   const connected = relays.filter((r) => r.connected).length;
 
@@ -611,7 +609,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
             checked={useDeleteEvents}
             onChange={(e) => {
               wallet.setUseDeleteEvents(e.target.checked);
-              useDeleteEvents$.next(e.target.checked);
+              setUseDeleteEvents(e.target.checked);
             }}
           />
           <span className="label-text">Publish delete events for spent tokens</span>
@@ -638,14 +636,9 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
 function SendSection({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const ops = use$(wallet.operationsState$) ?? {};
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
-
-  const mint$ = useMemo(() => new BehaviorSubject(""), []);
-  const mint = use$(mint$);
-
-  const token$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const token = use$(token$);
+  const [amount, setAmount] = useState("");
+  const [mint, setMint] = useState("");
+  const [token, setToken] = useState<string | null>(null);
 
   const mints = useMemo(() => (balance ? Object.keys(balance).filter((m) => (balance[m] || 0) > 0) : []), [balance]);
 
@@ -653,8 +646,8 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
     const sats = parseInt(amount, 10);
     if (!sats || sats <= 0) return;
     const encoded = await wallet.sendToken(sats, { mint: mint || undefined });
-    token$.next(encoded);
-    amount$.next("");
+    setToken(encoded);
+    setAmount("");
   }, [wallet, amount, mint]);
 
   return (
@@ -668,7 +661,7 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
               <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(token)}>
                 Copy
               </button>
-              <button className="btn" onClick={() => token$.next(null)}>
+              <button className="btn" onClick={() => setToken(null)}>
                 New
               </button>
             </div>
@@ -680,14 +673,10 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
               className="input input-bordered w-full"
               placeholder="Amount in sats"
               value={amount}
-              onChange={(e) => amount$.next(e.target.value)}
+              onChange={(e) => setAmount(e.target.value)}
             />
             {mints.length > 0 && (
-              <select
-                className="select select-bordered w-full"
-                value={mint}
-                onChange={(e) => mint$.next(e.target.value)}
-              >
+              <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
                 <option value="">Auto-select mint</option>
                 {mints.map((m) => (
                   <option key={m} value={m}>
@@ -709,13 +698,12 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
 // ---- Receive ----
 function ReceiveSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
-  const token$ = useMemo(() => new BehaviorSubject(""), []);
-  const token = use$(token$);
+  const [token, setToken] = useState("");
 
   const handleReceive = useCallback(async () => {
     if (!token.trim()) return;
     await wallet.receiveToken(token.trim());
-    token$.next("");
+    setToken("");
   }, [wallet, token]);
 
   return (
@@ -726,7 +714,7 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
             className="textarea textarea-bordered w-full h-32 font-mono"
             placeholder="Paste a cashu token (cashuA...)"
             value={token}
-            onChange={(e) => token$.next(e.target.value)}
+            onChange={(e) => setToken(e.target.value)}
           />
           <button className="btn btn-primary" onClick={handleReceive} disabled={ops.receive || !token.trim()}>
             {ops.receive ? <span className="loading loading-spinner loading-sm" /> : "Receive"}
@@ -776,32 +764,27 @@ function LegacyProofRecovery() {
 function DepositSection({ wallet }: { wallet: NutWallet }) {
   const mints = use$(wallet.mintUrls$) ?? [];
   const ops = use$(wallet.operationsState$) ?? {};
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
-
-  const mint$ = useMemo(() => new BehaviorSubject(""), []);
-  const mint = use$(mint$);
-
-  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
-  const quote = use$(quote$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [amount, setAmount] = useState("");
+  const [mint, setMint] = useState("");
+  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const depositCommands$ = useMemo(() => new Subject<"create" | "resume">(), []);
+  const depositCommands$ = useMemo(
+    () => new Subject<{ command: "create" | "resume"; mint: string; amount: string }>(),
+    [],
+  );
   const deposit = use$(
     () =>
       depositCommands$.pipe(
         exhaustMap(
-          (command) =>
+          ({ command, mint, amount }) =>
             new Observable<{ busy: boolean; error: string | null }>((subscriber) => {
               const storage = storage$.value;
               const controller = new AbortController();
               abortRef.current = controller;
               subscriber.next({ busy: true, error: null });
-              const onQuote = (quote: MintQuoteBolt11Response) => quote$.next(quote);
+              const onQuote = (quote: MintQuoteBolt11Response) => setQuote(quote);
               const work = async () => {
                 if (!storage) throw new Error("Unlock encrypted storage first");
                 if (command === "resume")
@@ -811,8 +794,8 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
                     namespace: "wallet-deposit",
                   });
                 else {
-                  const target = mint$.value || mints[0];
-                  const sats = Number(amount$.value);
+                  const target = mint || mints[0];
+                  const sats = Number(amount);
                   if (!target || !Number.isSafeInteger(sats) || sats <= 0)
                     throw new Error("Choose a mint and a positive whole amount in sats");
                   await recoverableDeposit(storage, wallet, {
@@ -823,8 +806,8 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
                     namespace: "wallet-deposit",
                   });
                 }
-                quote$.next(null);
-                amount$.next("");
+                setQuote(null);
+                setAmount("");
               };
               void work()
                 .then(() => {
@@ -846,8 +829,8 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
       ),
     [wallet, depositCommands$, mints.join("|")],
   );
-  const handleDeposit = () => depositCommands$.next("create");
-  const handleResume = () => depositCommands$.next("resume");
+  const handleDeposit = () => depositCommands$.next({ command: "create", mint, amount });
+  const handleResume = () => depositCommands$.next({ command: "resume", mint, amount });
   const depositBusy = deposit?.busy ?? false;
 
   const cancel = useCallback(() => {
@@ -896,14 +879,10 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
               className="input input-bordered w-full"
               placeholder="Amount in sats"
               value={amount}
-              onChange={(e) => amount$.next(e.target.value)}
+              onChange={(e) => setAmount(e.target.value)}
             />
             {mints.length > 0 && (
-              <select
-                className="select select-bordered w-full"
-                value={mint}
-                onChange={(e) => mint$.next(e.target.value)}
-              >
+              <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
                 {mints.map((m) => (
                   <option key={m} value={m}>
                     {m}
@@ -918,7 +897,6 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
             >
               {ops.mintQuote ? <span className="loading loading-spinner loading-sm" /> : "Create invoice"}
             </button>
-            {error && <div className="alert alert-error">{error}</div>}
           </div>
         )}
       </Panel>
@@ -930,34 +908,27 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
 function WithdrawSection({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const ops = use$(wallet.operationsState$) ?? {};
-  const invoice$ = useMemo(() => new BehaviorSubject(""), []);
-  const invoice = use$(invoice$);
-
-  const mint$ = useMemo(() => new BehaviorSubject(""), []);
-  const mint = use$(mint$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
-
-  const success$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const success = use$(success$);
+  const [invoice, setInvoice] = useState("");
+  const [mint, setMint] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const mints = useMemo(() => (balance ? Object.keys(balance).filter((m) => (balance[m] || 0) > 0) : []), [balance]);
 
   const handlePay = useCallback(async () => {
     const target = mint || mints[0];
-    if (!target) return error$.next("No mint with a balance to pay from");
+    if (!target) return setError("No mint with a balance to pay from");
     if (!invoice.trim()) return;
 
-    error$.next(null);
-    success$.next(null);
+    setError(null);
+    setSuccess(null);
     try {
       const response = await wallet.payInvoice(target, invoice.trim());
       const change = response.change.reduce((sum, proof) => sum + proof.amount.toNumber(), 0);
-      success$.next(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
-      invoice$.next("");
+      setSuccess(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
+      setInvoice("");
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to pay invoice");
+      setError(err instanceof Error ? err.message : "Failed to pay invoice");
     }
   }, [wallet, invoice, mint, mints]);
 
@@ -969,10 +940,10 @@ function WithdrawSection({ wallet }: { wallet: NutWallet }) {
             className="textarea textarea-bordered w-full h-24 font-mono text-sm"
             placeholder="Paste a bolt11 invoice (lnbc...)"
             value={invoice}
-            onChange={(e) => invoice$.next(e.target.value)}
+            onChange={(e) => setInvoice(e.target.value)}
           />
           {mints.length > 0 && (
-            <select className="select select-bordered w-full" value={mint} onChange={(e) => mint$.next(e.target.value)}>
+            <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
               {mints.map((m) => (
                 <option key={m} value={m}>
                   {m} ({balance?.[m] || 0} sats)
@@ -1135,8 +1106,7 @@ function ListEditor({
   busy?: boolean;
   onChange: (items: string[]) => void;
 }) {
-  const value$ = useMemo(() => new BehaviorSubject(""), []);
-  const value = use$(value$);
+  const [value, setValue] = useState("");
 
   return (
     <div className="space-y-3">
@@ -1159,14 +1129,14 @@ function ListEditor({
           className="input input-bordered flex-1"
           placeholder={placeholder}
           value={value}
-          onChange={(e) => value$.next(e.target.value)}
+          onChange={(e) => setValue(e.target.value)}
         />
         <button
           className="btn btn-primary"
           disabled={busy || !value.trim() || items.includes(value.trim())}
           onClick={() => {
             onChange([...items, value.trim()]);
-            value$.next("");
+            setValue("");
           }}
         >
           Add
@@ -1226,14 +1196,9 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
 // ---- Create view ----
 function CreateSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
-  const mints$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
-  const mints = use$(mints$);
-
-  const relays$ = useMemo(() => new BehaviorSubject<string[]>(DEFAULT_RELAYS), []);
-  const relays = use$(relays$);
-
-  const receiveNutzaps$ = useMemo(() => new BehaviorSubject(false), []);
-  const receiveNutzaps = use$(receiveNutzaps$);
+  const [mints, setMints] = useState<string[]>([]);
+  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
+  const [receiveNutzaps, setReceiveNutzaps] = useState(false);
 
   const handleCreate = useCallback(() => {
     if (mints.length === 0) return;
@@ -1256,31 +1221,17 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
             <button
               key={m}
               className={`btn btn-sm ${mints.includes(m) ? "btn-primary" : ""}`}
-              onClick={() =>
-                mints$.next(
-                  ((prev: typeof mints$.value) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))(
-                    mints$.value,
-                  ),
-                )
-              }
+              onClick={() => setMints((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))}
             >
               {new URL(m).hostname}
             </button>
           ))}
         </div>
-        <ListEditor
-          items={mints}
-          placeholder="https://mint.example.com"
-          onChange={(next: typeof mints$.value) => mints$.next(next)}
-        />
+        <ListEditor items={mints} placeholder="https://mint.example.com" onChange={(next) => setMints(next)} />
       </Panel>
 
       <Panel title="Relays">
-        <ListEditor
-          items={relays}
-          placeholder="wss://relay.example.com"
-          onChange={(next: typeof relays$.value) => relays$.next(next)}
-        />
+        <ListEditor items={relays} placeholder="wss://relay.example.com" onChange={(next) => setRelays(next)} />
       </Panel>
 
       <label className="label cursor-pointer justify-start gap-3">
@@ -1288,7 +1239,7 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
           type="checkbox"
           className="checkbox"
           checked={receiveNutzaps}
-          onChange={(e) => receiveNutzaps$.next(e.target.checked)}
+          onChange={(e) => setReceiveNutzaps(e.target.checked)}
         />
         <span className="label-text">Generate P2PK key (for receiving nutzaps)</span>
       </label>
@@ -1305,22 +1256,20 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
   const service = use$(service$);
   const walletRelays = use$(wallet.walletRelays$);
   const log = use$(requestLog$) ?? [];
-  const busy$ = useMemo(() => new BehaviorSubject(false), []);
-  const busy = use$(busy$);
-
-  const relays$ = useMemo(() => new BehaviorSubject<string[] | null>(null), []);
+  const [busy, setBusy] = useState(false);
+  const [editedRelays, setEditedRelays] = useState<string[] | null>(null);
   const savedConfig = use$(() => defer(() => loadConnectConfig(wallet.pubkey)), [wallet.pubkey]);
   const relays =
-    use$(relays$) ?? savedConfig?.relays ?? (walletRelays?.length ? walletRelays : ["wss://relay.getalby.com/v1"]);
+    editedRelays ?? savedConfig?.relays ?? (walletRelays?.length ? walletRelays : ["wss://relay.getalby.com/v1"]);
 
   // Start the service, or restart it on the edited relay set if it is already running
   const apply = useCallback(async () => {
     if (relays.length === 0) return;
-    busy$.next(true);
+    setBusy(true);
     try {
       await setNwcRelays(wallet, relays);
     } finally {
-      busy$.next(false);
+      setBusy(false);
     }
   }, [wallet, relays]);
 
@@ -1381,7 +1330,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
           items={relays}
           placeholder="wss://relay.example.com"
           busy={busy}
-          onChange={(next: typeof relays$.value) => relays$.next(next)}
+          onChange={(next) => setEditedRelays(next)}
         />
         <p className="mt-3 text-sm text-base-content/60">
           The relays the service listens on. Changing them while connected restarts the service and updates the
@@ -1432,8 +1381,7 @@ type Section = (typeof SECTIONS)[number];
 
 function WalletDashboard({ wallet }: { wallet: NutWallet }) {
   const status = use$(wallet.status$) ?? WalletStatus.Idle;
-  const section$ = useMemo(() => new BehaviorSubject<Section>("Overview"), []);
-  const section = use$(section$);
+  const [section, setSection] = useState<Section>("Overview");
 
   return (
     <div className="flex flex-col gap-6 p-6 w-full">
@@ -1449,7 +1397,7 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
                 key={s}
                 role="tab"
                 className={`tab ${section === s ? "tab-active" : ""}`}
-                onClick={() => section$.next(s)}
+                onClick={() => setSection(s)}
               >
                 {s}
               </button>

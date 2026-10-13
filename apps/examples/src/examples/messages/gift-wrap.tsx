@@ -30,7 +30,7 @@ import clsx from "clsx";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, EMPTY, map, scan, startWith, of, tap, materialize } from "rxjs";
 
 // Import helper components
@@ -118,39 +118,36 @@ function InlineRelayList({ relays }: { relays: string[] }) {
 }
 
 function MessageForm({ conversation }: { conversation: string }) {
-  const message$ = useMemo(() => new BehaviorSubject(""), []);
-  const message = use$(message$);
+  const [message, setMessage] = useState("");
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
-  const expiration$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const expiration = use$(expiration$);
+  const [expiration, setExpiration] = useState<string | undefined>(undefined);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
 
     try {
-      sending$.next(true);
+      setSending(true);
 
       // Create and send gift wrapped message to all participants using action runner
       await actions.run(SendWrappedMessage, getConversationParticipants(conversation), message.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      message$.next("");
+      setMessage("");
     } catch (err) {
       console.error("Failed to send message:", err);
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
   const toggleExpiration = () => {
     const arr = Object.keys(EXPIRATIONS);
     const next = expiration ? arr[arr.indexOf(expiration) + 1] : arr[0];
-    expiration$.next(next);
+    setExpiration(next);
   };
 
   return (
@@ -158,7 +155,7 @@ function MessageForm({ conversation }: { conversation: string }) {
       <input
         type="text"
         value={message}
-        onChange={(e) => message$.next(e.target.value)}
+        onChange={(e) => setMessage(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered flex-grow"
@@ -331,13 +328,11 @@ function GiftWrapDebugModal({ gift }: { gift: NostrEvent }) {
 }
 
 function HomeView({ user }: { user: User }) {
-  const selectedConversation$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const selectedConversation = use$(selectedConversation$);
+  const [selectedConversation, setSelectedConversation] = useState<string | undefined>(undefined);
 
   const signer = use$(signer$);
   const debug = use$(debug$);
-  const since$ = useMemo(() => new BehaviorSubject<number>(unixNow() - EXPIRATIONS["2w"]), []);
-  const since = use$(since$);
+  const [since, setSince] = useState<number>(unixNow() - EXPIRATIONS["2w"]);
   // 2 weeks ago
   const failed = use$(failed$);
 
@@ -402,8 +397,7 @@ function HomeView({ user }: { user: User }) {
   // Select all unlocked gift wraps
   const messages = use$(() => eventStore.model(WrappedMessagesModel, user.pubkey), [user.pubkey]);
 
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [unlocking, setUnlocking] = useState(false);
 
   const locked = use$(
     () =>
@@ -416,7 +410,7 @@ function HomeView({ user }: { user: User }) {
 
   const unlock = async () => {
     if (!locked || !signer) return;
-    unlocking$.next(true);
+    setUnlocking(true);
     for (const gift of locked) {
       // Ignore previously failed gift wraps
       if (failed$.value.includes(gift.id)) continue;
@@ -428,12 +422,12 @@ function HomeView({ user }: { user: User }) {
         failed$.next([...failed$.value, gift.id]);
       }
     }
-    unlocking$.next(false);
+    setUnlocking(false);
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = new Date(e.target.value);
-    since$.next(Math.floor(date.getTime() / 1000));
+    setSince(Math.floor(date.getTime() / 1000));
   };
 
   const formatDateForInput = (timestamp: number) => {
@@ -478,7 +472,7 @@ function HomeView({ user }: { user: User }) {
           <ConversationList
             messages={[...messages]}
             pubkey={user.pubkey}
-            onSelect={(value: typeof selectedConversation$.value) => selectedConversation$.next(value)}
+            onSelect={setSelectedConversation}
             selected={selectedConversation}
           />
         )}

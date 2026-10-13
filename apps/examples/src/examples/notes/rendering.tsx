@@ -17,8 +17,8 @@ import { createBlossomHlsLoaders } from "blossom-client-sdk/hls";
 import Hls from "hls.js";
 import { decodePointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { Blurhash } from "react-blurhash";
-import { createContext, useContext, useEffect, useRef, type CSSProperties, type ReactNode, useMemo } from "react";
-import { firstValueFrom, merge, take, timeout, BehaviorSubject } from "rxjs";
+import { createContext, useContext, useEffect, useRef, type CSSProperties, type ReactNode, useState } from "react";
+import { firstValueFrom, merge, take, timeout } from "rxjs";
 
 // Export extra token types to parse
 import "applesauce-content/text/cashu";
@@ -172,17 +172,11 @@ function BlurhashPlaceholder({
 
 /** Renders a blurhash placeholder first; on click, swaps in the real `<img>`. */
 function BlurhashImage({ src, blurhash, dim, alt }: { src: string; blurhash?: string; dim?: string; alt?: string }) {
-  const revealed$ = useMemo(() => new BehaviorSubject(!blurhash), []);
-  const revealed = use$(revealed$);
+  const [revealed, setRevealed] = useState(!blurhash);
 
   if (!revealed && blurhash)
     return (
-      <BlurhashPlaceholder
-        blurhash={blurhash}
-        dim={dim}
-        label="Tap to load image"
-        onReveal={() => revealed$.next(true)}
-      />
+      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load image" onReveal={() => setRevealed(true)} />
     );
   return <img src={src} alt={alt ?? "Image"} loading="lazy" className="max-h-64 rounded" />;
 }
@@ -199,17 +193,11 @@ function BlurhashVideo({
   dim?: string;
   poster?: string;
 }) {
-  const revealed$ = useMemo(() => new BehaviorSubject(!blurhash), []);
-  const revealed = use$(revealed$);
+  const [revealed, setRevealed] = useState(!blurhash);
 
   if (!revealed && blurhash)
     return (
-      <BlurhashPlaceholder
-        blurhash={blurhash}
-        dim={dim}
-        label="Tap to load video"
-        onReveal={() => revealed$.next(true)}
-      />
+      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load video" onReveal={() => setRevealed(true)} />
     );
   return <video src={src} poster={poster} className="max-h-64 rounded" controls playsInline autoPlay={!!blurhash} />;
 }
@@ -393,8 +381,7 @@ function NoteCard({ note }: { note: Note }) {
 }
 
 export default function ContentRenderingExample() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("");
 
   use$(() => merge(...examples.map(eventLoader)), []);
 
@@ -418,7 +405,7 @@ export default function ContentRenderingExample() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between">
         <h1 className="text-2xl font-bold mb-4">Content Rendering</h1>
-        <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

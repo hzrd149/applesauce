@@ -14,7 +14,7 @@ import { createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, Subject } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -31,11 +31,9 @@ const pool = new RelayPool();
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }) {
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [unlocking, setUnlocking] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const unlocked = isGiftWrapUnlocked(event);
 
@@ -44,15 +42,15 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }
 
   const handleUnlock = async () => {
     try {
-      unlocking$.next(true);
-      error$.next(null);
+      setUnlocking(true);
+      setError(null);
       await unlockGiftWrap(event, signer);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to unlock gift wrap";
-      error$.next(errorMessage);
+      setError(errorMessage);
       console.error("Failed to unlock gift wrap:", err);
     } finally {
-      unlocking$.next(false);
+      setUnlocking(false);
     }
   };
 
@@ -77,11 +75,9 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }
 
 type FilterType = "all" | "locked" | "unlocked";
 function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
-  const filter$ = useMemo(() => new BehaviorSubject<FilterType>("all"), []);
-  const filter = use$(filter$);
+  const [filter, setFilter] = useState<FilterType>("all");
 
   // Subscribe to model based on filter type
   const events = use$(() => {
@@ -111,11 +107,11 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
   return (
     <div className="container mx-auto max-w-6xl p-4">
       <div className="flex gap-4 mb-4">
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={setRelay} />
         <select
           className="select select-bordered"
           value={filter}
-          onChange={(e) => filter$.next(e.target.value as FilterType)}
+          onChange={(e) => setFilter(e.target.value as FilterType)}
         >
           <option value="all">All Events</option>
           <option value="locked">Locked</option>

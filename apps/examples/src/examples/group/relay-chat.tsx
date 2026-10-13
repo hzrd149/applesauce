@@ -6,7 +6,6 @@
 import { relayTimeline } from "../../extra/relay-timeline";
 
 import NoteContent from "../../components/note-content";
-import { BehaviorSubject } from "rxjs";
 
 import { GroupMessageFactory } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
@@ -19,7 +18,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -94,17 +93,15 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
 }
 
 function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
-  const message$ = useMemo(() => new BehaviorSubject(""), []);
-  const message = use$(message$);
+  const [message, setMessage] = useState("");
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !pointer) return;
 
-    sending$.next(true);
+    setSending(true);
     try {
       // Create and sign a group message
       const signed = await GroupMessageFactory.create(pointer, message).sign(signer);
@@ -113,11 +110,11 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
       // Throw an error if the message was rejected
       if (!response.ok) throw new Error(response.message);
       // Clear the form
-      message$.next("");
+      setMessage("");
     } catch (err) {
       if (err instanceof Error) alert(err.message);
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
@@ -126,7 +123,7 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
       <input
         type="text"
         value={message}
-        onChange={(e) => message$.next(e.target.value)}
+        onChange={(e) => setMessage(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered grow"
@@ -139,8 +136,7 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
 }
 
 export default function RelayGroupExample() {
-  const identifier$ = useMemo(() => new BehaviorSubject(""), []);
-  const identifier = use$(identifier$);
+  const [identifier, setIdentifier] = useState("");
 
   const pointer = useMemo(() => {
     try {
@@ -149,19 +145,15 @@ export default function RelayGroupExample() {
       return undefined;
     }
   }, [identifier]);
-  const pubkey$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState<string | null>(null);
 
   const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
 
-  const setGroup = useCallback(
-    (identifier: string) => {
-      try {
-        identifier$.next(identifier);
-      } catch (error) {}
-    },
-    [identifier$],
-  );
+  const setGroup = useCallback((identifier: string) => {
+    try {
+      setIdentifier(identifier);
+    } catch (error) {}
+  }, []);
 
   // Subscribe to authentication state for the current relay
   const authenticated = use$(() => (pointer ? pool.relay(pointer.relay).authenticated$ : undefined), [pointer?.relay]);
@@ -169,7 +161,7 @@ export default function RelayGroupExample() {
 
   const handleSignIn = useCallback(async () => {
     const pubkey = await signer.getPublicKey();
-    pubkey$.next(pubkey);
+    setPubkey(pubkey);
   }, [user]);
 
   // Handle authentication with extension signer
@@ -180,7 +172,7 @@ export default function RelayGroupExample() {
       const signer = new ExtensionSigner();
 
       // get the users pubkey
-      pubkey$.next(await signer.getPublicKey());
+      setPubkey(await signer.getPublicKey());
 
       // Authenticate with the relay
       await pool

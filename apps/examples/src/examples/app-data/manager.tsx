@@ -35,7 +35,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { Lock } from "lucide-react";
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState } from "react";
 import { BehaviorSubject, combineLatest, distinctUntilChanged, map, switchMap } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -124,11 +124,9 @@ function EventView({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const decrypting$ = useMemo(() => new BehaviorSubject(false), []);
-  const decrypting = use$(decrypting$);
+  const [decrypting, setDecrypting] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const encryption = getAppDataEncryption(event);
   const unlocked = isAppDataUnlocked(event);
@@ -145,14 +143,14 @@ function EventView({
   const handleDecrypt = async () => {
     if (!signer || !encryption) return;
     try {
-      decrypting$.next(true);
-      error$.next(null);
+      setDecrypting(true);
+      setError(null);
       // Use unlockHiddenContent directly so non-JSON payloads don't throw
       await unlockHiddenContent(event, signer, encryption);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Decryption failed");
+      setError(err instanceof Error ? err.message : "Decryption failed");
     } finally {
-      decrypting$.next(false);
+      setDecrypting(false);
     }
   };
 
@@ -243,42 +241,32 @@ function EventEditor({
   onSave: (event: NostrEvent) => Promise<void>;
   onCancel: () => void;
 }) {
-  const content$ = useMemo(
-    () =>
-      new BehaviorSubject(
-        (() => {
-          try {
-            return JSON.stringify(getAppDataContent(event), null, 2);
-          } catch {
-            return event.content;
-          }
-        })(),
-      ),
-    [],
-  );
-  const content = use$(content$);
+  const [content, setContent] = useState(() => {
+    try {
+      return JSON.stringify(getAppDataContent(event), null, 2);
+    } catch {
+      return event.content;
+    }
+  });
 
-  const encryption$ = useMemo(() => new BehaviorSubject(getAppDataEncryption(event)), []);
-  const encryption = use$(encryption$);
+  const [encryption, setEncryption] = useState(() => getAppDataEncryption(event));
 
-  const saving$ = useMemo(() => new BehaviorSubject(false), []);
-  const saving = use$(saving$);
+  const [saving, setSaving] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSave = async () => {
     if (!signer) return;
     try {
-      saving$.next(true);
-      error$.next(null);
+      setSaving(true);
+      setError(null);
       const parsed = JSON.parse(content);
       const signed = await AppDataFactory.modify(event).as(signer).data(parsed, encryption).sign();
       await onSave(signed);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Save failed");
+      setError(err instanceof Error ? err.message : "Save failed");
     } finally {
-      saving$.next(false);
+      setSaving(false);
     }
   };
 
@@ -292,7 +280,7 @@ function EventEditor({
           <select
             className="select"
             value={encryption || ""}
-            onChange={(e) => encryption$.next(e.target.value ? (e.target.value as EncryptionMethod) : undefined)}
+            onChange={(e) => setEncryption(e.target.value ? (e.target.value as EncryptionMethod) : undefined)}
             disabled={saving}
           >
             <option value="">Plain text</option>
@@ -318,7 +306,7 @@ function EventEditor({
         <textarea
           className="textarea textarea-bordered font-mono flex-1 min-h-64"
           value={content}
-          onChange={(e) => content$.next(e.target.value)}
+          onChange={(e) => setContent(e.target.value)}
           placeholder='{"key": "value"}'
         />
       </div>
@@ -376,17 +364,13 @@ function SyncStatusPanel({ sync }: { sync: SyncState }) {
 function AppDataManager({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
-  const selectedId$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedId = use$(selectedId$);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const editing$ = useMemo(() => new BehaviorSubject(false), []);
-  const editing = use$(editing$);
+  const [editing, setEditing] = useState(false);
 
-  const checked$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
-  const checked = use$(checked$);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const deleting$ = useMemo(() => new BehaviorSubject(false), []);
-  const deleting = use$(deleting$);
+  const [deleting, setDeleting] = useState(false);
 
   // Incremented to restart the sync
   const resync$ = useMemo(() => new BehaviorSubject(0), []);
@@ -437,16 +421,16 @@ function AppDataManager({ user }: { user: User }) {
     // Shift-click applies the clicked row's new state to every row between it and the anchor
     const range = shiftKey && from !== -1 && to !== -1 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id];
 
-    const next = new Set(checked$.value);
+    const next = new Set(checked);
     for (const id of range) {
       if (value) next.add(id);
       else next.delete(id);
     }
-    checked$.next(next);
+    setChecked(next);
     anchorId.current = id;
   };
 
-  const toggleAll = () => checked$.next(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
+  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
 
   // Publish the new revision everywhere the previous one was found so relays replace it
   const handleSave = async (updated: NostrEvent) => {
@@ -456,8 +440,8 @@ function AppDataManager({ user }: { user: User }) {
       updated,
     );
     eventStore.add(updated);
-    selectedId$.next(getEventUID(updated));
-    editing$.next(false);
+    setSelectedId(getEventUID(updated));
+    setEditing(false);
   };
 
   // Publish a single NIP-09 deletion for all the events and remove them locally. The deletion is sent to every
@@ -468,7 +452,7 @@ function AppDataManager({ user }: { user: User }) {
     if (!confirm(message)) return;
 
     try {
-      deleting$.next(true);
+      setDeleting(true);
       const signed = await DeleteFactory.fromEvents(toDelete).sign(signer);
       const relays = mergeRelaySets(outboxes?.length ? outboxes : FALLBACK_RELAYS, ...toDelete.map(getSeenRelays));
       await publishEvent(pool, relays, signed);
@@ -476,15 +460,15 @@ function AppDataManager({ user }: { user: User }) {
 
       const ids = new Set(toDelete.map((e) => e.id));
       for (const id of ids) eventStore.remove(id);
-      checked$.next(new Set([...checked$.value].filter((id) => !ids.has(id))));
+      setChecked((prev) => new Set([...prev].filter((id) => !ids.has(id))));
       if (selectedId && toDelete.some((event) => getEventUID(event) === selectedId)) {
-        selectedId$.next(null);
-        editing$.next(false);
+        setSelectedId(null);
+        setEditing(false);
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete events");
     } finally {
-      deleting$.next(false);
+      setDeleting(false);
     }
   };
 
@@ -539,8 +523,8 @@ function AppDataManager({ user }: { user: User }) {
                     <a
                       className={selectedId === getEventUID(event) ? "menu-active" : ""}
                       onClick={() => {
-                        selectedId$.next(getEventUID(event));
-                        editing$.next(false);
+                        setSelectedId(getEventUID(event));
+                        setEditing(false);
                       }}
                     >
                       <input
@@ -592,13 +576,13 @@ function AppDataManager({ user }: { user: User }) {
             event={selected}
             signer={signer}
             onSave={handleSave}
-            onCancel={() => editing$.next(false)}
+            onCancel={() => setEditing(false)}
           />
         ) : (
           <EventView
             event={selected}
             signer={signer}
-            onEdit={() => editing$.next(true)}
+            onEdit={() => setEditing(true)}
             onDelete={() => deleteEvents([selected])}
           />
         )}

@@ -4,7 +4,7 @@
  * @related search/relay, negentrapy/mentions
  */
 import { default as NoteContent } from "../../components/note-content";
-import { BehaviorSubject, switchMap, catchError, combineLatest, map, of, startWith } from "rxjs";
+import { catchError, combineLatest, map, of, startWith } from "rxjs";
 
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
@@ -15,7 +15,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 
 import { neventEncode } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -60,8 +60,7 @@ function InboxRelayOption({ url, supported }: { url: string; supported: number[]
 function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay: string }) {
   const author = useMemo(() => castUser(event.pubkey, eventStore), [event.pubkey]);
   const profile = use$(() => author.profile$, [event.pubkey]);
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
   const name = getDisplayName(profile, event.pubkey.slice(0, 8) + "…");
   const picture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
@@ -72,8 +71,8 @@ function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay
     const nevent = neventEncode({ id: event.id, author: event.pubkey, kind: event.kind, relays });
     try {
       await navigator.clipboard.writeText(nevent);
-      copied$.next(true);
-      setTimeout(() => copied$.next(false), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy nevent:", err);
     }
@@ -108,14 +107,9 @@ function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay
 }
 
 export default function InboxMentionsSearch() {
-  const pubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const pubkey = use$(pubkey$);
-
-  const selectedRelay$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedRelayChoice = use$(selectedRelay$);
-
-  const query$ = useMemo(() => new BehaviorSubject(""), []);
-  const query = use$(query$);
+  const [pubkey, setPubkey] = useState("");
+  const [selectedRelayChoice, setSelectedRelayChoice] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
   const inboxes = use$(() => user?.inboxes$, [user?.pubkey]);
@@ -138,40 +132,35 @@ export default function InboxMentionsSearch() {
     selectedRelayChoice && inboxes?.includes(selectedRelayChoice)
       ? selectedRelayChoice
       : (inboxes?.find((url) => supportMap?.[url]?.includes(50)) ?? null);
-  const commands$ = useMemo(
-    () => new BehaviorSubject<{ pubkey: string; relay: string; query: string } | null>(null),
-    [],
-  );
-  const state = use$(
-    () =>
-      commands$.pipe(
-        switchMap((command) => {
-          if (!command || command.pubkey !== pubkey || command.relay !== selectedRelay)
-            return of({ status: "idle" as const, results: [] as NostrEvent[], error: "" });
-          return pool
-            .relay(command.relay)
-            .request(
-              { kinds: [kinds.ShortTextNote], "#p": [command.pubkey], search: command.query, limit: 50 },
-              { timeout: 10_000 },
-            )
-            .pipe(
-              mapEventsToStore(eventStore),
-              mapEventsToTimeline(),
-              map((results) => ({ status: "ready" as const, results, error: "" })),
-              startWith({ status: "loading" as const, results: [] as NostrEvent[], error: "" }),
-              catchError((error) =>
-                of({ status: "error" as const, results: [] as NostrEvent[], error: String(error.message ?? error) }),
-              ),
-            );
-        }),
-      ),
-    [pubkey, selectedRelay, commands$],
-  );
+  const [command, setCommand] = useState<{ pubkey: string; relay: string; query: string } | null>(null);
+  const state = use$(() => {
+    if (!command || command.pubkey !== pubkey || command.relay !== selectedRelay)
+      return of<{ status: "idle" | "loading" | "ready" | "error"; results: NostrEvent[]; error: string }>({
+        status: "idle",
+        results: [],
+        error: "",
+      });
+    return pool
+      .relay(command.relay)
+      .request(
+        { kinds: [kinds.ShortTextNote], "#p": [command.pubkey], search: command.query, limit: 50 },
+        { timeout: 10_000 },
+      )
+      .pipe(
+        mapEventsToStore(eventStore),
+        mapEventsToTimeline(),
+        map((results) => ({ status: "ready" as const, results, error: "" })),
+        startWith({ status: "loading" as const, results: [] as NostrEvent[], error: "" }),
+        catchError((error) =>
+          of({ status: "error" as const, results: [] as NostrEvent[], error: String(error.message ?? error) }),
+        ),
+      );
+  }, [pubkey, selectedRelay, command]);
   const results = state?.results ?? [];
   const searching = state?.status === "loading";
   const error = state?.error;
   const handleSearch = () => {
-    if (selectedRelay && query.trim()) commands$.next({ pubkey, relay: selectedRelay, query: query.trim() });
+    if (selectedRelay && query.trim()) setCommand({ pubkey, relay: selectedRelay, query: query.trim() });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -188,11 +177,7 @@ export default function InboxMentionsSearch() {
         </p>
       </div>
 
-      <PubkeyPicker
-        value={pubkey}
-        onChange={(next: typeof pubkey$.value) => pubkey$.next(next)}
-        placeholder="Enter pubkey or nostr identifier…"
-      />
+      <PubkeyPicker value={pubkey} onChange={setPubkey} placeholder="Enter pubkey or nostr identifier…" />
 
       {user && <UserHeader user={user} />}
 
@@ -217,7 +202,7 @@ export default function InboxMentionsSearch() {
           <select
             className="select select-bordered w-full font-mono"
             value={selectedRelay ?? ""}
-            onChange={(e) => selectedRelay$.next(e.target.value || null)}
+            onChange={(e) => setSelectedRelayChoice(e.target.value || null)}
           >
             <option value="">Select an inbox relay…</option>
             {inboxes.map((url) => (
@@ -238,7 +223,7 @@ export default function InboxMentionsSearch() {
               placeholder="Search content of mentions…"
               className="input input-bordered flex-1"
               value={query}
-              onChange={(e) => query$.next(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               onKeyPress={handleKeyPress}
             />
             <button

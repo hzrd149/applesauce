@@ -38,8 +38,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ChevronLeft, ChevronRight, MapPin, X } from "lucide-react";
-import { useCallback, useMemo, useRef } from "react";
-import { BehaviorSubject, combineLatest, defer, map, materialize, of, scan, startWith, tap } from "rxjs";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { combineLatest, defer, map, materialize, of, scan, startWith, tap } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -481,22 +481,16 @@ function TimeCalendar({
 }
 
 export default function CalendarTimeline() {
-  const state$ = useMemo(() => {
-    const date = addDays(new Date(), 0);
-    return new BehaviorSubject({
-      relay: "wss://relay.damus.io/",
-      selectedDate: date,
-      selection: "month" as CalendarView,
-      yearInput: String(date.getFullYear()),
-      selectedAddress: undefined as string | undefined,
-    });
-  }, []);
-  const { relay, selectedDate, selection, yearInput, selectedAddress } = use$(state$);
+  const [relay, setRelayValue] = useState("wss://relay.damus.io/");
+  const [selectedDate, setSelectedDate] = useState(() => addDays(new Date(), 0));
+  const [selection, setSelection] = useState<CalendarView>("month");
+  const [yearInput, setYearInput] = useState(() => String(selectedDate.getFullYear()));
+  const [selectedAddress, setSelectedAddress] = useState<string | undefined>(undefined);
   const month = useMemo(() => new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1), [selectedDate]);
-  const update = (value: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...value });
-  const setRelay = (relay: string) => update({ relay, selectedAddress: undefined });
-  const setSelectedAddress = (selectedAddress: string | undefined) => update({ selectedAddress });
-  const setYearInput = (yearInput: string) => update({ yearInput });
+  const setRelay = (relay: string) => {
+    setRelayValue(relay);
+    setSelectedAddress(undefined);
+  };
   // Calendar dates are unrelated to created_at, so request both kinds without since/until.
   const feed = use$(
     () =>
@@ -533,7 +527,10 @@ export default function CalendarTimeline() {
   ).length;
 
   function selectDate(date: Date, mode = selection, selectedAddress?: string) {
-    update({ selectedDate: date, selection: mode, yearInput: String(date.getFullYear()), selectedAddress });
+    setSelectedDate(date);
+    setSelection(mode);
+    setYearInput(String(date.getFullYear()));
+    setSelectedAddress(selectedAddress);
   }
 
   function changeMonth(year: number, index: number) {

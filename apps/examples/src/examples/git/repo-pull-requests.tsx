@@ -52,7 +52,7 @@ import {
   GitPullRequestDraft,
   MessageSquare,
 } from "lucide-react";
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   auditTime,
   BehaviorSubject,
@@ -497,8 +497,7 @@ function SyncBanner({ summary }: { summary?: SyncSummary }) {
 
 /** Pick a repository by pasting an naddr, or from your own repositories when signed in */
 function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => void }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
   const selected = use$(repo$);
 
   // Sync your repository announcements from your outboxes when signed in
@@ -519,7 +518,7 @@ function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => voi
   const open = () => {
     if (pointer?.kind !== GIT_REPOSITORY_KIND) return;
     repo$.next(pointer as GitRepositoryPointer);
-    input$.next("");
+    setInput("");
   };
   const select = (repo: GitRepository) => repo$.next({ ...repo.pointer, relays: repo.relays.slice(0, 3) });
 
@@ -529,7 +528,7 @@ function RepositoryPicker({ user, onSignIn }: { user?: User; onSignIn: () => voi
         className={`input flex-1 min-w-64 ${invalid ? "input-error" : ""}`}
         placeholder="Paste a repository naddr..."
         value={input}
-        onChange={(e) => input$.next(e.target.value)}
+        onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && open()}
       />
       <button className="btn" disabled={invalid || !pointer} onClick={open}>
@@ -608,11 +607,9 @@ const DEFAULT_QUERY: Query = { view: "all", state: "open", author: null, label: 
 
 function PullRequestsView({ pointer, user }: { pointer: GitRepositoryPointer; user?: User }) {
   const coord = getReplaceableAddressFromPointer(pointer);
-  const query$ = useMemo(() => new BehaviorSubject<Query>(DEFAULT_QUERY), []);
-  const query = use$(query$);
-  const update = (changes: Partial<Query>) => query$.next({ ...query$.value, ...changes });
-  const limit$ = useMemo(() => new BehaviorSubject(PAGE_SIZE), []);
-  const limit = use$(limit$);
+  const [query, setQuery] = useState<Query>(DEFAULT_QUERY);
+  const update = (changes: Partial<Query>) => setQuery((query) => ({ ...query, ...changes }));
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   const summary = use$(() => pullRequestsSync$(pointer), [coord]);
   const rows = use$(() => pullRequestRows$(pointer), [coord]);
@@ -734,7 +731,7 @@ function PullRequestsView({ pointer, user }: { pointer: GitRepositoryPointer; us
                 ))
             )}
             {visible.length > limit ? (
-              <button className="btn btn-ghost w-full text-primary" onClick={() => limit$.next(limit + PAGE_SIZE)}>
+              <button className="btn btn-ghost w-full text-primary" onClick={() => setLimit(limit + PAGE_SIZE)}>
                 Load more
               </button>
             ) : null}
@@ -761,13 +758,12 @@ function ClearCache() {
 export default function RepositoryPullRequests() {
   const user = use$(user$);
   const pointer = use$(repo$);
-  const signIn$ = useMemo(() => new BehaviorSubject(false), []);
-  const signingIn = use$(signIn$);
+  const [signingIn, setSigningIn] = useState(false);
 
   const handleLogin = useCallback(async (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     pubkey$.next(pubkey);
-    signIn$.next(false);
+    setSigningIn(false);
   }, []);
 
   if (signingIn) return <LoginView onLogin={handleLogin} />;
@@ -775,7 +771,7 @@ export default function RepositoryPullRequests() {
   return (
     <div className="flex flex-col min-h-0 grow w-full">
       <div className="border-b border-base-300 p-3">
-        <RepositoryPicker user={user} onSignIn={() => signIn$.next(true)} />
+        <RepositoryPicker user={user} onSignIn={() => setSigningIn(true)} />
       </div>
       {pointer ? (
         <PullRequestsView key={getReplaceableAddressFromPointer(pointer)} pointer={pointer} user={user} />

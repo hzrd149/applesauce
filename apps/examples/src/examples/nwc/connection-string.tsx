@@ -5,8 +5,6 @@
  */
 import { publishEvent } from "../../extra/publish";
 
-import { BehaviorSubject } from "rxjs";
-
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
@@ -24,7 +22,7 @@ import {
   WalletConnectEncryptionMethod,
 } from "applesauce-wallet-connect/helpers";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -218,8 +216,7 @@ function RawWalletInfo({ walletInfo }: { walletInfo: WalletSupport }) {
 }
 
 export default function WalletConnectExample() {
-  const uri$ = useMemo(() => new BehaviorSubject(""), []);
-  const uri = use$(uri$);
+  const [uri, setUri] = useState("");
 
   const parseResult = useMemo(() => {
     if (!uri.trim()) return { parsed: null, error: null };
@@ -231,7 +228,7 @@ export default function WalletConnectExample() {
   }, [uri]);
   const parsed = parseResult.parsed;
   const error = parseResult.error;
-  const handleUriChange = (value: string) => uri$.next(value);
+  const handleUriChange = (value: string) => setUri(value);
   // Create WalletConnect instance and get wallet info using the public getter
   const wallet = useMemo(() => {
     if (!parsed) return undefined;

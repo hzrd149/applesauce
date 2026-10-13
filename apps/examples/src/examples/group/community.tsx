@@ -26,7 +26,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, catchError, map, Observable, of, scan, startWith, switchMap } from "rxjs";
 import LoginView from "../../components/login-view";
 import NoteContent from "../../components/note-content";
@@ -228,19 +228,18 @@ function AuthPanel({ relay }: { relay: string }) {
   const challenge = use$(() => pool.relay(relay).challenge$, [relay]);
   const authenticated = use$(() => pool.relay(relay).authenticated$, [relay]);
   const signer = use$(signer$);
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   if (!challenge || authenticated) return null;
 
   const authenticate = async () => {
     if (!signer) return;
     try {
-      error$.next(null);
+      setError(null);
       const response = await pool.relay(relay).authenticate(signer);
-      if (!response.ok) error$.next(response.message ?? "Authentication rejected");
+      if (!response.ok) setError(response.message ?? "Authentication rejected");
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Authentication failed");
+      setError(err instanceof Error ? err.message : "Authentication failed");
     }
   };
 
@@ -309,9 +308,9 @@ function MessageGroup({ messages }: { messages: NostrEvent[] }) {
 
 function Composer({ pointer, channel, recent }: { pointer: GroupPointer; channel: Channel; recent: NostrEvent[] }) {
   const signer = use$(signer$);
-  const state$ = useMemo(() => new BehaviorSubject({ text: "", sending: false, error: null as string | null }), []);
-  const { text, sending, error } = use$(state$);
-  const update = (changes: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...changes });
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!signer) return <div className="border-t border-base-300 p-4 opacity-60">Sign in to send messages</div>;
 
@@ -320,14 +319,17 @@ function Composer({ pointer, channel, recent }: { pointer: GroupPointer; channel
     if (!text.trim()) return;
 
     try {
-      update({ sending: true, error: null });
+      setSending(true);
+      setError(null);
       // Reference recent messages with "previous" tags so the relay can detect out-of-context messages
       const signed = await GroupMessageFactory.create(pointer, text.trim()).previous(recent).sign(signer);
       const response = await pool.relay(pointer.relay).publish(signed);
       if (!response.ok) throw new Error(response.message || "Message rejected by relay");
-      update({ text: "", sending: false });
+      setText("");
+      setSending(false);
     } catch (err) {
-      update({ sending: false, error: err instanceof Error ? err.message : "Failed to send message" });
+      setSending(false);
+      setError(err instanceof Error ? err.message : "Failed to send message");
     }
   };
 
@@ -337,7 +339,7 @@ function Composer({ pointer, channel, recent }: { pointer: GroupPointer; channel
         <input
           type="text"
           value={text}
-          onChange={(e) => update({ text: e.target.value })}
+          onChange={(e) => setText(e.target.value)}
           disabled={sending}
           placeholder={`Message #${channel.name}`}
           className="input input-bordered grow"
@@ -391,45 +393,38 @@ function ChannelView({ relay, channel }: { relay: string; channel: Channel }) {
 }
 
 export default function CommunityExample() {
-  const state$ = useMemo(
-    () =>
-      new BehaviorSubject({
-        relay: "wss://pyramid.fiatjaf.com/",
-        channel: undefined as Channel | undefined,
-        login: false,
-        switching: false,
-      }),
-    [],
-  );
-  const { relay, channel, login, switching } = use$(state$);
-  const update = useCallback(
-    (changes: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...changes }),
-    [state$],
-  );
+  const [relay, setRelay] = useState("wss://pyramid.fiatjaf.com/");
+  const [channel, setChannel] = useState<Channel | undefined>(undefined);
+  const [login, setLogin] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
-  const handleLogin = useCallback(
-    (signer: ISigner, pubkey: string) => {
-      signer$.next(signer);
-      user$.next(castUser(pubkey, eventStore));
-      update({ login: false });
-    },
-    [update],
-  );
+  const handleLogin = useCallback((signer: ISigner, pubkey: string) => {
+    signer$.next(signer);
+    user$.next(castUser(pubkey, eventStore));
+    setLogin(false);
+  }, []);
 
   if (login) return <LoginView onLogin={handleLogin} />;
 
   return (
     <div className="flex min-h-0 grow overflow-hidden">
       <aside className="flex w-72 shrink-0 flex-col border-r border-base-300 bg-base-200">
-        <CommunityHeader relay={relay} switching={switching} onToggle={() => update({ switching: !switching })} />
+        <CommunityHeader relay={relay} switching={switching} onToggle={() => setSwitching(!switching)} />
         {switching ? (
           // Changing the community clears the selected channel
-          <CommunityList relay={relay} onSelect={(relay) => update({ relay, channel: undefined, switching: false })} />
+          <CommunityList
+            relay={relay}
+            onSelect={(relay) => {
+              setRelay(relay);
+              setChannel(undefined);
+              setSwitching(false);
+            }}
+          />
         ) : (
-          <ChannelList relay={relay} selected={channel?.id} onSelect={(channel) => update({ channel })} />
+          <ChannelList relay={relay} selected={channel?.id} onSelect={setChannel} />
         )}
         <AuthPanel relay={relay} />
-        <UserPanel onSignIn={() => update({ login: true })} />
+        <UserPanel onSignIn={() => setLogin(true)} />
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">

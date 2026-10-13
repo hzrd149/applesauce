@@ -4,11 +4,11 @@
  * @related signers/bunker, signers/bunker-provider
  */
 import { use$ } from "applesauce-react/hooks";
-import { BehaviorSubject, Observable } from "rxjs";
+import { Observable } from "rxjs";
 
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
-import { FormEvent, useRef, useMemo } from "react";
+import { FormEvent, useRef, useState } from "react";
 import QRCode from "../../components/qr-code";
 
 const DEFAULT_RELAY = "wss://bucket.coracle.social";
@@ -39,32 +39,23 @@ function validateRelay(value: string) {
 }
 
 export default function NbunksecExample() {
-  const relay$ = useMemo(() => new BehaviorSubject(DEFAULT_RELAY), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState(DEFAULT_RELAY);
 
-  const relayInput$ = useMemo(() => new BehaviorSubject(DEFAULT_RELAY), []);
-  const relayInput = use$(relayInput$);
+  const [relayInput, setRelayInput] = useState(DEFAULT_RELAY);
 
-  const qrSession$ = useMemo(() => new BehaviorSubject((() => createQrSession(DEFAULT_RELAY))()), []);
-  const qrSession = use$(qrSession$);
+  const [qrSession, setQrSession] = useState(() => createQrSession(DEFAULT_RELAY));
 
-  const credential$ = useMemo(() => new BehaviorSubject(""), []);
-  const credential = use$(credential$);
+  const [credential, setCredential] = useState("");
 
-  const connected$ = useMemo(() => new BehaviorSubject<ConnectedSession | undefined>(undefined), []);
-  const restored = use$(connected$);
+  const [restored, setRestored] = useState<ConnectedSession | undefined>(undefined);
 
-  const connectingCredential$ = useMemo(() => new BehaviorSubject(false), []);
-  const connectingCredential = use$(connectingCredential$);
+  const [connectingCredential, setConnectingCredential] = useState(false);
 
-  const loggingOut$ = useMemo(() => new BehaviorSubject(false), []);
-  const loggingOut = use$(loggingOut$);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const credentialError = use$(error$);
+  const [credentialError, setCredentialError] = useState<string | undefined>(undefined);
 
   const activeSigner = useRef<NostrConnectSigner | null>(qrSession.signer);
 
@@ -107,10 +98,10 @@ export default function NbunksecExample() {
     const previousSigner = activeSigner.current;
 
     activeSigner.current = nextSession.signer;
-    connected$.next(undefined);
-    copied$.next(false);
-    error$.next(undefined);
-    qrSession$.next(nextSession);
+    setRestored(undefined);
+    setCopied(false);
+    setCredentialError(undefined);
+    setQrSession(nextSession);
     void previousSigner?.close();
   };
 
@@ -119,11 +110,11 @@ export default function NbunksecExample() {
 
     try {
       const nextRelay = validateRelay(relayInput.trim());
-      relay$.next(nextRelay);
-      relayInput$.next(nextRelay);
+      setRelay(nextRelay);
+      setRelayInput(nextRelay);
       replaceQrSession(nextRelay);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Invalid relay URL");
+      setCredentialError(err instanceof Error ? err.message : "Invalid relay URL");
     }
   };
 
@@ -137,8 +128,8 @@ export default function NbunksecExample() {
     void pendingQrSigner?.close();
 
     try {
-      connectingCredential$.next(true);
-      error$.next(undefined);
+      setConnectingCredential(true);
+      setCredentialError(undefined);
 
       let signer: NostrConnectSigner;
       if (value.startsWith("bunker://")) signer = await NostrConnectSigner.fromBunkerURI(value, { pool });
@@ -147,13 +138,13 @@ export default function NbunksecExample() {
 
       activeSigner.current = signer;
       const pubkey = await signer.getPublicKey();
-      connected$.next({ signer, pubkey, nbunksec: signer.getNbunksec() });
-      credential$.next("");
+      setRestored({ signer, pubkey, nbunksec: signer.getNbunksec() });
+      setCredential("");
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to connect to remote signer");
+      setCredentialError(err instanceof Error ? err.message : "Failed to connect to remote signer");
       replaceQrSession(relay);
     } finally {
-      connectingCredential$.next(false);
+      setConnectingCredential(false);
     }
   };
 
@@ -162,10 +153,10 @@ export default function NbunksecExample() {
 
     try {
       await navigator.clipboard.writeText(connected.nbunksec);
-      copied$.next(true);
-      error$.next(undefined);
+      setCopied(true);
+      setCredentialError(undefined);
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to copy nbunksec");
+      setCredentialError(err instanceof Error ? err.message : "Failed to copy nbunksec");
     }
   };
 
@@ -177,15 +168,15 @@ export default function NbunksecExample() {
   const handleLogout = async () => {
     if (!connected) return;
 
-    loggingOut$.next(true);
-    error$.next(undefined);
+    setLoggingOut(true);
+    setCredentialError(undefined);
     try {
       await connected.signer.logout();
       replaceQrSession(relay);
     } catch (error) {
-      error$.next(error instanceof Error ? error.message : "Failed to log out");
+      setCredentialError(error instanceof Error ? error.message : "Failed to log out");
     } finally {
-      loggingOut$.next(false);
+      setLoggingOut(false);
     }
   };
 
@@ -298,7 +289,7 @@ export default function NbunksecExample() {
               type="url"
               className="input input-bordered join-item min-w-0 flex-1"
               value={relayInput}
-              onChange={(event) => relayInput$.next(event.target.value)}
+              onChange={(event) => setRelayInput(event.target.value)}
               placeholder="wss://relay.example.com"
             />
             <button className="btn btn-outline join-item" disabled={relayInput.trim() === relay}>
@@ -318,7 +309,7 @@ export default function NbunksecExample() {
             id="remote-signer-credential"
             className="textarea textarea-bordered h-28 w-full font-mono text-sm"
             value={credential}
-            onChange={(event) => credential$.next(event.target.value)}
+            onChange={(event) => setCredential(event.target.value)}
             placeholder="bunker://... or nbunksec1..."
           />
           <button className="btn btn-secondary mt-3 w-full" disabled={!credential.trim() || connectingCredential}>

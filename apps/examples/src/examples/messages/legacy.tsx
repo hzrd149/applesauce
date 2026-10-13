@@ -28,7 +28,7 @@ import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, concatMap, exhaustMap } from "rxjs";
 
 // Import helper components
@@ -150,21 +150,18 @@ function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEv
 }
 
 function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; relay: string }) {
-  const message$ = useMemo(() => new BehaviorSubject(""), []);
-  const message = use$(message$);
+  const [message, setMessage] = useState("");
 
-  const expiration$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const expiration = use$(expiration$);
+  const [expiration, setExpiration] = useState<string | null>(null);
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
 
     try {
-      sending$.next(true);
+      setSending(true);
 
       await actions
         .exec(SendLegacyMessage, corraspondant, message, {
@@ -173,17 +170,17 @@ function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; re
         .pipe(concatMap((signed) => publishEvent(pool, [relay], signed)))
         .forEach(() => {});
 
-      message$.next("");
+      setMessage("");
     } catch (err) {
       console.error("Failed to send message:", err);
     }
-    sending$.next(false);
+    setSending(false);
   };
 
   const toggleExpiration = () => {
     const arr = Object.keys(EXPIRATIONS);
     const next = expiration ? arr[arr.indexOf(expiration) + 1] : arr[0];
-    expiration$.next(next);
+    setExpiration(next);
   };
 
   return (
@@ -191,7 +188,7 @@ function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; re
       <input
         type="text"
         value={message}
-        onChange={(e) => message$.next(e.target.value)}
+        onChange={(e) => setMessage(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered grow"
@@ -280,11 +277,9 @@ function DirectMessageView({
 }
 
 function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
 
-  const selected$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selected = use$(selected$);
+  const [selected, setSelected] = useState<string | null>(null);
 
   const filters = useMemo<Filter[]>(
     () => [
@@ -316,16 +311,12 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
     <div className="flex bg-base-200 overflow-hidden h-screen">
       <div className="w-sm bg-base-100 p-2 overflow-y-auto flex flex-col gap-2 shrink-0 ">
         <div className="flex gap-2 w-full">
-          <RelayPicker className="w-full" value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
+          <RelayPicker className="w-full" value={relay} onChange={(value: string) => setRelay(value)} />
           <button className="btn" onClick={clearCache}>
             Clear
           </button>
         </div>
-        <ContactList
-          events={events}
-          pubkey={pubkey}
-          onSelect={(value: typeof selected$.value) => selected$.next(value)}
-        />
+        <ContactList events={events} pubkey={pubkey} onSelect={(value: string) => setSelected(value)} />
         <button onClick={loadMore} className="btn btn-primary mx-auto" onScroll={loadMore}>
           Load more
         </button>

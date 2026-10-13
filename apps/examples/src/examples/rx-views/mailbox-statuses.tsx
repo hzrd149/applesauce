@@ -3,7 +3,7 @@
  * @tags nip-65, nip-66, relay-discovery, mailbox, rx-views
  * @related relay-discovery/mailbox-map, relay-discovery/contacts-relays
  */
-import { BehaviorSubject, timeout, filter, catchError, isObservable, Observable, of, startWith, switchMap } from "rxjs";
+import { timeout, filter, catchError, isObservable, Observable, of, startWith, switchMap } from "rxjs";
 
 import { castUser, RelayDiscovery, RelayMonitor, User } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
@@ -12,7 +12,7 @@ import { combineLatestByValue, defined, EventStore, mapEventsToStore, mapEventsT
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
@@ -260,14 +260,11 @@ function StatusTable({ label, statusMap }: { label: string; statusMap: RelayStat
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function MailboxStatuses() {
-  const discoveryRelay$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_RELAY), []);
-  const discoveryRelay = use$(discoveryRelay$);
+  const [discoveryRelay, setDiscoveryRelay] = useState(DEFAULT_DISCOVERY_RELAY);
 
-  const selectedMonitorPubkeys$ = useMemo(() => new BehaviorSubject<string[]>([DEFAULT_DISCOVERY_MONITOR]), []);
-  const selectedMonitorPubkeys = use$(selectedMonitorPubkeys$);
+  const [selectedMonitorPubkeys, setSelectedMonitorPubkeys] = useState<string[]>([DEFAULT_DISCOVERY_MONITOR]);
 
-  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const selectedPubkey = use$(selectedPubkey$);
+  const [selectedPubkey, setSelectedPubkey] = useState("");
 
   // Subscribe to monitor announcements on the discovery relay
   const monitors = use$(
@@ -307,21 +304,11 @@ export default function MailboxStatuses() {
 
       {/* Controls */}
       <div className="flex flex-col gap-2">
-        <RelayPicker
-          value={discoveryRelay}
-          onChange={(next: typeof discoveryRelay$.value) => discoveryRelay$.next(next)}
-        />
+        <RelayPicker value={discoveryRelay} onChange={setDiscoveryRelay} />
         {monitors && monitors.length > 0 && (
-          <MonitorPicker
-            monitors={monitors}
-            value={selectedMonitorPubkeys}
-            onChange={(next: typeof selectedMonitorPubkeys$.value) => selectedMonitorPubkeys$.next(next)}
-          />
+          <MonitorPicker monitors={monitors} value={selectedMonitorPubkeys} onChange={setSelectedMonitorPubkeys} />
         )}
-        <PubkeyPicker
-          value={selectedPubkey}
-          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
-        />
+        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
       </div>
 
       {!selectedPubkey && (

@@ -4,7 +4,7 @@
  * @related loader/paginated-timeline, negentrapy/relay-difference
  */
 import { castUser } from "applesauce-common/casts";
-import { BehaviorSubject, combineLatest, scan, startWith, map, catchError, of } from "rxjs";
+import { combineLatest, scan, startWith, map, catchError, of } from "rxjs";
 
 import { EventStore } from "applesauce-core";
 import { getSeenRelays, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
@@ -12,7 +12,7 @@ import { createEventLoaderForStore, createSyncLoader, SyncLoaderStatus } from "a
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -120,25 +120,20 @@ function EventRow({
 }
 
 export default function SyncLoaderExample() {
-  const pubkey$ = useMemo(() => new BehaviorSubject(DEFAULT_PUBKEY), []);
-  const pubkey = use$(pubkey$);
+  const [pubkey, setPubkey] = useState(DEFAULT_PUBKEY);
 
-  const relaysText$ = useMemo(() => new BehaviorSubject(""), []);
-  const relaysText = use$(relaysText$);
+  const [relaysText, setRelaysText] = useState("");
 
-  const sinceDate$ = useMemo(() => new BehaviorSubject(dateInputValue(new Date(Date.now() - 14 * DAY))), []);
-  const sinceDate = use$(sinceDate$);
+  const [sinceDate, setSinceDate] = useState(dateInputValue(new Date(Date.now() - 14 * DAY)));
 
-  const untilDate$ = useMemo(() => new BehaviorSubject(dateInputValue(new Date())), []);
-  const untilDate = use$(untilDate$);
+  const [untilDate, setUntilDate] = useState(dateInputValue(new Date()));
 
   const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
   const outboxes = use$(user.outboxes$);
   const effectiveRelaysText = relaysText || outboxes?.join("\n") || "";
   const relays = useMemo(() => mergeRelaySets(effectiveRelaysText.split(/\s+/)), [effectiveRelaysText]);
   const invalidRange = !!sinceDate && !!untilDate && sinceDate > untilDate;
-  const run$ = useMemo(() => new BehaviorSubject<ReturnType<typeof syncLoader> | null>(null), []);
-  const run = use$(run$);
+  const [run, setRun] = useState<ReturnType<typeof syncLoader> | null>(null);
   const state = use$<{ status: SyncLoaderStatus | null; events: NostrEvent[]; error?: string }>(
     () =>
       run
@@ -158,12 +153,12 @@ export default function SyncLoaderExample() {
   const status = state?.status;
   const events = state?.events ?? [];
   const running = !!run && !status?.done && !state?.error;
-  const stop = () => run$.next(null);
+  const stop = () => setRun(null);
   const sync = () => {
     if (invalidRange) return;
     const since = startOfDay(sinceDate);
     const until = endOfDay(untilDate);
-    run$.next(
+    setRun(
       syncLoader({
         relays,
         filter: {
@@ -180,13 +175,13 @@ export default function SyncLoaderExample() {
     <div className="container mx-auto my-8 flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <label className="text-sm font-bold">User</label>
-        <PubkeyPicker value={pubkey} onChange={(value: typeof pubkey$.value) => pubkey$.next(value)} />
+        <PubkeyPicker value={pubkey} onChange={(value: string) => setPubkey(value)} />
 
         <label className="text-sm font-bold">Relays (defaults to the user's outboxes)</label>
         <textarea
           className="textarea textarea-bordered font-mono text-sm h-28"
           value={effectiveRelaysText}
-          onChange={(e) => relaysText$.next(e.target.value)}
+          onChange={(e) => setRelaysText(e.target.value)}
           placeholder="wss://relay.example.com"
         />
 
@@ -198,7 +193,7 @@ export default function SyncLoaderExample() {
               className="input input-bordered"
               type="date"
               value={sinceDate}
-              onChange={(e) => sinceDate$.next(e.target.value)}
+              onChange={(e) => setSinceDate(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -207,7 +202,7 @@ export default function SyncLoaderExample() {
               className="input input-bordered"
               type="date"
               value={untilDate}
-              onChange={(e) => untilDate$.next(e.target.value)}
+              onChange={(e) => setUntilDate(e.target.value)}
             />
           </label>
         </div>

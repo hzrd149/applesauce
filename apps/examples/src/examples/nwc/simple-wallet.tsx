@@ -15,21 +15,8 @@ import {
   WalletSupport,
 } from "applesauce-wallet-connect/helpers";
 import { generateSecretKey } from "applesauce-core/helpers";
-import { useMemo } from "react";
-import {
-  of,
-  BehaviorSubject,
-  filter,
-  map,
-  startWith,
-  defer,
-  from,
-  tap,
-  catchError,
-  EMPTY,
-  finalize,
-  switchMap,
-} from "rxjs";
+import { useMemo, useState } from "react";
+import { of, filter, map, startWith, defer, from, tap, catchError, EMPTY, finalize } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
@@ -106,20 +93,11 @@ function CreateInvoiceModal({
   wallet?: WalletConnect;
   support?: WalletSupport | null;
 }) {
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
-
-  const description$ = useMemo(() => new BehaviorSubject(""), []);
-  const description = use$(description$);
-
-  const loading$ = useMemo(() => new BehaviorSubject(false), []);
-  const loading = use$(loading$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
-
-  const invoice$ = useMemo(() => new BehaviorSubject<Transaction | null>(null), []);
-  const invoice = use$(invoice$);
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [invoice, setInvoice] = useState<Transaction | null>(null);
 
   const supportsNotifications = support?.notifications?.includes("payment_received");
   const isPaid =
@@ -142,8 +120,8 @@ function CreateInvoiceModal({
   const handleCreateInvoice = async () => {
     if (!wallet || !amount) return;
 
-    loading$.next(true);
-    error$.next(null);
+    setLoading(true);
+    setError(null);
 
     try {
       const amountMsats = parseInt(amount) * 1000; // Convert sats to msats
@@ -151,17 +129,17 @@ function CreateInvoiceModal({
         description: description || undefined,
         expiry: 3600, // 1 hour expiry
       });
-      invoice$.next(result);
+      setInvoice(result);
     } catch (err) {
       console.error("Failed to create invoice:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to create invoice");
+      setError(err instanceof Error ? err.message : "Failed to create invoice");
     } finally {
-      loading$.next(false);
+      setLoading(false);
     }
   };
 
   const handleClose = () => {
-    invoice$.next(null);
+    setInvoice(null);
     onClose();
   };
 
@@ -184,7 +162,7 @@ function CreateInvoiceModal({
                 placeholder="1000"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => amount$.next(e.target.value)}
+                onChange={(e) => setAmount(e.target.value)}
                 min="1"
               />
             </div>
@@ -198,7 +176,7 @@ function CreateInvoiceModal({
                 placeholder="Payment for..."
                 className="input input-bordered w-full"
                 value={description}
-                onChange={(e) => description$.next(e.target.value)}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
@@ -306,17 +284,10 @@ function PayInvoiceModal({
   onClose: () => void;
   wallet: WalletConnect | undefined;
 }) {
-  const invoiceString$ = useMemo(() => new BehaviorSubject(""), []);
-  const invoiceString = use$(invoiceString$);
-
-  const loading$ = useMemo(() => new BehaviorSubject(false), []);
-  const loading = use$(loading$);
-
-  const paymentResult$ = useMemo(() => new BehaviorSubject<PayInvoiceMethod["response"]["result"] | null>(null), []);
-  const paymentResult = use$(paymentResult$);
-
-  const paymentError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const paymentError = use$(paymentError$);
+  const [invoiceString, setInvoiceString] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PayInvoiceMethod["response"]["result"] | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const { parsedInvoice, parseError } = useMemo(() => {
     if (!invoiceString.trim()) return { parsedInvoice: null, parseError: null };
@@ -330,22 +301,22 @@ function PayInvoiceModal({
   const handlePayInvoice = async () => {
     if (!wallet || !parsedInvoice) return;
 
-    loading$.next(true);
-    paymentError$.next(null);
+    setLoading(true);
+    setPaymentError(null);
 
     try {
       const result = await wallet.payInvoice(invoiceString.trim());
-      paymentResult$.next(result);
+      setPaymentResult(result);
     } catch (err) {
       console.error("Failed to pay invoice:", err);
-      paymentError$.next(err instanceof Error ? err.message : "Failed to pay invoice");
+      setPaymentError(err instanceof Error ? err.message : "Failed to pay invoice");
     } finally {
-      loading$.next(false);
+      setLoading(false);
     }
   };
 
   const handleClose = () => {
-    paymentResult$.next(null);
+    setPaymentResult(null);
     onClose();
   };
 
@@ -370,7 +341,7 @@ function PayInvoiceModal({
                 className="textarea textarea-bordered w-full"
                 rows={4}
                 value={invoiceString}
-                onChange={(e) => invoiceString$.next(e.target.value)}
+                onChange={(e) => setInvoiceString(e.target.value)}
               />
             </div>
 
@@ -484,15 +455,12 @@ function PayInvoiceModal({
 }
 
 function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
-  const uri$ = useMemo(() => new BehaviorSubject(""), []);
-  const uri = use$(uri$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [uri, setUri] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const handleUriChange = (value: string) => {
-    uri$.next(value);
-    error$.next(null);
+    setUri(value);
+    setError(null);
 
     if (!value.trim()) return;
 
@@ -503,7 +471,7 @@ function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) 
       onConnect(wallet);
     } catch (err) {
       console.error("Failed to parse URI:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to parse URI");
+      setError(err instanceof Error ? err.message : "Failed to parse URI");
     }
   };
 
@@ -529,8 +497,7 @@ function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) 
 }
 
 function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.getalby.com/v1"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.getalby.com/v1");
 
   const wallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
@@ -558,12 +525,7 @@ function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => v
       <a href={uri} className="bg-white p-4 rounded-lg">
         <QRCode value={uri} size={192} className="h-48 w-48" alt="Wallet auth QR code" />
       </a>
-      <RelayPicker
-        value={relay}
-        onChange={(value: typeof relay$.value) => relay$.next(value)}
-        common={["wss://relay.getalby.com/v1"]}
-        className="w-full"
-      />
+      <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.getalby.com/v1"]} className="w-full" />
       <a href={uri} className="btn btn-primary btn-block">
         Connect
       </a>
@@ -573,21 +535,17 @@ function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => v
 }
 
 export default function SimpleWalletExample() {
-  const wallet$ = useMemo(() => new BehaviorSubject<WalletConnect | undefined>(undefined), []);
-  const wallet = use$(wallet$);
+  const [wallet, setWallet] = useState<WalletConnect | undefined>(undefined);
 
-  const refreshBalance$ = useMemo(() => new BehaviorSubject(0), []);
-  const refreshTransactions$ = useMemo(() => new BehaviorSubject(0), []);
-  const showCreateInvoiceModal$ = useMemo(() => new BehaviorSubject(false), []);
-  const showCreateInvoiceModal = use$(showCreateInvoiceModal$);
-
-  const showPayInvoiceModal$ = useMemo(() => new BehaviorSubject(false), []);
-  const showPayInvoiceModal = use$(showPayInvoiceModal$);
+  const [balanceRefresh, setBalanceRefresh] = useState(0);
+  const [transactionsRefresh, setTransactionsRefresh] = useState(0);
+  const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
+  const [showPayInvoiceModal, setShowPayInvoiceModal] = useState(false);
 
   // Handle connection from URI input component
   const handleConnect = (wallet: WalletConnect) => {
     try {
-      wallet$.next(wallet);
+      setWallet(wallet);
     } catch (err) {
       console.error("Failed to parse URI:", err);
       // Error handling is done in the ConnectionUriInput component
@@ -600,40 +558,32 @@ export default function SimpleWalletExample() {
   const balanceResult = use$(
     () =>
       wallet && support && supportsMethod(support, "get_balance")
-        ? refreshBalance$.pipe(
-            switchMap(() =>
-              defer(() => wallet.getBalance()).pipe(
-                map((balance) => ({ balance, loading: false, error: null as string | null })),
-                startWith({ balance: null, loading: true, error: null }),
-                catchError((error) => of({ balance: null, loading: false, error: String(error) })),
-              ),
-            ),
+        ? defer(() => wallet.getBalance()).pipe(
+            map((balance) => ({ balance, loading: false, error: null as string | null })),
+            startWith({ balance: null, loading: true, error: null }),
+            catchError((error) => of({ balance: null, loading: false, error: String(error) })),
           )
         : of({ balance: null, loading: false, error: null }),
-    [wallet, support, refreshBalance$],
+    [wallet, support, balanceRefresh],
   );
   const transactionResult = use$(
     () =>
       wallet && support && supportsMethod(support, "list_transactions")
-        ? refreshTransactions$.pipe(
-            switchMap(() =>
-              defer(() => wallet.listTransactions({ limit: 20 })).pipe(
-                map((result) => ({ transactions: result.transactions, loading: false, error: null as string | null })),
-                startWith({ transactions: [] as Transaction[], loading: true, error: null }),
-                catchError((error) => of({ transactions: [] as Transaction[], loading: false, error: String(error) })),
-              ),
-            ),
+        ? defer(() => wallet.listTransactions({ limit: 20 })).pipe(
+            map((result) => ({ transactions: result.transactions, loading: false, error: null as string | null })),
+            startWith({ transactions: [] as Transaction[], loading: true, error: null }),
+            catchError((error) => of({ transactions: [] as Transaction[], loading: false, error: String(error) })),
           )
         : of({ transactions: [] as Transaction[], loading: false, error: null }),
-    [wallet, support, refreshTransactions$],
+    [wallet, support, transactionsRefresh],
   );
   const balance = balanceResult?.balance;
   const transactions = transactionResult?.transactions ?? [];
   const balanceLoading = balanceResult?.loading ?? false;
   const transactionsLoading = transactionResult?.loading ?? false;
-  const fetchBalance = () => refreshBalance$.next(refreshBalance$.value + 1);
-  const fetchTransactions = () => refreshTransactions$.next(refreshTransactions$.value + 1);
-  const handleDisconnect = () => wallet$.next(undefined);
+  const fetchBalance = () => setBalanceRefresh((n) => n + 1);
+  const fetchTransactions = () => setTransactionsRefresh((n) => n + 1);
+  const handleDisconnect = () => setWallet(undefined);
 
   const canMakeInvoice = support && supportsMethod(support, "make_invoice");
   const canPayInvoice = support && supportsMethod(support, "pay_invoice");
@@ -716,15 +666,11 @@ export default function SimpleWalletExample() {
             <button
               className="btn btn-success"
               disabled={!canMakeInvoice}
-              onClick={() => showCreateInvoiceModal$.next(true)}
+              onClick={() => setShowCreateInvoiceModal(true)}
             >
               Create Invoice
             </button>
-            <button
-              className="btn btn-warning"
-              disabled={!canPayInvoice}
-              onClick={() => showPayInvoiceModal$.next(true)}
-            >
+            <button className="btn btn-warning" disabled={!canPayInvoice} onClick={() => setShowPayInvoiceModal(true)}>
               Pay Invoice
             </button>
           </div>
@@ -762,7 +708,7 @@ export default function SimpleWalletExample() {
           <CreateInvoiceModal
             isOpen={showCreateInvoiceModal}
             onClose={() => {
-              showCreateInvoiceModal$.next(false);
+              setShowCreateInvoiceModal(false);
               // Refresh balance and transactions when modal closes
               if (wallet && support) {
                 fetchBalance();
@@ -779,7 +725,7 @@ export default function SimpleWalletExample() {
           <PayInvoiceModal
             isOpen={showPayInvoiceModal}
             onClose={() => {
-              showPayInvoiceModal$.next(false);
+              setShowPayInvoiceModal(false);
               // Refresh balance and transactions when modal closes
               if (wallet && support) {
                 fetchBalance();

@@ -3,7 +3,7 @@
  * @tags nip-66, relay-discovery, monitor, feed
  * @related relay-discovery/monitors-map, relay-discovery/attributes
  */
-import { BehaviorSubject, map } from "rxjs";
+import { map } from "rxjs";
 
 import { RelayDiscovery, RelayMonitor } from "applesauce-common/casts";
 import { RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
@@ -13,7 +13,7 @@ import { unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -154,11 +154,9 @@ function RelayStatusBadge({ relay }: { relay: string }) {
 }
 
 export default function MonitorFeed() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_RELAY), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
 
-  const selected$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_MONITOR), []);
-  const selected = use$(selected$);
+  const [selected, setSelected] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
 
   // Get the monitor's announcement event
   const monitors = use$(
@@ -188,11 +186,11 @@ export default function MonitorFeed() {
         </p>
 
         <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+          <RelayPicker value={relay} onChange={(next: typeof relay) => setRelay(next)} />
           {monitors && (
             <MonitorPicker
               monitors={monitors}
-              onChange={(next: typeof selected$.value) => selected$.next(next)}
+              onChange={(next: typeof selected) => setSelected(next)}
               value={selected}
             />
           )}

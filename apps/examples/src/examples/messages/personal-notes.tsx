@@ -26,7 +26,7 @@ import { RelayPool, SyncDirection } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { kinds } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, map, scan, startWith, of, tap, materialize, timer } from "rxjs";
 
 // Import helper components
@@ -99,11 +99,9 @@ function formatExpiration(expirationTimestamp: number | undefined, now: number):
 }
 
 function NoteForm({ user, className }: { user: User; className?: string }) {
-  const note$ = useMemo(() => new BehaviorSubject(""), []);
-  const note = use$(note$);
+  const [note, setNote] = useState("");
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
   const expiration = use$(expiration$);
 
@@ -112,18 +110,18 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
     if (!note.trim()) return;
 
     try {
-      sending$.next(true);
+      setSending(true);
 
       // Send wrapped message to self
       await actions.run(SendWrappedMessage, user.pubkey, note.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      note$.next("");
+      setNote("");
     } catch (err) {
       console.error("Failed to create note:", err);
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
@@ -131,7 +129,7 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
     <form onSubmit={handleSend} className={clsx("flex flex-col gap-2", className)}>
       <textarea
         value={note}
-        onChange={(e) => note$.next(e.target.value)}
+        onChange={(e) => setNote(e.target.value)}
         disabled={sending}
         placeholder="Write your note..."
         className="textarea textarea-bordered grow min-h-24 w-full"
@@ -147,11 +145,9 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
 }
 
 function CommentForm({ note }: { note: Rumor }) {
-  const comment$ = useMemo(() => new BehaviorSubject(""), []);
-  const comment = use$(comment$);
+  const [comment, setComment] = useState("");
 
-  const sending$ = useMemo(() => new BehaviorSubject(false), []);
-  const sending = use$(sending$);
+  const [sending, setSending] = useState(false);
 
   const expiration = use$(expiration$);
 
@@ -160,18 +156,18 @@ function CommentForm({ note }: { note: Rumor }) {
     if (!comment.trim()) return;
 
     try {
-      sending$.next(true);
+      setSending(true);
 
       // Send reply to the note with expiration
       await actions.run(ReplyToWrappedMessage, note, comment.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      comment$.next("");
+      setComment("");
     } catch (err) {
       console.error("Failed to add comment:", err);
     } finally {
-      sending$.next(false);
+      setSending(false);
     }
   };
 
@@ -180,7 +176,7 @@ function CommentForm({ note }: { note: Rumor }) {
       <input
         type="text"
         value={comment}
-        onChange={(e) => comment$.next(e.target.value)}
+        onChange={(e) => setComment(e.target.value)}
         disabled={sending}
         placeholder="Add a comment..."
         className="input input-bordered grow"
@@ -301,12 +297,10 @@ function InlineRelayList({ relays }: { relays: string[] }) {
 }
 
 function NotesView({ user }: { user: User }) {
-  const selectedNoteId$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const selectedNoteId = use$(selectedNoteId$);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | undefined>(undefined);
 
   const signer = use$(signer$);
-  const since$ = useMemo(() => new BehaviorSubject<number>(unixNow() - EXPIRATIONS["2 weeks"]), []);
-  const since = use$(since$);
+  const [since, setSince] = useState<number>(unixNow() - EXPIRATIONS["2 weeks"]);
   // 1 week ago
   const expiration = use$(expiration$);
   const failed = use$(failed$);
@@ -369,8 +363,7 @@ function NotesView({ user }: { user: User }) {
       .sort((a, b) => a.created_at - b.created_at);
   };
 
-  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
-  const unlocking = use$(unlocking$);
+  const [unlocking, setUnlocking] = useState(false);
 
   const locked = use$(
     () =>
@@ -383,7 +376,7 @@ function NotesView({ user }: { user: User }) {
 
   const unlock = async () => {
     if (!locked || !signer) return;
-    unlocking$.next(true);
+    setUnlocking(true);
     for (const gift of locked) {
       // Ignore previously failed gift wraps
       if (failed$.value.includes(gift.id)) continue;
@@ -395,12 +388,12 @@ function NotesView({ user }: { user: User }) {
         failed$.next([...failed$.value, gift.id]);
       }
     }
-    unlocking$.next(false);
+    setUnlocking(false);
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = new Date(e.target.value);
-    since$.next(Math.floor(date.getTime() / 1000));
+    setSince(Math.floor(date.getTime() / 1000));
   };
 
   const formatDateForInput = (timestamp: number) => {
@@ -473,7 +466,7 @@ function NotesView({ user }: { user: User }) {
                 note={note}
                 comments={getCommentsForNote(note.id)}
                 selected={selectedNoteId === note.id}
-                onSelect={() => selectedNoteId$.next(selectedNoteId === note.id ? undefined : note.id)}
+                onSelect={() => setSelectedNoteId(selectedNoteId === note.id ? undefined : note.id)}
               />
             ))}
           </div>

@@ -52,7 +52,7 @@ import {
   SquarePen,
   X,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   auditTime,
   BehaviorSubject,
@@ -593,12 +593,9 @@ const SIDEBAR = [
 const views$ = new BehaviorSubject<string[]>(["is:issue state:open label:bug sort:updated-desc"]);
 
 function DashboardView({ user }: { user: User }) {
-  const input$ = useMemo(() => new BehaviorSubject(DEFAULT_QUERY), []);
-  const input = use$(input$);
-  const compact$ = useMemo(() => new BehaviorSubject(false), []);
-  const compact = use$(compact$);
-  const limit$ = useMemo(() => new BehaviorSubject(PAGE_SIZE), []);
-  const limit = use$(limit$);
+  const [input, setInputValue] = useState(DEFAULT_QUERY);
+  const [compact, setCompact] = useState(false);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const views = use$(views$);
 
   const summary = use$(() => issuesSync$(user), [user.pubkey]);
@@ -619,8 +616,8 @@ function DashboardView({ user }: { user: User }) {
   );
 
   const setInput = (value: string) => {
-    input$.next(value);
-    limit$.next(PAGE_SIZE);
+    setInputValue(value);
+    setLimit(PAGE_SIZE);
   };
   const title = SIDEBAR.find((item) => item.query === input)?.label ?? (views?.includes(input) ? input : "Issues");
 
@@ -712,14 +709,14 @@ function DashboardView({ user }: { user: User }) {
                 <button
                   className={`btn btn-square join-item ${compact ? "" : "btn-active"}`}
                   title="Comfortable"
-                  onClick={() => compact$.next(false)}
+                  onClick={() => setCompact(false)}
                 >
                   <Rows3 size={16} />
                 </button>
                 <button
                   className={`btn btn-square join-item ${compact ? "btn-active" : ""}`}
                   title="Compact"
-                  onClick={() => compact$.next(true)}
+                  onClick={() => setCompact(true)}
                 >
                   <List size={16} />
                 </button>
@@ -747,7 +744,7 @@ function DashboardView({ user }: { user: User }) {
                 ))
             )}
             {visible.length > limit ? (
-              <button className="btn btn-ghost w-full text-primary" onClick={() => limit$.next(limit + PAGE_SIZE)}>
+              <button className="btn btn-ghost w-full text-primary" onClick={() => setLimit(limit + PAGE_SIZE)}>
                 Load more
               </button>
             ) : null}

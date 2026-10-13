@@ -22,7 +22,7 @@ import { createUploadAuth } from "blossom-client-sdk/auth";
 import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
 import { NostrExtension } from "nostr-editor";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -85,8 +85,7 @@ function createBlossomUploader(signer: ISigner, blossomServers: URL[] | undefine
 
 /** Favicon avatar for a blossom server */
 function ServerFavicon({ server }: { server: URL }) {
-  const error$ = useMemo(() => new BehaviorSubject(false), []);
-  const error = use$(error$);
+  const [error, setError] = useState(false);
 
   const faviconUrl = new URL("/favicon.ico", server).href;
 
@@ -107,7 +106,7 @@ function ServerFavicon({ server }: { server: URL }) {
       alt={server.hostname}
       title={server.hostname}
       className="w-6 h-6 rounded-full bg-base-200"
-      onError={() => error$.next(true)}
+      onError={() => setError(true)}
     />
   );
 }
@@ -142,11 +141,8 @@ async function noteTemplateFromEditor(editor: Editor): Promise<NoteTemplate> {
 }
 
 function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigner; onContinue: () => void }) {
-  const buildError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const buildError = use$(buildError$);
-
-  const mediaOptimization$ = useMemo(() => new BehaviorSubject(true), []);
-  const mediaOptimization = use$(mediaOptimization$);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [mediaOptimization, setMediaOptimization] = useState(true);
 
   const blossomServers = use$(() => user.blossomServers$, [user.pubkey]);
 
@@ -196,13 +192,13 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
 
   const handleContinue = useCallback(async () => {
     if (!editor) return;
-    buildError$.next(null);
+    setBuildError(null);
     try {
       const template = await noteTemplateFromEditor(editor);
       draftNote$.next(template);
       onContinue();
     } catch (e) {
-      buildError$.next(e instanceof Error ? e.message : "Could not build note");
+      setBuildError(e instanceof Error ? e.message : "Could not build note");
     }
   }, [editor, onContinue]);
 
@@ -222,7 +218,7 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
           type="checkbox"
           className="toggle toggle-sm"
           checked={mediaOptimization}
-          onChange={() => mediaOptimization$.next(!mediaOptimization$.value)}
+          onChange={() => setMediaOptimization((value) => !value)}
         />
         <span>
           Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
@@ -278,39 +274,31 @@ function PublishBody({
     [mailboxes],
   );
 
-  const publishing$ = useMemo(() => new BehaviorSubject(false), []);
-  const publishing = use$(publishing$);
-
-  const publishError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const publishError = use$(publishError$);
-
-  const lastResults$ = useMemo(
-    () => new BehaviorSubject<{ relay: string; ok: boolean; message?: string }[] | null>(null),
-    [],
-  );
-  const lastResults = use$(lastResults$);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [lastResults, setLastResults] = useState<{ relay: string; ok: boolean; message?: string }[] | null>(null);
 
   const handleBack = useCallback(() => {
-    lastResults$.next(null);
-    publishError$.next(null);
+    setLastResults(null);
+    setPublishError(null);
     draftNote$.next(null);
     onBack();
   }, [onBack]);
 
   const handlePublish = useCallback(async () => {
-    publishing$.next(true);
-    publishError$.next(null);
-    lastResults$.next(null);
+    setPublishing(true);
+    setPublishError(null);
+    setLastResults(null);
     try {
       const toSign = { ...draft, created_at: Math.floor(Date.now() / 1000) };
       const signed = await new NoteFactory((resolve) => resolve(toSign)).sign(signer);
       const responses = await publishEvent(pool, publishRelays, signed);
       eventStore.add(signed);
-      lastResults$.next(responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })));
+      setLastResults(responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })));
     } catch (e) {
-      publishError$.next(e instanceof Error ? e.message : "Publish failed");
+      setPublishError(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      publishing$.next(false);
+      setPublishing(false);
     }
   }, [draft, publishRelays, signer]);
 

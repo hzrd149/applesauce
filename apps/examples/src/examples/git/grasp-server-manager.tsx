@@ -12,7 +12,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -64,18 +64,16 @@ function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void 
 }
 
 function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<void> }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const isAdding$ = useMemo(() => new BehaviorSubject(false), []);
-  const isAdding = use$(isAdding$);
+  const [isAdding, setIsAdding] = useState(false);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!input.trim() || isAdding) return;
 
-      isAdding$.next(true);
+      setIsAdding(true);
       try {
         let url = input.trim();
         if (!url.startsWith("wss://") && !url.startsWith("ws://") && !url.startsWith("http")) {
@@ -83,11 +81,11 @@ function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<
         }
         new URL(url);
         await onAdd(url);
-        input$.next("");
+        setInput("");
       } catch (error) {
         alert(String(error));
       } finally {
-        isAdding$.next(false);
+        setIsAdding(false);
       }
     },
     [input, onAdd, isAdding],
@@ -102,7 +100,7 @@ function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<
           className="input input-bordered flex-1"
           placeholder="wss://grasp.example.com or grasp.example.com"
           value={input}
-          onChange={(e) => input$.next(e.target.value)}
+          onChange={(e) => setInput(e.target.value)}
           disabled={isAdding}
         />
         <button
@@ -122,20 +120,19 @@ function GraspServerManagerView({ user }: { user: User }) {
   const outboxes = use$(user.outboxes$);
   const graspList = use$(user.graspServers$);
   const servers = graspList?.servers ?? [];
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   const publishSigned = useCallback(
     async (factory: GitGraspListFactory) => {
       if (!signer) throw new Error("Sign in before changing your server list");
-      error$.next(null);
+      setError(null);
       try {
         const signed = await factory.sign(signer);
         eventStore.add(signed);
         await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/", "wss://nos.lol/"], signed);
       } catch (err) {
         console.error(err);
-        error$.next(err instanceof Error ? err.message : "Failed to publish grasp list");
+        setError(err instanceof Error ? err.message : "Failed to publish grasp list");
         throw err;
       }
     },
@@ -145,13 +142,13 @@ function GraspServerManagerView({ user }: { user: User }) {
   const handleAdd = useCallback(
     async (url: string) => {
       if (!signer) throw new Error("Sign in before changing your server list");
-      error$.next(null);
+      setError(null);
       try {
         if (graspList) await publishSigned(GitGraspListFactory.modify(graspList.event).addServer(url));
         else await publishSigned(GitGraspListFactory.create().addServer(url));
       } catch (err) {
         console.error(err);
-        error$.next(err instanceof Error ? err.message : "Failed to add grasp server");
+        setError(err instanceof Error ? err.message : "Failed to add grasp server");
         throw err;
       }
     },
@@ -161,12 +158,12 @@ function GraspServerManagerView({ user }: { user: User }) {
   const handleRemove = useCallback(
     async (url: string) => {
       if (!graspList || !signer) return;
-      error$.next(null);
+      setError(null);
       try {
         await publishSigned(GitGraspListFactory.modify(graspList.event).removeServer(url));
       } catch (err) {
         console.error(err);
-        error$.next(err instanceof Error ? err.message : "Failed to remove grasp server");
+        setError(err instanceof Error ? err.message : "Failed to remove grasp server");
       }
     },
     [graspList, signer, outboxes, publishSigned],

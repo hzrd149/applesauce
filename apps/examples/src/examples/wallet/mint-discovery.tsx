@@ -5,7 +5,7 @@
  */
 import { castTimelineStream } from "applesauce-common/observable";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, shareReplay, map } from "rxjs";
+import { shareReplay, map } from "rxjs";
 
 import { castUser, User } from "applesauce-common/casts";
 
@@ -15,7 +15,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { MintInfo, MintRecommendation } from "applesauce-wallet/casts";
 import { CASHU_MINT_INFO_KIND, MINT_RECOMMENDATION_KIND } from "applesauce-wallet/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
 // Make sure casts are registered
@@ -220,11 +220,9 @@ function MintDetailsView({ mintInfo, onBack }: { mintInfo: MintInfo; onBack: () 
 
 // Main component
 export default function MintDiscovery() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
 
-  const selectedMint$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedAddress = use$(selectedMint$);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   const feed$ = useMemo(
     () =>
@@ -245,7 +243,7 @@ export default function MintDiscovery() {
 
   const selectedMint = mints?.find((mint) => mint.uid === selectedAddress);
   // If a mint is selected, show the details view
-  if (selectedMint) return <MintDetailsView mintInfo={selectedMint} onBack={() => selectedMint$.next(null)} />;
+  if (selectedMint) return <MintDetailsView mintInfo={selectedMint} onBack={() => setSelectedAddress(null)} />;
 
   // Otherwise show the list view
   return (
@@ -261,13 +259,13 @@ export default function MintDiscovery() {
             {error}
           </p>
         ))}
-        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+        <RelayPicker value={relay} onChange={(next: typeof relay) => setRelay(next)} />
       </div>
 
       <div className="flex flex-col gap-2">
         {mints && mints.length > 0 ? (
           mints.map((mintInfo) => (
-            <MintInfoCard key={mintInfo.id} mintInfo={mintInfo} onClick={() => selectedMint$.next(mintInfo.uid)} />
+            <MintInfoCard key={mintInfo.id} mintInfo={mintInfo} onClick={() => setSelectedAddress(mintInfo.uid)} />
           ))
         ) : (
           <div className="text-center py-8 text-base-content/60">

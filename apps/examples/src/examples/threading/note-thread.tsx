@@ -4,7 +4,6 @@
  * @related casting/contacts, zap/timeline
  */
 import { default as NoteContent } from "../../components/note-content";
-import { BehaviorSubject, map } from "rxjs";
 
 import { Note, Zap } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
@@ -14,7 +13,7 @@ import { decodeEventPointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { lookupRelays$ } from "../../settings";
 
 // Setup event store
@@ -108,29 +107,18 @@ function NoteItem({ note }: { note: Note }) {
 }
 
 export default function ThreadExample() {
-  const neventInput$ = useMemo(
-    () =>
-      new BehaviorSubject(
-        "nostr:nevent1qqsd4xdw2zfm23xrcmpxeze8pysp0nyrwcwstnt0v5z9hymfqtne6gczyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qg6waehxw309ac8junpd45kgtnxd9shg6npvchxxmmd9uq3kamnwvaz7tmjv4kxz7fwwajhxar9wfhxyarr9e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qcyqqqqqqguy5qm0",
-      ),
-    [],
+  const [neventInput, setNeventInput] = useState(
+    "nostr:nevent1qqsd4xdw2zfm23xrcmpxeze8pysp0nyrwcwstnt0v5z9hymfqtne6gczyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qg6waehxw309ac8junpd45kgtnxd9shg6npvchxxmmd9uq3kamnwvaz7tmjv4kxz7fwwajhxar9wfhxyarr9e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qcyqqqqqqguy5qm0",
   );
-  const neventInput = use$(neventInput$);
 
-  const decoded = use$(
-    () =>
-      neventInput$.pipe(
-        map((input) => {
-          if (!input.trim()) return { pointer: null, error: null };
-          try {
-            return { pointer: decodeEventPointer(input.trim().replace(/^nostr:/, "")), error: null };
-          } catch (error) {
-            return { pointer: null, error: error instanceof Error ? error.message : "Invalid event pointer" };
-          }
-        }),
-      ),
-    [neventInput$],
-  );
+  const decoded = useMemo(() => {
+    if (!neventInput.trim()) return { pointer: null, error: null };
+    try {
+      return { pointer: decodeEventPointer(neventInput.trim().replace(/^nostr:/, "")), error: null };
+    } catch (error) {
+      return { pointer: null, error: error instanceof Error ? error.message : "Invalid event pointer" };
+    }
+  }, [neventInput]);
   const eventPointer = decoded?.pointer;
   const error = decoded?.error;
 
@@ -169,7 +157,7 @@ export default function ThreadExample() {
           className="input input-bordered w-full"
           placeholder="nevent1..."
           value={neventInput}
-          onChange={(e) => neventInput$.next(e.target.value)}
+          onChange={(e) => setNeventInput(e.target.value)}
         />
       </div>
 

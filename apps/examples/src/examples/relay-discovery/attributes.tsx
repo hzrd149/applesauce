@@ -14,7 +14,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
 import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Chart } from "react-chartjs-2";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
@@ -132,14 +132,12 @@ function extractRelayData(events: RelayDiscovery[]): RelayData[] {
 }
 
 export default function RelayDiscoveryAttributes() {
-  const relayUrl$ = useMemo(() => new BehaviorSubject<string>("wss://relay.nostr.watch/"), []);
-  const relayUrl = use$(relayUrl$);
+  const [relayUrl, setRelayUrl] = useState<string>("wss://relay.nostr.watch/");
 
   const attributeInput$ = useMemo(() => new BehaviorSubject<string>(""), []);
   const attributeInput = use$(attributeInput$);
 
-  const containerDimensions$ = useMemo(() => new BehaviorSubject({ width: 800, height: 600 }), []);
-  const containerDimensions = use$(containerDimensions$);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 800, height: 600 });
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -148,7 +146,7 @@ export default function RelayDiscoveryAttributes() {
     const updateDimensions = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        containerDimensions$.next({ width, height });
+        setContainerDimensions({ width, height });
       }
     };
 
@@ -348,7 +346,7 @@ export default function RelayDiscoveryAttributes() {
         <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
         <RelayPicker
           value={relayUrl}
-          onChange={(next: typeof relayUrl$.value) => relayUrl$.next(next)}
+          onChange={(next: string) => setRelayUrl(next)}
           common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]}
         />
       </div>

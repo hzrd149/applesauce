@@ -2,7 +2,7 @@
  * Check which metadata events are present on a user's outbox relays
  * @tags nip-65, outbox, metadata, distribution, rx-views
  */
-import { BehaviorSubject, isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
+import { isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
 
 import { castUser, User } from "applesauce-common/casts";
 import { catchErrorInline, combineLatestByValue, defined, EventStore, mapEventsToTimeline } from "applesauce-core";
@@ -11,7 +11,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { Relay, RelayPool } from "applesauce-relay";
 import { kinds } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -192,8 +192,7 @@ function UserHeader({ user }: { user: User }) {
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function MetadataDistribution() {
-  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
-  const selectedPubkey = use$(selectedPubkey$);
+  const [selectedPubkey, setSelectedPubkey] = useState("");
 
   const user = useMemo(() => (selectedPubkey ? castUser(selectedPubkey, eventStore) : undefined), [selectedPubkey]);
 
@@ -225,10 +224,7 @@ export default function MetadataDistribution() {
         </p>
       </div>
 
-      <PubkeyPicker
-        value={selectedPubkey}
-        onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
-      />
+      <PubkeyPicker value={selectedPubkey} onChange={(next) => setSelectedPubkey(next)} />
 
       {!selectedPubkey && (
         <p className="text-sm text-base-content/40">Enter a pubkey above to inspect their relay metadata coverage.</p>

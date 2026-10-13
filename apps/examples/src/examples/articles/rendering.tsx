@@ -8,7 +8,7 @@ import { relayTimeline } from "../../extra/relay-timeline";
 import { AddressPointer, getReplaceableAddressFromPointer } from "applesauce-core/helpers";
 import { publishEvent } from "../../extra/publish";
 import NoteContent from "../../components/note-content";
-import { BehaviorSubject, switchMap, of, map } from "rxjs";
+import { switchMap, of, map } from "rxjs";
 
 import { ActionRunner } from "applesauce-actions";
 import { CreateComment } from "applesauce-actions/actions";
@@ -21,7 +21,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useMemo } from "react";
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
@@ -117,27 +117,22 @@ function CommentsSection({ article }: { article: Article }) {
     () => eventStore.model(CommentsModel, article.event).pipe(castTimelineStream(Comment, eventStore)),
     [article.id],
   );
-  const commentText$ = useMemo(() => new BehaviorSubject(""), []);
-  const commentText = use$(commentText$);
-
-  const isSubmitting$ = useMemo(() => new BehaviorSubject(false), []);
-  const isSubmitting = use$(isSubmitting$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
-  const error = use$(error$);
+  const [commentText, setCommentText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() || isSubmitting) return;
 
     try {
-      isSubmitting$.next(true);
-      error$.next(undefined);
+      setIsSubmitting(true);
+      setError(undefined);
       await actions.run(CreateComment, article.event, commentText.trim());
-      commentText$.next("");
+      setCommentText("");
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to create comment");
+      setError(err instanceof Error ? err.message : "Failed to create comment");
     } finally {
-      isSubmitting$.next(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -154,7 +149,7 @@ function CommentsSection({ article }: { article: Article }) {
           className="textarea textarea-bordered w-full mb-2"
           placeholder="Write a comment..."
           value={commentText}
-          onChange={(e) => commentText$.next(e.target.value)}
+          onChange={(e) => setCommentText(e.target.value)}
           rows={3}
           disabled={isSubmitting}
         />
@@ -206,17 +201,15 @@ function ArticleView({ article, onBack }: { article: Article; onBack: () => void
 
 // Main component that orchestrates the entire view
 export default function ArticleViewer() {
-  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.primal.net/");
 
-  const selectedPointer$ = useMemo(() => new BehaviorSubject<AddressPointer | undefined>(undefined), []);
-  const selectedPointer = use$(selectedPointer$);
+  const [selectedPointer, setSelectedPointer] = useState<AddressPointer | undefined>(undefined);
   const selected = use$(
     () =>
       selectedPointer ? eventStore.replaceable(selectedPointer).pipe(castEventStream(Article, eventStore)) : undefined,
     [selectedPointer],
   );
-  const setSelected = (article: Article | null) => selectedPointer$.next(article?.pointer);
+  const setSelected = (article: Article | null) => setSelectedPointer(article?.pointer);
 
   // Subscribe to comments for the selected article
   use$(() => {
@@ -255,7 +248,7 @@ export default function ArticleViewer() {
     <div className="container mx-auto max-w-6xl p-4">
       <div className="py-8">
         <h1 className="text-4xl font-bold mb-8">Articles</h1>
-        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
 
         {feed?.status === "loading" && <p role="status">Loading articles…</p>}
         {feed?.errors.map((error) => (

@@ -19,7 +19,7 @@ import { WalletConnect } from "applesauce-wallet-connect";
 import { WALLET_KIND } from "applesauce-wallet/helpers";
 import { NutWallet } from "applesauce-wallet/wallet";
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   filter,
@@ -493,12 +493,11 @@ function BackendSwitcher({
 
 function BalanceView({ backend }: { backend: WalletBackend }) {
   const balance = use$(backend.balance$);
-  const refreshing$ = useMemo(() => new BehaviorSubject(false), []);
-  const refreshing = use$(refreshing$);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
-    refreshing$.next(true);
-    await backend.refresh().finally(() => refreshing$.next(false));
+    setRefreshing(true);
+    await backend.refresh().finally(() => setRefreshing(false));
   }, [backend]);
 
   return (
@@ -516,32 +515,26 @@ function BalanceView({ backend }: { backend: WalletBackend }) {
 }
 
 function ReceivePanel({ backend }: { backend: WalletBackend }) {
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState("");
 
-  const invoice$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const invoice = use$(invoice$);
+  const [invoice, setInvoice] = useState<string | null>(null);
 
-  const paid$ = useMemo(() => new BehaviorSubject(false), []);
-  const paid = use$(paid$);
+  const [paid, setPaid] = useState(false);
 
-  const loading$ = useMemo(() => new BehaviorSubject(false), []);
-  const loading = use$(loading$);
+  const [loading, setLoading] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const copied$ = useMemo(() => new BehaviorSubject(false), []);
-  const copied = use$(copied$);
+  const [copied, setCopied] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
   const handleCreate = useCallback(async () => {
     const sats = parseInt(amount, 10);
-    if (!sats || sats <= 0) return error$.next("Enter a valid amount");
-    loading$.next(true);
-    error$.next(null);
-    paid$.next(false);
+    if (!sats || sats <= 0) return setError("Enter a valid amount");
+    setLoading(true);
+    setError(null);
+    setPaid(false);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -550,49 +543,49 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
         description: "Multiple wallets example",
         signal: controller.signal,
       });
-      invoice$.next(invoice);
+      setInvoice(invoice);
       // The backend's promise resolves when this specific invoice is paid; ignore it if superseded/closed
       paid.then(
         () => {
-          if (!controller.signal.aborted) paid$.next(true);
+          if (!controller.signal.aborted) setPaid(true);
         },
         (error) => {
           if (!controller.signal.aborted)
-            error$.next(
+            setError(
               `Payment was not completed: ${String(error.message ?? error)}. Resume the pending deposit to retry.`,
             );
         },
       );
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to create invoice");
+      setError(err instanceof Error ? err.message : "Failed to create invoice");
     } finally {
-      loading$.next(false);
+      setLoading(false);
     }
   }, [amount, backend]);
 
   const resume = async () => {
-    if (!backend.resumeDeposit || loading$.value) return;
+    if (!backend.resumeDeposit || loading) return;
     const controller = new AbortController();
     abortRef.current = controller;
-    loading$.next(true);
-    error$.next(null);
+    setLoading(true);
+    setError(null);
     try {
-      await backend.resumeDeposit((invoice) => invoice$.next(invoice), controller.signal);
-      paid$.next(true);
+      await backend.resumeDeposit((invoice) => setInvoice(invoice), controller.signal);
+      setPaid(true);
     } catch (error) {
-      error$.next(error instanceof Error ? error.message : "Could not resume deposit");
+      setError(error instanceof Error ? error.message : "Could not resume deposit");
     } finally {
-      loading$.next(false);
+      setLoading(false);
     }
   };
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    if (paid$.value || backend.type !== "nutwallet") invoice$.next(null);
-    amount$.next("");
-    paid$.next(false);
-  }, []);
+    if (paid || backend.type !== "nutwallet") setInvoice(null);
+    setAmount("");
+    setPaid(false);
+  }, [paid, backend]);
 
   // Stop waiting for payment if the panel unmounts
   use$(() => new Observable<void>(() => () => abortRef.current?.abort()), []);
@@ -600,8 +593,8 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
   const copy = useCallback(() => {
     if (!invoice) return;
     navigator.clipboard.writeText(invoice);
-    copied$.next(true);
-    setTimeout(() => copied$.next(false), 2000);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [invoice]);
 
   // Once paid, hide the invoice and show a confirmation
@@ -675,8 +668,8 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
         value={amount}
         min="1"
         onChange={(e) => {
-          amount$.next(e.target.value);
-          error$.next(null);
+          setAmount(e.target.value);
+          setError(null);
         }}
       />
       <button className="btn btn-primary w-full" onClick={handleCreate} disabled={loading || !amount.trim()}>
@@ -688,40 +681,35 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
 }
 
 function SendPanel({ backend }: { backend: WalletBackend }) {
-  const input$ = useMemo(() => new BehaviorSubject(""), []);
-  const input = use$(input$);
+  const [input, setInput] = useState("");
 
-  const amount$ = useMemo(() => new BehaviorSubject(""), []);
-  const amount = use$(amount$);
+  const [amount, setAmount] = useState("");
 
-  const loading$ = useMemo(() => new BehaviorSubject(false), []);
-  const loading = use$(loading$);
+  const [loading, setLoading] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
-  const success$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const success = use$(success$);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const trimmed = input.trim();
   const isAddress = trimmed.length > 0 && !/^ln(bc|tb|bcrt)/i.test(trimmed);
 
   const handleSend = useCallback(async () => {
-    if (!trimmed) return error$.next("Paste an invoice or lightning address");
-    loading$.next(true);
-    error$.next(null);
-    success$.next(null);
+    if (!trimmed) return setError("Paste an invoice or lightning address");
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
     try {
       const sats = amount ? parseInt(amount, 10) : undefined;
       const invoice = await resolveInvoice(trimmed, sats);
       await backend.payInvoice(invoice);
-      success$.next("Payment sent");
-      input$.next("");
-      amount$.next("");
+      setSuccess("Payment sent");
+      setInput("");
+      setAmount("");
     } catch (err) {
-      error$.next(err instanceof Error ? err.message : "Failed to send payment");
+      setError(err instanceof Error ? err.message : "Failed to send payment");
     } finally {
-      loading$.next(false);
+      setLoading(false);
     }
   }, [trimmed, amount, backend]);
 
@@ -732,9 +720,9 @@ function SendPanel({ backend }: { backend: WalletBackend }) {
         placeholder="Lightning invoice (lnbc...) or address (name@domain.com)"
         value={input}
         onChange={(e) => {
-          input$.next(e.target.value);
-          error$.next(null);
-          success$.next(null);
+          setInput(e.target.value);
+          setError(null);
+          setSuccess(null);
         }}
       />
       {isAddress && (
@@ -744,7 +732,7 @@ function SendPanel({ backend }: { backend: WalletBackend }) {
           placeholder="Amount in sats"
           value={amount}
           min="1"
-          onChange={(e) => amount$.next(e.target.value)}
+          onChange={(e) => setAmount(e.target.value)}
         />
       )}
       <button className="btn btn-primary w-full" onClick={handleSend} disabled={loading || !trimmed}>
@@ -803,8 +791,7 @@ function LegacyProofRecovery({ backend }: { backend: WalletBackend }) {
 }
 
 function WalletPanels({ backend }: { backend: WalletBackend }) {
-  const tab$ = useMemo(() => new BehaviorSubject<"receive" | "send">("receive"), []);
-  const tab = use$(tab$);
+  const [tab, setTab] = useState<"receive" | "send">("receive");
 
   return (
     <div>
@@ -813,13 +800,13 @@ function WalletPanels({ backend }: { backend: WalletBackend }) {
       <div className="flex gap-2 mb-4">
         <button
           className={`btn flex-1 ${tab === "receive" ? "btn-primary" : "btn-outline"}`}
-          onClick={() => tab$.next("receive")}
+          onClick={() => setTab("receive")}
         >
           Receive
         </button>
         <button
           className={`btn flex-1 ${tab === "send" ? "btn-primary" : "btn-outline"}`}
-          onClick={() => tab$.next("send")}
+          onClick={() => setTab("send")}
         >
           Send
         </button>
@@ -836,8 +823,7 @@ function WalletPanels({ backend }: { backend: WalletBackend }) {
  * connects back over nostr, we hand the parent a full nostr+walletconnect:// string to persist.
  */
 function NwcQrConnect({ onConnect }: { onConnect: (uri: string) => void }) {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.getalby.com/v1"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.getalby.com/v1");
 
   const client = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
@@ -879,7 +865,7 @@ function NwcQrConnect({ onConnect }: { onConnect: (uri: string) => void }) {
       </a>
       <RelayPicker
         value={relay}
-        onChange={(next: typeof relay$.value) => relay$.next(next)}
+        onChange={(next: typeof relay) => setRelay(next)}
         common={["wss://relay.getalby.com/v1"]}
         className="w-full"
       />
@@ -894,36 +880,30 @@ function NwcQrConnect({ onConnect }: { onConnect: (uri: string) => void }) {
 }
 
 function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: string; onClose: () => void }) {
-  const type$ = useMemo(() => new BehaviorSubject<BackendType>("nwc"), []);
-  const type = use$(type$);
+  const [type, setType] = useState<BackendType>("nwc");
 
-  const nwcMode$ = useMemo(() => new BehaviorSubject<"qr" | "paste">("qr"), []);
-  const nwcMode = use$(nwcMode$);
+  const [nwcMode, setNwcMode] = useState<"qr" | "paste">("qr");
 
-  const label$ = useMemo(() => new BehaviorSubject(""), []);
-  const label = use$(label$);
+  const [label, setLabel] = useState("");
 
-  const uri$ = useMemo(() => new BehaviorSubject(""), []);
-  const uri = use$(uri$);
+  const [uri, setUri] = useState("");
 
-  const loading$ = useMemo(() => new BehaviorSubject(false), []);
-  const loading = use$(loading$);
+  const [loading, setLoading] = useState(false);
 
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [error, setError] = useState<string | null>(null);
 
   // Run a backend factory, add the result, and close on success
   const finish = useCallback(
     async (create: () => Promise<WalletBackend> | WalletBackend) => {
-      loading$.next(true);
-      error$.next(null);
+      setLoading(true);
+      setError(null);
       try {
         addBackend(await create());
         onClose();
       } catch (err) {
-        error$.next(err instanceof Error ? err.message : "Failed to add wallet");
+        setError(err instanceof Error ? err.message : "Failed to add wallet");
       } finally {
-        loading$.next(false);
+        setLoading(false);
       }
     },
     [onClose],
@@ -948,7 +928,7 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
     if (type === "webln")
       return finish(() => createWeblnBackend({ id, type, label: label.trim() || TYPE_LABELS.webln }));
     if (type === "nwc") {
-      if (!uri.trim()) return error$.next("Paste a NWC connection string");
+      if (!uri.trim()) return setError("Paste a NWC connection string");
       return finish(() => createNwcBackend({ id, type, label: label.trim() || TYPE_LABELS.nwc, uri: uri.trim() }));
     }
     return finish(() =>
@@ -971,7 +951,7 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
             <button
               key={t}
               className={`btn btn-sm flex-1 ${type === t ? "btn-primary" : "btn-outline"}`}
-              onClick={() => type$.next(t)}
+              onClick={() => setType(t)}
             >
               {TYPE_LABELS[t]}
             </button>
@@ -984,7 +964,7 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
             className="input input-bordered w-full"
             placeholder={`Label (default: ${TYPE_LABELS[type]})`}
             value={label}
-            onChange={(e) => label$.next(e.target.value)}
+            onChange={(e) => setLabel(e.target.value)}
           />
 
           {type === "nwc" && (
@@ -992,13 +972,13 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
               <div className="flex gap-2">
                 <button
                   className={`btn btn-sm flex-1 ${nwcMode === "qr" ? "btn-primary" : "btn-outline"}`}
-                  onClick={() => nwcMode$.next("qr")}
+                  onClick={() => setNwcMode("qr")}
                 >
                   Scan QR
                 </button>
                 <button
                   className={`btn btn-sm flex-1 ${nwcMode === "paste" ? "btn-primary" : "btn-outline"}`}
-                  onClick={() => nwcMode$.next("paste")}
+                  onClick={() => setNwcMode("paste")}
                 >
                   Paste string
                 </button>
@@ -1010,7 +990,7 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
                   className="textarea textarea-bordered w-full h-24 font-mono text-sm"
                   placeholder="nostr+walletconnect://..."
                   value={uri}
-                  onChange={(e) => uri$.next(e.target.value)}
+                  onChange={(e) => setUri(e.target.value)}
                 />
               )}
             </>
@@ -1051,8 +1031,7 @@ function AddWalletModal({ signer, pubkey, onClose }: { signer: ISigner; pubkey: 
 function WalletApp({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
   const backends = use$(backends$) ?? [];
   const activeId = use$(activeId$);
-  const adding$ = useMemo(() => new BehaviorSubject(false), []);
-  const adding = use$(adding$);
+  const [adding, setAdding] = useState(false);
 
   use$(
     () =>
@@ -1093,7 +1072,7 @@ function WalletApp({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
           {persistence}
         </p>
       )}
-      <BackendSwitcher backends={backends} activeId={activeId} onAdd={() => adding$.next(true)} />
+      <BackendSwitcher backends={backends} activeId={activeId} onAdd={() => setAdding(true)} />
 
       {active ? (
         <WalletPanels backend={active} />
@@ -1103,20 +1082,19 @@ function WalletApp({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
         </div>
       )}
 
-      {adding && <AddWalletModal signer={signer} pubkey={pubkey} onClose={() => adding$.next(false)} />}
+      {adding && <AddWalletModal signer={signer} pubkey={pubkey} onClose={() => setAdding(false)} />}
     </div>
   );
 }
 
 export default function MultipleWalletsExample() {
   const storage = use$(storage$);
-  const session$ = useMemo(() => new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null), []);
-  const session = use$(session$);
+  const [session, setSession] = useState<{ signer: ISigner; pubkey: string } | null>(null);
 
   const handleLogin = useCallback(async (signer: ISigner, pubkey: string) => {
     account$.next(pubkey);
     await loadBackends(signer, pubkey);
-    session$.next({ signer, pubkey });
+    setSession({ signer, pubkey });
   }, []);
 
   // Log in first — the NutWallet backend needs a nostr signer (WebLN and NWC don't use it)

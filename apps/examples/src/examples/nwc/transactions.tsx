@@ -5,14 +5,14 @@
  */
 import { publishEvent } from "../../extra/publish";
 
-import { BehaviorSubject, Subject, defer, map, startWith, catchError, of, exhaustMap, scan } from "rxjs";
+import { Subject, defer, map, startWith, catchError, of, exhaustMap, scan } from "rxjs";
 
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import { parseWalletConnectURI, supportsMethod, Transaction } from "applesauce-wallet-connect/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -136,14 +136,11 @@ function TransactionTimeline({ transactions }: { transactions: Transaction[] }) 
 }
 
 export default function TransactionsExample() {
-  const uri$ = useMemo(() => new BehaviorSubject(""), []);
-  const uri = use$(uri$);
+  const [uri, setUri] = useState("");
 
-  const transactionType$ = useMemo(() => new BehaviorSubject<"incoming" | "outgoing" | undefined>(undefined), []);
-  const transactionType = use$(transactionType$);
+  const [transactionType, setTransactionType] = useState<"incoming" | "outgoing" | undefined>(undefined);
 
-  const includeUnpaid$ = useMemo(() => new BehaviorSubject(false), []);
-  const includeUnpaid = use$(includeUnpaid$);
+  const [includeUnpaid, setIncludeUnpaid] = useState(false);
 
   const parseResult = useMemo(() => {
     if (!uri.trim()) return { parsed: null, error: null };
@@ -154,7 +151,7 @@ export default function TransactionsExample() {
     }
   }, [uri]);
   const parsed = parseResult.parsed;
-  const handleUriChange = (value: string) => uri$.next(value);
+  const handleUriChange = (value: string) => setUri(value);
   // Create WalletConnect instance
   const wallet = useMemo(() => {
     if (!parsed) return undefined;
@@ -249,8 +246,8 @@ export default function TransactionsExample() {
   const loadMore = () => {
     if (!loading && hasMore) fetchTransactions(currentPage + 1, true);
   };
-  const handleTypeChange = (type: "incoming" | "outgoing" | undefined) => transactionType$.next(type);
-  const handleUnpaidChange = (unpaid: boolean) => includeUnpaid$.next(unpaid);
+  const handleTypeChange = (type: "incoming" | "outgoing" | undefined) => setTransactionType(type);
+  const handleUnpaidChange = (unpaid: boolean) => setIncludeUnpaid(unpaid);
 
   return (
     <div className="container mx-auto my-8 px-4">

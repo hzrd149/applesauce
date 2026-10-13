@@ -12,7 +12,7 @@ import { Filter, isTTag } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { of, BehaviorSubject, map, debounceTime, startWith } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
@@ -84,14 +84,12 @@ function EventCard({ event, onHashtagClick }: { event: NostrEvent; onHashtagClic
 }
 
 export default function HashtagExploreExample() {
-  const relayUrl$ = useMemo(() => new BehaviorSubject<string>(""), []);
-  const relayUrl = use$(relayUrl$);
+  const [relayUrl, setRelayUrl] = useState<string>("");
 
   const hashtagInput$ = useMemo(() => new BehaviorSubject<string>(""), []);
   const hashtagInput = use$(hashtagInput$);
 
-  const useLocalFiltering$ = useMemo(() => new BehaviorSubject<boolean>(true), []);
-  const useLocalFiltering = use$(useLocalFiltering$);
+  const [useLocalFiltering, setUseLocalFiltering] = useState<boolean>(true);
 
   // Get relay instance and check NIP-91 support
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
@@ -161,7 +159,7 @@ export default function HashtagExploreExample() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Hashtag Explorer</h1>
-        <RelayPicker value={relayUrl} onChange={(value: typeof relayUrl$.value) => relayUrl$.next(value)} />
+        <RelayPicker value={relayUrl} onChange={(value: string) => setRelayUrl(value)} />
       </div>
 
       {/* Warning if relay doesn't support NIP-91 */}
@@ -194,7 +192,7 @@ export default function HashtagExploreExample() {
             type="checkbox"
             className="toggle toggle-primary"
             checked={useLocalFiltering}
-            onChange={(e) => useLocalFiltering$.next(e.target.checked)}
+            onChange={(e) => setUseLocalFiltering(e.target.checked)}
           />
         </label>
         {useLocalFiltering && (

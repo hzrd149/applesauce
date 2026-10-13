@@ -12,7 +12,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BehaviorSubject, of, startWith, switchMap, materialize, scan, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -163,8 +163,7 @@ export default function MentionsExample() {
 
   const pubkey = use$(pubkey$);
   const mailboxes = use$(mailboxes$);
-  const timeFilter$ = useMemo(() => new BehaviorSubject(TIME_FILTERS[1]), []);
-  const timeFilter = use$(timeFilter$);
+  const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[1]);
   // Default to "Last day"
 
   const since = useMemo(() => unixNow() - timeFilter.hours * 60 * 60, [timeFilter]);
@@ -206,7 +205,7 @@ export default function MentionsExample() {
             value={timeFilter.hours}
             onChange={(e) => {
               const selectedFilter = TIME_FILTERS.find((f) => f.hours === parseInt(e.target.value));
-              if (selectedFilter) timeFilter$.next(selectedFilter);
+              if (selectedFilter) setTimeFilter(selectedFilter);
             }}
           >
             {TIME_FILTERS.map((filter) => (

@@ -7,7 +7,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 import { default as NoteContent } from "../../components/note-content";
 import { publishEvent } from "../../extra/publish";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, shareReplay, map } from "rxjs";
+import { shareReplay, map } from "rxjs";
 
 import { Stream, StreamChatMessage } from "applesauce-common/casts";
 import { StreamChatMessageFactory } from "applesauce-common/factories";
@@ -19,7 +19,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
 
@@ -430,11 +430,8 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
 }
 
 export default function StreamCastExample() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
-  const relay = use$(relay$);
-
-  const selectedStream$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const selectedAddress = use$(selectedStream$);
+  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
 
   const feed$ = useMemo(
     () =>
@@ -455,7 +452,7 @@ export default function StreamCastExample() {
 
   const selectedStream = streams?.find((stream) => stream.uid === selectedAddress);
   if (selectedStream) {
-    return <StreamViewer stream={selectedStream} onBack={() => selectedStream$.next(null)} />;
+    return <StreamViewer stream={selectedStream} onBack={() => setSelectedAddress(null)} />;
   }
 
   return (
@@ -468,10 +465,10 @@ export default function StreamCastExample() {
             {error}
           </p>
         ))}
-        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+        <RelayPicker value={relay} onChange={(next) => setRelay(next)} />
       </div>
 
-      <StreamGrid streams={streams || []} onStreamSelect={(stream) => selectedStream$.next(stream.uid)} />
+      <StreamGrid streams={streams || []} onStreamSelect={(stream) => setSelectedAddress(stream.uid)} />
     </div>
   );
 }

@@ -19,7 +19,7 @@ import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -62,8 +62,7 @@ async function uploadToBlossom(
 
 /** Favicon avatar for a server URL */
 function ServerFavicon({ url, size = "w-6 h-6" }: { url: string; size?: string }) {
-  const error$ = useMemo(() => new BehaviorSubject(false), []);
-  const error = use$(error$);
+  const [error, setError] = useState(false);
 
   let hostname: string;
   let faviconUrl: string;
@@ -93,7 +92,7 @@ function ServerFavicon({ url, size = "w-6 h-6" }: { url: string; size?: string }
       alt={hostname}
       title={hostname}
       className={`${size} rounded-full bg-base-200`}
-      onError={() => error$.next(true)}
+      onError={() => setError(true)}
     />
   );
 }
@@ -163,26 +162,13 @@ function NotePreview({ content }: { content: string }) {
 }
 
 function Composer({ user, signer }: { user: User; signer: ISigner }) {
-  const content$ = useMemo(() => new BehaviorSubject(""), []);
-  const content = use$(content$);
-
-  const tab$ = useMemo(() => new BehaviorSubject<"write" | "preview">("write"), []);
-  const tab = use$(tab$);
-
-  const publishing$ = useMemo(() => new BehaviorSubject(false), []);
-  const publishing = use$(publishing$);
-
-  const uploading$ = useMemo(() => new BehaviorSubject(false), []);
-  const uploading = use$(uploading$);
-
-  const mediaOptimization$ = useMemo(() => new BehaviorSubject(true), []);
-  const mediaOptimization = use$(mediaOptimization$);
-
-  const publishError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const publishError = use$(publishError$);
-
-  const published$ = useMemo(() => new BehaviorSubject(false), []);
-  const published = use$(published$);
+  const [content, setContent] = useState("");
+  const [tab, setTab] = useState<"write" | "preview">("write");
+  const [publishing, setPublishing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [mediaOptimization, setMediaOptimization] = useState(true);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [published, setPublished] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -199,8 +185,8 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
       const files = e.target.files;
       if (!files?.length) return;
 
-      uploading$.next(true);
-      publishError$.next(null);
+      setUploading(true);
+      setPublishError(null);
       try {
         const urls: string[] = [];
         for (const file of files) {
@@ -216,14 +202,14 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           const before = content.slice(0, pos);
           const after = content.slice(pos);
           const sep = before.length && !before.endsWith("\n") ? "\n" : "";
-          content$.next(before + sep + insertText + (after.startsWith("\n") ? "" : "\n") + after);
+          setContent(before + sep + insertText + (after.startsWith("\n") ? "" : "\n") + after);
         } else {
-          content$.next(content$.value ? content$.value + "\n" + insertText : insertText);
+          setContent((c) => (c ? c + "\n" + insertText : insertText));
         }
       } catch (err) {
-        publishError$.next(err instanceof Error ? err.message : "Upload failed");
+        setPublishError(err instanceof Error ? err.message : "Upload failed");
       } finally {
-        uploading$.next(false);
+        setUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
@@ -234,19 +220,19 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
     const trimmed = content.trim();
     if (!trimmed) return;
 
-    publishing$.next(true);
-    publishError$.next(null);
+    setPublishing(true);
+    setPublishError(null);
     try {
       const signed = await NoteFactory.create(trimmed).sign(signer);
       await publishEvent(pool, publishRelays, signed);
       eventStore.add(signed);
-      published$.next(true);
-      content$.next("");
-      tab$.next("write");
+      setPublished(true);
+      setContent("");
+      setTab("write");
     } catch (e) {
-      publishError$.next(e instanceof Error ? e.message : "Publish failed");
+      setPublishError(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      publishing$.next(false);
+      setPublishing(false);
     }
   }, [content, publishRelays, signer]);
 
@@ -266,7 +252,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           type="checkbox"
           className="toggle toggle-sm"
           checked={mediaOptimization}
-          onChange={() => mediaOptimization$.next(!mediaOptimization$.value)}
+          onChange={() => setMediaOptimization((v) => !v)}
         />
         <span>
           Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
@@ -279,7 +265,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           role="tab"
           type="button"
           className={`tab ${tab === "write" ? "tab-active" : ""}`}
-          onClick={() => tab$.next("write")}
+          onClick={() => setTab("write")}
         >
           Write
         </button>
@@ -287,7 +273,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           role="tab"
           type="button"
           className={`tab ${tab === "preview" ? "tab-active" : ""}`}
-          onClick={() => tab$.next("preview")}
+          onClick={() => setTab("preview")}
         >
           Preview
         </button>
@@ -301,8 +287,8 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           placeholder="What's on your mind?"
           value={content}
           onChange={(e) => {
-            content$.next(e.target.value);
-            published$.next(false);
+            setContent(e.target.value);
+            setPublished(false);
           }}
         />
       ) : (

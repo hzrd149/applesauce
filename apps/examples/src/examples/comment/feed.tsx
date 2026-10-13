@@ -21,7 +21,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useMemo } from "react";
+import { useState } from "react";
 import { BehaviorSubject, EMPTY, map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -167,39 +167,34 @@ function ReplyForm({
   onSuccess?: () => void;
   onCancel?: () => void;
 }) {
-  const content$ = useMemo(() => new BehaviorSubject(""), []);
-  const content = use$(content$);
-
-  const isSubmitting$ = useMemo(() => new BehaviorSubject(false), []);
-  const isSubmitting = use$(isSubmitting$);
-
-  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const error = use$(error$);
+  const [content, setContent] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
 
     try {
-      isSubmitting$.next(true);
-      error$.next(null);
+      setIsSubmitting(true);
+      setError(null);
 
       // Check for signer
       if (typeof window === "undefined" || !(window as any).nostr) {
-        error$.next("No Nostr extension found. Please install a Nostr browser extension like Alby or nos2x.");
+        setError("No Nostr extension found. Please install a Nostr browser extension like Alby or nos2x.");
         return;
       }
 
       await actions.run(CreateComment, parentEvent, content.trim());
 
       // Clear form and notify success
-      content$.next("");
+      setContent("");
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Failed to create comment:", err);
-      error$.next(err instanceof Error ? err.message : "Failed to create comment");
+      setError(err instanceof Error ? err.message : "Failed to create comment");
     } finally {
-      isSubmitting$.next(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -210,7 +205,7 @@ function ReplyForm({
           className="textarea textarea-bordered w-full"
           placeholder="Write a reply..."
           value={content}
-          onChange={(e) => content$.next(e.target.value)}
+          onChange={(e) => setContent(e.target.value)}
           rows={3}
           disabled={isSubmitting}
         />
@@ -243,8 +238,7 @@ function ReplyForm({
 function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: number }) {
   const profile = use$(comment.author.profile$);
   const replies = use$(comment.replies$);
-  const showReplyForm$ = useMemo(() => new BehaviorSubject(false), []);
-  const showReplyForm = use$(showReplyForm$);
+  const [showReplyForm, setShowReplyForm] = useState(false);
 
   const displayName = profile?.displayName || comment.author.npub;
   const picture = profile?.picture || `https://robohash.org/${comment.author.pubkey}.png`;
@@ -271,7 +265,7 @@ function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: numbe
             {!showReplyForm && (
               <button
                 className="btn btn-link btn-primary p-2 float-right"
-                onClick={() => showReplyForm$.next(!showReplyForm)}
+                onClick={() => setShowReplyForm(!showReplyForm)}
               >
                 Reply
               </button>
@@ -281,9 +275,9 @@ function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: numbe
           {showReplyForm && (
             <ReplyForm
               parentEvent={comment.event}
-              onCancel={() => showReplyForm$.next(false)}
+              onCancel={() => setShowReplyForm(false)}
               onSuccess={() => {
-                showReplyForm$.next(false);
+                setShowReplyForm(false);
               }}
             />
           )}
@@ -406,12 +400,11 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
 export default function CommentFeed() {
   const relays = use$(appRelays);
   const selectedThread = use$(selectedThread$);
-  const selectedRelay$ = useMemo(() => new BehaviorSubject(relays[0] || ""), []);
-  const requestedRelay = use$(selectedRelay$);
+  const [requestedRelay, setRequestedRelay] = useState(relays[0] || "");
   const selectedRelay = relays.includes(requestedRelay) ? requestedRelay : (relays[0] ?? "");
 
   const handleRelayChange = (relay: string) => {
-    selectedRelay$.next(relay);
+    setRequestedRelay(relay);
     if (relay && !relays.includes(relay)) {
       appRelays.next(relaySet(relays, relay));
     }
@@ -422,9 +415,9 @@ export default function CommentFeed() {
     appRelays.next(newRelays);
     // Update selected relay if the removed one was selected
     if (selectedRelay === relayToRemove && newRelays.length > 0) {
-      selectedRelay$.next(newRelays[0]);
+      setRequestedRelay(newRelays[0]);
     } else if (newRelays.length === 0) {
-      selectedRelay$.next("");
+      setRequestedRelay("");
     }
   };
 

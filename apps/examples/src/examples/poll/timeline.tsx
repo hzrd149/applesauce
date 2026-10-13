@@ -6,7 +6,7 @@
 import { relayTimeline } from "../../extra/relay-timeline";
 import { castUser } from "applesauce-common/casts";
 import { publishEvent } from "../../extra/publish";
-import { BehaviorSubject, combineLatest, map, materialize, scan, startWith } from "rxjs";
+import { combineLatest, map, materialize, scan, startWith } from "rxjs";
 
 import { PollResponseFactory } from "applesauce-common/factories";
 import {
@@ -27,7 +27,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -99,17 +99,13 @@ interface VotingFormProps {
 }
 
 function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
-  const selectedOptions$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
-  const selectedOptions = use$(selectedOptions$);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
 
-  const comment$ = useMemo(() => new BehaviorSubject(""), []);
-  const comment = use$(comment$);
+  const [comment, setComment] = useState("");
 
-  const isVoting$ = useMemo(() => new BehaviorSubject(false), []);
-  const isVoting = use$(isVoting$);
+  const [isVoting, setIsVoting] = useState(false);
 
-  const voteError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
-  const voteError = use$(voteError$);
+  const [voteError, setVoteError] = useState<string | null>(null);
 
   const options = getPollOptions(poll);
   const pollType = getPollType(poll);
@@ -118,24 +114,21 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
 
   const handleOptionChange = (optionId: string, checked: boolean) => {
     if (pollType === "singlechoice") {
-      selectedOptions$.next(checked ? [optionId] : []);
+      setSelectedOptions(checked ? [optionId] : []);
     } else {
-      selectedOptions$.next(
-        ((prev: typeof selectedOptions$.value) =>
-          checked ? [...prev, optionId] : prev.filter((id) => id !== optionId))(selectedOptions$.value),
-      );
+      setSelectedOptions((prev) => (checked ? [...prev, optionId] : prev.filter((id) => id !== optionId)));
     }
   };
 
   const handleSubmitVote = async () => {
     if (selectedOptions.length === 0) {
-      voteError$.next("Please select at least one option");
+      setVoteError("Please select at least one option");
       return;
     }
 
     try {
-      isVoting$.next(true);
-      voteError$.next(null);
+      setIsVoting(true);
+      setVoteError(null);
 
       // Create and sign the poll response event
       const response = PollResponseFactory.create(poll, selectedOptions);
@@ -148,13 +141,13 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
       onVoteSubmitted(signedResponse);
 
       // Reset form
-      selectedOptions$.next([]);
-      comment$.next("");
+      setSelectedOptions([]);
+      setComment("");
     } catch (error) {
       console.error("Failed to submit vote:", error);
-      voteError$.next(error instanceof Error ? error.message : "Failed to submit vote");
+      setVoteError(error instanceof Error ? error.message : "Failed to submit vote");
     } finally {
-      isVoting$.next(false);
+      setIsVoting(false);
     }
   };
 
@@ -199,7 +192,7 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
             className="textarea textarea-bordered w-full"
             placeholder="Add a comment about your vote..."
             value={comment}
-            onChange={(e) => comment$.next(e.target.value)}
+            onChange={(e) => setComment(e.target.value)}
             rows={2}
           />
         </div>
@@ -545,11 +538,9 @@ function PollGrid({ polls, onPollSelect, selectedRelay }: PollGridProps) {
 }
 
 export default function PollGridApp() {
-  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io"), []);
-  const selectedRelay = use$(selectedRelay$);
+  const [selectedRelay, setSelectedRelay] = useState("wss://relay.damus.io");
 
-  const selectedPoll$ = useMemo(() => new BehaviorSubject<NostrEvent | null>(null), []);
-  const selectedPoll = use$(selectedPoll$);
+  const [selectedPoll, setSelectedPoll] = useState<NostrEvent | null>(null);
 
   const feed = use$(
     () =>
@@ -563,7 +554,7 @@ export default function PollGridApp() {
   const polls = feed?.events;
 
   if (selectedPoll) {
-    return <PollDetails poll={selectedPoll} onBack={() => selectedPoll$.next(null)} selectedRelay={selectedRelay} />;
+    return <PollDetails poll={selectedPoll} onBack={() => setSelectedPoll(null)} selectedRelay={selectedRelay} />;
   }
 
   return (
@@ -573,10 +564,7 @@ export default function PollGridApp() {
         <p className="text-base-content/70 mb-6">
           Browse and vote on NIP-88 polls from Nostr relays. Click on a poll to view details and cast your vote.
         </p>
-        <RelayPicker
-          value={selectedRelay}
-          onChange={(next: typeof selectedRelay$.value) => selectedRelay$.next(next)}
-        />
+        <RelayPicker value={selectedRelay} onChange={(next: string) => setSelectedRelay(next)} />
       </div>
 
       {feed?.status === "loading" && <p role="status">Loading polls…</p>}
@@ -587,7 +575,7 @@ export default function PollGridApp() {
       ))}
       <PollGrid
         polls={polls || []}
-        onPollSelect={(next: typeof selectedPoll$.value) => selectedPoll$.next(next)}
+        onPollSelect={(next: NostrEvent) => setSelectedPoll(next)}
         selectedRelay={selectedRelay}
       />
     </div>

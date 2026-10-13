@@ -3,12 +3,12 @@
  * @tags signers, accounts, management
  * @related signers/password, signers/bunker
  */
-import { BehaviorSubject, tap, ignoreElements, merge, Subject } from "rxjs";
+import { tap, ignoreElements, merge, Subject } from "rxjs";
 
 import { AccountManager } from "applesauce-accounts";
 import { registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts/accounts";
 import { use$ } from "applesauce-react/hooks";
-import { useCallback, useMemo } from "react";
+import { useCallback, useState } from "react";
 
 interface AccountMetadata {
   name: string;
@@ -33,8 +33,7 @@ const manualSave = new Subject<void>();
 
 function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> }) {
   const activeAccount = use$(manager.active$);
-  const name$ = useMemo(() => new BehaviorSubject(account.metadata?.name || ""), []);
-  const name = use$(name$);
+  const [name, setName] = useState(account.metadata?.name || "");
 
   const saveName = useCallback(() => {
     manager.setAccountMetadata(account, { name });
@@ -65,7 +64,7 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
           type="text"
           className="input input-bordered w-full"
           value={name}
-          onChange={(e) => name$.next(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           placeholder="Account name"
           onBlur={saveName}
         />

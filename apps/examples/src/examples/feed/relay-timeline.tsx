@@ -7,7 +7,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 
 import NoteContent from "../../components/note-content";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { BehaviorSubject, map, switchMap, of } from "rxjs";
+import { map, switchMap, of } from "rxjs";
 
 import { castEvent, Note } from "applesauce-common/casts";
 
@@ -17,7 +17,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useMemo } from "react";
+import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -86,8 +86,7 @@ function NoteEvent({ note }: { note: Note }) {
 }
 
 export default function RelayTimeline() {
-  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.devvul.com"), []);
-  const relay = use$(relay$);
+  const [relay, setRelay] = useState("wss://relay.devvul.com");
 
   const feed = use$(
     () =>
@@ -105,7 +104,7 @@ export default function RelayTimeline() {
 
   return (
     <div className="container mx-auto my-8 px-4">
-      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
       {feed?.status === "loading" && <p role="status">Loading events…</p>}
       {feed?.errors.map((error) => (
         <p role="alert" className="text-error" key={error}>
