@@ -28,24 +28,30 @@ import {
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
+import { ignoreUnhealthyRelaysOnPointers, Relay, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { SubmitHandler } from "react-hook-form";
 
 import {
+  auditTime,
   BehaviorSubject,
   catchError,
+  combineLatest,
   debounceTime,
+  distinctUntilChanged,
+  filter,
   ignoreElements,
   map,
   of,
   shareReplay,
   startWith,
   switchMap,
+  throttleTime,
+  timer,
 } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -144,12 +150,39 @@ const liveError$ = pool
     catchError((error: Error) => of(error)),
   );
 
-// The current state of the timeline, {since, until}
-// Initialize with since: -Infinity to force loading the first block of events
-const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+// The timestamp of the bottom-most note on screen
+// Initialize with -Infinity to force loading the first block of events
+const cursor$ = new BehaviorSubject(-Infinity);
+
+// Elements with a `data-created-at` timestamp that are currently on screen
+const visible = new Set<HTMLElement>();
+const scrollObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    const el = entry.target as HTMLElement;
+    if (entry.isIntersecting) visible.add(el);
+    else visible.delete(el);
+  }
+
+  // Move the cursor to the oldest visible timestamp
+  if (visible.size > 0) cursor$.next(Math.min(...Array.from(visible, (el) => Number(el.dataset.createdAt))));
+});
+
+/** Ref callback that tracks an element with a `data-created-at` timestamp as the feed scrolls */
+function trackScroll(el: HTMLElement | null) {
+  if (!el) return;
+  scrollObserver.observe(el);
+  return () => {
+    visible.delete(el);
+    scrollObserver.unobserve(el);
+  };
+}
 
 // Create a timeline loader and add events to the event store
-const timeline$ = window$.pipe(
+const timeline$ = cursor$.pipe(
+  // Throttle how fast the cursor changes while scrolling
+  throttleTime(1000, undefined, { leading: true, trailing: true }),
+  // Relays whose loaded range ends after the cursor load their next block
+  map((since): TimelineWindow => ({ since })),
   // When the timeline window changes, load missing events
   loadBlocksFromOutboxMap(
     pool,
@@ -163,13 +196,76 @@ const timeline$ = window$.pipe(
   mapEventsToStore(eventStore),
 );
 
+// Track the connection state and number of open requests for the relays selected for the feed
+const relayActivity$ = outboxMap$.pipe(
+  // Order relays by the number of users they cover
+  map((outboxMap) =>
+    Object.entries(outboxMap)
+      .sort(([, a], [, b]) => b.length - a.length)
+      .map(([url]) => url),
+  ),
+  // Only resubscribe when the selected relays change
+  distinctUntilChanged((a, b) => a.join() === b.join()),
+  switchMap((urls) =>
+    urls.length === 0
+      ? of([])
+      : combineLatest(
+          urls
+            .map((url) => pool.relay(url))
+            .map((relay) =>
+              combineLatest({
+                relay: of(relay),
+                connected: relay.connected$,
+                ready: relay.ready$,
+                reqs: relay.reqs$.pipe(map((reqs) => Object.keys(reqs).length)),
+              }),
+            ),
+        ),
+  ),
+  // Limit re-renders while many requests open and close during loading
+  auditTime(100),
+);
+
 // Global state for previewing user
 const preview$ = new BehaviorSubject<ProfilePointer | null>(null);
+
+// A shared clock so every relative time on the page updates together
+const now$ = timer(0, 30_000).pipe(
+  map(() => unixNow()),
+  shareReplay({ bufferSize: 1, refCount: true }),
+);
+
+const relativeFormat = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "narrow" });
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+/** Formats a timestamp relative to now within a week, then as a date */
+function formatRelative(unix: number, now: number) {
+  const seconds = unix - now;
+  if (Math.abs(seconds) > 7 * 86400) return dateFormat.format(new Date(unix * 1000));
+  for (const [unit, size] of [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ] as const) {
+    if (Math.abs(seconds) >= size) return relativeFormat.format(Math.round(seconds / size), unit);
+  }
+  return "just now";
+}
+
+// Only this element re-renders when the clock ticks
+function RelativeTime({ timestamp }: { timestamp: number }) {
+  const now = use$(now$) ?? unixNow();
+  return (
+    <time className="text-sm text-base-content/60" title={new Date(timestamp * 1000).toLocaleString()}>
+      {formatRelative(timestamp, now)}
+    </time>
+  );
+}
 
 function NoteRelay({ relay }: { relay: string }) {
   const icon = use$(() => pool.relay(relay).icon$, [relay]);
   const name = use$(() => pool.relay(relay).name$, [relay]);
-  const color = pastellify(relay, { toCSS: true });
+  const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
 
   return (
     <div
@@ -187,7 +283,8 @@ function NoteRelay({ relay }: { relay: string }) {
   );
 }
 
-function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
+// Memoized so new events only render new notes instead of the whole feed
+const Note = memo(function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
   const cast = useMemo(() => castEvent(note, NoteCast, eventStore), [note]);
   // Subscribe to the request and wait for the profile event
   const profile = use$(cast.author.profile$);
@@ -196,10 +293,24 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
   const displayName = getDisplayName(profile, note.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${note.pubkey}.png`);
 
-  const relays = Array.from(getSeenRelays(note) ?? []).sort();
+  // Re-read the seen relays when the store merges a duplicate of this note from another relay
+  const relays = use$(
+    () =>
+      eventStore.update$.pipe(
+        filter((event) => event.id === note.id),
+        startWith(note),
+        map(() => Array.from(getSeenRelays(note) ?? []).sort()),
+      ),
+    [note],
+  );
 
   return (
-    <div className="border-b border-base-300 px-2 py-4">
+    <div
+      ref={trackScroll}
+      data-created-at={note.created_at}
+      // Skip layout and paint for notes that are off screen
+      className="border-b border-base-300 px-2 py-4 [content-visibility:auto] [contain-intrinsic-size:auto_200px]"
+    >
       <div className="flex items-start gap-3">
         <div className="avatar">
           <div className="w-12 h-12 rounded-full">
@@ -211,9 +322,7 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
             <a className="font-semibold text-sm link" onClick={() => preview$.next({ pubkey: note.pubkey })}>
               {displayName}
             </a>
-            <span className="text-sm text-base-content/60">
-              {new Date(note.created_at * 1000).toLocaleTimeString()}
-            </span>
+            <RelativeTime timestamp={note.created_at} />
             <span className="text-sm text-base-content/60 ms-auto">
               From {selection?.length ?? 0} of {mailboxes?.outboxes.length ?? 0} outboxes
             </span>
@@ -222,8 +331,62 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
         </div>
       </div>
       <div className="flex gap-4 mt-4">
-        {relays.map((relay) => (
+        {relays?.map((relay) => (
           <NoteRelay key={relay} relay={relay} />
+        ))}
+      </div>
+    </div>
+  );
+});
+
+function RelayActivityItem({
+  relay,
+  connected,
+  ready,
+  reqs,
+}: {
+  relay: Relay;
+  connected: boolean;
+  ready: boolean;
+  reqs: number;
+}) {
+  const icon = use$(relay.icon$);
+  const name = use$(relay.name$);
+
+  // Not ready means the relay is waiting to reconnect, disconnected with requests means it is connecting
+  const status = !ready
+    ? "status-error"
+    : connected
+      ? "status-success"
+      : reqs > 0
+        ? "status-warning"
+        : "status-neutral";
+
+  return (
+    <div className="flex items-center gap-2 shrink-0 border border-base-300 rounded px-2 py-1" title={relay.url}>
+      <div className={`status ${status}`} />
+      <img src={icon} className="w-5 h-5 rounded-full object-cover" />
+      <span className="text-sm max-w-40 truncate">{name}</span>
+      <span className={`text-sm ${reqs > 0 ? "text-primary" : "text-base-content/60"}`}>{reqs}</span>
+    </div>
+  );
+}
+
+// Horizontal status bar showing relay activity
+function RelayStatusBar() {
+  const activity = use$(relayActivity$);
+
+  const connected = activity?.filter((a) => a.connected).length ?? 0;
+  const reqs = activity?.reduce((sum, a) => sum + a.reqs, 0) ?? 0;
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-base-300 p-2">
+      <span className="text-sm text-base-content/60 shrink-0">
+        {connected}/{activity?.length ?? 0} connected • {reqs} requests
+      </span>
+      <div className="flex gap-2 overflow-x-auto">
+        {activity?.map((a) => (
+          <RelayActivityItem key={a.relay.url} {...a} />
         ))}
       </div>
     </div>
@@ -708,66 +871,80 @@ export default function SocialFeedExample() {
 
   // Get the timeline from the event store
   const feedEvents = use$(
-    () => (selection ? eventStore.timeline({ kinds: [1], authors: selection?.map((s) => s.pubkey) }) : of([])),
+    () =>
+      selection
+        ? eventStore
+            .timeline({ kinds: [1], authors: selection.map((s) => s.pubkey) })
+            // Events are already stored, so batch renders while blocks of events are arriving
+            .pipe(throttleTime(250, undefined, { leading: true, trailing: true }))
+        : of([]),
     [selection],
   );
 
   return (
-    <div className="flex">
+    <div className="flex min-h-0 grow">
       {/* User Preview Modal */}
       <UserPreviewModal selection={selection} />
 
       {/* Main Content Area */}
-      <div className="flex-1 bg-base-50">
-        <div className="max-w-2xl mx-auto">
-          {pubkey ? (
-            <div className="min-h-screen">
-              {/* Feed Header */}
-              <div className="border-b border-base-300 p-2 mb-4">
-                <h1 className="text-2xl font-bold mb-2">Social Feed</h1>
-                <p className="text-base-content/60 text-sm">
-                  Connected to {sortedRelays.length} relays • {selection?.length || 0} contacts
-                </p>
-                {liveError && (
-                  <div className="alert alert-warning mt-2">Live updates unavailable: {liveError.message}</div>
-                )}
-              </div>
+      <div className="flex flex-1 min-w-0 flex-col bg-base-50">
+        {/* Relay Activity */}
+        <RelayStatusBar />
 
-              {/* Feed Content */}
-              <div className="bg-base-100 border border-base-300 rounded-lg">
-                {feedEvents && feedEvents.length > 0 ? (
-                  <div className="divide-y divide-base-300">
-                    {feedEvents.slice(0, 100).map((event) => (
-                      <Note key={event.id} note={event} selection={byPubkey?.[event.pubkey]} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="text-base-content/60 mb-4">
-                      {feedEvents === undefined ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="loading loading-spinner loading-md"></div>
-                          <span>Loading feed...</span>
-                        </div>
-                      ) : (
-                        "No posts found. Try adjusting your relay settings or wait for new posts."
-                      )}
-                    </div>
-                  </div>
+        {/* Scrollable Feed */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto">
+            {pubkey ? (
+              <div>
+                {liveError && (
+                  <div className="alert alert-warning m-2">Live updates unavailable: {liveError.message}</div>
                 )}
+
+                {/* Feed Content */}
+                <div className="bg-base-100 border border-base-300 rounded-lg">
+                  {feedEvents && feedEvents.length > 0 ? (
+                    <div className="divide-y divide-base-300">
+                      {feedEvents.map((event) => (
+                        <Note key={event.id} note={event} selection={byPubkey?.[event.pubkey]} />
+                      ))}
+                      {/* Scrolling past the last note moves the cursor beyond it, keyed so it re-triggers after each block */}
+                      <div
+                        key={feedEvents[feedEvents.length - 1].created_at}
+                        ref={trackScroll}
+                        data-created-at={feedEvents[feedEvents.length - 1].created_at - 1}
+                        className="flex justify-center py-4"
+                      >
+                        <span className="loading loading-dots loading-md" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <div className="text-base-content/60 mb-4">
+                        {feedEvents === undefined ? (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="loading loading-spinner loading-md"></div>
+                            <span>Loading feed...</span>
+                          </div>
+                        ) : (
+                          "No posts found. Try adjusting your relay settings or wait for new posts."
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-20">
-              <h1 className="text-3xl font-bold mb-4">Welcome to Social Feed</h1>
-              <p className="text-base-content/60 text-lg">Enter your npub in the sidebar to get started</p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-20">
+                <h1 className="text-3xl font-bold mb-4">Welcome to Social Feed</h1>
+                <p className="text-base-content/60 text-lg">Enter your npub in the sidebar to get started</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Sidebar */}
-      <div className="w-80 bg-base-100 border-r border-base-300 flex flex-col">
+      <div className="w-80 shrink-0 bg-base-100 border-l border-base-300 flex flex-col overflow-y-auto">
         {/* Header */}
         <div className="p-4 border-b border-base-300">
           <h2 className="text-xl font-bold mb-4">Social Feed</h2>

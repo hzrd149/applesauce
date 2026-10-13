@@ -3,7 +3,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
 
-import { CheckIcon, ExternalLinkIcon } from "../components/icons";
+import { Check, ExternalLink } from "lucide-react";
 import examples, { Example } from "../examples";
 
 function ExampleMount({ Component, error }: { Component?: (() => ReactElement) | null; error: unknown }) {
@@ -140,7 +140,7 @@ export default function ExamplePage() {
               disabled={!source}
               title="Copy code to clipboard"
             >
-              {copied ? <CheckIcon /> : null}
+              {copied ? <Check className="size-5" /> : null}
               {copied ? "Copied!" : "Copy code"}
             </button>
             <a
@@ -148,7 +148,7 @@ export default function ExamplePage() {
               className="btn btn-sm btn-ghost btn-square"
               href={`https://github.com/hzrd149/applesauce/tree/master/apps/examples/src/${path}`}
             >
-              <ExternalLinkIcon />
+              <ExternalLink className="size-5" />
             </a>
           </div>
           <div className="hidden flex-none lg:block">

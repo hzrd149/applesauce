@@ -74,8 +74,9 @@ export function loadBackwardBlocks(
         if (
           // Ignore undefined since values
           since === undefined ||
-          // If number is finite and in the loaded range, skip
-          (Number.isFinite(since) && cursor !== undefined && since <= cursor)
+          // If number is finite and in the loaded range, skip. The cursor is the next inclusive `until`,
+          // so everything newer than the cursor has already been loaded
+          (Number.isFinite(since) && cursor !== undefined && since > cursor)
         )
           return false;
 

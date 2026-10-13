@@ -47,6 +47,30 @@ describe("loadBackwardBlocks", () => {
 
     sub.unsubscribe();
   });
+
+  it("should load until the cursor reaches the window since", () => {
+    const window$ = new Subject<TimelineWindow>();
+    const first = new Subject<NostrEvent>();
+    const second = new Subject<NostrEvent>();
+    const request = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+
+    const sub = window$.pipe(loadBackwardBlocks(request)).subscribe();
+
+    window$.next({ since: -Infinity, until: 100 });
+    first.next(event(90));
+    first.complete();
+
+    // Still inside the loaded range
+    window$.next({ since: 95 });
+    expect(request).toHaveBeenCalledTimes(1);
+
+    // Past the oldest loaded event
+    window$.next({ since: 89 });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenLastCalledWith(89);
+
+    sub.unsubscribe();
+  });
 });
 
 describe("loadBlocksFromFilterMap", () => {

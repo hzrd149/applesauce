@@ -1,7 +1,7 @@
 /**
- * Store and retrieve application-specific data using NIP-78 app-specific events
- * @tags misc, app-data, nip-78, storage
- * @related misc/nip-19-links
+ * Sync, inspect, edit and delete all of a user's NIP-78 app-specific data using the NIP-77 sync loader
+ * @tags misc, app-data, nip-78, storage, nip-77, sync
+ * @related misc/nip-19-links, loader/sync-loader
  */
 import { publishEvent } from "../../extra/publish";
 
@@ -13,16 +13,30 @@ import {
   getAppDataEncryption,
   isAppDataUnlocked,
 } from "applesauce-common/helpers/app-data";
-import { DeleteFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
-import { EncryptionMethod, getReplaceableIdentifier, kinds, NostrEvent, getEventUID } from "applesauce-core/helpers";
+import { DeleteFactory, EventStore, watchEventUpdates } from "applesauce-core";
+import {
+  EncryptionMethod,
+  getEventUID,
+  getReplaceableIdentifier,
+  getSeenRelays,
+  kinds,
+  mergeRelaySets,
+  NostrEvent,
+} from "applesauce-core/helpers";
 import { getHiddenContent, unlockHiddenContent } from "applesauce-core/helpers/hidden-content";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import {
+  createEventLoaderForStore,
+  createSyncLoader,
+  SyncAuthHandler,
+  SyncLoaderStatus,
+  SyncRelayStatus,
+} from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { Lock } from "lucide-react";
 import { useRef, useMemo } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { BehaviorSubject, combineLatest, distinctUntilChanged, map, switchMap } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
 
@@ -36,6 +50,20 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
 });
+
+// Loads every matching event from each relay using NIP-77 negentropy, falling back to paginated requests
+const syncLoader = createSyncLoader({ eventStore, pool });
+
+// Used when the user has no NIP-65 outboxes
+const FALLBACK_RELAYS = ["wss://relay.damus.io/"];
+
+// Authenticate with relays that require NIP-42 auth to read the user's (often private) app data
+const onAuthRequired: SyncAuthHandler = async ({ relay }) => {
+  if (signer$.value) await relay.authenticate(signer$.value);
+};
+
+// The status of both sync runs: the app data events and the deletions targeting them
+type SyncState = { data: SyncLoaderStatus; deletes: SyncLoaderStatus };
 
 // Describes how the content of an app-data event should be displayed
 type ContentDisplay =
@@ -298,6 +326,53 @@ function EventEditor({
   );
 }
 
+// Summarizes a single relay's sync progress for one of the filters
+function relayCell(status?: SyncRelayStatus) {
+  if (!status) return "—";
+  if (status.state === "error") return <span className="text-error">{status.error?.message ?? "error"}</span>;
+  if (status.state === "complete") return status.count;
+  return (
+    <span className="opacity-60">
+      {status.state} {status.count > 0 && status.count}
+    </span>
+  );
+}
+
+function SyncStatusPanel({ sync }: { sync: SyncState }) {
+  const relays = Object.keys(sync.data.relays);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div>
+        <h2 className="text-xl font-bold">Sync status</h2>
+        <p className="opacity-60">
+          {sync.data.loaded} app data events · {sync.deletes.loaded} deletions · select an event to view details
+        </p>
+      </div>
+      <table className="table table-sm">
+        <thead>
+          <tr>
+            <th>Relay</th>
+            <th>Method</th>
+            <th className="text-right">App data</th>
+            <th className="text-right">Deletions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {relays.map((relay) => (
+            <tr key={relay}>
+              <td className="font-mono">{relay.replace(/^wss:\/\//, "").replace(/\/$/, "")}</td>
+              <td>{sync.data.relays[relay]?.method ?? "—"}</td>
+              <td className="text-right">{relayCell(sync.data.relays[relay])}</td>
+              <td className="text-right">{relayCell(sync.deletes.relays[relay])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AppDataManager({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
@@ -313,20 +388,35 @@ function AppDataManager({ user }: { user: User }) {
   const deleting$ = useMemo(() => new BehaviorSubject(false), []);
   const deleting = use$(deleting$);
 
-  // Subscribe to the user's app data events on their outboxes
-  use$(
+  // Incremented to restart the sync
+  const resync$ = useMemo(() => new BehaviorSubject(0), []);
+
+  // Sync all the user's app data and the deletions targeting it from every outbox. Deletions are synced too so
+  // the event store can drop app data that was already deleted, even if a relay still serves it
+  const sync = use$<SyncState>(
     () =>
-      pool
-        .subscription(
-          user.outboxes$.pipe(map((outboxes) => (outboxes?.length ? outboxes : ["wss://relay.damus.io/"]))),
-          [
-            { kinds: [APP_DATA_KIND], authors: [user.pubkey] },
-            { kinds: [kinds.EventDeletion], "#k": [String(APP_DATA_KIND)], authors: [user.pubkey] },
-          ],
-        )
-        .pipe(mapEventsToStore(eventStore)),
+      combineLatest([
+        user.outboxes$.pipe(
+          map((outboxes) => (outboxes?.length ? outboxes : FALLBACK_RELAYS)),
+          distinctUntilChanged((a, b) => a.join() === b.join()),
+        ),
+        resync$,
+      ]).pipe(
+        switchMap(([relays]) =>
+          combineLatest({
+            data: syncLoader({ relays, filter: { kinds: [APP_DATA_KIND], authors: [user.pubkey] }, onAuthRequired })
+              .status$,
+            deletes: syncLoader({
+              relays,
+              filter: { kinds: [kinds.EventDeletion], "#k": [String(APP_DATA_KIND)], authors: [user.pubkey] },
+              onAuthRequired,
+            }).status$,
+          }),
+        ),
+      ),
     [user],
   );
+  const syncing = !!sync && !(sync.data.done && sync.deletes.done);
 
   const events = use$(() => eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [user.pubkey] }), [user.pubkey]);
 
@@ -358,14 +448,20 @@ function AppDataManager({ user }: { user: User }) {
 
   const toggleAll = () => checked$.next(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
 
+  // Publish the new revision everywhere the previous one was found so relays replace it
   const handleSave = async (updated: NostrEvent) => {
-    await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/"], updated);
+    await publishEvent(
+      pool,
+      mergeRelaySets(outboxes?.length ? outboxes : FALLBACK_RELAYS, selected && getSeenRelays(selected)),
+      updated,
+    );
     eventStore.add(updated);
     selectedId$.next(getEventUID(updated));
     editing$.next(false);
   };
 
-  // Publish a single NIP-09 deletion for all the events and remove them locally
+  // Publish a single NIP-09 deletion for all the events and remove them locally. The deletion is sent to every
+  // relay the sync loader found a copy on, not just the current outboxes, so stale copies get deleted too
   const deleteEvents = async (toDelete: NostrEvent[]) => {
     if (!signer || toDelete.length === 0) return;
     const message = toDelete.length === 1 ? "Delete this event?" : `Delete ${toDelete.length} events?`;
@@ -374,7 +470,8 @@ function AppDataManager({ user }: { user: User }) {
     try {
       deleting$.next(true);
       const signed = await DeleteFactory.fromEvents(toDelete).sign(signer);
-      await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/"], signed);
+      const relays = mergeRelaySets(outboxes?.length ? outboxes : FALLBACK_RELAYS, ...toDelete.map(getSeenRelays));
+      await publishEvent(pool, relays, signed);
       eventStore.add(signed);
 
       const ids = new Set(toDelete.map((e) => e.id));
@@ -419,12 +516,20 @@ function AppDataManager({ user }: { user: User }) {
               Delete
             </button>
           )}
+          {checkedEvents.length === 0 && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => resync$.next(resync$.value + 1)}
+              disabled={syncing}
+              title="Sync again"
+            >
+              {syncing ? <span className="loading loading-spinner loading-xs" /> : "Resync"}
+            </button>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">
-          {!outboxes ? (
-            <div className="p-4 opacity-60 text-center">Loading outboxes...</div>
-          ) : !events || events.length === 0 ? (
-            <div className="p-4 opacity-60 text-center">No app data events found.</div>
+          {!events || events.length === 0 ? (
+            <div className="p-4 opacity-60 text-center">{syncing ? "Syncing..." : "No app data events found."}</div>
           ) : (
             <ul className="menu w-full select-none">
               {events.map((event) => {
@@ -476,7 +581,11 @@ function AppDataManager({ user }: { user: User }) {
 
       <main className="flex-1 flex flex-col min-w-0">
         {!selected ? (
-          <div className="flex-1 flex items-center justify-center opacity-60">Select an event to view details</div>
+          sync ? (
+            <SyncStatusPanel sync={sync} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center opacity-60">Select an event to view details</div>
+          )
         ) : editing ? (
           <EventEditor
             key={selected.id}
