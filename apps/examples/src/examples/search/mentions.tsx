@@ -3,17 +3,20 @@
  * @tags nip-50, nip-65, search, mentions, inbox
  * @related search/relay, negentrapy/mentions
  */
+import { default as NoteContent } from "../../components/note-content";
+import { BehaviorSubject, switchMap, catchError, combineLatest, map, of, startWith } from "rxjs";
+
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, getSeenRelays, kinds } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { kinds } from "applesauce-core/helpers";
+
 import { neventEncode } from "applesauce-core/helpers/pointers";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { combineLatest, lastValueFrom, map, of, startWith } from "rxjs";
+import { useMemo } from "react";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -38,7 +41,7 @@ function UserHeader({ user }: { user: User }) {
       </div>
       <div className="min-w-0">
         <div className="font-semibold">{name}</div>
-        <div className="text-xs text-base-content/50 font-mono truncate">{user.pubkey}</div>
+        <div className="text-sm text-base-content/50 font-mono truncate">{user.pubkey}</div>
       </div>
     </div>
   );
@@ -57,12 +60,11 @@ function InboxRelayOption({ url, supported }: { url: string; supported: number[]
 function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay: string }) {
   const author = useMemo(() => castUser(event.pubkey, eventStore), [event.pubkey]);
   const profile = use$(() => author.profile$, [event.pubkey]);
-  const [copied, setCopied] = useState(false);
+  const copied$ = useMemo(() => new BehaviorSubject(false), []);
+  const copied = use$(copied$);
 
   const name = getDisplayName(profile, event.pubkey.slice(0, 8) + "…");
   const picture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
-
-  const preview = event.content.length > 280 ? event.content.slice(0, 280) + "…" : event.content;
 
   const handleCopy = async () => {
     const seen = getSeenRelays(event);
@@ -70,16 +72,16 @@ function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay
     const nevent = neventEncode({ id: event.id, author: event.pubkey, kind: event.kind, relays });
     try {
       await navigator.clipboard.writeText(nevent);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copied$.next(true);
+      setTimeout(() => copied$.next(false), 2000);
     } catch (err) {
       console.error("Failed to copy nevent:", err);
     }
   };
 
   return (
-    <div className="card bg-base-100 border border-base-300">
-      <div className="card-body p-4 gap-3">
+    <div className="border border-base-300 bg-base-100 border border-base-300">
+      <div className="p-4 p-4 gap-3">
         <div className="flex items-center gap-3">
           <div className="avatar">
             <div className="w-10 h-10 rounded-full">
@@ -88,7 +90,7 @@ function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-semibold truncate">{name}</div>
-            <div className="text-xs text-base-content/50">{new Date(event.created_at * 1000).toLocaleString()}</div>
+            <div className="text-sm text-base-content/50">{new Date(event.created_at * 1000).toLocaleString()}</div>
           </div>
           <button
             type="button"
@@ -99,19 +101,21 @@ function ResultCard({ event, fallbackRelay }: { event: NostrEvent; fallbackRelay
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
-        <p className="text-sm whitespace-pre-wrap break-words">{preview}</p>
+        <NoteContent event={event} maxLength={280} />
       </div>
     </div>
   );
 }
 
 export default function InboxMentionsSearch() {
-  const [pubkey, setPubkey] = useState("");
-  const [selectedRelay, setSelectedRelay] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<NostrEvent[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const pubkey$ = useMemo(() => new BehaviorSubject(""), []);
+  const pubkey = use$(pubkey$);
+
+  const selectedRelay$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedRelayChoice = use$(selectedRelay$);
+
+  const query$ = useMemo(() => new BehaviorSubject(""), []);
+  const query = use$(query$);
 
   const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
   const inboxes = use$(() => user?.inboxes$, [user?.pubkey]);
@@ -130,53 +134,44 @@ export default function InboxMentionsSearch() {
     ).pipe(map((entries) => Object.fromEntries(entries)));
   }, [inboxes?.join("|")]);
 
-  // Reset selection + results when the user changes
-  useEffect(() => {
-    setSelectedRelay(null);
-    setResults([]);
-    setError(null);
-  }, [pubkey]);
-
-  // Auto-select the first inbox that advertises NIP-50, once per pubkey
-  const autoPickedFor = useRef<string | null>(null);
-  useEffect(() => {
-    if (!pubkey || !inboxes || !supportMap) return;
-    if (autoPickedFor.current === pubkey) return;
-    const first = inboxes.find((url) => supportMap[url]?.includes(50));
-    if (first) {
-      setSelectedRelay(first);
-      autoPickedFor.current = pubkey;
-    }
-  }, [pubkey, inboxes, supportMap]);
-
-  const handleSearch = async () => {
-    if (!pubkey || !selectedRelay || !query.trim()) return;
-    setSearching(true);
-    setError(null);
-    setResults([]);
-    try {
-      const events = await lastValueFrom(
-        pool
-          .relay(selectedRelay)
-          .request(
-            {
-              kinds: [kinds.ShortTextNote],
-              "#p": [pubkey],
-              search: query.trim(),
-              limit: 50,
-            },
-            { timeout: 10_000 },
-          )
-          .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
-      );
-      setResults(events);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Search failed";
-      setError(message);
-      console.error("Search failed:", err);
-    } finally {
-      setSearching(false);
-    }
+  const selectedRelay =
+    selectedRelayChoice && inboxes?.includes(selectedRelayChoice)
+      ? selectedRelayChoice
+      : (inboxes?.find((url) => supportMap?.[url]?.includes(50)) ?? null);
+  const commands$ = useMemo(
+    () => new BehaviorSubject<{ pubkey: string; relay: string; query: string } | null>(null),
+    [],
+  );
+  const state = use$(
+    () =>
+      commands$.pipe(
+        switchMap((command) => {
+          if (!command || command.pubkey !== pubkey || command.relay !== selectedRelay)
+            return of({ status: "idle" as const, results: [] as NostrEvent[], error: "" });
+          return pool
+            .relay(command.relay)
+            .request(
+              { kinds: [kinds.ShortTextNote], "#p": [command.pubkey], search: command.query, limit: 50 },
+              { timeout: 10_000 },
+            )
+            .pipe(
+              mapEventsToStore(eventStore),
+              mapEventsToTimeline(),
+              map((results) => ({ status: "ready" as const, results, error: "" })),
+              startWith({ status: "loading" as const, results: [] as NostrEvent[], error: "" }),
+              catchError((error) =>
+                of({ status: "error" as const, results: [] as NostrEvent[], error: String(error.message ?? error) }),
+              ),
+            );
+        }),
+      ),
+    [pubkey, selectedRelay, commands$],
+  );
+  const results = state?.results ?? [];
+  const searching = state?.status === "loading";
+  const error = state?.error;
+  const handleSearch = () => {
+    if (selectedRelay && query.trim()) commands$.next({ pubkey, relay: selectedRelay, query: query.trim() });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -186,20 +181,24 @@ export default function InboxMentionsSearch() {
   return (
     <div className="container mx-auto max-w-4xl p-4 space-y-4">
       <div>
-        <h1 className="card-title text-2xl mb-1">Search Inbox Mentions</h1>
+        <h1 className="font-semibold text-2xl mb-1">Search Inbox Mentions</h1>
         <p className="text-sm opacity-70">
           Pick a user, then search one of their NIP-65 inbox relays for kind&nbsp;1 events that tag them via{" "}
           <code className="font-mono">#p</code>. Requires the relay to support NIP-50.
         </p>
       </div>
 
-      <PubkeyPicker value={pubkey} onChange={setPubkey} placeholder="Enter pubkey or nostr identifier…" />
+      <PubkeyPicker
+        value={pubkey}
+        onChange={(next: typeof pubkey$.value) => pubkey$.next(next)}
+        placeholder="Enter pubkey or nostr identifier…"
+      />
 
       {user && <UserHeader user={user} />}
 
       {user && inboxes === undefined && (
         <div className="flex items-center gap-2 text-sm text-base-content/60">
-          <span className="loading loading-spinner loading-xs" />
+          <span className="loading loading-spinner loading-sm" />
           Loading inbox relays…
         </div>
       )}
@@ -211,14 +210,14 @@ export default function InboxMentionsSearch() {
       )}
 
       {user && inboxes && inboxes.length > 0 && (
-        <div className="form-control">
+        <div className="flex flex-col gap-2">
           <label className="label">
             <span className="label-text font-semibold">Inbox relay</span>
           </label>
           <select
             className="select select-bordered w-full font-mono"
             value={selectedRelay ?? ""}
-            onChange={(e) => setSelectedRelay(e.target.value || null)}
+            onChange={(e) => selectedRelay$.next(e.target.value || null)}
           >
             <option value="">Select an inbox relay…</option>
             {inboxes.map((url) => (
@@ -229,7 +228,7 @@ export default function InboxMentionsSearch() {
       )}
 
       {selectedRelay && (
-        <div className="form-control">
+        <div className="flex flex-col gap-2">
           <label className="label">
             <span className="label-text font-semibold">Search query</span>
           </label>
@@ -239,7 +238,7 @@ export default function InboxMentionsSearch() {
               placeholder="Search content of mentions…"
               className="input input-bordered flex-1"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => query$.next(e.target.value)}
               onKeyPress={handleKeyPress}
             />
             <button
@@ -276,7 +275,7 @@ export default function InboxMentionsSearch() {
         </div>
       )}
 
-      {selectedRelay && !searching && results.length === 0 && query && !error && (
+      {selectedRelay && state?.status === "ready" && results.length === 0 && (
         <div className="alert alert-info">
           <span>No matching events found.</span>
         </div>

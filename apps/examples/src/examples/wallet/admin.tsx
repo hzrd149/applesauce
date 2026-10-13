@@ -3,34 +3,41 @@
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
  * @related wallet/wallet
  */
+import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
+import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";
+
 import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
-import { Filter, NostrEvent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
+import { Filter, NostrEvent, persistEventsToCache, unixNow, generateSecretKey } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import type { ISigner } from "applesauce-signers";
-import { PrivateKeySigner } from "applesauce-signers";
+import { type ISigner, PrivateKeySigner } from "applesauce-signers";
+
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
 import { CashuWalletMethods, CommonWalletMethods, Transaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
-import { IndexedDBCouch } from "applesauce-wallet/helpers";
+
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { NostrIDB } from "nostr-idb";
-import { generateSecretKey } from "applesauce-core/helpers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { useCallback, useMemo, useRef } from "react";
 import {
   BehaviorSubject,
   combineLatest,
   firstValueFrom,
   Observable,
-  pairwise,
-  ReplaySubject,
-  share,
-  startWith,
   switchMap,
+  map,
+  of,
+  shareReplay,
+  Subject,
+  exhaustMap,
+  defer,
+  startWith,
+  catchError,
 } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -41,12 +48,16 @@ import { lookupRelays$ } from "../../settings";
 
 // ---- Application infrastructure (owned by the app, not the wallet) ----
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-const signer$ = new BehaviorSubject<ISigner | null>(null);
-const pubkey$ = new BehaviorSubject<string | null>(null);
+const session$ = new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null);
+const signer$ = session$.pipe(map((session) => session?.signer ?? null));
+const pubkey$ = session$.pipe(map((session) => session?.pubkey ?? null));
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const couch = new IndexedDBCouch();
+const couch = createEncryptedCouch(
+  () => storage$.value,
+  () => `wallet-proofs:${session$.value?.pubkey ?? "signed-out"}`,
+);
 
 // Decrypt hidden content using the encrypted storage
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
@@ -81,6 +92,7 @@ const service$ = new BehaviorSubject<WalletService<NwcMethods> | null>(null);
 
 /** In-memory lightning transactions, so list_transactions and lookup_invoice have something to return */
 const nwcTransactions$ = new BehaviorSubject<Transaction[]>([]);
+const depositControllers = new Map<AbortController, string>();
 
 /** A simple in-memory request log for the NWC service, so you can see it working */
 const requestLog$ = new BehaviorSubject<string[]>([]);
@@ -101,18 +113,28 @@ function upsertNwcTransaction(tx: Transaction): Transaction {
 
 const connectStorageKey = (pubkey: string) => `nwc-service:${pubkey}`;
 
-function loadConnectConfig(pubkey: string): ConnectConfig | null {
-  try {
-    const raw = localStorage.getItem(connectStorageKey(pubkey));
-    return raw ? (JSON.parse(raw) as ConnectConfig) : null;
-  } catch {
-    return null;
+async function loadConnectConfig(pubkey: string): Promise<ConnectConfig | null> {
+  const storage = storage$.value;
+  if (!storage) return null;
+  const key = connectStorageKey(pubkey);
+  let raw = await storage.getItem(key);
+  const legacy = localStorage.getItem(key);
+  if (!raw && legacy) {
+    // Migrate this account's existing service credential only after its encrypted copy is durable.
+    if (!(await storage.setItem(key, legacy))) throw new Error("Could not encrypt the saved service credential");
+    localStorage.removeItem(key);
+    raw = legacy;
   }
+  return raw ? (JSON.parse(raw) as ConnectConfig) : null;
 }
-
-function saveConnectConfig(pubkey: string, config: ConnectConfig | null) {
-  if (config) localStorage.setItem(connectStorageKey(pubkey), JSON.stringify(config));
-  else localStorage.removeItem(connectStorageKey(pubkey));
+async function saveConnectConfig(pubkey: string, config: ConnectConfig | null) {
+  const storage = storage$.value;
+  if (!storage) throw new Error("Unlock encrypted storage first");
+  const key = connectStorageKey(pubkey);
+  if (config) {
+    if (!(await storage.setItem(key, JSON.stringify(config))))
+      throw new Error("Could not save encrypted service credential");
+  } else await storage.removeItem(key);
 }
 
 /** Maps NWC method calls onto the NutWallet */
@@ -136,33 +158,48 @@ function createNwcHandlers(wallet: NutWallet): WalletServiceHandlers<NwcMethods>
       const mint = (await firstValueFrom(wallet.mintUrls$))?.[0];
       if (!mint) throw new NotFoundError("No mint configured");
 
-      const sats = Math.floor(amount / 1000);
-      const quote = await wallet.createMintQuote(mint, sats, description);
-      const parsed = parseBolt11(quote.request);
-      const tx = upsertNwcTransaction({
-        type: "incoming",
-        state: "pending",
-        amount,
-        fees_paid: 0,
-        created_at: unixNow(),
-        invoice: quote.request,
-        description,
-        description_hash,
-        payment_hash: parsed.paymentHash,
-        expires_at: parsed.expiry,
-      });
-
-      // Wait for payment, mint the proofs, then mark settled and notify the client
-      wallet
-        .waitForMintQuote(mint, quote.quote)
-        .then(() => wallet.redeemMintQuote(mint, sats, quote))
-        .then(() => {
-          const settled = upsertNwcTransaction({ ...tx, state: "settled", settled_at: unixNow() });
-          service$.value?.notify("payment_received", settled).catch(() => {});
+      if (!Number.isSafeInteger(amount) || amount <= 0 || amount % 1000 !== 0)
+        throw new Error("Cashu invoices require positive whole sats (amount in millisats must be a multiple of 1000)");
+      const sats = amount / 1000;
+      const storage = storage$.value;
+      if (!storage) throw new Error("Unlock encrypted storage first");
+      const controller = new AbortController();
+      depositControllers.set(controller, wallet.pubkey);
+      return new Promise<Transaction>((resolve, reject) => {
+        let transaction: Transaction | undefined;
+        void recoverableDeposit(storage, wallet, {
+          mint,
+          amount: sats,
+          signal: controller.signal,
+          namespace: "wallet-deposit",
+          onQuote: (quote) => {
+            const parsed = parseBolt11(quote.request);
+            transaction = upsertNwcTransaction({
+              type: "incoming",
+              state: "pending",
+              amount,
+              fees_paid: 0,
+              created_at: unixNow(),
+              invoice: quote.request,
+              description,
+              description_hash,
+              payment_hash: parsed.paymentHash,
+              expires_at: parsed.expiry,
+            });
+            resolve(transaction);
+          },
         })
-        .catch((error) => console.error("Failed to redeem mint quote:", error));
-
-      return tx;
+          .then(async () => {
+            if (!transaction) return;
+            const settled = upsertNwcTransaction({ ...transaction, state: "settled", settled_at: unixNow() });
+            if (session$.value?.pubkey === wallet.pubkey) await service$.value?.notify("payment_received", settled);
+          })
+          .catch((error) => {
+            logRequest(`Deposit pending: ${String(error.message ?? error)}`);
+            reject(error);
+          })
+          .finally(() => depositControllers.delete(controller));
+      });
     },
 
     // pay_invoice melts: pick a mint with enough balance and pay the invoice with ecash
@@ -236,14 +273,19 @@ async function startNwcService(wallet: NutWallet, config: ConnectConfig): Promis
     handlers: createNwcHandlers(wallet),
     notifications: ["payment_received", "payment_sent"],
   });
-  await service.start();
-  saveConnectConfig(wallet.pubkey, config);
+  try {
+    await saveConnectConfig(wallet.pubkey, config);
+    await service.start();
+  } catch (error) {
+    service.stop();
+    throw error;
+  }
   service$.next(service);
 }
 
 /** Starts or restarts the service on a new relay set, keeping the existing connection identity */
-function setNwcRelays(wallet: NutWallet, relays: string[]): Promise<void> {
-  const existing = loadConnectConfig(wallet.pubkey);
+async function setNwcRelays(wallet: NutWallet, relays: string[]): Promise<void> {
+  const existing = await loadConnectConfig(wallet.pubkey);
   const config: ConnectConfig = existing
     ? { ...existing, relays }
     : { key: bytesToHex(generateSecretKey()), secret: bytesToHex(generateSecretKey()), relays };
@@ -251,54 +293,39 @@ function setNwcRelays(wallet: NutWallet, relays: string[]): Promise<void> {
 }
 
 /** Stops the NWC service and clears the persisted config */
-function stopNwcService(pubkey: string): void {
+async function stopNwcService(pubkey: string): Promise<void> {
   service$.value?.stop();
-  saveConnectConfig(pubkey, null);
+  await saveConnectConfig(pubkey, null);
   service$.next(null);
 }
 
 /** Restores a persisted NWC service for a wallet, if one was saved */
-function restoreNwcService(wallet: NutWallet): void {
-  const config = loadConnectConfig(wallet.pubkey);
-  if (config) startNwcService(wallet, config).catch((error) => console.error("Failed to restore NWC service:", error));
+async function restoreNwcService(wallet: NutWallet): Promise<void> {
+  const config = await loadConnectConfig(wallet.pubkey);
+  if (config) await startNwcService(wallet, config);
 }
 
 /** NutWallet instance, recreated whenever signer, pubkey, or storage changes */
-const wallet$ = combineLatest([signer$.pipe(defined()), pubkey$.pipe(defined()), storage$.pipe(defined())]).pipe(
-  switchMap(([signer, pubkey, storage]) => {
-    const instance = new NutWallet({
-      pubkey,
-      signer,
-      pool,
-      eventStore,
-      couch,
-      decryptionCache: storage,
-    });
-
+const wallet$ = combineLatest([session$, storage$]).pipe(
+  switchMap(([session, storage]) => {
+    if (!session || !storage) return of(null);
     return new Observable<NutWallet>((subscriber) => {
-      instance.start();
+      const instance = new NutWallet({ ...session, pool, eventStore, couch, decryptionCache: storage });
       subscriber.next(instance);
-      return () => instance.stop();
+      void instance
+        .start()
+        .then(() => restoreNwcService(instance))
+        .catch((error) => logRequest(`Wallet start failed: ${String(error)}`));
+      return () => {
+        for (const [controller, pubkey] of depositControllers) if (pubkey === instance.pubkey) controller.abort();
+        service$.value?.stop();
+        service$.next(null);
+        instance.stop();
+      };
     });
   }),
-  startWith(null),
-  // Keep value in memory
-  share({
-    resetOnComplete: false,
-    resetOnRefCountZero: false,
-    connector: () => new ReplaySubject(1),
-  }),
+  shareReplay({ bufferSize: 1, refCount: true }),
 );
-
-// Start the persisted NWC service for each wallet and stop it when the wallet changes or goes away
-wallet$.pipe(pairwise()).subscribe(([prev, curr]) => {
-  if (prev === curr) return;
-
-  service$.value?.stop();
-  service$.next(null);
-
-  if (curr) restoreNwcService(curr);
-});
 
 // ---- Small presentational helpers ----
 function StatusBadge({ status }: { status: WalletStatus }) {
@@ -314,7 +341,7 @@ function StatusBadge({ status }: { status: WalletStatus }) {
 function Indicator({ label, active }: { label: string; active: boolean }) {
   return (
     <span className={`badge badge-lg ${active ? "badge-primary" : "badge-ghost"} gap-2`}>
-      {active && <span className="loading loading-spinner loading-xs" />}
+      {active && <span className="loading loading-spinner loading-sm" />}
       {label}
     </span>
   );
@@ -347,7 +374,9 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 // ---- Lock controls ----
 function LockControls({ wallet }: { wallet: NutWallet }) {
   const unlocked = use$(wallet.unlocked$);
-  const [autoUnlock, setAutoUnlock] = useState(wallet.autoUnlock);
+  const autoUnlock$ = useMemo(() => new BehaviorSubject(wallet.autoUnlock), []);
+  const autoUnlock = use$(autoUnlock$);
+
   const ops = use$(wallet.operationsState$) ?? {};
 
   return (
@@ -360,7 +389,7 @@ function LockControls({ wallet }: { wallet: NutWallet }) {
           checked={autoUnlock}
           onChange={(e) => {
             wallet.setAutoUnlock(e.target.checked);
-            setAutoUnlock(e.target.checked);
+            autoUnlock$.next(e.target.checked);
           }}
         />
       </label>
@@ -493,7 +522,8 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
   const couchTokens = use$(wallet.couchTokens$) ?? [];
   const staleCount = use$(wallet.staleTokenCount$) ?? 0;
   const ops = use$(wallet.operationsState$) ?? {};
-  const [useDeleteEvents, setUseDeleteEvents] = useState(wallet.useDeleteEvents);
+  const useDeleteEvents$ = useMemo(() => new BehaviorSubject(wallet.useDeleteEvents), []);
+  const useDeleteEvents = use$(useDeleteEvents$);
 
   const connected = relays.filter((r) => r.connected).length;
 
@@ -581,12 +611,12 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
             checked={useDeleteEvents}
             onChange={(e) => {
               wallet.setUseDeleteEvents(e.target.checked);
-              setUseDeleteEvents(e.target.checked);
+              useDeleteEvents$.next(e.target.checked);
             }}
           />
           <span className="label-text">Publish delete events for spent tokens</span>
         </label>
-        <p className="text-xs text-base-content/60 mt-1 mb-4">
+        <p className="text-sm text-base-content/60 mt-1 mb-4">
           When off, spent token events are only marked deleted via each new token's <code>del</code> field and removed
           later with cleanup. This toggle only affects publishing; whether delete events are loaded is set when the
           wallet starts.
@@ -608,9 +638,14 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
 function SendSection({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const ops = use$(wallet.operationsState$) ?? {};
-  const [amount, setAmount] = useState("");
-  const [mint, setMint] = useState("");
-  const [token, setToken] = useState<string | null>(null);
+  const amount$ = useMemo(() => new BehaviorSubject(""), []);
+  const amount = use$(amount$);
+
+  const mint$ = useMemo(() => new BehaviorSubject(""), []);
+  const mint = use$(mint$);
+
+  const token$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const token = use$(token$);
 
   const mints = useMemo(() => (balance ? Object.keys(balance).filter((m) => (balance[m] || 0) > 0) : []), [balance]);
 
@@ -618,8 +653,8 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
     const sats = parseInt(amount, 10);
     if (!sats || sats <= 0) return;
     const encoded = await wallet.sendToken(sats, { mint: mint || undefined });
-    setToken(encoded);
-    setAmount("");
+    token$.next(encoded);
+    amount$.next("");
   }, [wallet, amount, mint]);
 
   return (
@@ -633,7 +668,7 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
               <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(token)}>
                 Copy
               </button>
-              <button className="btn" onClick={() => setToken(null)}>
+              <button className="btn" onClick={() => token$.next(null)}>
                 New
               </button>
             </div>
@@ -645,10 +680,14 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
               className="input input-bordered w-full"
               placeholder="Amount in sats"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => amount$.next(e.target.value)}
             />
             {mints.length > 0 && (
-              <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
+              <select
+                className="select select-bordered w-full"
+                value={mint}
+                onChange={(e) => mint$.next(e.target.value)}
+              >
                 <option value="">Auto-select mint</option>
                 {mints.map((m) => (
                   <option key={m} value={m}>
@@ -670,12 +709,13 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
 // ---- Receive ----
 function ReceiveSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
-  const [token, setToken] = useState("");
+  const token$ = useMemo(() => new BehaviorSubject(""), []);
+  const token = use$(token$);
 
   const handleReceive = useCallback(async () => {
     if (!token.trim()) return;
     await wallet.receiveToken(token.trim());
-    setToken("");
+    token$.next("");
   }, [wallet, token]);
 
   return (
@@ -686,7 +726,7 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
             className="textarea textarea-bordered w-full h-32 font-mono"
             placeholder="Paste a cashu token (cashuA...)"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => token$.next(e.target.value)}
           />
           <button className="btn btn-primary" onClick={handleReceive} disabled={ops.receive || !token.trim()}>
             {ops.receive ? <span className="loading loading-spinner loading-sm" /> : "Receive"}
@@ -698,47 +738,133 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
 }
 
 // ---- Deposit (mint) ----
+// Legacy backups are unscoped; importing them is an explicit operation for the signed-in account.
+function LegacyProofRecovery() {
+  const commands$ = useMemo(() => new Subject<void>(), []);
+  const state = use$(
+    () =>
+      commands$.pipe(
+        exhaustMap(() =>
+          defer(() => migrateLegacyCouch(couch)).pipe(
+            map((count) => ({
+              busy: false,
+              message: `Imported ${count} proof backups into encrypted recovery storage. Recover from the couch to restore them.`,
+              error: "",
+            })),
+            startWith({ busy: true, message: "Importing legacy proof backups…", error: "" }),
+            catchError((error) => of({ busy: false, message: "", error: String(error.message ?? error) })),
+          ),
+        ),
+      ),
+    [commands$],
+  );
+  return (
+    <div className="space-y-2">
+      <button className="btn" onClick={() => commands$.next()} disabled={state?.busy}>
+        Import legacy proof backups for this account
+      </button>
+      {state?.message && <p role="status">{state.message}</p>}
+      {state?.error && (
+        <p role="alert" className="text-error">
+          {state.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function DepositSection({ wallet }: { wallet: NutWallet }) {
   const mints = use$(wallet.mintUrls$) ?? [];
   const ops = use$(wallet.operationsState$) ?? {};
-  const [amount, setAmount] = useState("");
-  const [mint, setMint] = useState("");
-  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const amount$ = useMemo(() => new BehaviorSubject(""), []);
+  const amount = use$(amount$);
+
+  const mint$ = useMemo(() => new BehaviorSubject(""), []);
+  const mint = use$(mint$);
+
+  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
+  const quote = use$(quote$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    if (!mint && mints.length > 0) setMint(mints[0]);
-  }, [mints, mint]);
-
-  const handleDeposit = useCallback(async () => {
-    const sats = parseInt(amount, 10);
-    if (!sats || sats <= 0) return;
-    const target = mint || mints[0];
-    if (!target) return setError("Add a mint first");
-
-    setError(null);
-    const ac = new AbortController();
-    abortRef.current = ac;
-    try {
-      // wallet.deposit creates the quote, surfaces the invoice, waits for payment, and redeems the proofs
-      await wallet.deposit({ method: "bolt11", mint: target, amount: sats, onQuote: setQuote, signal: ac.signal });
-      setQuote(null);
-      setAmount("");
-    } catch (err) {
-      if ((err as Error)?.name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Failed to deposit");
-      setQuote(null);
-    }
-  }, [wallet, amount, mint, mints]);
+  const depositCommands$ = useMemo(() => new Subject<"create" | "resume">(), []);
+  const deposit = use$(
+    () =>
+      depositCommands$.pipe(
+        exhaustMap(
+          (command) =>
+            new Observable<{ busy: boolean; error: string | null }>((subscriber) => {
+              const storage = storage$.value;
+              const controller = new AbortController();
+              abortRef.current = controller;
+              subscriber.next({ busy: true, error: null });
+              const onQuote = (quote: MintQuoteBolt11Response) => quote$.next(quote);
+              const work = async () => {
+                if (!storage) throw new Error("Unlock encrypted storage first");
+                if (command === "resume")
+                  await resumeDeposit(storage, wallet, {
+                    onQuote,
+                    signal: controller.signal,
+                    namespace: "wallet-deposit",
+                  });
+                else {
+                  const target = mint$.value || mints[0];
+                  const sats = Number(amount$.value);
+                  if (!target || !Number.isSafeInteger(sats) || sats <= 0)
+                    throw new Error("Choose a mint and a positive whole amount in sats");
+                  await recoverableDeposit(storage, wallet, {
+                    mint: target,
+                    amount: sats,
+                    onQuote,
+                    signal: controller.signal,
+                    namespace: "wallet-deposit",
+                  });
+                }
+                quote$.next(null);
+                amount$.next("");
+              };
+              void work()
+                .then(() => {
+                  subscriber.next({ busy: false, error: null });
+                  subscriber.complete();
+                })
+                .catch((error) => {
+                  subscriber.next({
+                    busy: false,
+                    error: controller.signal.aborted
+                      ? "Stopped waiting; the invoice and recovery record remain available."
+                      : String(error.message ?? error),
+                  });
+                  subscriber.complete();
+                });
+              return () => controller.abort();
+            }),
+        ),
+      ),
+    [wallet, depositCommands$, mints.join("|")],
+  );
+  const handleDeposit = () => depositCommands$.next("create");
+  const handleResume = () => depositCommands$.next("resume");
+  const depositBusy = deposit?.busy ?? false;
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
-    setQuote(null);
   }, []);
 
   return (
     <div className="max-w-2xl">
+      {deposit?.error && (
+        <p role="alert" className="text-error">
+          {deposit.error}
+        </p>
+      )}
+      <LegacyProofRecovery />
+      <button className="btn" onClick={handleResume} disabled={depositBusy}>
+        Resume pending deposit
+      </button>
       <Panel title="Deposit with Lightning">
         {quote ? (
           <div className="space-y-3">
@@ -746,7 +872,7 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
               <QRCode value={quote.request} size={220} className="rounded" alt="Lightning invoice QR code" />
             </div>
             <textarea
-              className="textarea textarea-bordered w-full h-24 font-mono text-xs"
+              className="textarea textarea-bordered w-full h-24 font-mono text-sm"
               value={quote.request}
               readOnly
             />
@@ -770,10 +896,14 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
               className="input input-bordered w-full"
               placeholder="Amount in sats"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => amount$.next(e.target.value)}
             />
             {mints.length > 0 && (
-              <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
+              <select
+                className="select select-bordered w-full"
+                value={mint}
+                onChange={(e) => mint$.next(e.target.value)}
+              >
                 {mints.map((m) => (
                   <option key={m} value={m}>
                     {m}
@@ -781,7 +911,11 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
                 ))}
               </select>
             )}
-            <button className="btn btn-primary" onClick={handleDeposit} disabled={ops.mintQuote || !amount}>
+            <button
+              className="btn btn-primary"
+              onClick={handleDeposit}
+              disabled={depositBusy || ops.mintQuote || !amount}
+            >
               {ops.mintQuote ? <span className="loading loading-spinner loading-sm" /> : "Create invoice"}
             </button>
             {error && <div className="alert alert-error">{error}</div>}
@@ -796,31 +930,34 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
 function WithdrawSection({ wallet }: { wallet: NutWallet }) {
   const balance = use$(wallet.balance$);
   const ops = use$(wallet.operationsState$) ?? {};
-  const [invoice, setInvoice] = useState("");
-  const [mint, setMint] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const invoice$ = useMemo(() => new BehaviorSubject(""), []);
+  const invoice = use$(invoice$);
+
+  const mint$ = useMemo(() => new BehaviorSubject(""), []);
+  const mint = use$(mint$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const success$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const success = use$(success$);
 
   const mints = useMemo(() => (balance ? Object.keys(balance).filter((m) => (balance[m] || 0) > 0) : []), [balance]);
 
-  useEffect(() => {
-    if (!mint && mints.length > 0) setMint(mints[0]);
-  }, [mints, mint]);
-
   const handlePay = useCallback(async () => {
     const target = mint || mints[0];
-    if (!target) return setError("No mint with a balance to pay from");
+    if (!target) return error$.next("No mint with a balance to pay from");
     if (!invoice.trim()) return;
 
-    setError(null);
-    setSuccess(null);
+    error$.next(null);
+    success$.next(null);
     try {
       const response = await wallet.payInvoice(target, invoice.trim());
       const change = response.change.reduce((sum, proof) => sum + proof.amount.toNumber(), 0);
-      setSuccess(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
-      setInvoice("");
+      success$.next(change > 0 ? `Invoice paid, ${change} sats change returned` : "Invoice paid");
+      invoice$.next("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to pay invoice");
+      error$.next(err instanceof Error ? err.message : "Failed to pay invoice");
     }
   }, [wallet, invoice, mint, mints]);
 
@@ -829,13 +966,13 @@ function WithdrawSection({ wallet }: { wallet: NutWallet }) {
       <Panel title="Withdraw with Lightning">
         <div className="space-y-4">
           <textarea
-            className="textarea textarea-bordered w-full h-24 font-mono text-xs"
+            className="textarea textarea-bordered w-full h-24 font-mono text-sm"
             placeholder="Paste a bolt11 invoice (lnbc...)"
             value={invoice}
-            onChange={(e) => setInvoice(e.target.value)}
+            onChange={(e) => invoice$.next(e.target.value)}
           />
           {mints.length > 0 && (
-            <select className="select select-bordered w-full" value={mint} onChange={(e) => setMint(e.target.value)}>
+            <select className="select select-bordered w-full" value={mint} onChange={(e) => mint$.next(e.target.value)}>
               {mints.map((m) => (
                 <option key={m} value={m}>
                   {m} ({balance?.[m] || 0} sats)
@@ -898,7 +1035,7 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
                   : null;
               return (
                 <tr key={token.id}>
-                  <td className="font-mono text-xs" title={token.id}>
+                  <td className="font-mono text-sm" title={token.id}>
                     {token.id.slice(0, 8)}
                   </td>
                   <td className="font-medium whitespace-nowrap">{token.unlocked ? `${token.amount} sats` : "🔒"}</td>
@@ -998,7 +1135,9 @@ function ListEditor({
   busy?: boolean;
   onChange: (items: string[]) => void;
 }) {
-  const [value, setValue] = useState("");
+  const value$ = useMemo(() => new BehaviorSubject(""), []);
+  const value = use$(value$);
+
   return (
     <div className="space-y-3">
       <div className="space-y-2">
@@ -1020,14 +1159,14 @@ function ListEditor({
           className="input input-bordered flex-1"
           placeholder={placeholder}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => value$.next(e.target.value)}
         />
         <button
           className="btn btn-primary"
           disabled={busy || !value.trim() || items.includes(value.trim())}
           onClick={() => {
             onChange([...items, value.trim()]);
-            setValue("");
+            value$.next("");
           }}
         >
           Add
@@ -1075,7 +1214,7 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
             {ops.sync ? <span className="loading loading-spinner loading-sm" /> : "Sync tokens"}
           </button>
         </div>
-        <p className="text-xs text-base-content/60 mt-3">
+        <p className="text-sm text-base-content/60 mt-3">
           Rollover swaps every token for fresh proofs at its mint, recording the replaced token ids in each new token's{" "}
           <code>del</code> field.
         </p>
@@ -1087,9 +1226,14 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
 // ---- Create view ----
 function CreateSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
-  const [mints, setMints] = useState<string[]>([]);
-  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
-  const [receiveNutzaps, setReceiveNutzaps] = useState(false);
+  const mints$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
+  const mints = use$(mints$);
+
+  const relays$ = useMemo(() => new BehaviorSubject<string[]>(DEFAULT_RELAYS), []);
+  const relays = use$(relays$);
+
+  const receiveNutzaps$ = useMemo(() => new BehaviorSubject(false), []);
+  const receiveNutzaps = use$(receiveNutzaps$);
 
   const handleCreate = useCallback(() => {
     if (mints.length === 0) return;
@@ -1112,17 +1256,31 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
             <button
               key={m}
               className={`btn btn-sm ${mints.includes(m) ? "btn-primary" : ""}`}
-              onClick={() => setMints((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))}
+              onClick={() =>
+                mints$.next(
+                  ((prev: typeof mints$.value) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))(
+                    mints$.value,
+                  ),
+                )
+              }
             >
               {new URL(m).hostname}
             </button>
           ))}
         </div>
-        <ListEditor items={mints} placeholder="https://mint.example.com" onChange={setMints} />
+        <ListEditor
+          items={mints}
+          placeholder="https://mint.example.com"
+          onChange={(next: typeof mints$.value) => mints$.next(next)}
+        />
       </Panel>
 
       <Panel title="Relays">
-        <ListEditor items={relays} placeholder="wss://relay.example.com" onChange={setRelays} />
+        <ListEditor
+          items={relays}
+          placeholder="wss://relay.example.com"
+          onChange={(next: typeof relays$.value) => relays$.next(next)}
+        />
       </Panel>
 
       <label className="label cursor-pointer justify-start gap-3">
@@ -1130,7 +1288,7 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
           type="checkbox"
           className="checkbox"
           checked={receiveNutzaps}
-          onChange={(e) => setReceiveNutzaps(e.target.checked)}
+          onChange={(e) => receiveNutzaps$.next(e.target.checked)}
         />
         <span className="label-text">Generate P2PK key (for receiving nutzaps)</span>
       </label>
@@ -1147,31 +1305,22 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
   const service = use$(service$);
   const walletRelays = use$(wallet.walletRelays$);
   const log = use$(requestLog$) ?? [];
-  const [busy, setBusy] = useState(false);
-  const [relays, setRelays] = useState<string[]>([]);
-  const seeded = useRef(false);
+  const busy$ = useMemo(() => new BehaviorSubject(false), []);
+  const busy = use$(busy$);
 
-  // Seed the relay editor once from the saved config, the wallet relays, or the defaults
-  useEffect(() => {
-    if (seeded.current) return;
-    const saved = loadConnectConfig(wallet.pubkey)?.relays;
-    if (saved) {
-      setRelays(saved);
-      seeded.current = true;
-    } else if (walletRelays !== undefined) {
-      setRelays(walletRelays.length ? walletRelays : ["wss://relay.getalby.com/v1"]);
-      seeded.current = true;
-    }
-  }, [wallet.pubkey, walletRelays]);
+  const relays$ = useMemo(() => new BehaviorSubject<string[] | null>(null), []);
+  const savedConfig = use$(() => defer(() => loadConnectConfig(wallet.pubkey)), [wallet.pubkey]);
+  const relays =
+    use$(relays$) ?? savedConfig?.relays ?? (walletRelays?.length ? walletRelays : ["wss://relay.getalby.com/v1"]);
 
   // Start the service, or restart it on the edited relay set if it is already running
   const apply = useCallback(async () => {
     if (relays.length === 0) return;
-    setBusy(true);
+    busy$.next(true);
     try {
       await setNwcRelays(wallet, relays);
     } finally {
-      setBusy(false);
+      busy$.next(false);
     }
   }, [wallet, relays]);
 
@@ -1183,7 +1332,10 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
         title="Nostr Wallet Connect"
         action={
           service ? (
-            <button className="btn btn-sm btn-error" onClick={() => stopNwcService(wallet.pubkey)}>
+            <button
+              className="btn btn-sm btn-error"
+              onClick={() => void stopNwcService(wallet.pubkey).catch((error) => logRequest(String(error)))}
+            >
               Disconnect
             </button>
           ) : (
@@ -1201,7 +1353,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
                 Scan this code or paste the connection string into a Nostr Wallet Connect app to let it send and receive
                 lightning payments and cashu tokens with this wallet.
               </p>
-              <textarea className="textarea textarea-bordered w-full h-24 font-mono text-xs" value={uri} readOnly />
+              <textarea className="textarea textarea-bordered w-full h-24 font-mono text-sm" value={uri} readOnly />
               <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(uri)}>
                 Copy connection string
               </button>
@@ -1225,7 +1377,12 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
           ) : undefined
         }
       >
-        <ListEditor items={relays} placeholder="wss://relay.example.com" busy={busy} onChange={setRelays} />
+        <ListEditor
+          items={relays}
+          placeholder="wss://relay.example.com"
+          busy={busy}
+          onChange={(next: typeof relays$.value) => relays$.next(next)}
+        />
         <p className="mt-3 text-sm text-base-content/60">
           The relays the service listens on. Changing them while connected restarts the service and updates the
           connection string.
@@ -1243,7 +1400,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
         }
       >
         {log.length > 0 ? (
-          <div className="h-64 overflow-y-auto border border-base-300 bg-base-200 p-2 font-mono text-xs">
+          <div className="h-64 overflow-y-auto border border-base-300 bg-base-200 p-2 font-mono text-sm">
             {log.map((line, i) => (
               <div key={i} className="whitespace-pre-wrap break-all">
                 {line}
@@ -1275,7 +1432,8 @@ type Section = (typeof SECTIONS)[number];
 
 function WalletDashboard({ wallet }: { wallet: NutWallet }) {
   const status = use$(wallet.status$) ?? WalletStatus.Idle;
-  const [section, setSection] = useState<Section>("Overview");
+  const section$ = useMemo(() => new BehaviorSubject<Section>("Overview"), []);
+  const section = use$(section$);
 
   return (
     <div className="flex flex-col gap-6 p-6 w-full">
@@ -1291,7 +1449,7 @@ function WalletDashboard({ wallet }: { wallet: NutWallet }) {
                 key={s}
                 role="tab"
                 className={`tab ${section === s ? "tab-active" : ""}`}
-                onClick={() => setSection(s)}
+                onClick={() => section$.next(s)}
               >
                 {s}
               </button>
@@ -1324,8 +1482,7 @@ export default function WalletAdminExample() {
     return (
       <LoginView
         onLogin={(s, p) => {
-          signer$.next(s);
-          pubkey$.next(p);
+          session$.next({ signer: s, pubkey: p });
         }}
       />
     );

@@ -81,3 +81,4 @@ return <input value={query} onChange={(e) => query$.next(e.target.value)} />;
 - Check initial loading, empty results, errors, input changes, incoming event revisions, and subscription cleanup when those behaviors apply.
 - Run `pnpm --filter applesauce-examples exec tsc -b` and the examples build for changes that affect code or integration.
 - Keep the UI simple, with borders instead of cards or drop shadows. DaisyUI has no `.form-control` class.
+- Avoid small text. Use `text-sm` as the smallest size and skip `text-xs`, `btn-xs`, `badge-sm`, and tiny uppercase labels.

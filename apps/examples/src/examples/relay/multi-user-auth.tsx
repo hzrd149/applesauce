@@ -8,7 +8,7 @@ import { getPublicKey, NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { BehaviorSubject, catchError, EMPTY, filter, map, merge, of, scan, startWith, Subject, tap } from "rxjs";
 
 // Relays that support multiple authenticated users on one connection.
@@ -28,15 +28,11 @@ function createUser(index: number): User {
 }
 
 // Keep the users at module level so their keys are stable, any number of signers can be added
-const users$ = new BehaviorSubject<User[]>([createUser(0), createUser(1)]);
-const addUser = () => users$.next([...users$.value, createUser(users$.value.length)]);
 
 type LogEntry = { time: string; message: string };
 const now = () => new Date().toLocaleTimeString();
 
 // Log lines from user actions (publish, authenticate, errors) merged into the protocol log below
-const actions$ = new Subject<string>();
-const logAction = (message: string) => actions$.next(message);
 
 /** Convert a NIP-01 relay message into a human readable log line */
 function messageToLogLine(m: any): string | null {
@@ -67,9 +63,21 @@ function AuthStateBadge({ state }: { state?: { response: { ok: boolean; message?
 }
 
 export default function MultiUserAuthExample() {
-  const [url, setUrl] = useState(RELAYS[0]);
-  const [published, setPublished] = useState<string | null>(null);
-  const [subscribing, setSubscribing] = useState(false);
+  const state$ = useMemo(
+    () => new BehaviorSubject({ url: RELAYS[0], published: null as string | null, requested: false }),
+    [],
+  );
+  const state = use$(state$);
+  const url = state.url;
+  const published = state.published;
+  const requested = state.requested;
+  const setUrl = (url: string) => state$.next({ url, published: null, requested: false });
+  const setPublished = (published: string | null) => state$.next({ ...state$.value, published });
+  const setSubscribing = (requested: boolean) => state$.next({ ...state$.value, requested });
+  const users$ = useMemo(() => new BehaviorSubject<User[]>([createUser(0), createUser(1)]), []);
+  const addUser = () => users$.next([...users$.value, createUser(users$.value.length)]);
+  const actions$ = useMemo(() => new Subject<string>(), []);
+  const logAction = (message: string) => actions$.next(message);
 
   const relay = pool.relay(url);
 
@@ -101,8 +109,9 @@ export default function MultiUserAuthExample() {
   // Subscribing to gift wraps is restricted: the relay CLOSEs the REQ with auth-required
   // until every #p pubkey is authenticated. waitForAuth holds the subscription open until
   // all of them are, then keeps streaming new gift wraps live as they arrive
+  const subscribing = requested;
   const fetched = use$(() => {
-    if (!subscribing) return of([]);
+    if (!requested) return of([]);
 
     return pool.subscription([url], { kinds: [1059], "#p": pubkeys, limit: 10 }, { waitForAuth: pubkeys }).pipe(
       tap((event) => logAction(`Received gift wrap ${event.id.slice(0, 8)}`)),
@@ -110,17 +119,11 @@ export default function MultiUserAuthExample() {
       startWith([] as NostrEvent[]),
       catchError((error) => {
         logAction(`Subscription error: ${error instanceof Error ? error.message : String(error)}`);
-        setSubscribing(false);
+
         return EMPTY;
       }),
     );
-  }, [url, subscribing, users]);
-
-  // Reset the demo state when the relay changes
-  useEffect(() => {
-    setPublished(null);
-    setSubscribing(false);
-  }, [relay]);
+  }, [url, requested, users]);
 
   // Publishing a gift wrap does NOT require authentication (the sender is an ephemeral key)
   const publish = async () => {
@@ -241,7 +244,7 @@ export default function MultiUserAuthExample() {
                 <div key={pubkey} className="flex items-center gap-2 border-b border-base-300 pb-2 last:border-b-0">
                   <div className="flex-1">
                     <div className="font-mono text-sm">{name}</div>
-                    <div className="font-mono text-xs opacity-60">{pubkey.slice(0, 16)}…</div>
+                    <div className="font-mono text-sm opacity-60">{pubkey.slice(0, 16)}…</div>
                   </div>
                   <AuthStateBadge state={status?.authentications[pubkey]} />
                   <button
@@ -273,7 +276,7 @@ export default function MultiUserAuthExample() {
         {/* Protocol log */}
         <div className="border border-base-300 rounded-box p-4">
           <h2 className="font-bold mb-2">Log</h2>
-          <div className="font-mono text-xs flex flex-col gap-1 max-h-96 overflow-y-auto">
+          <div className="font-mono text-sm flex flex-col gap-1 max-h-96 overflow-y-auto">
             {log && log.length === 0 && <span className="opacity-50">Publish a gift wrap to get started…</span>}
             {log &&
               log.map((entry, i) => (

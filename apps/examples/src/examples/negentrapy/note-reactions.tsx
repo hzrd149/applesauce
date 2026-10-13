@@ -3,15 +3,17 @@
  * @tags nip-25, nip-77, negentrapy, reactions, notes
  * @related negentrapy/mentions, feed/reactions-timeline
  */
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays } from "applesauce-core/helpers";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
+import { castUser } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
+import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
-import { decodePointer, EventPointer, neventEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useState } from "react";
-import { useDebounce } from "react-use";
-import { BehaviorSubject, filter as rxFilter, map, NEVER, of } from "rxjs";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { decodePointer, EventPointer } from "applesauce-core/helpers/pointers";
+import { useMemo } from "react";
+
+import { BehaviorSubject, of, materialize, scan, startWith, map, debounceTime } from "rxjs";
 import RelayAddForm from "../../components/add-relay-form";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { lookupRelays$ } from "../../settings";
@@ -58,32 +60,16 @@ const EXAMPLE_NOTES = [
 // Component for event selection with input and dropdown
 function EventSelector({
   pointer,
+  text,
   onChange,
 }: {
   pointer: EventPointer | null;
-  onChange: (pointer: EventPointer | null) => void;
+  text: string;
+  onChange: (text: string) => void;
 }) {
-  const [text, setText] = useState(pointer ? neventEncode(pointer) : "");
-
-  const change = useCallback(
-    (str: string) => {
-      try {
-        const decoded = decodePointer(str);
-        if (decoded.type === "nevent") onChange(decoded.data);
-        else onChange(null);
-      } catch (err) {
-        onChange(null);
-      }
-    },
-    [onChange],
-  );
-
-  // Debounce the user input
-  useDebounce(() => change(text), 500, [text]);
-
   return (
     <div className="space-y-2">
-      <div className="form-control">
+      <div className="flex flex-col gap-2">
         <label className="label">
           <span className="label-text">Event nevent1 address</span>
         </label>
@@ -93,16 +79,13 @@ function EventSelector({
             placeholder="Paste nevent1... here"
             className="input input-bordered flex-1"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
           />
           <select
             className="select select-bordered"
             value={text}
             onChange={(e) => {
-              if (e.target.value) {
-                setText(e.target.value);
-                change(e.target.value);
-              } else onChange(null);
+              onChange(e.target.value);
             }}
           >
             <option value="">Choose example</option>
@@ -181,7 +164,7 @@ function RelayStatusRow({ relay }: { relay: string }) {
         <div className="badge badge-primary">{received ?? 0}</div>
       </td>
       <td>
-        <button className="btn btn-error btn-xs btn-ghost" onClick={removeRelay} title="Remove relay">
+        <button className="btn btn-error btn-sm btn-ghost" onClick={removeRelay} title="Remove relay">
           Remove
         </button>
       </td>
@@ -191,7 +174,7 @@ function RelayStatusRow({ relay }: { relay: string }) {
 
 // Component for the relay status table
 function RelayStatusTable() {
-  const relays = useObservableEagerState(relays$);
+  const relays = use$(relays$);
 
   return (
     <div className="overflow-x-auto">
@@ -222,8 +205,8 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
 
   // Try to load the profile from those relays
   const profile = use$(
-    () => eventStore.profile({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }),
-    [event.pubkey, seenRelays?.size],
+    () => castUser({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }, eventStore).profile$,
+    [event, seenRelays],
   );
 
   return (
@@ -240,7 +223,7 @@ function ReactionEvent({ event }: { event: NostrEvent }) {
           {seenRelays &&
             seenRelays.size > 0 &&
             Array.from(seenRelays).map((relay) => (
-              <div key={relay} className="badge badge-outline badge-xs">
+              <div key={relay} className="badge badge-outline badge-md">
                 {new URL(relay).hostname}
               </div>
             ))}
@@ -293,38 +276,62 @@ function SyncedReactions({ pointer, active }: { pointer: EventPointer | null; ac
 
 // Main component
 export default function PoolSyncReactions() {
-  const [pointer, setPointer] = useState<EventPointer | null>(null);
+  const text$ = useMemo(() => new BehaviorSubject(""), []);
+  const text = use$(text$);
+  const pointer =
+    use$(
+      () =>
+        text$.pipe(
+          debounceTime(500),
+          map((text) => {
+            try {
+              const decoded = decodePointer(text);
+              return decoded.type === "nevent" ? decoded.data : null;
+            } catch {
+              return null;
+            }
+          }),
+          startWith(null),
+        ),
+      [text$],
+    ) ?? null;
 
-  const relays = useObservableEagerState(relays$);
+  const relays = use$(relays$);
 
-  // Run the sync when its active
-  use$(() => {
-    if (!pointer || relays.length === 0) return NEVER;
-
-    const filter: Filter = {
-      kinds: [kinds.Reaction],
-      "#e": [pointer.id],
-    };
-
-    // Otherwise run the sync
-    return pool.sync(relays, eventStore, filter).pipe(
-      rxFilter((message) => message.type === "received"),
-      map((message) => message.event),
-      // Add all events to the event store
-      mapEventsToStore(eventStore),
-    );
+  const sync = use$(() => {
+    if (!pointer || relays.length === 0) return of({ loading: false, error: null as string | null });
+    return pool
+      .sync(mergeRelaySets(relays, pointer.relays), eventStore, { kinds: [kinds.Reaction], "#e": [pointer.id] })
+      .pipe(
+        materialize(),
+        scan(
+          (state, notification) =>
+            notification.kind === "E"
+              ? { loading: false, error: String(notification.error) }
+              : notification.kind === "C"
+                ? { ...state, loading: false }
+                : state,
+          { loading: true, error: null as string | null },
+        ),
+        startWith({ loading: true, error: null as string | null }),
+      );
   }, [relays, pointer]);
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-4 w-full">
       <h1 className="text-3xl font-bold mb-8">Negentropy Note Reactions</h1>
 
-      <EventSelector pointer={pointer} onChange={setPointer} />
+      <EventSelector pointer={pointer} text={text} onChange={(text) => text$.next(text)} />
 
       <RelayStatusTable />
       <RelayAddForm onSubmit={(r) => relays$.value.includes(r) || relays$.next([...relays$.value, r])} />
 
-      <SyncedReactions pointer={pointer} active={!!pointer} />
+      {sync?.error && (
+        <p className="text-error" role="alert">
+          {sync.error}
+        </p>
+      )}
+      <SyncedReactions pointer={pointer} active={sync?.loading ?? false} />
     </div>
   );
 }

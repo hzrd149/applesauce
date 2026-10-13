@@ -1,7 +1,6 @@
 import { User } from "applesauce-common/casts";
 import { encodeGroupPointer } from "applesauce-common/helpers";
 import { use$ } from "applesauce-react/hooks";
-import { useEffect, useState } from "react";
 
 export default function GroupPicker({
   identifier,
@@ -12,14 +11,11 @@ export default function GroupPicker({
   setIdentifier: (identifier: string) => void;
   user?: User;
 }) {
-  const [input, setInput] = useState(identifier);
-  useEffect(() => setInput(identifier), [identifier]);
-
   const groups = use$(user?.groups$.groups);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIdentifier(input);
+    setIdentifier(String(new FormData(e.currentTarget as HTMLFormElement).get("identifier") ?? ""));
   };
 
   return (
@@ -51,8 +47,9 @@ export default function GroupPicker({
         <input
           className="input input-bordered w-full min-w-xs"
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          key={identifier}
+          name="identifier"
+          defaultValue={identifier}
           placeholder="Enter group identifier"
         />
         <button type="submit" className="btn btn-primary join-item">

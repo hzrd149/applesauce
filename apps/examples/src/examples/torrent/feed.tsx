@@ -3,20 +3,23 @@
  * @tags nip-35, torrent, feed, files
  * @related feed/relay-timeline
  */
+import { castTimelineStream } from "applesauce-common/observable";
+import { relayTimeline } from "../../extra/relay-timeline";
+
 import { Reaction, Torrent, Zap } from "applesauce-common/casts";
 import { TORRENT_KIND } from "applesauce-common/helpers";
-import { castTimelineStream } from "applesauce-common/observable";
+
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { Filter, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BehaviorSubject } from "rxjs";
+import { BehaviorSubject, shareReplay, map } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -145,10 +148,10 @@ function TorrentItem({ torrent }: { torrent: Torrent }) {
 
   return (
     <div
-      className="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+      className="border border-base-300 bg-base-100  cursor-pointer  "
       onClick={() => selectedTorrent$.next(torrent)}
     >
-      <div className="card-body">
+      <div className="p-4">
         <div className="flex items-center gap-3 mb-2">
           <div className="avatar">
             <div className="w-10 rounded-full">
@@ -168,7 +171,7 @@ function TorrentItem({ torrent }: { torrent: Torrent }) {
           <div className="space-y-1 text-sm">
             <div>
               <span className="font-medium">Info Hash: </span>
-              <code className="text-xs bg-base-200 px-1 py-0.5 rounded">{torrent.infoHash}</code>
+              <code className="text-sm bg-base-200 px-1 py-0.5 rounded">{torrent.infoHash}</code>
             </div>
             {torrent.category && (
               <div>
@@ -229,7 +232,7 @@ function TorrentItem({ torrent }: { torrent: Torrent }) {
                       <ReactionItem key={reaction.uid} reaction={reaction} />
                     ))}
                     {reactionList.length > 5 && (
-                      <span className="text-xs text-base-content/60">+{reactionList.length - 5} more</span>
+                      <span className="text-sm text-base-content/60">+{reactionList.length - 5} more</span>
                     )}
                   </div>
                 </div>
@@ -291,8 +294,8 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
           Back to Feed
         </button>
 
-        <div className="card bg-base-100 shadow-lg">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="avatar">
                 <div className="w-12 rounded-full">
@@ -313,7 +316,7 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
               <div className="space-y-2 text-sm">
                 <div>
                   <span className="font-medium">Info Hash: </span>
-                  <code className="text-xs bg-base-300 px-2 py-1 rounded">{torrent.infoHash}</code>
+                  <code className="text-sm bg-base-300 px-2 py-1 rounded">{torrent.infoHash}</code>
                 </div>
                 {torrent.category && (
                   <div>
@@ -333,12 +336,12 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
                     <span>{torrent.files.length}</span>
                     <ul className="list-disc list-inside mt-1 ml-4">
                       {torrent.files.slice(0, 10).map((file, idx) => (
-                        <li key={idx} className="text-xs">
+                        <li key={idx} className="text-sm">
                           {file.name} ({file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "unknown size"})
                         </li>
                       ))}
                       {torrent.files.length > 10 && (
-                        <li className="text-xs">... and {torrent.files.length - 10} more</li>
+                        <li className="text-sm">... and {torrent.files.length - 10} more</li>
                       )}
                     </ul>
                   </div>
@@ -349,12 +352,12 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
                     <span>{torrent.trackers.length}</span>
                     <ul className="list-disc list-inside mt-1 ml-4">
                       {torrent.trackers.slice(0, 5).map((tracker, idx) => (
-                        <li key={idx} className="text-xs">
+                        <li key={idx} className="text-sm">
                           {tracker}
                         </li>
                       ))}
                       {torrent.trackers.length > 5 && (
-                        <li className="text-xs">... and {torrent.trackers.length - 5} more</li>
+                        <li className="text-sm">... and {torrent.trackers.length - 5} more</li>
                       )}
                     </ul>
                   </div>
@@ -403,7 +406,7 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
                           <ReactionItem key={reaction.uid} reaction={reaction} />
                         ))}
                         {reactionList.length > 5 && (
-                          <span className="text-xs text-base-content/60">+{reactionList.length - 5} more</span>
+                          <span className="text-sm text-base-content/60">+{reactionList.length - 5} more</span>
                         )}
                       </div>
                     </div>
@@ -436,24 +439,26 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
 }
 
 export default function TorrentFeed() {
-  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
+  const relay = use$(relay$);
+
   const selectedTorrent = use$(selectedTorrent$);
 
-  use$(
+  const feed$ = useMemo(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [TORRENT_KIND], limit: 200 })
-        .pipe(
-          // Add all events to the store
-          mapEventsToStore(eventStore),
-        ),
+      relayTimeline(eventStore, pool, [relay], { kinds: [TORRENT_KIND] }).pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
     [relay],
   );
-
+  const feed = use$(feed$);
   const torrents = use$(
-    () => eventStore.timeline({ kinds: [TORRENT_KIND] }).pipe(castTimelineStream(Torrent, eventStore)),
-    [],
+    () =>
+      feed$.pipe(
+        map((state) => state.events),
+        castTimelineStream(Torrent, eventStore),
+      ),
+    [feed$],
   );
 
   if (selectedTorrent) {
@@ -467,7 +472,13 @@ export default function TorrentFeed() {
         <p className="text-base-content/60 mb-4">
           A social feed of BitTorrent torrents (NIP-35) with reactions and zaps
         </p>
-        <RelayPicker value={relay} onChange={setRelay} />
+        {feed?.status === "loading" && <p role="status">Loading…</p>}
+        {feed?.errors.map((error) => (
+          <p key={error} role="alert" className="text-error">
+            {error}
+          </p>
+        ))}
+        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
       </div>
 
       <div className="flex flex-col gap-4">

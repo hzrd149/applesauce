@@ -3,6 +3,10 @@
  * @tags messages, legacy, nip-04, dm
  * @related messages/gift-wrap
  */
+import { castUser } from "applesauce-common/casts";
+
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendLegacyMessage } from "applesauce-actions/actions";
@@ -17,15 +21,15 @@ import {
 } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useCallback, useMemo } from "react";
+import { BehaviorSubject, concatMap, exhaustMap } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -33,7 +37,7 @@ import RelayPicker from "../../components/relay-picker";
 import UnlockView from "../../components/unlock-view";
 
 import { persistEncryptedContent, unlockLegacyMessage } from "applesauce-common/helpers";
-import { EncryptedContentModel, ProfileModel } from "applesauce-core/models";
+import { EncryptedContentModel } from "applesauce-core/models";
 import SecureStorage from "../../extra/encrypted-storage";
 import { lookupRelays$ } from "../../settings";
 
@@ -69,7 +73,7 @@ const cacheRequest: CacheRequest = (filters) => getEventsForFilters(cache, filte
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 function ContactItem({ contactPubkey, onSelect }: { contactPubkey: string; onSelect: (pubkey: string) => void }) {
-  const profile = use$(() => eventStore.model(ProfileModel, contactPubkey), [contactPubkey]);
+  const profile = use$(() => castUser(contactPubkey, eventStore).profile$, [contactPubkey]);
   const displayName = getDisplayName(profile, contactPubkey.slice(0, 8) + "...");
   const avatar = getProfilePicture(profile, `https://robohash.org/${contactPubkey}.png`);
 
@@ -83,7 +87,7 @@ function ContactItem({ contactPubkey, onSelect }: { contactPubkey: string; onSel
       </div>
       <div className="flex-1">
         <div>{displayName}</div>
-        <div className="text-xs font-semibold opacity-60 break-all">{npubEncode(contactPubkey)}</div>
+        <div className="text-sm font-semibold opacity-60 break-all">{npubEncode(contactPubkey)}</div>
       </div>
     </li>
   );
@@ -116,7 +120,7 @@ function ContactList({
   }, [events, pubkey]);
 
   return (
-    <ul className="list bg-base-100 rounded-box shadow-none">
+    <ul className="list bg-base-100 rounded-box ">
       {contacts.map((contactPubkey) => (
         <ContactItem key={contactPubkey} contactPubkey={contactPubkey} onSelect={onSelect} />
       ))}
@@ -146,34 +150,40 @@ function Message({ pubkey, message, signer }: { pubkey: string; message: NostrEv
 }
 
 function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; relay: string }) {
-  const [message, setMessage] = useState("");
-  const [expiration, setExpiration] = useState<string | null>(null);
+  const message$ = useMemo(() => new BehaviorSubject(""), []);
+  const message = use$(message$);
 
-  const [sending, setSending] = useState(false);
+  const expiration$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const expiration = use$(expiration$);
+
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
 
     try {
-      setSending(true);
+      sending$.next(true);
 
       await actions
         .exec(SendLegacyMessage, corraspondant, message, {
           expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
         })
-        .forEach((signed) => pool.publish([relay], signed));
+        .pipe(concatMap((signed) => publishEvent(pool, [relay], signed)))
+        .forEach(() => {});
 
-      setMessage("");
+      message$.next("");
     } catch (err) {
       console.error("Failed to send message:", err);
     }
-    setSending(false);
+    sending$.next(false);
   };
 
   const toggleExpiration = () => {
     const arr = Object.keys(EXPIRATIONS);
     const next = expiration ? arr[arr.indexOf(expiration) + 1] : arr[0];
-    setExpiration(next);
+    expiration$.next(next);
   };
 
   return (
@@ -181,7 +191,7 @@ function DirectMessageForm({ corraspondant, relay }: { corraspondant: string; re
       <input
         type="text"
         value={message}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={(e) => message$.next(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered grow"
@@ -219,9 +229,8 @@ function DirectMessageView({
     () => createTimelineLoader(pool, [relay], filters, { eventStore, cache: cacheRequest }),
     [relay, correspondent, pubkey],
   );
-  useEffect(() => {
-    loader$().subscribe();
-  }, [loader$]);
+  const page$ = useMemo(() => new BehaviorSubject(0), [loader$]);
+  use$(() => page$.pipe(exhaustMap(() => loader$())), [page$, loader$]);
 
   // Create subscription for new events
   use$(
@@ -234,10 +243,10 @@ function DirectMessageView({
   );
 
   const loadMore = useCallback(() => {
-    loader$().subscribe();
-  }, [loader$]);
+    page$.next(page$.value + 1);
+  }, [page$]);
 
-  const messages = useObservableEagerMemo(() => eventStore.timeline(filters), [filters]);
+  const messages = use$(() => eventStore.timeline(filters), [filters]) ?? [];
 
   const decryptAll = async () => {
     try {
@@ -271,8 +280,11 @@ function DirectMessageView({
 }
 
 function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
-  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [selected, setSelected] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
+
+  const selected$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selected = use$(selected$);
 
   const filters = useMemo<Filter[]>(
     () => [
@@ -283,18 +295,16 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
   );
 
   // Create a loader and start it
-  const timeline = useMemo(() => createTimelineLoader(pool, [relay], filters, { eventStore }), [relay]);
-  useEffect(() => {
-    // Load first page of events
-    timeline().subscribe();
-  }, [timeline]);
+  const timeline = useMemo(() => createTimelineLoader(pool, [relay], filters, { eventStore }), [relay, filters]);
+  const page$ = useMemo(() => new BehaviorSubject(0), [timeline]);
+  use$(() => page$.pipe(exhaustMap(() => timeline())), [page$, timeline]);
 
   const loadMore = useCallback(() => {
-    timeline().subscribe();
-  }, [timeline]);
+    page$.next(page$.value + 1);
+  }, [page$]);
 
   // Get all events from the event store
-  const events = useObservableEagerMemo(() => eventStore.timeline(filters), [filters]);
+  const events = use$(() => eventStore.timeline(filters), [filters]) ?? [];
 
   const clearCache = useCallback(() => {
     localforage.clear();
@@ -304,14 +314,18 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
 
   return (
     <div className="flex bg-base-200 overflow-hidden h-screen">
-      <div className="w-sm bg-base-100 p-2 overflow-y-auto flex flex-col gap-2 shrink-0 shadow-none">
+      <div className="w-sm bg-base-100 p-2 overflow-y-auto flex flex-col gap-2 shrink-0 ">
         <div className="flex gap-2 w-full">
-          <RelayPicker className="w-full" value={relay} onChange={setRelay} />
+          <RelayPicker className="w-full" value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
           <button className="btn" onClick={clearCache}>
             Clear
           </button>
         </div>
-        <ContactList events={events} pubkey={pubkey} onSelect={setSelected} />
+        <ContactList
+          events={events}
+          pubkey={pubkey}
+          onSelect={(value: typeof selected$.value) => selected$.next(value)}
+        />
         <button onClick={loadMore} className="btn btn-primary mx-auto" onScroll={loadMore}>
           Load more
         </button>

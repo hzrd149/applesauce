@@ -3,6 +3,8 @@
  * @tags nip-05, nip-24, profile, forms, actions
  * @related simple/event-deletion
  */
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { UpdateProfile } from "applesauce-actions/actions";
@@ -12,8 +14,8 @@ import { ProfileContent } from "applesauce-core/helpers/profile";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import type { ISigner } from "applesauce-signers";
-import { useEffect, useMemo, useState } from "react";
+import { type ISigner } from "applesauce-signers";
+import { useEffect, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller, useWatch } from "react-hook-form";
@@ -31,10 +33,10 @@ const eventStore = new EventStore();
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
   if (relays && relays.length > 0) {
-    await pool.publish(relays, event);
+    await publishEvent(pool, relays, event);
   } else {
     // Fallback to default relays if none provided
-    await pool.publish(["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"], event);
+    await publishEvent(pool, ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"], event);
   }
 });
 
@@ -87,9 +89,14 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 function ProfileEditor({ user }: { user: User }) {
   const profile = use$(() => user.profile$, [user.pubkey]);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const saving$ = useMemo(() => new BehaviorSubject(false), []);
+  const saving = use$(saving$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const success$ = useMemo(() => new BehaviorSubject(false), []);
+  const success = use$(success$);
 
   // Convert profile to form data, handling undefined values
   const defaultValues = useMemo<ProfileFormData>(() => {
@@ -140,15 +147,15 @@ function ProfileEditor({ user }: { user: User }) {
   // Watch form values for live preview
   const watchedValues = useWatch({ control });
 
-  // Reset form when profile loads
+  // React Hook Form owns its field lifecycle; retain user edits on incoming profile revisions.
   useEffect(() => {
-    reset(defaultValues);
+    reset(defaultValues, { keepDirtyValues: true });
   }, [defaultValues, reset]);
 
   const onSubmit = async (data: ProfileFormData) => {
-    setSaving(true);
-    setError(null);
-    setSuccess(false);
+    saving$.next(true);
+    error$.next(null);
+    success$.next(false);
 
     try {
       // Convert form data to ProfileContent, removing empty strings
@@ -168,13 +175,13 @@ function ProfileEditor({ user }: { user: User }) {
       if (data.languages && data.languages.length > 0) profileUpdate.languages = data.languages;
 
       await actions.run(UpdateProfile, profileUpdate);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      success$.next(true);
+      setTimeout(() => success$.next(false), 3000);
     } catch (err) {
       console.error("Failed to update profile:", err);
-      setError(err instanceof Error ? err.message : "Failed to update profile");
+      error$.next(err instanceof Error ? err.message : "Failed to update profile");
     } finally {
-      setSaving(false);
+      saving$.next(false);
     }
   };
 

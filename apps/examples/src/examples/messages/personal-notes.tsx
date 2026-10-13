@@ -3,6 +3,8 @@
  * @tags nip-17, nip-44, nip-59, notes, encryption, self-messaging, nip-77, negentropy
  * @related messages/gift-wrap
  */
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { ReplyToWrappedMessage, SendWrappedMessage } from "applesauce-actions/actions";
@@ -24,8 +26,8 @@ import { RelayPool, SyncDirection } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { kinds } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
-import { BehaviorSubject, catchError, EMPTY, map, tap } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, map, scan, startWith, of, tap, materialize, timer } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -54,7 +56,6 @@ const user$ = new BehaviorSubject<User | undefined>(undefined);
 
 // Global expiration setting for all notes and comments (defaults to 3 days)
 const expiration$ = new BehaviorSubject<string>(localStorage.getItem("note-expiration") ?? "3 days");
-expiration$.subscribe((exp) => localStorage.setItem("note-expiration", exp));
 
 // Setup event store and relay connection pool
 const eventStore = new EventStore();
@@ -70,7 +71,7 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (ev
   if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
   if (!relays) throw new Error("No relays found");
 
-  await pool.publish(relays, event);
+  await publishEvent(pool, relays.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
 });
 
 // Persist encrypted content to the storage backend
@@ -78,13 +79,11 @@ persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 // Create a in-memory set of failed gift wraps
 const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-gift-wraps") ?? "[]"));
-failed$.subscribe((failed) => localStorage.setItem("failed-gift-wraps", JSON.stringify(failed)));
 
 // Format expiration timestamp for display
-function formatExpiration(expirationTimestamp: number | undefined): string | null {
+function formatExpiration(expirationTimestamp: number | undefined, now: number): string | null {
   if (!expirationTimestamp) return null;
 
-  const now = unixNow();
   const timeLeft = expirationTimestamp - now;
 
   if (timeLeft <= 0) return "Expired";
@@ -100,8 +99,12 @@ function formatExpiration(expirationTimestamp: number | undefined): string | nul
 }
 
 function NoteForm({ user, className }: { user: User; className?: string }) {
-  const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
+  const note$ = useMemo(() => new BehaviorSubject(""), []);
+  const note = use$(note$);
+
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
   const expiration = use$(expiration$);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -109,18 +112,18 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
     if (!note.trim()) return;
 
     try {
-      setSending(true);
+      sending$.next(true);
 
       // Send wrapped message to self
       await actions.run(SendWrappedMessage, user.pubkey, note.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      setNote("");
+      note$.next("");
     } catch (err) {
       console.error("Failed to create note:", err);
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
@@ -128,7 +131,7 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
     <form onSubmit={handleSend} className={clsx("flex flex-col gap-2", className)}>
       <textarea
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={(e) => note$.next(e.target.value)}
         disabled={sending}
         placeholder="Write your note..."
         className="textarea textarea-bordered grow min-h-24 w-full"
@@ -144,8 +147,12 @@ function NoteForm({ user, className }: { user: User; className?: string }) {
 }
 
 function CommentForm({ note }: { note: Rumor }) {
-  const [comment, setComment] = useState("");
-  const [sending, setSending] = useState(false);
+  const comment$ = useMemo(() => new BehaviorSubject(""), []);
+  const comment = use$(comment$);
+
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
   const expiration = use$(expiration$);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -153,18 +160,18 @@ function CommentForm({ note }: { note: Rumor }) {
     if (!comment.trim()) return;
 
     try {
-      setSending(true);
+      sending$.next(true);
 
       // Send reply to the note with expiration
       await actions.run(ReplyToWrappedMessage, note, comment.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      setComment("");
+      comment$.next("");
     } catch (err) {
       console.error("Failed to add comment:", err);
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
@@ -173,7 +180,7 @@ function CommentForm({ note }: { note: Rumor }) {
       <input
         type="text"
         value={comment}
-        onChange={(e) => setComment(e.target.value)}
+        onChange={(e) => comment$.next(e.target.value)}
         disabled={sending}
         placeholder="Add a comment..."
         className="input input-bordered grow"
@@ -194,15 +201,16 @@ function CommentCard({ comment }: { comment: Rumor }) {
     [comment],
   );
 
-  const expirationText = formatExpiration(expiration);
+  const now = use$(() => timer(0, 60_000).pipe(map(() => unixNow())), []) ?? unixNow();
+  const expirationText = formatExpiration(expiration, now);
 
   return (
     <div className="border-l-2 border-base-300 pl-4 py-2">
       <div className="whitespace-pre-line">{comment.content}</div>
       <div className="flex items-center gap-2 mt-1">
-        <time className="text-xs opacity-50">{new Date(comment.created_at * 1000).toLocaleString()}</time>
+        <time className="text-sm opacity-50">{new Date(comment.created_at * 1000).toLocaleString()}</time>
         {expirationText && (
-          <span className={clsx("text-xs", expirationText === "Expired" ? "text-error" : "opacity-50")}>
+          <span className={clsx("text-sm", expirationText === "Expired" ? "text-error" : "opacity-50")}>
             • {expirationText}
           </span>
         )}
@@ -231,7 +239,8 @@ function NoteCard({
     [note],
   );
 
-  const expirationText = formatExpiration(expiration);
+  const now = use$(() => timer(0, 60_000).pipe(map(() => unixNow())), []) ?? unixNow();
+  const expirationText = formatExpiration(expiration, now);
 
   return (
     <div className="border border-base-300 rounded-lg p-4">
@@ -239,15 +248,15 @@ function NoteCard({
         <div className="whitespace-pre-line">{selected ? note.content : truncatedContent}</div>
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center gap-2">
-            <time className="text-xs opacity-50">{new Date(note.created_at * 1000).toLocaleString()}</time>
+            <time className="text-sm opacity-50">{new Date(note.created_at * 1000).toLocaleString()}</time>
             {expirationText && (
-              <span className={clsx("text-xs", expirationText === "Expired" ? "text-error" : "opacity-50")}>
+              <span className={clsx("text-sm", expirationText === "Expired" ? "text-error" : "opacity-50")}>
                 • {expirationText}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {comments.length > 0 && <span className="badge badge-sm">{comments.length} comments</span>}
+            {comments.length > 0 && <span className="badge badge-md">{comments.length} comments</span>}
           </div>
         </div>
       </div>
@@ -293,34 +302,45 @@ function InlineRelayList({ relays }: { relays: string[] }) {
 }
 
 function NotesView({ user }: { user: User }) {
-  const [selectedNoteId, setSelectedNoteId] = useState<string>();
+  const selectedNoteId$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const selectedNoteId = use$(selectedNoteId$);
+
   const signer = use$(signer$);
-  const [since, setSince] = useState<number>(() => unixNow() - EXPIRATIONS["2 weeks"]); // 1 week ago
+  const since$ = useMemo(() => new BehaviorSubject<number>(unixNow() - EXPIRATIONS["2 weeks"]), []);
+  const since = use$(since$);
+  // 1 week ago
   const expiration = use$(expiration$);
-  const [synced, setSynced] = useState(0);
   const failed = use$(failed$);
 
   // Subscribe to the users nip-17 inboxes
   const dmRelays = use$(user.directMessageRelays$);
 
   // Negentropy sync NIP-17 direct messages since timestamp
-  use$(
+  const syncStatus = use$(
     () =>
       // If no DM relays, return EMPTY
-      !dmRelays
-        ? EMPTY
+      !dmRelays?.length
+        ? of({ count: 0, loading: false, error: null as string | null })
         : pool
             .sync(dmRelays, eventStore, { kinds: [kinds.GiftWrap], "#p": [user.pubkey], since }, SyncDirection.RECEIVE)
             .pipe(
-              tap((message) => {
-                if (message.type === "received") setSynced((v) => v + 1);
-              }),
-              // Ignore errors
-              catchError(() => EMPTY),
+              materialize(),
+              scan(
+                (state, notification) =>
+                  notification.kind === "E"
+                    ? { ...state, loading: false, error: String(notification.error) }
+                    : notification.kind === "C"
+                      ? { ...state, loading: false }
+                      : { ...state, count: state.count + (notification.value.type === "received" ? 1 : 0) },
+                { count: 0, loading: true, error: null as string | null },
+              ),
+              startWith({ count: 0, loading: true, error: null as string | null }),
             ),
     // Resync when user, since, or DM relays change
     [user.pubkey, since, dmRelays?.join(",")],
   );
+
+  const synced = syncStatus?.count ?? 0;
 
   // Select all unlocked gift wraps
   const messages =
@@ -350,19 +370,21 @@ function NotesView({ user }: { user: User }) {
       .sort((a, b) => a.created_at - b.created_at);
   };
 
-  const [unlocking, setUnlocking] = useState(false);
+  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
+  const unlocking = use$(unlocking$);
+
   const locked = use$(
     () =>
       eventStore
         .model(GiftWrapsModel, user.pubkey, false)
         // Filter out the failed gift wraps
         .pipe(map((events) => events.filter((e) => !failed.includes(e.id)))),
-    [user.pubkey, failed.length],
+    [user.pubkey, failed],
   );
 
   const unlock = async () => {
     if (!locked || !signer) return;
-    setUnlocking(true);
+    unlocking$.next(true);
     for (const gift of locked) {
       // Ignore previously failed gift wraps
       if (failed$.value.includes(gift.id)) continue;
@@ -374,12 +396,12 @@ function NotesView({ user }: { user: User }) {
         failed$.next([...failed$.value, gift.id]);
       }
     }
-    setUnlocking(false);
+    unlocking$.next(false);
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = new Date(e.target.value);
-    setSince(Math.floor(date.getTime() / 1000));
+    since$.next(Math.floor(date.getTime() / 1000));
   };
 
   const formatDateForInput = (timestamp: number) => {
@@ -428,8 +450,13 @@ function NotesView({ user }: { user: User }) {
         </div>
         <div className="flex justify-between">
           <div className="text-sm opacity-70">
-            {rootNotes.length} notes • {synced} events synced • {messages.length} unlocked • {locked?.length ?? 0}{" "}
-            locked • {failed.length} failed
+            {rootNotes.length} notes •{" "}
+            {syncStatus?.error && (
+              <span role="alert" className="text-error">
+                {syncStatus.error}
+              </span>
+            )}{" "}
+            {synced} events synced • {messages.length} unlocked • {locked?.length ?? 0} locked • {failed.length} failed
           </div>
         </div>
       </div>
@@ -447,7 +474,7 @@ function NotesView({ user }: { user: User }) {
                 note={note}
                 comments={getCommentsForNote(note.id)}
                 selected={selectedNoteId === note.id}
-                onSelect={() => setSelectedNoteId(selectedNoteId === note.id ? undefined : note.id)}
+                onSelect={() => selectedNoteId$.next(selectedNoteId === note.id ? undefined : note.id)}
               />
             ))}
           </div>
@@ -460,6 +487,8 @@ function NotesView({ user }: { user: User }) {
 }
 
 function App() {
+  use$(() => expiration$.pipe(tap((expiration) => localStorage.setItem("note-expiration", expiration))), []);
+  use$(() => failed$.pipe(tap((failed) => localStorage.setItem("failed-gift-wraps", JSON.stringify(failed)))), []);
   const storage = use$(storage$);
   const signer = use$(signer$);
   const user = use$(user$);

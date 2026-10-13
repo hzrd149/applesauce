@@ -10,8 +10,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, map, of } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, map, of, combineLatest, startWith } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -67,11 +67,11 @@ function ContactRow({ user, assertion, loaded }: { user: User; assertion?: UserA
       </div>
       <div className="min-w-0">
         <div className="truncate">{displayName}</div>
-        <div className="text-xs font-mono opacity-60 truncate">{user.pubkey.slice(0, 16)}…</div>
+        <div className="text-sm font-mono opacity-60 truncate">{user.pubkey.slice(0, 16)}…</div>
       </div>
 
       {/* A selection of the metrics carried by the kind 30382 assertion */}
-      <div className="list-col-wrap flex flex-wrap gap-3 text-xs opacity-70">
+      <div className="list-col-wrap flex flex-wrap gap-3 text-sm opacity-70">
         {assertion?.followerCount !== undefined && <span>{formatNumber(assertion.followerCount)} followers</span>}
         {assertion?.postCount !== undefined && <span>{formatNumber(assertion.postCount)} posts</span>}
         {assertion?.zapsReceived.amount !== undefined && (
@@ -88,7 +88,7 @@ function ContactRow({ user, assertion, loaded }: { user: User; assertion?: UserA
             {assertion.rank}
           </span>
         ) : (
-          <span className="text-xs opacity-40" title="No assertion published for this contact">
+          <span className="text-sm opacity-40" title="No assertion published for this contact">
             —
           </span>
         )}
@@ -106,35 +106,36 @@ function ContactAssertions({ user }: { user: User }) {
   // The providers trusted specifically for the 30382:rank assertion (includes hidden ones once unlocked)
   const rankProviders = use$(() => (trustedList ? trustedList.userRank$ : of<AssertionProvider[]>([])), [trustedList]);
 
-  const [selectedPubkey, setSelectedPubkey] = useState<string>("");
-  const [assertions, setAssertions] = useState<Record<string, { assertion?: UserAssertion }>>({});
-  const [sortField, setSortField] = useState<string>("rank");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [unlocking, setUnlocking] = useState(false);
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
+
+  const sortField$ = useMemo(() => new BehaviorSubject<string>("rank"), []);
+  const sortField = use$(sortField$);
+
+  const sortDir$ = useMemo(() => new BehaviorSubject<"asc" | "desc">("desc"), []);
+  const sortDir = use$(sortDir$);
+
+  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
+  const unlocking = use$(unlocking$);
 
   const providers = rankProviders ?? [];
   const supported = providers.length > 0;
   const selectedProvider = providers.find((p) => p.pubkey === selectedPubkey) ?? providers[0];
 
-  // Default the selection to the first trusted provider once they load
-  useEffect(() => {
-    if (selectedProvider && selectedProvider.pubkey !== selectedPubkey) setSelectedPubkey(selectedProvider.pubkey);
-  }, [selectedProvider, selectedPubkey]);
-
-  // Subscribe to every contact's assertion from the selected provider, filling the map as events arrive
-  const contactKey = contacts?.map((c) => c.pubkey).join(",");
-  useEffect(() => {
-    setAssertions({});
-    if (!selectedProvider || !contacts?.length) return;
-
-    const subs = contacts.map((c) =>
-      selectedProvider
-        .getUserAssertion(c.pubkey)
-        .subscribe((assertion) => setAssertions((m) => ({ ...m, [c.pubkey]: { assertion } }))),
-    );
-    return () => subs.forEach((s) => s.unsubscribe());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProvider?.pubkey, contactKey]);
+  const assertions = use$(
+    () =>
+      selectedProvider && contacts?.length
+        ? combineLatest(
+            contacts.map((contact) =>
+              selectedProvider.getUserAssertion(contact.pubkey).pipe(
+                map((assertion) => [contact.pubkey, { assertion }] as const),
+                startWith([contact.pubkey, undefined] as const),
+              ),
+            ),
+          ).pipe(map((entries) => Object.fromEntries(entries)))
+        : of({} as Record<string, { assertion?: UserAssertion } | undefined>),
+    [selectedProvider, contacts],
+  );
 
   // Sort by the selected metric, sinking contacts without an assertion to the bottom
   const sortOption = SORT_OPTIONS.find((o) => o.id === sortField) ?? SORT_OPTIONS[0];
@@ -142,7 +143,7 @@ function ContactAssertions({ user }: { user: User }) {
     if (!contacts) return [];
     const dir = sortDir === "asc" ? 1 : -1;
     const get = (pubkey: string) => {
-      const a = assertions[pubkey]?.assertion;
+      const a = assertions?.[pubkey]?.assertion;
       return a ? sortOption.get(a) : undefined;
     };
     return [...contacts].sort((a, b) => {
@@ -158,12 +159,12 @@ function ContactAssertions({ user }: { user: User }) {
   const handleUnlock = async () => {
     if (!trustedList || !signer || unlocking) return;
     try {
-      setUnlocking(true);
+      unlocking$.next(true);
       await trustedList.unlock(signer);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unlock private providers");
     } finally {
-      setUnlocking(false);
+      unlocking$.next(false);
     }
   };
 
@@ -209,7 +210,7 @@ function ContactAssertions({ user }: { user: User }) {
               <select
                 className="select select-bordered"
                 value={selectedProvider?.pubkey ?? ""}
-                onChange={(e) => setSelectedPubkey(e.target.value)}
+                onChange={(e) => selectedPubkey$.next(e.target.value)}
               >
                 {providers.map((p) => (
                   <option key={p.pubkey} value={p.pubkey}>
@@ -237,7 +238,7 @@ function ContactAssertions({ user }: { user: User }) {
             <select
               className="select select-bordered select-sm join-item"
               value={sortField}
-              onChange={(e) => setSortField(e.target.value)}
+              onChange={(e) => sortField$.next(e.target.value)}
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -247,7 +248,7 @@ function ContactAssertions({ user }: { user: User }) {
             </select>
             <button
               className="btn btn-sm join-item"
-              onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+              onClick={() => sortDir$.next(sortDir$.value === "desc" ? "asc" : "desc")}
               title={sortDir === "desc" ? "Descending (highest first)" : "Ascending (lowest first)"}
             >
               {sortDir === "desc" ? "↓" : "↑"}
@@ -269,8 +270,8 @@ function ContactAssertions({ user }: { user: User }) {
             <ContactRow
               key={contact.pubkey}
               user={contact}
-              assertion={supported ? assertions[contact.pubkey]?.assertion : undefined}
-              loaded={!supported || assertions[contact.pubkey] !== undefined}
+              assertion={supported ? assertions?.[contact.pubkey]?.assertion : undefined}
+              loaded={!supported || assertions?.[contact.pubkey] !== undefined}
             />
           ))}
         </ul>

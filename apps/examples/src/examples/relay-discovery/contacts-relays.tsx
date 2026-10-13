@@ -3,6 +3,8 @@
  * @tags nip-02, nip-65, nip-66, relay-discovery, contacts, relays
  * @related relay-discovery/attributes, relay-discovery/monitor-feed
  */
+import { BehaviorSubject, timer, of, combineLatest, map } from "rxjs";
+
 import { castUser, RelayMonitor, User } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
@@ -10,8 +12,8 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useState } from "react";
-import { combineLatest, map } from "rxjs";
+import { useMemo } from "react";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -52,26 +54,33 @@ function RelayStatusBadge({ status }: { status: RelayStatus }) {
 
 function RelayListItem({ relay, monitor }: { relay: RelayWithUsers; monitor: RelayMonitor | undefined }) {
   // Get relay discovery status from monitor
-  const discovery = use$(() => (monitor ? monitor.relayStatus(relay.url) : undefined), [monitor?.uid, relay.url]);
+  const discovery = use$(() => (monitor ? monitor.relayStatus(relay.url) : undefined), [monitor, relay.url]);
 
   // Determine status based on discovery event
-  const status = useMemo(() => {
-    if (!discovery || !monitor) return "unknown" as RelayStatus;
+  const status =
+    use$(
+      () =>
+        timer(0, 1000).pipe(
+          map(() => {
+            if (!discovery || !monitor) return "unknown" as RelayStatus;
 
-    const frequency = monitor.frequency;
-    if (!frequency) return "unknown" as RelayStatus;
+            const frequency = monitor.frequency;
+            if (!frequency) return "unknown" as RelayStatus;
 
-    const eventTime = discovery.event.created_at * 1000; // Convert to milliseconds
-    const now = Date.now();
-    const age = (now - eventTime) / 1000; // Age in seconds
+            const eventTime = discovery.event.created_at * 1000; // Convert to milliseconds
+            const now = Date.now();
+            const age = (now - eventTime) / 1000; // Age in seconds
 
-    // If the event is older than the monitor's frequency, consider it offline
-    if (age > frequency) {
-      return "offline" as RelayStatus;
-    }
+            // If the event is older than the monitor's frequency, consider it offline
+            if (age > frequency) {
+              return "offline" as RelayStatus;
+            }
 
-    return "online" as RelayStatus;
-  }, [discovery, monitor]);
+            return "online" as RelayStatus;
+          }),
+        ),
+      [discovery, monitor],
+    ) ?? "unknown";
 
   const lastChecked = useMemo(() => {
     if (!discovery) return null;
@@ -105,14 +114,14 @@ function RelayListItem({ relay, monitor }: { relay: RelayWithUsers; monitor: Rel
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-mono text-sm font-medium truncate">{relay.url}</div>
-        <div className="flex gap-4 text-xs text-base-content/60 mt-1">
+        <div className="flex gap-4 text-sm text-base-content/60 mt-1">
           <RelayStatusBadge status={status} />
           <span>
             {relay.users.length} {relay.users.length === 1 ? "user" : "users"}
           </span>
         </div>
       </div>
-      {lastChecked && <div className="text-xs text-base-content/50 shrink-0">{lastChecked.toLocaleTimeString()}</div>}
+      {lastChecked && <div className="text-sm text-base-content/50 shrink-0">{lastChecked.toLocaleTimeString()}</div>}
     </div>
   );
 }
@@ -146,9 +155,14 @@ function MonitorPicker({
 }
 
 export default function ContactsRelays() {
-  const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
-  const [selectedMonitor, setSelectedMonitor] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
-  const [selectedPubkey, setSelectedPubkey] = useState<string>("");
+  const relay$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_RELAY), []);
+  const relay = use$(relay$);
+
+  const selectedMonitor$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_MONITOR), []);
+  const selectedMonitor = use$(selectedMonitor$);
+
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
 
   // Get the monitor's announcement event
   const monitors = use$(
@@ -175,9 +189,9 @@ export default function ContactsRelays() {
   // Get outbox relays for each contact
   const contactsWithOutboxes = use$(
     () =>
-      contacts
+      contacts?.length
         ? combineLatest(contacts.map((contact) => contact.outboxes$.pipe(map((outboxes) => ({ contact, outboxes })))))
-        : undefined,
+        : of([]),
     [contacts?.map((c) => c.pubkey).join(",")],
   );
 
@@ -217,18 +231,27 @@ export default function ContactsRelays() {
   return (
     <div className="space-y-4 h-full overflow-hidden flex flex-col">
       <div className="p-4 flex flex-col gap-2">
-        <h2 className="card-title">Contacts' Outbox Relays</h2>
+        <h2 className="font-semibold">Contacts' Outbox Relays</h2>
         <p className="text-sm text-base-content/70">
           Select a monitor and a user to view their contacts' outbox relays aggregated by popularity. Each relay shows
           which users are using it and its latest status from the monitor.
         </p>
 
         <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={setRelay} />
-          {monitors && <MonitorPicker monitors={monitors} onChange={setSelectedMonitor} value={selectedMonitor} />}
+          <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+          {monitors && (
+            <MonitorPicker
+              monitors={monitors}
+              onChange={(next: typeof selectedMonitor$.value) => selectedMonitor$.next(next)}
+              value={selectedMonitor}
+            />
+          )}
         </div>
 
-        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+        <PubkeyPicker
+          value={selectedPubkey}
+          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
+        />
 
         {!monitor && <div className="text-sm text-base-content/70">Select a monitor to view relay discovery data</div>}
 

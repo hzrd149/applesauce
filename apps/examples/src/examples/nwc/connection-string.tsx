@@ -3,6 +3,10 @@
  * @tags nip-47, nwc, wallet, connection
  * @related nwc/auth-uri, nwc/simple-wallet
  */
+import { publishEvent } from "../../extra/publish";
+
+import { BehaviorSubject } from "rxjs";
+
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
@@ -20,7 +24,7 @@ import {
   WalletConnectEncryptionMethod,
 } from "applesauce-wallet-connect/helpers";
 import { hexToBytes } from "@noble/hashes/utils.js";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -54,8 +58,8 @@ function ParsedUriDisplay({ parsedUri }: { parsedUri?: WalletConnectURI | null }
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Parsed connection string</h2>
-      <div className="card card-border bg-base-200">
-        <div className="card-body">
+      <div className="border border-base-300  bg-base-200">
+        <div className="p-4">
           <div>
             <span className="font-medium">Service (Pubkey):</span>
             <code className="px-2 py-1 rounded text-sm font-mono">{parsedUri.service}</code>
@@ -88,8 +92,8 @@ function MethodsSeciton({ walletInfo }: { walletInfo: WalletSupport }) {
         {Object.entries(METHOD_DESCRIPTIONS).map(([method, description]) => {
           const isSupported = supportsMethod(walletInfo, method);
           return (
-            <div key={method} className="card card-compact card-border bg-base-200">
-              <div className="card-body">
+            <div key={method} className="border border-base-300   bg-base-200">
+              <div className="p-4">
                 <div className="flex items-center justify-between">
                   <code className="text-sm font-mono">{method}</code>
                   <span className={`badge ${isSupported ? "badge-success" : "badge-neutral"}`}>
@@ -121,8 +125,8 @@ function EncryptionSection({ walletInfo }: { walletInfo: WalletSupport }) {
           const isSupported = supportsEncryption(walletInfo, method as WalletConnectEncryptionMethod);
           const isPreferred = getPreferredEncryption(walletInfo) === method;
           return (
-            <div key={method} className="card card-compact card-border bg-base-200">
-              <div className="card-body">
+            <div key={method} className="border border-base-300   bg-base-200">
+              <div className="p-4">
                 <div className="flex items-center justify-between">
                   <code className="text-sm font-mono">{method}</code>
                   <div className="flex gap-2">
@@ -151,8 +155,8 @@ function NotificationsSection({ walletInfo }: { walletInfo: WalletSupport }) {
           {Object.entries(NOTIFICATION_DESCRIPTIONS).map(([notification, description]) => {
             const isSupported = walletInfo.notifications?.includes(notification as any) ?? false;
             return (
-              <div key={notification} className="card card-compact card-border bg-base-200">
-                <div className="card-body">
+              <div key={notification} className="border border-base-300   bg-base-200">
+                <div className="p-4">
                   <div className="flex items-center justify-between">
                     <code className="text-sm font-mono">{notification}</code>
                     <span className={`badge ${isSupported ? "badge-success" : "badge-neutral"}`}>
@@ -179,7 +183,7 @@ function WalletSummary({ walletInfo }: { walletInfo: WalletSupport }) {
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Wallet Summary</h2>
 
-      <div className="card card-border bg-base-200">
+      <div className="border border-base-300  bg-base-200">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="stat">
             <div className="stat-value text-primary">{getSupportedMethods(walletInfo).length}</div>
@@ -204,8 +208,8 @@ function RawWalletInfo({ walletInfo }: { walletInfo: WalletSupport }) {
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Raw Wallet Support</h2>
 
-      <div className="card card-border bg-base-200">
-        <div className="card-body">
+      <div className="border border-base-300  bg-base-200">
+        <div className="p-4">
           <code className="text-sm font-mono whitespace-pre">{JSON.stringify(walletInfo, null, 2)}</code>
         </div>
       </div>
@@ -214,26 +218,20 @@ function RawWalletInfo({ walletInfo }: { walletInfo: WalletSupport }) {
 }
 
 export default function WalletConnectExample() {
-  const [uri, setUri] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [parsed, setParsed] = useState<ReturnType<typeof parseWalletConnectURI> | null>(null);
+  const uri$ = useMemo(() => new BehaviorSubject(""), []);
+  const uri = use$(uri$);
 
-  // Handle URI input and parsing
-  const handleUriChange = (value: string) => {
-    setUri(value);
-    setError(null);
-    setParsed(null);
-
-    if (!value.trim()) return;
-
+  const parseResult = useMemo(() => {
+    if (!uri.trim()) return { parsed: null, error: null };
     try {
-      const parsed = parseWalletConnectURI(value);
-      setParsed(parsed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      return { parsed: parseWalletConnectURI(uri), error: null };
+    } catch (error) {
+      return { parsed: null, error: String(error) };
     }
-  };
-
+  }, [uri]);
+  const parsed = parseResult.parsed;
+  const error = parseResult.error;
+  const handleUriChange = (value: string) => uri$.next(value);
   // Create WalletConnect instance and get wallet info using the public getter
   const wallet = useMemo(() => {
     if (!parsed) return undefined;
@@ -244,7 +242,7 @@ export default function WalletConnectExample() {
         ...parsed,
         secret,
         subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: pool.publish.bind(pool),
+        publishMethod: (relays, event) => publishEvent(pool, relays, event),
       });
 
       // Use the public getter method to access wallet info observable

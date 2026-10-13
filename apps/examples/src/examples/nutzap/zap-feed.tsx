@@ -3,16 +3,18 @@
  * @tags nip-61, nutzap, feed, lightning
  * @related nutzap/zap-profile, zap/timeline
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+
 import { castUser, User } from "applesauce-common/casts/user";
 import { castTimelineStream } from "applesauce-common/observable";
-import { BehaviorSubject, EventStore, mapEventsToStore } from "applesauce-core";
+import { BehaviorSubject, EventStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Nutzap } from "applesauce-wallet/casts";
 import { NUTZAP_KIND } from "applesauce-wallet/helpers";
 import { useMemo } from "react";
-import { map } from "rxjs";
+import { map, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -76,9 +78,9 @@ function NutzapEvent({ nutzap }: { nutzap: Nutzap }) {
       </div>
 
       <div className="flex gap-2 items-center text-sm text-gray-600">
-        <span className="badge badge-primary badge-sm">{nutzap.amount} sats</span>
+        <span className="badge badge-primary badge-md">{nutzap.amount} sats</span>
         {nutzap.mint && (
-          <span className="badge badge-secondary badge-sm" title={nutzap.mint}>
+          <span className="badge badge-secondary badge-md" title={nutzap.mint}>
             {new URL(nutzap.mint).hostname}
           </span>
         )}
@@ -93,11 +95,11 @@ function NutzapEvent({ nutzap }: { nutzap: Nutzap }) {
       )}
 
       {zappedEvent ? (
-        <div className="card bg-base-100 shadow-md">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <Avatar user={castUser(zappedEvent, eventStore)} />
-              <h2 className="card-title">
+              <h2 className="font-semibold">
                 <Username user={castUser(zappedEvent, eventStore)} />
               </h2>
             </div>
@@ -105,8 +107,8 @@ function NutzapEvent({ nutzap }: { nutzap: Nutzap }) {
           </div>
         </div>
       ) : nutzap.zapPointer ? (
-        <div className="card bg-base-200 shadow-md opacity-50">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-200  opacity-50">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
@@ -128,8 +130,8 @@ interface ZapSummary {
 
 function ZapSummaryCard({ summary }: { summary: ZapSummary }) {
   return (
-    <div className="card bg-primary text-primary-content shadow-lg">
-      <div className="card-body">
+    <div className="border border-base-300 bg-primary text-primary-content ">
+      <div className="p-4">
         <div className="flex justify-between items-center">
           <div>
             <div className="stat-title text-primary-content opacity-80">Total Zapped</div>
@@ -152,20 +154,8 @@ function ZapSummaryCard({ summary }: { summary: ZapSummary }) {
 export default function ZapFeed() {
   const relay = use$(relay$);
 
-  // Subscribe to nutzap events
-  use$(
-    () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [NUTZAP_KIND], limit: 50 })
-        .pipe(mapEventsToStore(eventStore)),
-    [relay],
-  );
-
-  const nutzaps = use$(
-    () => eventStore.timeline({ kinds: [NUTZAP_KIND] }).pipe(castTimelineStream(Nutzap, eventStore)),
-    [],
-  );
+  const feed = use$(() => relayTimeline(eventStore, pool, [relay], { kinds: [NUTZAP_KIND], limit: 50 }), [relay]);
+  const nutzaps = use$(() => of(feed?.events ?? []).pipe(castTimelineStream(Nutzap, eventStore)), [feed]);
 
   const summary = useMemo(() => {
     if (!nutzaps) return { totalAmount: 0, totalZaps: 0, uniqueMints: 0 };
@@ -184,6 +174,12 @@ export default function ZapFeed() {
   return (
     <div className="mx-auto w-4xl p-4">
       <div className="flex gap-2 mb-4">
+        {feed?.errors.map((error) => (
+          <p key={error} role="alert" className="text-error">
+            {error}
+          </p>
+        ))}
+        {feed?.status === "loading" && <p>Loading nutzaps…</p>}
         <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
       </div>
 

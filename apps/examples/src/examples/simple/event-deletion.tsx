@@ -3,15 +3,17 @@
  * @tags nip-09, deletion, events, timeline
  * @related simple/profile-editor
  */
+import { publishEvent } from "../../extra/publish";
+
 import { castUser, Note, User } from "applesauce-common/casts";
 import { DeleteFactory, EventStore } from "applesauce-core";
-import { getDisplayName, kinds } from "applesauce-core/helpers";
+import { getDisplayName, kinds, NostrEvent } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import type { ISigner } from "applesauce-signers";
-import { NostrEvent } from "applesauce-core/helpers";
-import { useEffect, useState } from "react";
+import { type ISigner } from "applesauce-signers";
+
+import { useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -48,8 +50,8 @@ function NoteItem({
   const createdAt = new Date(note.event.created_at * 1000);
 
   return (
-    <div className="card bg-base-100">
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100">
+      <div className="p-4 p-4">
         <div className="flex items-start gap-4">
           <input
             type="checkbox"
@@ -74,11 +76,11 @@ function NoteItem({
               </div>
             </div>
             <p className="whitespace-pre-wrap wrap-break-word">{note.event.content}</p>
-            <div className="card-actions justify-end mt-3">
+            <div className="flex gap-2 justify-end mt-3">
               <button className="btn btn-sm btn-error" onClick={onDelete} disabled={isDeleting}>
                 {isDeleting ? (
                   <>
-                    <span className="loading loading-spinner loading-xs" />
+                    <span className="loading loading-spinner loading-sm" />
                     Deleting...
                   </>
                 ) : (
@@ -96,30 +98,33 @@ function NoteItem({
 function NotesList({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const selectedIds$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
+  const selectedIds = use$(selectedIds$);
+
+  const isDeleting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isDeleting = use$(isDeleting$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const success$ = useMemo(() => new BehaviorSubject(false), []);
+  const success = use$(success$);
 
   // Load user's kind 1 notes
-  useEffect(() => {
-    const sub = pool
-      .subscription(
-        // User outboxes or fallback
-        user.outboxes$.pipe(
-          map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]),
-        ),
-        // Filter for kind 1 notes by the user
-        {
-          kinds: [kinds.ShortTextNote],
-          authors: [user.pubkey],
-          limit: 50,
-        },
-        { eventStore },
-      )
-      .subscribe();
-
-    return () => sub.unsubscribe();
+  use$(() => {
+    return pool.subscription(
+      // User outboxes or fallback
+      user.outboxes$.pipe(
+        map((outboxes) => outboxes ?? ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]),
+      ),
+      // Filter for kind 1 notes by the user
+      {
+        kinds: [kinds.ShortTextNote],
+        authors: [user.pubkey],
+        limit: 50,
+      },
+      { eventStore },
+    );
   }, [user.pubkey]);
 
   const notes = use$(() => user.timeline$({ kinds: [kinds.ShortTextNote], limit: 50 }, Note), [user.pubkey]);
@@ -127,45 +132,47 @@ function NotesList({ user }: { user: User }) {
   const hasSelection = selectedIds.size > 0;
 
   const handleToggleSelect = (noteId: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(noteId)) {
-        next.delete(noteId);
-      } else {
-        next.add(noteId);
-      }
-      return next;
-    });
+    selectedIds$.next(
+      ((prev: typeof selectedIds$.value) => {
+        const next = new Set(prev);
+        if (next.has(noteId)) {
+          next.delete(noteId);
+        } else {
+          next.add(noteId);
+        }
+        return next;
+      })(selectedIds$.value),
+    );
   };
 
   const handleDelete = async (eventsToDelete: (string | NostrEvent)[]) => {
     if (!signer || !outboxes || outboxes.length === 0) {
-      setError("Missing signer or outboxes. Cannot delete events.");
+      error$.next("Missing signer or outboxes. Cannot delete events.");
       return;
     }
 
-    setIsDeleting(true);
-    setError(null);
-    setSuccess(false);
+    isDeleting$.next(true);
+    error$.next(null);
+    success$.next(false);
 
     try {
       const signed = await DeleteFactory.fromEvents(eventsToDelete).sign(signer);
 
       // Publish to user's outboxes
-      await pool.publish(outboxes, signed);
+      await publishEvent(pool, outboxes, signed);
 
       // Add the delete event to the store
       eventStore.add(signed);
 
       // Clear selection
-      setSelectedIds(new Set());
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      selectedIds$.next(new Set());
+      success$.next(true);
+      setTimeout(() => success$.next(false), 3000);
     } catch (err) {
       console.error("Failed to delete events:", err);
-      setError(err instanceof Error ? err.message : "Failed to delete events");
+      error$.next(err instanceof Error ? err.message : "Failed to delete events");
     } finally {
-      setIsDeleting(false);
+      isDeleting$.next(false);
     }
   };
 
@@ -236,8 +243,8 @@ function NotesList({ user }: { user: User }) {
 
       {/* Bulk Actions */}
       {notes.length > 0 && hasSelection && (
-        <div className="card bg-base-100 mb-6">
-          <div className="card-body p-4">
+        <div className="border border-base-300 bg-base-100 mb-6">
+          <div className="p-4 p-4">
             <div className="flex items-center justify-end">
               <div className="flex items-center gap-4">
                 <span className="text-sm text-base-content/70">

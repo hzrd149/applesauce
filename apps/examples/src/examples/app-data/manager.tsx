@@ -3,6 +3,8 @@
  * @tags misc, app-data, nip-78, storage
  * @related misc/nip-19-links
  */
+import { publishEvent } from "../../extra/publish";
+
 import { castUser, User } from "applesauce-common/casts";
 import { AppDataFactory } from "applesauce-common/factories";
 import {
@@ -12,14 +14,14 @@ import {
   isAppDataUnlocked,
 } from "applesauce-common/helpers/app-data";
 import { DeleteFactory, EventStore, mapEventsToStore, watchEventUpdates } from "applesauce-core";
-import { EncryptionMethod, getReplaceableIdentifier, kinds, NostrEvent } from "applesauce-core/helpers";
+import { EncryptionMethod, getReplaceableIdentifier, kinds, NostrEvent, getEventUID } from "applesauce-core/helpers";
 import { getHiddenContent, unlockHiddenContent } from "applesauce-core/helpers/hidden-content";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { Lock } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -94,8 +96,11 @@ function EventView({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const [decrypting, setDecrypting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const decrypting$ = useMemo(() => new BehaviorSubject(false), []);
+  const decrypting = use$(decrypting$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const encryption = getAppDataEncryption(event);
   const unlocked = isAppDataUnlocked(event);
@@ -112,14 +117,14 @@ function EventView({
   const handleDecrypt = async () => {
     if (!signer || !encryption) return;
     try {
-      setDecrypting(true);
-      setError(null);
+      decrypting$.next(true);
+      error$.next(null);
       // Use unlockHiddenContent directly so non-JSON payloads don't throw
       await unlockHiddenContent(event, signer, encryption);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Decryption failed");
+      error$.next(err instanceof Error ? err.message : "Decryption failed");
     } finally {
-      setDecrypting(false);
+      decrypting$.next(false);
     }
   };
 
@@ -207,32 +212,45 @@ function EventEditor({
 }: {
   event: NostrEvent;
   signer: ISigner | null;
-  onSave: (event: NostrEvent) => void;
+  onSave: (event: NostrEvent) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [content, setContent] = useState(() => {
-    try {
-      return JSON.stringify(getAppDataContent(event), null, 2);
-    } catch {
-      return event.content;
-    }
-  });
-  const [encryption, setEncryption] = useState(getAppDataEncryption(event));
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const content$ = useMemo(
+    () =>
+      new BehaviorSubject(
+        (() => {
+          try {
+            return JSON.stringify(getAppDataContent(event), null, 2);
+          } catch {
+            return event.content;
+          }
+        })(),
+      ),
+    [],
+  );
+  const content = use$(content$);
+
+  const encryption$ = useMemo(() => new BehaviorSubject(getAppDataEncryption(event)), []);
+  const encryption = use$(encryption$);
+
+  const saving$ = useMemo(() => new BehaviorSubject(false), []);
+  const saving = use$(saving$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const handleSave = async () => {
     if (!signer) return;
     try {
-      setSaving(true);
-      setError(null);
+      saving$.next(true);
+      error$.next(null);
       const parsed = JSON.parse(content);
       const signed = await AppDataFactory.modify(event).as(signer).data(parsed, encryption).sign();
-      onSave(signed);
+      await onSave(signed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      error$.next(err instanceof Error ? err.message : "Save failed");
     } finally {
-      setSaving(false);
+      saving$.next(false);
     }
   };
 
@@ -246,7 +264,7 @@ function EventEditor({
           <select
             className="select"
             value={encryption || ""}
-            onChange={(e) => setEncryption(e.target.value ? (e.target.value as EncryptionMethod) : undefined)}
+            onChange={(e) => encryption$.next(e.target.value ? (e.target.value as EncryptionMethod) : undefined)}
             disabled={saving}
           >
             <option value="">Plain text</option>
@@ -272,7 +290,7 @@ function EventEditor({
         <textarea
           className="textarea textarea-bordered font-mono flex-1 min-h-64"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => content$.next(e.target.value)}
           placeholder='{"key": "value"}'
         />
       </div>
@@ -283,27 +301,36 @@ function EventEditor({
 function AppDataManager({ user }: { user: User }) {
   const signer = use$(signer$);
   const outboxes = use$(user.outboxes$);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
+  const selectedId$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedId = use$(selectedId$);
+
+  const editing$ = useMemo(() => new BehaviorSubject(false), []);
+  const editing = use$(editing$);
+
+  const checked$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
+  const checked = use$(checked$);
+
+  const deleting$ = useMemo(() => new BehaviorSubject(false), []);
+  const deleting = use$(deleting$);
 
   // Subscribe to the user's app data events on their outboxes
-  useEffect(() => {
-    if (!outboxes?.length) return;
-    const sub = pool
-      .subscription(outboxes, [
-        { kinds: [APP_DATA_KIND], authors: [user.pubkey] },
-        { kinds: [kinds.EventDeletion], "#k": [String(APP_DATA_KIND)], authors: [user.pubkey] },
-      ])
-      .pipe(mapEventsToStore(eventStore))
-      .subscribe();
-    return () => sub.unsubscribe();
-  }, [outboxes?.join("|"), user.pubkey]);
+  use$(
+    () =>
+      pool
+        .subscription(
+          user.outboxes$.pipe(map((outboxes) => (outboxes?.length ? outboxes : ["wss://relay.damus.io/"]))),
+          [
+            { kinds: [APP_DATA_KIND], authors: [user.pubkey] },
+            { kinds: [kinds.EventDeletion], "#k": [String(APP_DATA_KIND)], authors: [user.pubkey] },
+          ],
+        )
+        .pipe(mapEventsToStore(eventStore)),
+    [user],
+  );
 
   const events = use$(() => eventStore.timeline({ kinds: [APP_DATA_KIND], authors: [user.pubkey] }), [user.pubkey]);
 
-  const selected = events?.find((e) => e.id === selectedId) ?? null;
+  const selected = events?.find((e) => getEventUID(e) === selectedId) ?? null;
   // Only count checked ids that are still in the timeline
   const checkedEvents = events?.filter((e) => checked.has(e.id)) ?? [];
   const allChecked = !!events?.length && checkedEvents.length === events.length;
@@ -320,24 +347,22 @@ function AppDataManager({ user }: { user: User }) {
     // Shift-click applies the clicked row's new state to every row between it and the anchor
     const range = shiftKey && from !== -1 && to !== -1 ? ids.slice(Math.min(from, to), Math.max(from, to) + 1) : [id];
 
-    setChecked((prev) => {
-      const next = new Set(prev);
-      for (const r of range) {
-        if (value) next.add(r);
-        else next.delete(r);
-      }
-      return next;
-    });
+    const next = new Set(checked$.value);
+    for (const id of range) {
+      if (value) next.add(id);
+      else next.delete(id);
+    }
+    checked$.next(next);
     anchorId.current = id;
   };
 
-  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
+  const toggleAll = () => checked$.next(allChecked ? new Set() : new Set(events?.map((e) => e.id)));
 
   const handleSave = async (updated: NostrEvent) => {
+    await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/"], updated);
     eventStore.add(updated);
-    if (outboxes?.length) await pool.publish(outboxes, updated);
-    setSelectedId(updated.id);
-    setEditing(false);
+    selectedId$.next(getEventUID(updated));
+    editing$.next(false);
   };
 
   // Publish a single NIP-09 deletion for all the events and remove them locally
@@ -347,21 +372,22 @@ function AppDataManager({ user }: { user: User }) {
     if (!confirm(message)) return;
 
     try {
-      setDeleting(true);
+      deleting$.next(true);
       const signed = await DeleteFactory.fromEvents(toDelete).sign(signer);
-      if (outboxes?.length) await pool.publish(outboxes, signed);
+      await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/"], signed);
+      eventStore.add(signed);
 
       const ids = new Set(toDelete.map((e) => e.id));
       for (const id of ids) eventStore.remove(id);
-      setChecked((prev) => new Set([...prev].filter((id) => !ids.has(id))));
-      if (selectedId && ids.has(selectedId)) {
-        setSelectedId(null);
-        setEditing(false);
+      checked$.next(new Set([...checked$.value].filter((id) => !ids.has(id))));
+      if (selectedId && toDelete.some((event) => getEventUID(event) === selectedId)) {
+        selectedId$.next(null);
+        editing$.next(false);
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete events");
     } finally {
-      setDeleting(false);
+      deleting$.next(false);
     }
   };
 
@@ -406,10 +432,10 @@ function AppDataManager({ user }: { user: User }) {
                 return (
                   <li key={event.id}>
                     <a
-                      className={selectedId === event.id ? "menu-active" : ""}
+                      className={selectedId === getEventUID(event) ? "menu-active" : ""}
                       onClick={() => {
-                        setSelectedId(event.id);
-                        setEditing(false);
+                        selectedId$.next(getEventUID(event));
+                        editing$.next(false);
                       }}
                     >
                       <input
@@ -457,13 +483,13 @@ function AppDataManager({ user }: { user: User }) {
             event={selected}
             signer={signer}
             onSave={handleSave}
-            onCancel={() => setEditing(false)}
+            onCancel={() => editing$.next(false)}
           />
         ) : (
           <EventView
             event={selected}
             signer={signer}
-            onEdit={() => setEditing(true)}
+            onEdit={() => editing$.next(true)}
             onDelete={() => deleteEvents([selected])}
           />
         )}

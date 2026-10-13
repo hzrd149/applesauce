@@ -3,17 +3,24 @@
  * @tags nip-29, nip-72, group, threads, comments
  * @related group/groups, comment/feed
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { castTimelineStream } from "applesauce-common/observable";
+import NoteContent from "../../components/note-content";
+import { ForumThread, Comment, castEvent } from "applesauce-common/casts";
+import { publishEvent } from "../../extra/publish";
+
 import { CommentFactory, GroupThreadFactory } from "applesauce-common/factories";
 import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-common/helpers";
-import { CommentsModel } from "applesauce-common/models";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets, NostrEvent } from "applesauce-core/helpers";
+
+import { EventStore } from "applesauce-core";
+import { getDisplayName, getProfilePicture, NostrEvent } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useRef, useState } from "react";
-import { map, startWith } from "rxjs";
+import { useCallback, useRef, useMemo } from "react";
+import { BehaviorSubject, of } from "rxjs";
 
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
@@ -29,20 +36,18 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
 });
 
-function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event: NostrEvent) => void }) {
-  const profile = use$(
-    () => eventStore.profile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }),
-    [event.pubkey],
-  );
+function ThreadCard({ thread, onSelect }: { thread: ForumThread; onSelect?: (event: NostrEvent) => void }) {
+  const event = thread.event;
+  const profile = use$(thread.author.profile$);
 
   return (
-    <div className="card bg-base-200 shadow-md">
+    <div className="border border-base-300 bg-base-200 ">
       {onSelect && (
         <button className="btn btn-soft btn-primary absolute top-2 right-2" onClick={() => onSelect(event)}>
           View
         </button>
       )}
-      <div className="card-body">
+      <div className="p-4">
         <div className="flex items-center gap-4">
           <div className="avatar">
             <div className="w-10 rounded-full">
@@ -53,24 +58,22 @@ function ThreadCard({ event, onSelect }: { event: NostrEvent; onSelect?: (event:
             </div>
           </div>
           <div>
-            <h3 className="font-bold">{event.tags.find((t) => t[0] === "title")?.[1] || "Untitled"}</h3>
+            <h3 className="font-bold">{thread.title || "Untitled"}</h3>
             <p className="text-sm opacity-60">
               by {getDisplayName(profile)} • {new Date(event.created_at * 1000).toLocaleString()}
             </p>
           </div>
         </div>
-        <p className="mt-2 whitespace-pre-line">{event.content}</p>
+        <NoteContent event={event} className="mt-2" />
       </div>
     </div>
   );
 }
 
-function ThreadReply({ event }: { event: NostrEvent }) {
+function ThreadReply({ comment }: { comment: Comment }) {
+  const event = comment.event;
   const raw = useRef<HTMLDialogElement>(null);
-  const profile = use$(
-    () => eventStore.profile({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }),
-    [event.pubkey],
-  );
+  const profile = use$(comment.author.profile$);
 
   return (
     <div className="chat chat-start">
@@ -81,9 +84,11 @@ function ThreadReply({ event }: { event: NostrEvent }) {
       </div>
       <div className="chat-header">
         {getDisplayName(profile)}
-        <time className="text-xs opacity-50">{new Date(event.created_at * 1000).toLocaleString()}</time>
+        <time className="text-sm opacity-50">{new Date(event.created_at * 1000).toLocaleString()}</time>
       </div>
-      <div className="chat-bubble whitespace-pre-line">{event.content}</div>
+      <div className="chat-bubble">
+        <NoteContent event={event} />
+      </div>
 
       <span></span>
       <button className="btn btn-link btn-sm" onClick={() => raw.current?.showModal()}>
@@ -105,24 +110,27 @@ function ThreadReply({ event }: { event: NostrEvent }) {
 }
 
 function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointer }) {
-  const [sending, setSending] = useState(false);
-  const [content, setContent] = useState("");
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
+  const content$ = useMemo(() => new BehaviorSubject(""), []);
+  const content = use$(content$);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSending(true);
+    sending$.next(true);
     try {
       // Create a comment and include the group h tag
       const signed = await CommentFactory.create(event, content).group(pointer).sign(signer);
       // Publish the event
-      await pool.publish([pointer.relay], signed);
+      await publishEvent(pool, [pointer.relay], signed);
       // Add to the event store for the app
       eventStore.add(signed);
-      setContent("");
+      content$.next("");
     } catch (error) {
-      console.error(error);
+      alert(String(error));
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
@@ -131,7 +139,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
       <textarea
         className="textarea textarea-bordered flex-grow w-full"
         value={content}
-        onChange={(e) => setContent(e.target.value)}
+        onChange={(e) => content$.next(e.target.value)}
         placeholder="Type your reply..."
         required
       />
@@ -147,26 +155,28 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
 
 /** A component for viewing a thread */
 function ThreadView({ event, pointer }: { event: NostrEvent; pointer: GroupPointer }) {
-  use$(
+  const feed = use$(
     () =>
-      pool
-        .relay(pointer.relay)
-        .subscription({ kinds: [COMMENT_KIND], "#h": [pointer.id], "#E": [event.id] })
-        .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
+      relayTimeline(eventStore, pool, [pointer.relay], { kinds: [COMMENT_KIND], "#h": [pointer.id], "#E": [event.id] }),
     [pointer.relay, pointer.id, event.id],
   );
-
-  const replies = use$(() => eventStore.model(CommentsModel, event), [event.id]);
+  const thread = useMemo(() => castEvent(event, ForumThread, eventStore), [event]);
+  const replies = use$(thread.replies$);
 
   return (
     <div>
-      <ThreadCard event={event} />
+      <ThreadCard thread={thread} />
       <div className="mt-8 space-y-4">
-        {replies?.map((reply: NostrEvent) => (
-          <ThreadReply key={reply.id} event={reply} />
+        {replies?.map((reply) => (
+          <ThreadReply key={reply.id} comment={reply} />
         ))}
       </div>
 
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
       <ReplyForm event={event} pointer={pointer} />
     </div>
   );
@@ -182,27 +192,30 @@ function NewThreadForm({
   onCancel: () => void;
   onSuccess: (event: NostrEvent) => void;
 }) {
-  const [sending, setSending] = useState(false);
-  const [content, setContent] = useState("");
-  const [title, setTitle] = useState("");
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
+  const content$ = useMemo(() => new BehaviorSubject(""), []);
+  const content = use$(content$);
+
+  const title$ = useMemo(() => new BehaviorSubject(""), []);
+  const title = use$(title$);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSending(true);
+    sending$.next(true);
     try {
       const signed = await GroupThreadFactory.create(pointer, title, content).sign(signer);
-      // Add to the event store for the app
-      eventStore.add(signed);
       // Publish the event
-      await pool.publish([pointer.relay], signed);
+      await publishEvent(pool, [pointer.relay], signed);
       // Add to the event store for the app
       eventStore.add(signed);
 
       onSuccess(signed);
     } catch (error) {
-      console.error(error);
+      alert(String(error));
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
@@ -212,14 +225,14 @@ function NewThreadForm({
         type="text"
         className="input input-bordered flex-grow w-full"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={(e) => title$.next(e.target.value)}
         placeholder="Title"
         required
       />
       <textarea
         className="textarea textarea-bordered flex-grow w-full"
         value={content}
-        onChange={(e) => setContent(e.target.value)}
+        onChange={(e) => content$.next(e.target.value)}
         placeholder="Type your message..."
         required
       />
@@ -238,45 +251,52 @@ function NewThreadForm({
 
 /** A component for listing threads */
 function ThreadsList({ pointer, onSelect }: { pointer: GroupPointer; onSelect: (event: NostrEvent) => void }) {
-  const threads = use$(
-    () =>
-      pool
-        .relay(pointer.relay)
-        .subscription({ kinds: [11], "#h": [pointer.id] })
-        .pipe(
-          mapEventsToStore(eventStore),
-          mapEventsToTimeline(),
-          map((t) => [...t]),
-          startWith([] as NostrEvent[]),
-        ),
+  const feed = use$(
+    () => relayTimeline(eventStore, pool, [pointer.relay], { kinds: [11], "#h": [pointer.id] }),
     [pointer.relay, pointer.id],
   );
+  const threads = use$(() => of(feed?.events ?? []).pipe(castTimelineStream(ForumThread, eventStore)), [feed]);
 
   return (
     <div className="space-y-4">
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
+      {feed?.status === "loading" && <p>Loading threads…</p>}
       {threads?.map((thread) => (
-        <ThreadCard key={thread.id} event={thread} onSelect={onSelect} />
+        <ThreadCard key={thread.id} thread={thread} onSelect={onSelect} />
       ))}
     </div>
   );
 }
 
 export default function ThreadsExample() {
-  const [identifier, setIdentifier] = useState("");
-  const [pointer, setPointer] = useState<GroupPointer | undefined>(undefined);
-  const [selectedThread, setSelectedThread] = useState<NostrEvent>();
+  const identifier$ = useMemo(() => new BehaviorSubject(""), []);
+  const identifier = use$(identifier$);
 
-  const [createThread, setCreateThread] = useState(false);
+  const pointer = useMemo(() => {
+    try {
+      return decodeGroupPointer(identifier) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }, [identifier]);
+  const selectedThread$ = useMemo(() => new BehaviorSubject<NostrEvent | undefined>(undefined), []);
+  const selectedThread = use$(selectedThread$);
+
+  const createThread$ = useMemo(() => new BehaviorSubject(false), []);
+  const createThread = use$(createThread$);
 
   const setGroup = useCallback(
     (identifier: string) => {
       try {
-        setIdentifier(identifier);
-        setPointer(decodeGroupPointer(identifier) ?? undefined);
-        setSelectedThread(undefined);
+        identifier$.next(identifier);
+        selectedThread$.next(undefined);
       } catch (error) {}
     },
-    [setIdentifier, setPointer],
+    [identifier$],
   );
 
   return (
@@ -285,7 +305,7 @@ export default function ThreadsExample() {
         <GroupPicker identifier={identifier} setIdentifier={setGroup} />
 
         {pointer && !createThread && !selectedThread && (
-          <button className="btn btn-primary ms-auto" onClick={() => setCreateThread(true)}>
+          <button className="btn btn-primary ms-auto" onClick={() => createThread$.next(true)}>
             New Thread
           </button>
         )}
@@ -294,15 +314,20 @@ export default function ThreadsExample() {
       {pointer && createThread && !selectedThread && (
         <NewThreadForm
           pointer={pointer}
-          onCancel={() => setCreateThread(false)}
-          onSuccess={() => setCreateThread(false)}
+          onCancel={() => createThread$.next(false)}
+          onSuccess={() => createThread$.next(false)}
         />
       )}
 
-      {pointer && !selectedThread && <ThreadsList pointer={pointer} onSelect={setSelectedThread} />}
+      {pointer && !selectedThread && (
+        <ThreadsList
+          pointer={pointer}
+          onSelect={(value: typeof selectedThread$.value) => selectedThread$.next(value)}
+        />
+      )}
       {pointer && selectedThread && (
         <>
-          <button className="btn btn-ghost mb-4" onClick={() => setSelectedThread(undefined)}>
+          <button className="btn btn-ghost mb-4" onClick={() => selectedThread$.next(undefined)}>
             ← Back to Threads
           </button>
           <ThreadView event={selectedThread} pointer={pointer} />

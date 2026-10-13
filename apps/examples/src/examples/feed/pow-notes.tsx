@@ -3,21 +3,19 @@
  * @tags nip-13, feed, pow, mining
  * @related feed/relay-timeline
  */
+import { Note, castEvent } from "applesauce-common/casts";
+import NoteContent from "../../components/note-content";
+import { paginatedTimeline } from "../../extra/pagination";
+import { BehaviorSubject, Subject } from "rxjs";
+
 import { EventStore } from "applesauce-core";
-import {
-  getDisplayName,
-  getOrComputeCachedValue,
-  getProfilePicture,
-  getSeenRelays,
-  mergeRelaySets,
-  ProfileContent,
-} from "applesauce-core/helpers";
+import { getDisplayName, getOrComputeCachedValue, getProfilePicture } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
-import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useMemo } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -77,40 +75,33 @@ function getTargetDifficulty(event: NostrEvent): number | undefined {
   return isNaN(target) ? undefined : target;
 }
 
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
-}
+function NoteItem({ note }: { note: Note }) {
+  const profile = use$(note.author.profile$);
 
-function Note({ note }: { note: NostrEvent }) {
-  const profile = useProfile(
-    useMemo(() => ({ pubkey: note.pubkey, relays: mergeRelaySets(getSeenRelays(note)) }), [note]),
-  );
-
-  const powDifficulty = getPoWDifficulty(note);
-  const targetDifficulty = getTargetDifficulty(note);
+  const powDifficulty = getPoWDifficulty(note.event);
+  const targetDifficulty = getTargetDifficulty(note.event);
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
         <div className="flex items-center gap-4 mb-2">
           <div className="avatar">
             <div className="w-12 rounded-full">
-              <img src={getProfilePicture(profile, `https://robohash.org/${note.pubkey}.png`)} alt="Profile" />
+              <img src={getProfilePicture(profile, `https://robohash.org/${note.author.pubkey}.png`)} alt="Profile" />
             </div>
           </div>
           <div className="flex-1">
-            <h2 className="card-title">{getDisplayName(profile)}</h2>
+            <h2 className="font-semibold">{getDisplayName(profile)}</h2>
             <div className="flex items-center gap-2 text-sm text-base-content/60">
-              <span className="badge badge-sm badge-outline">PoW: {powDifficulty} bits</span>
-              {targetDifficulty && (
-                <span className="badge badge-sm badge-secondary">Target: {targetDifficulty} bits</span>
-              )}
+              <span className="badge  badge-outline">PoW: {powDifficulty} bits</span>
+              {targetDifficulty && <span className="badge  badge-secondary">Target: {targetDifficulty} bits</span>}
             </div>
           </div>
         </div>
-        <p className="whitespace-pre-wrap">{note.content}</p>
-        <div className="text-xs text-base-content/50 mt-2">{new Date(note.created_at * 1000).toLocaleString()}</div>
+        <NoteContent event={note.event} />
+        <div className="text-sm text-base-content/50 mt-2">
+          {new Date(note.event.created_at * 1000).toLocaleString()}
+        </div>
       </div>
     </div>
   );
@@ -135,15 +126,15 @@ function PoWDistributionGraph({ notes, minDifficulty }: { notes: NostrEvent[]; m
   const maxCount = Math.max(...distributionData.map((d) => d.count), 1);
 
   return (
-    <div className="card bg-base-100 shadow-md mb-4">
-      <div className="card-body">
-        <h3 className="card-title text-lg">PoW Distribution</h3>
+    <div className="border border-base-300 bg-base-100  mb-4">
+      <div className="p-4 space-y-3">
+        <h3 className="font-semibold text-lg">PoW Distribution</h3>
         <p className="text-sm text-base-content/60 mb-4">Number of notes with exactly X difficulty bits</p>
 
         <div className="h-40 flex items-end gap-1 overflow-x-auto">
           {distributionData.map(({ difficulty, count }) => (
             <div key={difficulty} className="flex flex-col items-center min-w-0 flex-shrink-0">
-              <div className="text-xs text-center mb-1 text-base-content/60">{count}</div>
+              <div className="text-sm text-center mb-1 text-base-content/60">{count}</div>
               <div
                 className={`w-4 bg-primary transition-all duration-300 ${
                   difficulty === minDifficulty ? "bg-secondary" : ""
@@ -152,12 +143,12 @@ function PoWDistributionGraph({ notes, minDifficulty }: { notes: NostrEvent[]; m
                   height: `${Math.max((count / maxCount) * 120, 2)}px`,
                 }}
               />
-              <div className="text-xs text-center mt-1 writing-mode-vertical-lr text-base-content/60">{difficulty}</div>
+              <div className="text-sm text-center mt-1 writing-mode-vertical-lr text-base-content/60">{difficulty}</div>
             </div>
           ))}
         </div>
 
-        <div className="flex justify-between text-xs text-base-content/60 mt-2">
+        <div className="flex justify-between text-sm text-base-content/60 mt-2">
           <span>Difficulty (bits)</span>
           <span>Total notes: {notes?.length || 0}</span>
         </div>
@@ -167,21 +158,22 @@ function PoWDistributionGraph({ notes, minDifficulty }: { notes: NostrEvent[]; m
 }
 
 export default function PoWNotes() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-  const [minDifficulty, setMinDifficulty] = useState(0);
-  const [sortBy, setSortBy] = useState<"date" | "pow">("date");
-  const [loading, setLoading] = useState(false);
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
+
+  const minDifficulty$ = useMemo(() => new BehaviorSubject(0), []);
+  const minDifficulty = use$(minDifficulty$);
+
+  const sortBy$ = useMemo(() => new BehaviorSubject<"date" | "pow">("date"), []);
+  const sortBy = use$(sortBy$);
 
   // Create a timeline loader
   const timelineLoader = useMemo(() => createTimelineLoader(pool, [relay], { kinds: [1] }, { eventStore }), [relay]);
 
-  // Load initial events on mount
-  useEffect(() => {
-    timelineLoader().subscribe();
-  }, [timelineLoader]);
-
-  // Get all events from the event store
-  const allEvents = use$(() => eventStore.timeline({ kinds: [1] }), []);
+  const pages$ = useMemo(() => new Subject<void>(), []);
+  const page = use$(() => paginatedTimeline(eventStore, timelineLoader, pages$, { kinds: [1] }), [timelineLoader]);
+  const allEvents = page?.events;
+  const loading = page?.loading ?? true;
 
   // Filter and sort events
   const filteredAndSortedEvents = useMemo(() => {
@@ -198,15 +190,7 @@ export default function PoWNotes() {
     }
   }, [allEvents, minDifficulty, sortBy]);
 
-  // Load more events handler
-  const handleLoadMore = useCallback(() => {
-    if (loading) return;
-    setLoading(true);
-    timelineLoader().subscribe({
-      complete: () => setLoading(false),
-      error: () => setLoading(false),
-    });
-  }, [timelineLoader, loading]);
+  const handleLoadMore = () => pages$.next();
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-4xl">
@@ -218,8 +202,14 @@ export default function PoWNotes() {
         </p>
       </div>
 
+      {page?.error && (
+        <p role="alert" className="text-error">
+          {page.error}
+        </p>
+      )}
+      {page?.loading && <p role="status">Loading events…</p>}
       <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
         <button className="btn btn-primary" onClick={handleLoadMore} disabled={loading}>
           {loading ? (
             <>
@@ -233,10 +223,10 @@ export default function PoWNotes() {
       </div>
 
       <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card bg-base-100 shadow-md">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4 space-y-3">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="card-title">Minimum PoW Difficulty</h3>
+              <h3 className="font-semibold">Minimum PoW Difficulty</h3>
               <span className="text-lg font-mono">{minDifficulty} bits</span>
             </div>
             <input
@@ -244,11 +234,11 @@ export default function PoWNotes() {
               min="0"
               max="20"
               value={minDifficulty}
-              onChange={(e) => setMinDifficulty(parseInt(e.target.value))}
+              onChange={(e) => minDifficulty$.next(parseInt(e.target.value))}
               className="range range-primary"
               step="1"
             />
-            <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+            <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
               <span>0</span>
               <span>5</span>
               <span>10</span>
@@ -258,13 +248,13 @@ export default function PoWNotes() {
           </div>
         </div>
 
-        <div className="card bg-base-100 shadow-md">
-          <div className="card-body">
-            <h3 className="card-title mb-4">Sort Notes</h3>
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4 space-y-3">
+            <h3 className="font-semibold mb-4">Sort Notes</h3>
             <select
               className="select select-bordered w-full"
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "date" | "pow")}
+              onChange={(e) => sortBy$.next(e.target.value as "date" | "pow")}
             >
               <option value="date">Most Recent First</option>
               <option value="pow">Highest PoW First</option>
@@ -280,21 +270,21 @@ export default function PoWNotes() {
 
       <div className="flex flex-col gap-4">
         {filteredAndSortedEvents.length === 0 && allEvents && allEvents.length > 0 ? (
-          <div className="card bg-base-100 shadow-md">
-            <div className="card-body text-center">
+          <div className="border border-base-300 bg-base-100 ">
+            <div className="p-4 space-y-3 text-center">
               <p className="text-lg">No notes found with difficulty ≥ {minDifficulty} bits</p>
               <p className="text-base-content/60">Try lowering the minimum difficulty</p>
             </div>
           </div>
         ) : filteredAndSortedEvents.length === 0 ? (
-          <div className="card bg-base-100 shadow-md">
-            <div className="card-body text-center">
-              <p className="text-lg">Loading notes...</p>
+          <div className="border border-base-300 bg-base-100 ">
+            <div className="p-4 space-y-3 text-center">
+              <p className="text-lg">{loading ? "Loading notes…" : "No notes found"}</p>
               <p className="text-base-content/60">Connecting to {relay}</p>
             </div>
           </div>
         ) : (
-          filteredAndSortedEvents.map((event) => <Note key={event.id} note={event} />)
+          filteredAndSortedEvents.map((event) => <NoteItem key={event.id} note={castEvent(event, Note, eventStore)} />)
         )}
       </div>
     </div>

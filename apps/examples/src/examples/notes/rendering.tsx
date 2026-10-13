@@ -17,8 +17,8 @@ import { createBlossomHlsLoaders } from "blossom-client-sdk/hls";
 import Hls from "hls.js";
 import { decodePointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { Blurhash } from "react-blurhash";
-import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { firstValueFrom, merge, take, timeout } from "rxjs";
+import { createContext, useContext, useEffect, useRef, type CSSProperties, type ReactNode, useMemo } from "react";
+import { firstValueFrom, merge, take, timeout, BehaviorSubject } from "rxjs";
 
 // Export extra token types to parse
 import "applesauce-content/text/cashu";
@@ -54,6 +54,7 @@ function HlsBlossomStream({
 }: HlsBlossomStreamProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // HLS owns the video element and must release media resources when its DOM owner changes.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -162,7 +163,7 @@ function BlurhashPlaceholder({
       style={style}
     >
       <Blurhash hash={blurhash} width="100%" height="100%" punch={1} />
-      <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white drop-shadow">
+      <span className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white bg-black/40 ">
         {label}
       </span>
     </button>
@@ -171,10 +172,17 @@ function BlurhashPlaceholder({
 
 /** Renders a blurhash placeholder first; on click, swaps in the real `<img>`. */
 function BlurhashImage({ src, blurhash, dim, alt }: { src: string; blurhash?: string; dim?: string; alt?: string }) {
-  const [revealed, setRevealed] = useState(!blurhash);
+  const revealed$ = useMemo(() => new BehaviorSubject(!blurhash), []);
+  const revealed = use$(revealed$);
+
   if (!revealed && blurhash)
     return (
-      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load image" onReveal={() => setRevealed(true)} />
+      <BlurhashPlaceholder
+        blurhash={blurhash}
+        dim={dim}
+        label="Tap to load image"
+        onReveal={() => revealed$.next(true)}
+      />
     );
   return <img src={src} alt={alt ?? "Image"} loading="lazy" className="max-h-64 rounded" />;
 }
@@ -191,10 +199,17 @@ function BlurhashVideo({
   dim?: string;
   poster?: string;
 }) {
-  const [revealed, setRevealed] = useState(!blurhash);
+  const revealed$ = useMemo(() => new BehaviorSubject(!blurhash), []);
+  const revealed = use$(revealed$);
+
   if (!revealed && blurhash)
     return (
-      <BlurhashPlaceholder blurhash={blurhash} dim={dim} label="Tap to load video" onReveal={() => setRevealed(true)} />
+      <BlurhashPlaceholder
+        blurhash={blurhash}
+        dim={dim}
+        label="Tap to load video"
+        onReveal={() => revealed$.next(true)}
+      />
     );
   return <video src={src} poster={poster} className="max-h-64 rounded" controls playsInline autoPlay={!!blurhash} />;
 }
@@ -350,6 +365,7 @@ function NoteCard({ note }: { note: Note }) {
 
   use$(() => eventStore.blossomServers({ pubkey: author.pubkey }), [author.pubkey]);
 
+  // The media observer attaches to this DOM subtree and returns its own cleanup.
   useEffect(() => {
     const root = cardRef.current;
     if (!root) return;
@@ -367,7 +383,7 @@ function NoteCard({ note }: { note: Note }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-semibold truncate">{profile?.displayName || author.npub.slice(0, 8)}</div>
-            <div className="text-xs text-base-content/60">{note.createdAt.toLocaleString()}</div>
+            <div className="text-sm text-base-content/60">{note.createdAt.toLocaleString()}</div>
           </div>
         </div>
         <div className="whitespace-pre-wrap">{content}</div>
@@ -377,7 +393,8 @@ function NoteCard({ note }: { note: Note }) {
 }
 
 export default function ContentRenderingExample() {
-  const [relay, setRelay] = useState<string>("");
+  const relay$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const relay = use$(relay$);
 
   use$(() => merge(...examples.map(eventLoader)), []);
 
@@ -401,7 +418,7 @@ export default function ContentRenderingExample() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between">
         <h1 className="text-2xl font-bold mb-4">Content Rendering</h1>
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -3,24 +3,22 @@
  * @tags nip-66, relay-discovery, attributes, metadata
  * @related relay-discovery/contacts-relays, relay-discovery/monitor-feed
  */
-import {
-  getRelayDiscoveryAttributes,
-  getRelayDiscoveryURL,
-  isValidRelayDiscovery,
-  RELAY_DISCOVERY_KIND,
-} from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import { Filter, NostrEvent } from "applesauce-core/helpers";
+import { castTimelineStream } from "applesauce-common/observable";
+import { RelayDiscovery } from "applesauce-common/casts";
+import { BehaviorSubject, of, debounceTime, map, startWith, shareReplay } from "rxjs";
+
+import { RELAY_DISCOVERY_KIND } from "applesauce-common/helpers";
+import { EventStore } from "applesauce-core";
+import { Filter } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
 import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Chart } from "react-chartjs-2";
-import { useThrottle } from "react-use";
-import { of } from "rxjs";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
+import { relayTimeline } from "../../extra/relay-timeline";
 
 // Register ChartJS components
 ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, Title, Tooltip);
@@ -28,6 +26,7 @@ ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, T
 // Create stores and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
+const EMPTY_ATTRIBUTES: string[] = [];
 
 interface AttributeData {
   attribute: string;
@@ -47,18 +46,16 @@ interface RelayData {
 /**
  * Counts the number of unique relays that have each attribute
  */
-function countRelaysPerAttribute(events: NostrEvent[]): AttributeData[] {
+function countRelaysPerAttribute(events: RelayDiscovery[]): AttributeData[] {
   // Map of relay URL -> set of attributes
   const relayAttributes = new Map<string, Set<string>>();
 
   // Process each event
   for (const event of events) {
-    if (!isValidRelayDiscovery(event)) continue;
-
-    const relayUrl = getRelayDiscoveryURL(event);
+    const relayUrl = event.url;
     if (!relayUrl) continue;
 
-    const attributes = getRelayDiscoveryAttributes(event);
+    const attributes = event.attributes;
     if (attributes.length === 0) continue;
 
     // Get or create the set of attributes for this relay
@@ -101,18 +98,16 @@ function prepareWordCloudData(attributeData: AttributeData[]): WordCloudDataPoin
 /**
  * Extracts relay data with their attributes
  */
-function extractRelayData(events: NostrEvent[]): RelayData[] {
+function extractRelayData(events: RelayDiscovery[]): RelayData[] {
   // Map of relay URL -> set of attributes
   const relayAttributes = new Map<string, Set<string>>();
 
   // Process each event
   for (const event of events) {
-    if (!isValidRelayDiscovery(event)) continue;
-
-    const relayUrl = getRelayDiscoveryURL(event);
+    const relayUrl = event.url;
     if (!relayUrl) continue;
 
-    const attributes = getRelayDiscoveryAttributes(event);
+    const attributes = event.attributes;
     if (attributes.length === 0) continue;
 
     // Get or create the set of attributes for this relay
@@ -137,9 +132,15 @@ function extractRelayData(events: NostrEvent[]): RelayData[] {
 }
 
 export default function RelayDiscoveryAttributes() {
-  const [relayUrl, setRelayUrl] = useState<string>("wss://relay.nostr.watch/");
-  const [attributeInput, setAttributeInput] = useState<string>("");
-  const [containerDimensions, setContainerDimensions] = useState({ width: 800, height: 600 });
+  const relayUrl$ = useMemo(() => new BehaviorSubject<string>("wss://relay.nostr.watch/"), []);
+  const relayUrl = use$(relayUrl$);
+
+  const attributeInput$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const attributeInput = use$(attributeInput$);
+
+  const containerDimensions$ = useMemo(() => new BehaviorSubject({ width: 800, height: 600 }), []);
+  const containerDimensions = use$(containerDimensions$);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Measure container dimensions and update on resize
@@ -147,7 +148,7 @@ export default function RelayDiscoveryAttributes() {
     const updateDimensions = () => {
       if (containerRef.current) {
         const { width, height } = containerRef.current.getBoundingClientRect();
-        setContainerDimensions({ width, height });
+        containerDimensions$.next({ width, height });
       }
     };
 
@@ -169,7 +170,16 @@ export default function RelayDiscoveryAttributes() {
       .filter((a) => a.length > 0);
   }, [attributeInput]);
 
-  const attributes = useThrottle(attributeFilters, 1000);
+  const attributes =
+    use$(
+      () =>
+        attributeInput$.pipe(
+          debounceTime(1000),
+          map((input) => input.split(/[\s,]+/).filter(Boolean)),
+          startWith(EMPTY_ATTRIBUTES),
+        ),
+      [attributeInput$],
+    ) ?? EMPTY_ATTRIBUTES;
 
   // Create filter for relay subscription
   const relayFilter: Filter = useMemo(() => {
@@ -191,26 +201,26 @@ export default function RelayDiscoveryAttributes() {
     return base;
   }, [attributes, supportsNip91, relay]);
 
-  // Subscribe to events from relay
-  use$(
-    () => (relay ? relay.subscription(relayFilter).pipe(mapEventsToStore(eventStore)) : undefined),
-    [relay, relayFilter],
+  // Scope report revisions and network status to the selected relay. NIP-91 is optional:
+  // even when the relay can only query OR tags, enforce the selected AND attributes locally.
+  const reports$ = useMemo(
+    () =>
+      relayTimeline(eventStore, pool, relayUrl ? [relayUrl] : [], relayFilter).pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
+    [relayUrl, relayFilter],
   );
-
-  // Get events from the event store so & tags always work
+  const reports = use$(reports$);
   const events = use$(
     () =>
-      eventStore.timeline(
-        attributes.length > 0
-          ? {
-              kinds: [RELAY_DISCOVERY_KIND],
-              "&W": attributes,
-            }
-          : {
-              kinds: [RELAY_DISCOVERY_KIND],
-            },
+      reports$.pipe(
+        map((state) => state.events),
+        castTimelineStream(RelayDiscovery, eventStore),
+        map((discoveries) =>
+          discoveries.filter((discovery) => attributes.every((attribute) => discovery.attributes.includes(attribute))),
+        ),
       ),
-    [attributes],
+    [reports$, attributes],
   );
 
   // Count relays per attribute
@@ -224,8 +234,7 @@ export default function RelayDiscoveryAttributes() {
     if (!events || events.length === 0) return [];
     const attributeSet = new Set<string>();
     for (const event of events) {
-      if (!isValidRelayDiscovery(event)) continue;
-      const attrs = getRelayDiscoveryAttributes(event);
+      const attrs = event.attributes;
       for (const attr of attrs) attributeSet.add(attr);
     }
     return Array.from(attributeSet).sort();
@@ -257,8 +266,8 @@ export default function RelayDiscoveryAttributes() {
 
     // Calculate base font size from available space per word
     const baseFontSize = Math.max(16, Math.min(120, Math.sqrt(density) * 0.15));
-    const minFontSize = Math.max(10, baseFontSize * 0.4);
-    const maxFontSize = Math.min(baseFontSize * 3, containerDimensions.height * 0.15);
+    const minFontSize = Math.max(14, baseFontSize * 0.4);
+    const maxFontSize = Math.max(14, Math.min(baseFontSize * 3, containerDimensions.height * 0.15));
 
     return {
       responsive: true,
@@ -310,8 +319,7 @@ export default function RelayDiscoveryAttributes() {
     if (!events || events.length === 0) return 0;
     const relaySet = new Set<string>();
     for (const event of events) {
-      if (!isValidRelayDiscovery(event)) continue;
-      const relayUrl = getRelayDiscoveryURL(event);
+      const relayUrl = event.url;
       if (relayUrl) relaySet.add(relayUrl);
     }
     return relaySet.size;
@@ -326,7 +334,11 @@ export default function RelayDiscoveryAttributes() {
   // Handle attribute button click - add to input
   const handleAttributeClick = (attribute: string) => {
     if (!attributeInput.includes(attribute)) {
-      setAttributeInput((prev) => (prev.trim() ? `${prev.trim()} ${attribute}` : attribute));
+      attributeInput$.next(
+        ((prev: typeof attributeInput$.value) => (prev.trim() ? `${prev.trim()} ${attribute}` : attribute))(
+          attributeInput$.value,
+        ),
+      );
     }
   };
 
@@ -334,14 +346,18 @@ export default function RelayDiscoveryAttributes() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
-        <RelayPicker value={relayUrl} onChange={setRelayUrl} common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]} />
+        <RelayPicker
+          value={relayUrl}
+          onChange={(next: typeof relayUrl$.value) => relayUrl$.next(next)}
+          common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]}
+        />
       </div>
 
       <Nip91Warning relayUrl={relayUrl} supportsNip91={supportsNip91} supportedNips={supportedNips} />
 
       <AttributeFilterInput
         attributeInput={attributeInput}
-        setAttributeInput={setAttributeInput}
+        setAttributeInput={(next) => attributeInput$.next(next)}
         attributeFilters={attributeFilters}
       />
 
@@ -355,6 +371,12 @@ export default function RelayDiscoveryAttributes() {
 
       <StatsDisplay relayUrl={relayUrl} totalRelays={totalRelays} eventCount={events?.length || 0} />
 
+      {reports?.status === "loading" && <p role="status">Loading relay reports…</p>}
+      {reports?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
       <WordCloudChart
         relayUrl={relayUrl}
         wordCloudData={wordCloudData}
@@ -515,8 +537,8 @@ function WordCloudChart({ relayUrl, wordCloudData, chartOptions, containerRef }:
   }
 
   return (
-    <div className="card bg-base-100 mb-4">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 mb-4">
+      <div className="p-4">
         <div ref={containerRef} style={{ height: "600px" }}>
           <Chart type="wordCloud" data={wordCloudData} options={chartOptions} />
         </div>
@@ -533,8 +555,8 @@ interface RelaysTableProps {
 
 function RelaysTable({ relayData, onAttributeClick }: RelaysTableProps) {
   return (
-    <div className="card bg-base-100">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100">
+      <div className="p-4">
         <h2 className="text-xl font-bold mb-4">Relays ({relayData.length})</h2>
         <div className="overflow-x-auto">
           <table className="table table-zebra">

@@ -1,16 +1,19 @@
+import { relayTimeline } from "../../extra/relay-timeline";
 /**
  * Visualize live multi-relay zaps in a space-themed force graph.
  * @tags nip-57, zap, force-graph, live, visualization, screensaver
  * @related zap/timeline, zap/zap-history
  */
+import { BehaviorSubject, defer, tap, map, startWith, auditTime, ignoreElements } from "rxjs";
+
 import { Zap } from "applesauce-common/casts";
-import { castEventStream } from "applesauce-common/observable";
-import { castUser, EventStore, mapEventsToStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, kinds } from "applesauce-core/helpers";
+import { castTimelineStream } from "applesauce-common/observable";
+import { castUser, EventStore, combineLatestByValue } from "applesauce-core";
+import { getDisplayName, getProfilePicture, kinds, safeParse } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import ForceGraph2D, { ForceGraphMethods, LinkObject, NodeObject } from "react-force-graph-2d";
 import { useLocalStorage } from "react-use";
 import { lookupRelays$ } from "../../settings";
@@ -88,7 +91,9 @@ function linkColor(amount: number): string {
 // ---------------------------------------------------------------------------
 
 function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange: (relays: string[]) => void }) {
-  const [custom, setCustom] = useState("");
+  const custom$ = useMemo(() => new BehaviorSubject(""), []);
+  const custom = use$(custom$);
+
   const [known, setKnown] = useLocalStorage<string[]>("zap-live-graph-known-relays", DEFAULT_RELAYS);
 
   const allRelays = useMemo(() => {
@@ -106,7 +111,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
     if (!url || !url.startsWith("wss://")) return;
     setKnown(Array.from(new Set([...(known ?? []), url])));
     if (!selected.includes(url)) onChange([...selected, url]);
-    setCustom("");
+    custom$.next("");
   };
 
   return (
@@ -114,7 +119,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
       <summary className="btn btn-sm bg-black/40 border border-white/20 text-white hover:bg-black/60">
         Relays · {selected.length}
       </summary>
-      <div className="dropdown-content z-10 mt-2 w-80 rounded-box bg-base-200/95 backdrop-blur border border-white/10 p-3 shadow-xl">
+      <div className="dropdown-content z-10 mt-2 w-80 rounded-box bg-base-200/95 backdrop-blur border border-white/10 p-3 ">
         <div className="max-h-72 overflow-y-auto flex flex-col gap-1">
           {allRelays.map((relay) => (
             <label key={relay} className="label cursor-pointer justify-start gap-2 py-1">
@@ -124,7 +129,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
                 checked={selected.includes(relay)}
                 onChange={() => toggle(relay)}
               />
-              <span className="font-mono text-xs truncate">{relay}</span>
+              <span className="font-mono text-sm truncate">{relay}</span>
             </label>
           ))}
         </div>
@@ -134,7 +139,7 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
             placeholder="wss://your-relay.example"
             className="input input-sm input-bordered join-item flex-1"
             value={custom}
-            onChange={(e) => setCustom(e.target.value)}
+            onChange={(e) => custom$.next(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addCustom()}
           />
           <button className="btn btn-sm btn-warning join-item" onClick={addCustom}>
@@ -151,36 +156,59 @@ function RelayMultiSelect({ selected, onChange }: { selected: string[]; onChange
 // ---------------------------------------------------------------------------
 
 export default function ZapLiveGraph() {
-  // Selected relays (persisted)
-  const [selectedRelays, setSelectedRelays] = useLocalStorage<string[]>(
-    "zap-live-graph-relays",
-    DEFAULT_RELAYS.slice(0, 3),
+  const selectedRelays$ = useMemo(
+    () =>
+      new BehaviorSubject(
+        safeParse<string[]>(localStorage.getItem("zap-live-graph-relays") ?? "") ?? DEFAULT_RELAYS.slice(0, 3),
+      ),
+    [],
   );
-  const relays = selectedRelays ?? [];
-
-  // Time range — picks how far back the relay subscription's `since` reaches.
-  const [timeRange, setTimeRange] = useLocalStorage<TimeRange>("zap-live-graph-range", "live");
-  const range = timeRange ?? "live";
+  const relays = use$(selectedRelays$);
+  const timeRange$ = useMemo(
+    () => new BehaviorSubject(safeParse<TimeRange>(localStorage.getItem("zap-live-graph-range") ?? "") ?? "live"),
+    [],
+  );
+  const range = use$(timeRange$);
+  use$(
+    () =>
+      selectedRelays$.pipe(
+        tap((relays) => localStorage.setItem("zap-live-graph-relays", JSON.stringify(relays))),
+        ignoreElements(),
+      ),
+    [selectedRelays$],
+  );
+  use$(
+    () =>
+      timeRange$.pipe(
+        tap((range) => localStorage.setItem("zap-live-graph-range", JSON.stringify(range))),
+        ignoreElements(),
+      ),
+    [timeRange$],
+  );
 
   // Resizable container
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 800, height: 600 });
+  const size$ = useMemo(() => new BehaviorSubject({ width: 800, height: 600 }), []);
+  const size = use$(size$);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const ro = new ResizeObserver(() => {
-      setSize({ width: el.clientWidth, height: el.clientHeight });
+      size$.next({ width: el.clientWidth, height: el.clientHeight });
     });
     ro.observe(el);
-    setSize({ width: el.clientWidth, height: el.clientHeight });
+    size$.next({ width: el.clientWidth, height: el.clientHeight });
     return () => ro.disconnect();
   }, []);
 
   // Fullscreen toggle — the container element becomes the fullscreen target so
   // the canvas resizes correctly via our existing ResizeObserver.
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isFullscreen$ = useMemo(() => new BehaviorSubject(false), []);
+  const isFullscreen = use$(isFullscreen$);
+
   useEffect(() => {
-    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current);
+    const onChange = () => isFullscreen$.next(document.fullscreenElement === containerRef.current);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
@@ -192,99 +220,6 @@ export default function ZapLiveGraph() {
     }
   }, []);
 
-  // Persistent graph state — kept on a ref so we never reset positions
-  const nodesRef = useRef<Map<string, ZapNode>>(new Map());
-  const linksRef = useRef<Map<string, ZapLink>>(new Map());
-
-  // React-visible snapshot of graph data
-  const [graphData, setGraphData] = useState<{ nodes: ZapNode[]; links: ZapLink[] }>({
-    nodes: [],
-    links: [],
-  });
-
-  // Stats
-  const [zapsSeen, setZapsSeen] = useState(0);
-
-  // Debounce graph refresh to avoid re-rendering on every event
-  const refreshScheduled = useRef(false);
-  const scheduleRefresh = useCallback(() => {
-    if (refreshScheduled.current) return;
-    refreshScheduled.current = true;
-    requestAnimationFrame(() => {
-      refreshScheduled.current = false;
-      setGraphData({
-        nodes: Array.from(nodesRef.current.values()),
-        links: Array.from(linksRef.current.values()),
-      });
-    });
-  }, []);
-
-  // Make sure new nodes have a profile observer attached.
-  // We track pubkeys we've already wired up.
-  const wiredProfiles = useRef<Set<string>>(new Set());
-  const wireProfile = useCallback(
-    (node: ZapNode) => {
-      if (wiredProfiles.current.has(node.pubkey)) return;
-      wiredProfiles.current.add(node.pubkey);
-      const user = castUser(node.pubkey, eventStore);
-      const sub = user.profile$.subscribe((profile) => {
-        node.displayName = getDisplayName(profile, node.pubkey.slice(0, 8));
-        const picture = getProfilePicture(profile, `https://robohash.org/${node.pubkey}.png?size=128x128`);
-        if (picture && picture !== node.picture) {
-          node.picture = picture;
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.referrerPolicy = "no-referrer";
-          img.src = picture;
-          img.onload = () => {
-            node.imageEl = img;
-            scheduleRefresh();
-          };
-          img.onerror = () => {
-            if (!picture.includes("robohash")) {
-              const fallback = new Image();
-              fallback.crossOrigin = "anonymous";
-              fallback.src = `https://robohash.org/${node.pubkey}.png?size=128x128`;
-              fallback.onload = () => {
-                node.imageEl = fallback;
-                scheduleRefresh();
-              };
-            }
-          };
-        }
-        scheduleRefresh();
-      });
-      // No cleanup needed; we want the profile observer to live for the
-      // lifetime of this screensaver.
-      void sub;
-    },
-    [scheduleRefresh],
-  );
-
-  // Ensure a node exists for a pubkey
-  const ensureNode = useCallback(
-    (pubkey: string, now: number): ZapNode => {
-      const existing = nodesRef.current.get(pubkey);
-      if (existing) return existing;
-      // Spawn near the center with a small random offset so the engine has
-      // something to work with from the very first frame.
-      const node: ZapNode = {
-        id: pubkey,
-        pubkey,
-        zapCount: 0,
-        totalSats: 0,
-        spawnedAt: now,
-        displayName: pubkey.slice(0, 8),
-        x: (Math.random() - 0.5) * 40,
-        y: (Math.random() - 0.5) * 40,
-      };
-      nodesRef.current.set(pubkey, node);
-      wireProfile(node);
-      return node;
-    },
-    [wireProfile],
-  );
-
   // (1) Relay → EventStore ingestion
   // The `since` filter is anchored to a stable timestamp computed from the
   // selected time range so we don't restart the subscription on every render.
@@ -293,52 +228,77 @@ export default function ZapLiveGraph() {
     return Math.floor(Date.now() / 1000) - offsetSec;
   }, [range]);
 
-  use$(() => {
-    if (relays.length === 0) return;
+  const receipts$ = useMemo(
+    () =>
+      relayTimeline(eventStore, pool, relays, { kinds: [kinds.Zap], since }).pipe(
+        map((state) => state.events),
+        castTimelineStream(Zap, eventStore),
+      ),
+    [relays.join("|"), since],
+  );
 
-    return pool
-      .subscription(relays, { kinds: [kinds.Zap], since }, { reconnect: true })
-      .pipe(mapEventsToStore(eventStore));
-  }, [relays.join("|"), since]);
+  // Accumulate receipts before sampling UI updates, then resolve node profiles reactively.
+  const graphData = use$(
+    () =>
+      defer(() => {
+        const nodes = new Map<string, ZapNode>();
+        const links = new Map<string, ZapLink>();
+        const nodeFor = (pubkey: string) => {
+          let node = nodes.get(pubkey);
+          if (!node) {
+            node = {
+              id: pubkey,
+              pubkey,
+              zapCount: 0,
+              totalSats: 0,
+              spawnedAt: Date.now(),
+              displayName: pubkey.slice(0, 8),
+              x: (Math.random() - 0.5) * 40,
+              y: (Math.random() - 0.5) * 40,
+            };
+            nodes.set(pubkey, node);
+          }
+          return node;
+        };
+        return receipts$.pipe(
+          tap((zaps) => {
+            for (const zap of zaps) {
+              if (links.has(zap.id) || zap.sender.pubkey === zap.recipient.pubkey) continue;
+              const amount = Math.max(1, Math.round(zap.amount / 1000));
+              for (const pubkey of [zap.sender.pubkey, zap.recipient.pubkey]) {
+                const node = nodeFor(pubkey);
+                node.zapCount++;
+                node.totalSats += amount;
+              }
+              links.set(zap.id, { id: zap.id, source: zap.sender.pubkey, target: zap.recipient.pubkey, amount });
+            }
+          }),
+          startWith(undefined),
+          auditTime(16),
+          map(() => [...nodes.values()]),
+          combineLatestByValue((node) => castUser(node.pubkey, eventStore).profile$),
+          map((profiles) => {
+            for (const [node, profile] of profiles) {
+              node.displayName = getDisplayName(profile, node.pubkey.slice(0, 8));
+              const picture = getProfilePicture(profile, `https://robohash.org/${node.pubkey}.png?size=128x128`);
+              if (picture !== node.picture) {
+                node.picture = picture;
+                const image = new Image();
+                image.crossOrigin = "anonymous";
+                image.referrerPolicy = "no-referrer";
+                image.src = picture;
+                node.imageEl = image;
+              }
+            }
+            return { nodes: [...nodes.values()], links: [...links.values()] };
+          }),
+        );
+      }),
+    [receipts$],
+  ) ?? { nodes: [], links: [] };
+  const zapsSeen = graphData.links.length;
 
-  // (2) EventStore → graph processing
-  useEffect(() => {
-    const sub = eventStore
-      .filters({ kinds: [kinds.Zap] })
-      .pipe(castEventStream(Zap, eventStore))
-      .subscribe((zap) => {
-        if (!zap) return;
-        const senderKey = zap.sender.pubkey;
-        const recipientKey = zap.recipient.pubkey;
-        if (senderKey === recipientKey) return; // self-zaps don't make for a useful edge
-
-        // EventStore dedupes by event id, but we still skip if we've already
-        // drawn this receipt (e.g. it arrived again from another source).
-        const linkId = zap.event.id;
-        if (linksRef.current.has(linkId)) return;
-
-        const amount = Math.max(1, Math.round(zap.amount / 1000));
-
-        const sender = ensureNode(senderKey, Date.now());
-        const recipient = ensureNode(recipientKey, Date.now());
-        sender.zapCount += 1;
-        sender.totalSats += amount;
-        recipient.zapCount += 1;
-        recipient.totalSats += amount;
-
-        linksRef.current.set(linkId, {
-          id: linkId,
-          source: senderKey,
-          target: recipientKey,
-          amount,
-        });
-
-        setZapsSeen((c) => c + 1);
-        scheduleRefresh();
-      });
-    return () => sub.unsubscribe();
-  }, [ensureNode, scheduleRefresh]);
-
+  // React integration: configure the canvas force engine after its DOM ref is attached.
   // ForceGraph2D ref — used to tune the physics for slow, gentle motion
   const fgRef = useRef<ForceGraphMethods<ZapNode, ZapLink> | undefined>(undefined);
   useEffect(() => {
@@ -405,15 +365,12 @@ export default function ZapLiveGraph() {
     ctx.stroke();
 
     // Username label below
-    const fontSize = Math.max(10, 12 / globalScale);
+    const fontSize = 14 / globalScale;
     ctx.font = `${fontSize}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const label = node.displayName || node.pubkey.slice(0, 8);
     const labelY = node.y + r + 4;
-    // Drop shadow for legibility against the starfield
-    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
-    ctx.fillText(label, node.x + 1, labelY + 1);
     ctx.fillStyle = "rgba(230, 240, 255, 0.95)";
     ctx.fillText(label, node.x, labelY);
   }, []);
@@ -448,7 +405,7 @@ export default function ZapLiveGraph() {
     // Amount label
     const mx = (sx + tx) / 2;
     const my = (sy + ty) / 2;
-    const fontSize = Math.max(9, 11 / globalScale);
+    const fontSize = 14 / globalScale;
     ctx.font = `bold ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -541,9 +498,9 @@ export default function ZapLiveGraph() {
 
       {/* HUD */}
       <div className="absolute top-3 left-3 flex flex-col gap-1 pointer-events-none text-white/90">
-        <div className="text-xs uppercase tracking-widest opacity-70">Live zaps</div>
-        <div className="text-3xl font-bold drop-shadow">{zapsSeen.toLocaleString()}</div>
-        <div className="text-xs opacity-70">
+        <div className="text-sm uppercase tracking-widest opacity-70">Live zaps</div>
+        <div className="text-3xl font-bold ">{zapsSeen.toLocaleString()}</div>
+        <div className="text-sm opacity-70">
           {graphData.nodes.length} users · {graphData.links.length} zaps
         </div>
       </div>
@@ -552,7 +509,7 @@ export default function ZapLiveGraph() {
         <select
           className="select select-sm bg-black/40 border border-white/20 text-white hover:bg-black/60"
           value={range}
-          onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+          onChange={(e) => timeRange$.next(e.target.value as TimeRange)}
           title="Time range"
         >
           {TIME_RANGE_OPTIONS.map((opt) => (
@@ -561,7 +518,7 @@ export default function ZapLiveGraph() {
             </option>
           ))}
         </select>
-        <RelayMultiSelect selected={relays} onChange={(r) => setSelectedRelays(r)} />
+        <RelayMultiSelect selected={relays} onChange={(r) => selectedRelays$.next(r)} />
         <button
           className="btn btn-sm bg-black/40 border border-white/20 text-white hover:bg-black/60"
           onClick={toggleFullscreen}

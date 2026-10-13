@@ -3,6 +3,9 @@
  * @tags nip-52, calendar, map, geolocation
  * @related calendar/timeline
  */
+import { paginatedTimeline } from "../../extra/pagination";
+import { BehaviorSubject, Subject } from "rxjs";
+
 import { EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
 import {
@@ -21,7 +24,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
 import { decode } from "ngeohash";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -43,14 +46,13 @@ createEventLoaderForStore(eventStore, pool, {
 import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
 import { lookupRelays$ } from "../../settings";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  shadowUrl: undefined,
 });
 
 // Helper function to decode geohash to lat/lng
@@ -65,11 +67,9 @@ function decodeGeohash(geohashString: string): [number, number] | null {
   }
 }
 
-interface CalendarEventWithLocation extends NostrEvent {
-  position?: [number, number];
-}
+type CalendarEventWithLocation = { event: NostrEvent; position?: [number, number] };
 
-function CalendarEventPopup({ event }: { event: CalendarEventWithLocation }) {
+function CalendarEventPopup({ event }: { event: NostrEvent }) {
   const title = getCalendarEventTitle(event) || "Untitled Event";
   const summary = getCalendarEventSummary(event);
   const start = getCalendarEventStart(event);
@@ -86,28 +86,31 @@ function CalendarEventPopup({ event }: { event: CalendarEventWithLocation }) {
       <h4 className="font-bold text-lg mb-2">{title}</h4>
       {summary && <p className="text-sm mb-2">{summary}</p>}
       {startDate && (
-        <div className="text-xs text-gray-600 mb-1">
+        <div className="text-sm text-gray-600 mb-1">
           <strong>Start:</strong> {startDate.toLocaleString()}
         </div>
       )}
       {endDate && (
-        <div className="text-xs text-gray-600 mb-1">
+        <div className="text-sm text-gray-600 mb-1">
           <strong>End:</strong> {endDate.toLocaleString()}
         </div>
       )}
       {locations.length > 0 && (
-        <div className="text-xs text-gray-600 mb-1">
+        <div className="text-sm text-gray-600 mb-1">
           <strong>Location:</strong> {locations.join(", ")}
         </div>
       )}
-      <div className="text-xs text-gray-500 mt-2">Event ID: {event.id.slice(0, 8)}...</div>
+      <div className="text-sm text-gray-500 mt-2">Event ID: {event.id.slice(0, 8)}...</div>
     </div>
   );
 }
 
 export default function CalendarMap() {
-  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [showPastEvents, setShowPastEvents] = useState(false);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
+
+  const showPastEvents$ = useMemo(() => new BehaviorSubject(false), []);
+  const showPastEvents = use$(showPastEvents$);
 
   const timeline = useMemo(
     () =>
@@ -122,28 +125,17 @@ export default function CalendarMap() {
     [pool, eventStore, relay],
   );
 
-  const [loading, setLoading] = useState(false);
-  const loadMore = useCallback(() => {
-    setLoading(true);
-    timeline().subscribe({
-      error: () => setLoading(false),
-      complete: () => setLoading(false),
-    });
-  }, [timeline]);
-
-  // Load first page of events
-  useEffect(() => {
-    loadMore();
-  }, [loadMore]);
-
-  // Load calendar events from selected relay (following timeline.tsx pattern)
-  const events = use$(
+  const pages$ = useMemo(() => new Subject<void>(), []);
+  const page = use$(
     () =>
-      eventStore.timeline({
+      paginatedTimeline(eventStore, timeline, pages$, {
         kinds: [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND],
       }),
-    [relay],
+    [timeline],
   );
+  const events = page?.events;
+  const loading = page?.loading ?? true;
+  const loadMore = () => pages$.next();
 
   const filteredEvents = useMemo(() => {
     if (!events) return;
@@ -151,7 +143,8 @@ export default function CalendarMap() {
     const now = unixNow();
     return events.filter((event) => {
       const start = getCalendarEventStart(event);
-      return showPastEvents ? true : start ? start < now : false;
+      const end = getCalendarEventEnd(event);
+      return showPastEvents || (end ?? start ?? -Infinity) >= now;
     });
   }, [events, showPastEvents]);
 
@@ -176,10 +169,7 @@ export default function CalendarMap() {
 
       // If we have a position or location text, include this event
       if (position || locations.length > 0) {
-        eventsWithLocation.push({
-          ...event,
-          position,
-        });
+        eventsWithLocation.push({ event, position });
       }
     }
 
@@ -187,7 +177,7 @@ export default function CalendarMap() {
   }, [filteredEvents]);
 
   const handleRelayChange = (relay: string) => {
-    setRelay(relay);
+    relay$.next(relay);
   };
 
   // Default map center (San Francisco)
@@ -196,7 +186,7 @@ export default function CalendarMap() {
   return (
     <div className="space-y-2 h-full overflow-hidden flex flex-col">
       <div className="p-4 flex flex-col gap-2">
-        <h2 className="card-title">Calendar Events Map</h2>
+        <h2 className="font-semibold">Calendar Events Map</h2>
         <p className="text-sm text-base-content/70">
           Select a relay to load calendar events from and see them displayed on the map. Events with geohash or location
           data will appear as markers.
@@ -212,7 +202,7 @@ export default function CalendarMap() {
             <input
               type="checkbox"
               checked={showPastEvents}
-              onChange={() => setShowPastEvents(!showPastEvents)}
+              onChange={() => showPastEvents$.next(!showPastEvents)}
               className="toggle"
             />
             Show past events
@@ -226,6 +216,12 @@ export default function CalendarMap() {
         </div>
       </div>
 
+      {page?.error && (
+        <p role="alert" className="text-error">
+          {page.error}
+        </p>
+      )}
+      {page?.loading && <p role="status">Loading events…</p>}
       <div className="flex-1">
         {/* @ts-ignore - React Leaflet v5 types may not be fully compatible */}
         <MapContainer center={defaultCenter} zoom={10} style={{ height: "100%", width: "100%" }}>
@@ -238,9 +234,9 @@ export default function CalendarMap() {
           {eventsWithLocation.map((event) => {
             if (!event.position) return null;
             return (
-              <Marker key={event.id} position={event.position}>
+              <Marker key={event.event.id} position={event.position}>
                 <Popup>
-                  <CalendarEventPopup event={event} />
+                  <CalendarEventPopup event={event.event} />
                 </Popup>
               </Marker>
             );

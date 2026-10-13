@@ -3,18 +3,23 @@
  * @tags nip-29, nip-42, group, chat, messaging
  * @related group/groups, group/threads
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import NoteContent from "../../components/note-content";
+import { BehaviorSubject } from "rxjs";
+
 import { GroupMessageFactory } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { decodeGroupPointer, groupMessageEvents, GroupPointer } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -30,8 +35,9 @@ createEventLoaderForStore(eventStore, pool, {
 
 function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
   const profile = use$(
-    () => eventStore.profile({ pubkey: messages[0].pubkey, relays: mergeRelaySets(getSeenRelays(messages[0])) }),
-    [messages[0].pubkey],
+    () =>
+      castUser({ pubkey: messages[0].pubkey, relays: mergeRelaySets(getSeenRelays(messages[0])) }, eventStore).profile$,
+    [messages[0]],
   );
 
   const time = messages[0].created_at;
@@ -48,11 +54,13 @@ function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
       </div>
       <div className="chat-header">
         {getDisplayName(profile)}
-        <time className="text-xs opacity-50">{new Date(time * 1000).toLocaleString()}</time>
+        <time className="text-sm opacity-50">{new Date(time * 1000).toLocaleString()}</time>
       </div>
       <div className="flex flex-col gap-2">
         {messages.map((message) => (
-          <div className="chat-bubble">{message.content}</div>
+          <div key={message.id} className="chat-bubble">
+            <NoteContent event={message} />
+          </div>
         ))}
       </div>
     </div>
@@ -60,20 +68,11 @@ function ChatMessageGroup({ messages }: { messages: NostrEvent[] }) {
 }
 
 function ChatLog({ pointer }: { pointer: GroupPointer }) {
-  const messages = use$(
-    () =>
-      pool
-        .relay(pointer.relay)
-        .subscription({ kinds: [9], "#h": [pointer.id], limit: 100 }, { reconnect: true })
-        .pipe(
-          // map to store
-          mapEventsToStore(eventStore),
-          // map to timeline
-          mapEventsToTimeline(),
-        ),
-    [pointer.relay, pointer?.id],
+  const feed = use$(
+    () => relayTimeline(eventStore, pool, [pointer.relay], { kinds: [9], "#h": [pointer.id], limit: 100 }),
+    [pointer.relay, pointer.id],
   );
-
+  const messages = feed?.events;
   const groups = groupMessageEvents(messages ? Array.from(messages).reverse() : []).reverse();
 
   return (
@@ -81,6 +80,12 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
       className="flex gap-2 flex-col-reverse overflow-y-auto overflow-x-hidden border p-4 border-base-300 rounded-lg"
       style={{ height: "calc(100vh - 12rem - 4rem)" }}
     >
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
+      {feed?.status === "loading" && <p>Loading messages…</p>}
       {groups.map((group) => (
         <ChatMessageGroup key={group[0].id} messages={group} />
       ))}
@@ -89,17 +94,17 @@ function ChatLog({ pointer }: { pointer: GroupPointer }) {
 }
 
 function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
+  const message$ = useMemo(() => new BehaviorSubject(""), []);
+  const message = use$(message$);
 
-  // Clear the message when the pointer changes
-  useEffect(() => setMessage(""), [pointer]);
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !pointer) return;
 
-    setSending(true);
+    sending$.next(true);
     try {
       // Create and sign a group message
       const signed = await GroupMessageFactory.create(pointer, message).sign(signer);
@@ -108,11 +113,11 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
       // Throw an error if the message was rejected
       if (!response.ok) throw new Error(response.message);
       // Clear the form
-      setMessage("");
+      message$.next("");
     } catch (err) {
       if (err instanceof Error) alert(err.message);
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
@@ -121,7 +126,7 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
       <input
         type="text"
         value={message}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={(e) => message$.next(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered grow"
@@ -134,34 +139,37 @@ function SendMessageForm({ pointer }: { pointer: GroupPointer }) {
 }
 
 export default function RelayGroupExample() {
-  const [identifier, setIdentifier] = useState("");
-  const [pointer, setPointer] = useState<GroupPointer>();
-  const [pubkey, setPubkey] = useState<string | null>(null);
+  const identifier$ = useMemo(() => new BehaviorSubject(""), []);
+  const identifier = use$(identifier$);
+
+  const pointer = useMemo(() => {
+    try {
+      return decodeGroupPointer(identifier) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }, [identifier]);
+  const pubkey$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const pubkey = use$(pubkey$);
+
   const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
 
   const setGroup = useCallback(
     (identifier: string) => {
       try {
-        setIdentifier(identifier);
-        setPointer(decodeGroupPointer(identifier) ?? undefined);
+        identifier$.next(identifier);
       } catch (error) {}
     },
-    [setIdentifier, setPointer],
+    [identifier$],
   );
 
   // Subscribe to authentication state for the current relay
-  const authenticated = useObservableEagerMemo(
-    () => (pointer ? pool.relay(pointer.relay).authenticated$ : undefined),
-    [pointer?.relay],
-  );
-  const challenge = useObservableEagerMemo(
-    () => (pointer ? pool.relay(pointer.relay).challenge$ : undefined),
-    [pointer?.relay],
-  );
+  const authenticated = use$(() => (pointer ? pool.relay(pointer.relay).authenticated$ : undefined), [pointer?.relay]);
+  const challenge = use$(() => (pointer ? pool.relay(pointer.relay).challenge$ : undefined), [pointer?.relay]);
 
   const handleSignIn = useCallback(async () => {
     const pubkey = await signer.getPublicKey();
-    setPubkey(pubkey);
+    pubkey$.next(pubkey);
   }, [user]);
 
   // Handle authentication with extension signer
@@ -172,7 +180,7 @@ export default function RelayGroupExample() {
       const signer = new ExtensionSigner();
 
       // get the users pubkey
-      setPubkey(await signer.getPublicKey());
+      pubkey$.next(await signer.getPublicKey());
 
       // Authenticate with the relay
       await pool
@@ -217,7 +225,7 @@ export default function RelayGroupExample() {
             </svg>
             <div className="flex-1">
               <h3 className="font-bold">Authentication Available</h3>
-              <div className="text-xs">
+              <div className="text-sm">
                 This relay sent an authentication challenge. Authenticate to read and post in private groups.
               </div>
             </div>
@@ -229,7 +237,7 @@ export default function RelayGroupExample() {
       )}
 
       {pointer && <ChatLog pointer={pointer} />}
-      {pointer && <SendMessageForm pointer={pointer} />}
+      {pointer && <SendMessageForm key={`${pointer.relay}:${pointer.id}`} pointer={pointer} />}
     </div>
   );
 }

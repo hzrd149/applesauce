@@ -3,8 +3,10 @@
  * @tags gift-wrap, generator, encryption, nip-59
  * @related gift-wrap/dashboard, gift-wrap/timeline
  */
+import { castUser } from "applesauce-common/casts";
+
 import { randomBytes } from "@noble/hashes/utils.js";
-import { defined, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { normalizeToPubkey } from "applesauce-core/helpers";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import { finalizeEvent, getEventHash, kinds, NostrEvent, UnsignedEvent } from "applesauce-core/helpers/event";
@@ -12,10 +14,27 @@ import { generateSecretKey } from "applesauce-core/helpers/keys";
 import { unixNow } from "applesauce-core/helpers/time";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { PublishResponse, RelayPool } from "applesauce-relay";
+import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useState } from "react";
-import { BehaviorSubject, switchMap } from "rxjs";
+import { useMemo } from "react";
+import {
+  BehaviorSubject,
+  switchMap,
+  Subject,
+  defer,
+  range,
+  timer,
+  concatMap,
+  exhaustMap,
+  materialize,
+  scan,
+  map,
+  tap,
+  concatWith,
+  of,
+  catchError,
+  startWith,
+} from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -29,9 +48,6 @@ const totalRandomUsers = [
   "npub1zuuajd7u3sx8xu92yav9jwxpr839cs0kc3q6t56vd5u9q033xmhsk6c2uc",
 ].map(normalizeToPubkey);
 
-const pubkey$ = new BehaviorSubject<string | null>(
-  totalRandomUsers[Math.floor(Math.random() * totalRandomUsers.length)],
-);
 const pool = new RelayPool();
 const eventStore = new EventStore();
 const signer = new PrivateKeySigner();
@@ -43,11 +59,6 @@ createEventLoaderForStore(eventStore, pool, {
   // Fallback to lookup relays if events can't be found
   lookupRelays: lookupRelays$,
 });
-
-const mailboxes$ = pubkey$.pipe(
-  defined(),
-  switchMap((pubkey) => eventStore.mailboxes(pubkey)),
-);
 
 /** Types of broken gift wraps */
 export enum BrokenGiftWrapType {
@@ -90,7 +101,7 @@ type DelayConfigProps = {
 function DelayConfigInput({ minDelay, maxDelay, onMinDelayChange, onMaxDelayChange }: DelayConfigProps) {
   return (
     <div className="grid grid-cols-2 gap-4 mb-4">
-      <div className="form-control w-full">
+      <div className="flex flex-col gap-2 w-full">
         <label className="label">
           <span className="label-text">Min Delay (ms)</span>
         </label>
@@ -106,7 +117,7 @@ function DelayConfigInput({ minDelay, maxDelay, onMinDelayChange, onMaxDelayChan
           <span className="label-text-alt">Minimum delay between events</span>
         </label>
       </div>
-      <div className="form-control w-full">
+      <div className="flex flex-col gap-2 w-full">
         <label className="label">
           <span className="label-text">Max Delay (ms)</span>
         </label>
@@ -135,14 +146,14 @@ function RelayStatusItem({ relay, status }: RelayStatusItemProps) {
   return (
     <div className="flex items-center gap-2">
       <span
-        className={`text-xs font-mono ${
+        className={`text-sm font-mono ${
           status.ok ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
         }`}
       >
         {status.ok ? "✓" : "✗"}
       </span>
-      <span className="text-xs text-base-content/70 truncate flex-1">{relay}</span>
-      {status.message && <span className="text-xs text-base-content/50">{status.message}</span>}
+      <span className="text-sm text-base-content/70 truncate flex-1">{relay}</span>
+      {status.message && <span className="text-sm text-base-content/50">{status.message}</span>}
     </div>
   );
 }
@@ -154,7 +165,7 @@ type RelayStatusListProps = {
 function RelayStatusList({ relayStatuses }: RelayStatusListProps) {
   return (
     <div className="mt-2 space-y-1">
-      <div className="text-xs font-semibold text-base-content/70 mb-1">Relay Status:</div>
+      <div className="text-sm font-semibold text-base-content/70 mb-1">Relay Status:</div>
       {Array.from(relayStatuses.entries()).map(([relay, status]) => (
         <RelayStatusItem key={relay} relay={relay} status={status} />
       ))}
@@ -175,9 +186,9 @@ function EventStatusCard({ status, isPublishing }: EventStatusCardProps) {
           Event #{status.index + 1}
           {isPublishing && <span className="ml-2 text-primary">(Publishing...)</span>}
         </span>
-        <span className="text-xs text-base-content/50">{status.event.id.slice(0, 16)}...</span>
+        <span className="text-sm text-base-content/50">{status.event.id.slice(0, 16)}...</span>
       </div>
-      <div className="text-xs font-mono break-all mb-2">
+      <div className="text-sm font-mono break-all mb-2">
         <div className="mb-1">
           <span className="text-base-content/70">Content length: </span>
           <span className="text-base-content">{status.event.content.length} chars</span>
@@ -201,7 +212,7 @@ function EventStatusList({ eventStatuses, currentEventIndex, totalCount }: Event
   return (
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-2">
-        Published Events ({eventStatuses.length}/{totalCount})
+        Publish Attempts ({eventStatuses.length}/{totalCount})
       </h3>
       <div className="flex flex-col-reverse gap-2 max-h-lg overflow-y-auto">
         {eventStatuses.map((status) => (
@@ -226,7 +237,9 @@ function InboxRelayInfo({ pubkey, inboxCount, inboxes }: InboxRelayInfoProps) {
       <span>
         {inboxes && inboxCount
           ? `Found ${inboxCount} inbox relay(s): ${inboxes.join(", ")}`
-          : "Loading inbox relays..."}
+          : inboxes
+            ? "No inbox relays published"
+            : "Loading inbox relays..."}
       </span>
     </div>
   );
@@ -248,7 +261,7 @@ function GenerateButton({ generating, currentEventIndex, totalCount, disabled, o
     : `Generate ${totalCount} Broken Event${totalCount !== 1 ? "s" : ""}`;
 
   return (
-    <div className="card-actions justify-end">
+    <div className="flex gap-2 justify-end">
       <button className="btn btn-primary" onClick={onClick} disabled={disabled}>
         {buttonText}
       </button>
@@ -297,7 +310,7 @@ function BrokenTypeSelector({ selectedType, onTypeChange }: BrokenTypeSelectorPr
   ];
 
   return (
-    <div className="form-control w-full mb-4">
+    <div className="flex flex-col gap-2 w-full mb-4">
       <label className="label">
         <span className="label-text">Broken Type</span>
       </label>
@@ -505,194 +518,179 @@ async function generateNIP17DMWithRandomBase64(pubkey: string): Promise<NostrEve
 }
 
 export default function BrokenGiftWrapGenerator() {
+  const pubkey$ = useMemo(
+    () => new BehaviorSubject<string | null>(totalRandomUsers[Math.floor(Math.random() * totalRandomUsers.length)]),
+    [],
+  );
   const pubkey = use$(pubkey$);
-  const [count, setCount] = useState<number>(100);
-  const [minDelay, setMinDelay] = useState<number>(100);
-  const [maxDelay, setMaxDelay] = useState<number>(1000);
-  const [brokenType, setBrokenType] = useState<BrokenGiftWrapType>(BrokenGiftWrapType.BrokenGiftWrap);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [eventStatuses, setEventStatuses] = useState<EventStatus[]>([]);
-  const [currentEventIndex, setCurrentEventIndex] = useState<number | null>(null);
+  const count$ = useMemo(() => new BehaviorSubject<number>(100), []);
+  const count = use$(count$);
 
-  const mailboxes = use$(mailboxes$);
+  const minDelay$ = useMemo(() => new BehaviorSubject<number>(100), []);
+  const minDelay = use$(minDelay$);
 
-  const handleGenerate = async () => {
-    if (!pubkey) return;
-    if (!mailboxes?.inboxes?.length) {
-      setError("No inbox relays found for this pubkey. The user may not have published a relay list (kind 10002).");
-      return;
-    }
+  const maxDelay$ = useMemo(() => new BehaviorSubject<number>(1000), []);
+  const maxDelay = use$(maxDelay$);
 
-    try {
-      setGenerating(true);
-      setError(null);
-      setSuccess(null);
-      setEventStatuses([]);
-      setCurrentEventIndex(null);
+  const brokenType$ = useMemo(() => new BehaviorSubject<BrokenGiftWrapType>(BrokenGiftWrapType.BrokenGiftWrap), []);
+  const brokenType = use$(brokenType$);
 
-      const statuses: EventStatus[] = [];
-      // Track failed relays - once a relay fails, don't try it again
-      const failedRelays = new Set<string>();
-      // Start with all inbox relays as available
-      let availableRelays = [...mailboxes.inboxes];
-
-      for (let i = 0; i < count; i++) {
-        // Filter out failed relays
-        availableRelays = availableRelays.filter((relay) => !failedRelays.has(relay));
-
-        // If no relays are available, stop publishing
-        if (availableRelays.length === 0) {
-          setError(`All relays have failed. Stopped publishing after ${i} event(s).`);
-          break;
-        }
-
-        setCurrentEventIndex(i);
-
-        // Generate broken gift wrap event based on selected type
-        let signed: NostrEvent;
-        switch (brokenType) {
-          case BrokenGiftWrapType.BrokenGiftWrap:
-            signed = await generateBrokenGiftWrap(pubkey);
-            break;
-          case BrokenGiftWrapType.BrokenSealInGiftWrap:
-            signed = await generateBrokenSealInGiftWrap(pubkey);
-            break;
-          case BrokenGiftWrapType.RandomSealKindInGiftWrap:
-            signed = await generateRandomSealKindInGiftWrap(pubkey);
-            break;
-          case BrokenGiftWrapType.BrokenRumorInSealInGiftWrap:
-            signed = await generateBrokenRumorInSealInGiftWrap(pubkey);
-            break;
-          case BrokenGiftWrapType.RandomRumorKind:
-            signed = await generateRandomRumorKind(pubkey);
-            break;
-          case BrokenGiftWrapType.NIP17DMWithRandomBase64:
-            signed = await generateNIP17DMWithRandomBase64(pubkey);
-            break;
-          default:
-            signed = await generateBrokenGiftWrap(pubkey);
-        }
-
-        // Initialize relay statuses for this event (only for available relays)
-        const relayStatuses = new Map<string, { ok: boolean; message?: string }>();
-        availableRelays.forEach((relay) => {
-          relayStatuses.set(relay, { ok: false });
-        });
-        // Also show failed relays as skipped
-        failedRelays.forEach((relay) => {
-          relayStatuses.set(relay, { ok: false, message: "Skipped (previously failed)" });
-        });
-
-        const eventStatus: EventStatus = {
-          event: signed,
-          relayStatuses,
-          index: i,
-        };
-
-        statuses.push(eventStatus);
-        setEventStatuses([...statuses]);
-
-        // Publish event to available relays only
-        // Collect all responses and update status as they come in
-        const responses: PublishResponse[] = [];
-        await new Promise<void>((resolve) => {
-          const subscription = pool.event(availableRelays, signed).subscribe({
-            next: (response) => {
-              // Update status for this relay
-              relayStatuses.set(response.from, {
-                ok: response.ok,
-                message: response.message,
-              });
-              responses.push(response);
-
-              // If the relay failed, add it to the failed set
-              if (!response.ok) {
-                failedRelays.add(response.from);
-              }
-
-              // Update state to trigger re-render
-              setEventStatuses([...statuses]);
-
-              // Check if we've received responses from all available relays
-              if (responses.length >= availableRelays.length) {
-                subscription.unsubscribe();
-                resolve();
-              }
-            },
-            error: (err) => {
-              console.error("Error publishing event:", err);
-              // Mark all remaining relays as failed and add them to failed set
-              availableRelays.forEach((relay) => {
-                if (!responses.some((r) => r.from === relay)) {
-                  relayStatuses.set(relay, {
-                    ok: false,
-                    message: err instanceof Error ? err.message : "Unknown error",
-                  });
-                  failedRelays.add(relay);
-                }
-              });
-              setEventStatuses([...statuses]);
-              subscription.unsubscribe();
-              resolve(); // Resolve instead of reject to continue with next event
-            },
-            complete: () => {
-              // If complete is called but we haven't received all responses,
-              // mark remaining relays as failed and add them to failed set
-              availableRelays.forEach((relay) => {
-                if (!responses.some((r) => r.from === relay)) {
-                  relayStatuses.set(relay, {
-                    ok: false,
-                    message: "No response received",
-                  });
-                  failedRelays.add(relay);
-                }
-              });
-              setEventStatuses([...statuses]);
-              resolve();
-            },
-          });
-        });
-
-        // Random delay between events (except for the last one)
-        if (i < count - 1) {
-          const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
-
-      setCurrentEventIndex(null);
-      const successCount = statuses.reduce(
-        (sum, status) => sum + Array.from(status.relayStatuses.values()).filter((s) => s.ok).length,
-        0,
-      );
-      const totalAttempts = statuses.reduce((sum, status) => sum + Array.from(status.relayStatuses.values()).length, 0);
-      setSuccess(
-        `Successfully published ${successCount} out of ${totalAttempts} event(s) to ${mailboxes.inboxes.length} inbox relay(s)`,
-      );
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to generate broken gift wrap events";
-      setError(errorMessage);
-      console.error("Failed to generate broken gift wrap events:", err);
-    } finally {
-      setGenerating(false);
-      setCurrentEventIndex(null);
-    }
+  const mailboxes = use$(() => (pubkey ? castUser(pubkey, eventStore).mailboxes$ : undefined), [pubkey]);
+  const commands$ = useMemo(
+    () =>
+      new Subject<{
+        pubkey: string;
+        relays: string[];
+        count: number;
+        minDelay: number;
+        maxDelay: number;
+        type: BrokenGiftWrapType;
+      }>(),
+    [],
+  );
+  type Generation = {
+    generating: boolean;
+    error: string | null;
+    success: string | null;
+    eventStatuses: EventStatus[];
+    currentEventIndex: number | null;
+  };
+  const initial: Generation = {
+    generating: false,
+    error: null,
+    success: null,
+    eventStatuses: [],
+    currentEventIndex: null,
+  };
+  const generation =
+    use$(
+      () =>
+        commands$.pipe(
+          exhaustMap((command) =>
+            defer(() => {
+              const failed = new Set<string>();
+              let latest: Generation = { ...initial, generating: true };
+              // Invalid-event construction is intentional: this example teaches fault injection.
+              const generators = {
+                [BrokenGiftWrapType.BrokenGiftWrap]: generateBrokenGiftWrap,
+                [BrokenGiftWrapType.BrokenSealInGiftWrap]: generateBrokenSealInGiftWrap,
+                [BrokenGiftWrapType.RandomSealKindInGiftWrap]: generateRandomSealKindInGiftWrap,
+                [BrokenGiftWrapType.BrokenRumorInSealInGiftWrap]: generateBrokenRumorInSealInGiftWrap,
+                [BrokenGiftWrapType.RandomRumorKind]: generateRandomRumorKind,
+                [BrokenGiftWrapType.NIP17DMWithRandomBase64]: generateNIP17DMWithRandomBase64,
+              };
+              return range(0, command.count).pipe(
+                concatMap((index) =>
+                  defer(() => {
+                    const relays = command.relays.filter((relay) => !failed.has(relay));
+                    if (!relays.length) throw new Error(`All inbox relays failed. Stopped after ${index} attempts.`);
+                    const delay = index
+                      ? command.minDelay +
+                        Math.floor(
+                          Math.random() * (Math.max(command.minDelay, command.maxDelay) - command.minDelay + 1),
+                        )
+                      : 0;
+                    return timer(delay).pipe(
+                      switchMap(() => generators[command.type](command.pubkey)),
+                      switchMap((event) =>
+                        pool.event(relays, event).pipe(
+                          materialize(),
+                          scan(
+                            (statuses, notification) => {
+                              const next = new Map(statuses);
+                              if (notification.kind === "N") {
+                                const response = notification.value;
+                                next.set(response.from, { ok: response.ok, message: response.message });
+                                if (!response.ok) failed.add(response.from);
+                              } else {
+                                for (const relay of relays)
+                                  if (next.get(relay)?.message === "Pending") {
+                                    next.set(relay, {
+                                      ok: false,
+                                      message:
+                                        notification.kind === "E"
+                                          ? String(notification.error?.message ?? notification.error)
+                                          : "No response received",
+                                    });
+                                    failed.add(relay);
+                                  }
+                              }
+                              return next;
+                            },
+                            new Map<string, { ok: boolean; message?: string }>(
+                              command.relays.map((relay) => [
+                                relay,
+                                { ok: false, message: failed.has(relay) ? "Skipped (previously failed)" : "Pending" },
+                              ]),
+                            ),
+                          ),
+                          map((relayStatuses) => ({ event, index, relayStatuses }) as EventStatus),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                scan((state: Generation, status): Generation => {
+                  const eventStatuses = state.eventStatuses.filter((previous) => previous.index !== status.index);
+                  return {
+                    ...state,
+                    eventStatuses: [...eventStatuses, status],
+                    currentEventIndex: status.index,
+                    generating: true,
+                  };
+                }, latest),
+                tap((state) => {
+                  latest = state;
+                }),
+                concatWith(
+                  defer(() => {
+                    const accepted = latest.eventStatuses.reduce(
+                      (total, status) =>
+                        total + [...status.relayStatuses.values()].filter((result) => result.ok).length,
+                      0,
+                    );
+                    const attempted = latest.eventStatuses.reduce(
+                      (total, status) => total + status.relayStatuses.size,
+                      0,
+                    );
+                    return of({
+                      ...latest,
+                      generating: false,
+                      currentEventIndex: null,
+                      success: accepted ? `${accepted} of ${attempted} relay deliveries accepted` : null,
+                      error: accepted ? null : "No relay accepted these events",
+                    });
+                  }),
+                ),
+                catchError((error) =>
+                  of({ ...latest, generating: false, currentEventIndex: null, error: String(error.message ?? error) }),
+                ),
+                startWith(latest),
+              );
+            }),
+          ),
+          startWith(initial),
+        ),
+      [commands$],
+    ) ?? initial;
+  const { generating, error, success, eventStatuses, currentEventIndex } = generation;
+  const handleGenerate = () => {
+    if (pubkey && mailboxes?.inboxes.length)
+      commands$.next({ pubkey, relays: mailboxes.inboxes, count, minDelay, maxDelay, type: brokenType });
   };
 
   return (
     <div className="container mx-auto max-w-4xl p-4">
-      <div className="card bg-base-100">
-        <div className="card-body">
-          <h2 className="card-title text-2xl mb-4">Broken Gift Wrap Generator</h2>
+      <div className="border border-base-300 bg-base-100">
+        <div className="p-4 space-y-3">
+          <h2 className="font-semibold text-2xl mb-4">Broken Gift Wrap Generator</h2>
           <p className="text-sm text-base-content/70 mb-4">
             Generate broken gift wrap events with random base64 data to stress test the gift wrapping system. These
             events will fail to decrypt, testing error handling and resilience. Events will be published to the target
             user's inbox relays.
           </p>
 
-          <div className="form-control w-full mb-4">
+          <div className="flex flex-col gap-2 w-full mb-4">
             <label className="label">
               <span className="label-text">Target Pubkey</span>
             </label>
@@ -714,9 +712,9 @@ export default function BrokenGiftWrapGenerator() {
             inboxes={mailboxes?.inboxes ?? null}
           />
 
-          <BrokenTypeSelector selectedType={brokenType} onTypeChange={setBrokenType} />
+          <BrokenTypeSelector selectedType={brokenType} onTypeChange={(value) => brokenType$.next(value)} />
 
-          <div className="form-control w-full mb-4">
+          <div className="flex flex-col gap-2 w-full mb-4">
             <label className="label">
               <span className="label-text">Number of Events</span>
             </label>
@@ -726,7 +724,7 @@ export default function BrokenGiftWrapGenerator() {
               max="100"
               className="input input-bordered w-full"
               value={count}
-              onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+              onChange={(e) => count$.next(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
             />
             <label className="label">
               <span className="label-text-alt">Generate between 1 and 100 broken events</span>
@@ -736,8 +734,8 @@ export default function BrokenGiftWrapGenerator() {
           <DelayConfigInput
             minDelay={minDelay}
             maxDelay={maxDelay}
-            onMinDelayChange={setMinDelay}
-            onMaxDelayChange={setMaxDelay}
+            onMinDelayChange={(value) => minDelay$.next(value)}
+            onMaxDelayChange={(value) => maxDelay$.next(value)}
           />
 
           {error && (

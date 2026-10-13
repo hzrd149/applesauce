@@ -3,6 +3,8 @@
  * @tags nip-01, nip-65, compose, preview, rendering, blossom, file-upload
  * @related notes/composing, notes/rendering, blossom/server-manager
  */
+import { publishEvent } from "../../extra/publish";
+
 import { castUser, User } from "applesauce-common/casts";
 import { NoteFactory } from "applesauce-common/factories";
 import { Link } from "applesauce-content/nast";
@@ -17,7 +19,7 @@ import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -60,7 +62,8 @@ async function uploadToBlossom(
 
 /** Favicon avatar for a server URL */
 function ServerFavicon({ url, size = "w-6 h-6" }: { url: string; size?: string }) {
-  const [error, setError] = useState(false);
+  const error$ = useMemo(() => new BehaviorSubject(false), []);
+  const error = use$(error$);
 
   let hostname: string;
   let faviconUrl: string;
@@ -76,7 +79,7 @@ function ServerFavicon({ url, size = "w-6 h-6" }: { url: string; size?: string }
   if (error || !faviconUrl) {
     return (
       <div
-        className={`${size} rounded-full bg-base-200 flex items-center justify-center text-[10px] font-bold`}
+        className={`${size} rounded-full bg-base-200 flex items-center justify-center text-sm font-bold`}
         title={hostname}
       >
         {hostname[0]?.toUpperCase() ?? "?"}
@@ -90,7 +93,7 @@ function ServerFavicon({ url, size = "w-6 h-6" }: { url: string; size?: string }
       alt={hostname}
       title={hostname}
       className={`${size} rounded-full bg-base-200`}
-      onError={() => setError(true)}
+      onError={() => error$.next(true)}
     />
   );
 }
@@ -160,13 +163,27 @@ function NotePreview({ content }: { content: string }) {
 }
 
 function Composer({ user, signer }: { user: User; signer: ISigner }) {
-  const [content, setContent] = useState("");
-  const [tab, setTab] = useState<"write" | "preview">("write");
-  const [publishing, setPublishing] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [mediaOptimization, setMediaOptimization] = useState(true);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [published, setPublished] = useState(false);
+  const content$ = useMemo(() => new BehaviorSubject(""), []);
+  const content = use$(content$);
+
+  const tab$ = useMemo(() => new BehaviorSubject<"write" | "preview">("write"), []);
+  const tab = use$(tab$);
+
+  const publishing$ = useMemo(() => new BehaviorSubject(false), []);
+  const publishing = use$(publishing$);
+
+  const uploading$ = useMemo(() => new BehaviorSubject(false), []);
+  const uploading = use$(uploading$);
+
+  const mediaOptimization$ = useMemo(() => new BehaviorSubject(true), []);
+  const mediaOptimization = use$(mediaOptimization$);
+
+  const publishError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const publishError = use$(publishError$);
+
+  const published$ = useMemo(() => new BehaviorSubject(false), []);
+  const published = use$(published$);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -182,8 +199,8 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
       const files = e.target.files;
       if (!files?.length) return;
 
-      setUploading(true);
-      setPublishError(null);
+      uploading$.next(true);
+      publishError$.next(null);
       try {
         const urls: string[] = [];
         for (const file of files) {
@@ -199,14 +216,14 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           const before = content.slice(0, pos);
           const after = content.slice(pos);
           const sep = before.length && !before.endsWith("\n") ? "\n" : "";
-          setContent(before + sep + insertText + (after.startsWith("\n") ? "" : "\n") + after);
+          content$.next(before + sep + insertText + (after.startsWith("\n") ? "" : "\n") + after);
         } else {
-          setContent((prev) => (prev ? prev + "\n" + insertText : insertText));
+          content$.next(content$.value ? content$.value + "\n" + insertText : insertText);
         }
       } catch (err) {
-        setPublishError(err instanceof Error ? err.message : "Upload failed");
+        publishError$.next(err instanceof Error ? err.message : "Upload failed");
       } finally {
-        setUploading(false);
+        uploading$.next(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
@@ -217,19 +234,19 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
     const trimmed = content.trim();
     if (!trimmed) return;
 
-    setPublishing(true);
-    setPublishError(null);
+    publishing$.next(true);
+    publishError$.next(null);
     try {
       const signed = await NoteFactory.create(trimmed).sign(signer);
-      await pool.publish(publishRelays, signed);
+      await publishEvent(pool, publishRelays, signed);
       eventStore.add(signed);
-      setPublished(true);
-      setContent("");
-      setTab("write");
+      published$.next(true);
+      content$.next("");
+      tab$.next("write");
     } catch (e) {
-      setPublishError(e instanceof Error ? e.message : "Publish failed");
+      publishError$.next(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      setPublishing(false);
+      publishing$.next(false);
     }
   }, [content, publishRelays, signer]);
 
@@ -241,7 +258,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
       </div>
       <p className="text-base-content/70 text-sm">
         Write a kind 1 note in the textarea. Toggle to preview to see how mentions, links, hashtags, and media will
-        render. The note is built with <code className="text-xs bg-base-200 px-1 rounded">NoteFactory</code> which
+        render. The note is built with <code className="text-sm bg-base-200 px-1 rounded">NoteFactory</code> which
         automatically creates the appropriate tags.
       </p>
       <label className="flex flex-wrap items-center gap-2 cursor-pointer text-sm text-base-content/80 w-fit">
@@ -249,7 +266,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           type="checkbox"
           className="toggle toggle-sm"
           checked={mediaOptimization}
-          onChange={() => setMediaOptimization((v) => !v)}
+          onChange={() => mediaOptimization$.next(!mediaOptimization$.value)}
         />
         <span>
           Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
@@ -262,7 +279,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           role="tab"
           type="button"
           className={`tab ${tab === "write" ? "tab-active" : ""}`}
-          onClick={() => setTab("write")}
+          onClick={() => tab$.next("write")}
         >
           Write
         </button>
@@ -270,7 +287,7 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           role="tab"
           type="button"
           className={`tab ${tab === "preview" ? "tab-active" : ""}`}
-          onClick={() => setTab("preview")}
+          onClick={() => tab$.next("preview")}
         >
           Preview
         </button>
@@ -284,8 +301,8 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
           placeholder="What's on your mind?"
           value={content}
           onChange={(e) => {
-            setContent(e.target.value);
-            setPublished(false);
+            content$.next(e.target.value);
+            published$.next(false);
           }}
         />
       ) : (

@@ -3,14 +3,11 @@
  * @tags nip-66, relay-discovery, monitors, map
  * @related relay-discovery/monitor-feed, relay-discovery/mailbox-map
  */
-import {
-  getMonitorChecks,
-  getMonitorFrequency,
-  getMonitorGeohash,
-  isValidRelayMonitorAnnouncement,
-  RELAY_MONITOR_ANNOUNCEMENT_KIND,
-} from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { castUser, RelayMonitor } from "applesauce-common/casts";
+import { BehaviorSubject, map } from "rxjs";
+
+import { isValidRelayMonitorAnnouncement, RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
+import { EventStore, mapEventsToStore, mapEventsToTimeline, castEvent } from "applesauce-core";
 import {
   Filter,
   getDisplayName,
@@ -25,9 +22,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import { map } from "rxjs";
 
 import "leaflet/dist/leaflet.css";
 import RelayPicker from "../../components/relay-picker";
@@ -44,21 +40,21 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
 }
 
 // Fix Leaflet default marker icons
 import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
 import { lookupRelays$ } from "../../settings";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  shadowUrl: undefined,
 });
 
 // Helper function to decode geohash to lat/lng
@@ -74,6 +70,7 @@ function decodeGeohash(geohashString: string): [number, number] | null {
 }
 
 interface MonitorEventWithLocation extends NostrEvent {
+  monitor: RelayMonitor;
   position?: [number, number];
 }
 
@@ -83,8 +80,8 @@ function MonitorPopup({ event }: { event: MonitorEventWithLocation }) {
     useMemo(() => ({ pubkey: event.pubkey, relays: mergeRelaySets(getSeenRelays(event)) }), [event]),
   );
 
-  const frequency = getMonitorFrequency(event);
-  const checks = getMonitorChecks(event);
+  const frequency = event.monitor.frequency;
+  const checks = event.monitor.checks;
   const createdDate = new Date(event.created_at * 1000);
 
   return (
@@ -99,25 +96,25 @@ function MonitorPopup({ event }: { event: MonitorEventWithLocation }) {
       </div>
       {event.content && <p className="text-sm mb-2">{event.content}</p>}
       {frequency && (
-        <div className="text-xs text-gray-600 mb-1">
+        <div className="text-sm text-gray-600 mb-1">
           <strong>Frequency:</strong> {frequency} seconds
         </div>
       )}
       {checks.length > 0 && (
-        <div className="text-xs text-gray-600 mb-1">
+        <div className="text-sm text-gray-600 mb-1">
           <strong>Checks:</strong> {checks.join(", ")}
         </div>
       )}
-      <div className="text-xs text-gray-600 mb-1">
+      <div className="text-sm text-gray-600 mb-1">
         <strong>Created:</strong> {createdDate.toLocaleString()}
       </div>
-      <div className="text-xs text-gray-600 mb-1">
+      <div className="text-sm text-gray-600 mb-1">
         <strong>Pubkey:</strong>
         <input
           type="text"
           readOnly
           value={event.pubkey}
-          className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 font-mono text-xs cursor-text"
+          className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 font-mono text-sm cursor-text"
           onFocus={(e) => e.target.select()}
           onClick={(e) => (e.target as HTMLInputElement).select()}
         />
@@ -144,7 +141,7 @@ function AvatarMarker({ event }: { event: MonitorEventWithLocation }) {
           height: 40px;
           border-radius: 50%;
           border: 3px solid white;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+
           overflow: hidden;
           background: white;
         ">
@@ -178,7 +175,8 @@ function AvatarMarker({ event }: { event: MonitorEventWithLocation }) {
 }
 
 export default function MonitorsMap() {
-  const [relayUrl, setRelayUrl] = useState<string>("wss://relay.nostr.watch/");
+  const relayUrl$ = useMemo(() => new BehaviorSubject<string>("wss://relay.nostr.watch/"), []);
+  const relayUrl = use$(relayUrl$);
 
   // Get relay instance
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
@@ -215,13 +213,15 @@ export default function MonitorsMap() {
     for (const event of events) {
       if (!isValidRelayMonitorAnnouncement(event)) continue;
 
-      const geohash = getMonitorGeohash(event);
+      const monitor = castEvent(event, RelayMonitor, eventStore);
+      const geohash = monitor.geohash;
       if (!geohash) continue;
 
       const decoded = decodeGeohash(geohash);
       if (decoded) {
         monitorsWithLocation.push({
           ...event,
+          monitor,
           position: decoded,
         });
       }
@@ -259,14 +259,14 @@ export default function MonitorsMap() {
   return (
     <div className="space-y-2 h-full overflow-hidden flex flex-col">
       <div className="p-4 flex flex-col gap-2">
-        <h2 className="card-title">Relay Monitors Map</h2>
+        <h2 className="font-semibold">Relay Monitors Map</h2>
         <p className="text-sm text-base-content/70">
           Select a relay to load relay monitor announcements from and see them displayed on the map. Monitors with
           geohash data will appear as markers.
         </p>
 
         <div className="flex gap-2 flex-wrap items-center">
-          <RelayPicker value={relayUrl} onChange={setRelayUrl} />
+          <RelayPicker value={relayUrl} onChange={(next: typeof relayUrl$.value) => relayUrl$.next(next)} />
 
           {events && (
             <p className="text-sm text-base-content/70 ms-auto">

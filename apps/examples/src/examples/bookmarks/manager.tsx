@@ -3,6 +3,9 @@
  * @tags nip-51, bookmarks, manager
  * @related feed/relay-timeline
  */
+import NoteContent from "../../components/note-content";
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";
@@ -22,7 +25,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { NostrEvent } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -35,7 +38,9 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())));
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
+  await publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+});
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
@@ -45,8 +50,11 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boolean) => Promise<void> }) {
-  const [input, setInput] = useState("");
-  const [hidden, setHidden] = useState(false);
+  const input$ = useMemo(() => new BehaviorSubject(""), []);
+  const input = use$(input$);
+
+  const hidden$ = useMemo(() => new BehaviorSubject(false), []);
+  const hidden = use$(hidden$);
 
   const pointer = useMemo(() => {
     if (!input.trim()) return null;
@@ -66,11 +74,16 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
 
   const handleAdd = async () => {
     if (!event) return;
-    await onAdd(event, hidden);
+    try {
+      await onAdd(event, hidden);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to add bookmark");
+      return;
+    }
 
     // Clear input after add
-    setInput("");
-    setHidden(false);
+    input$.next("");
+    hidden$.next(false);
   };
 
   return (
@@ -80,7 +93,7 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
         className="input input-bordered w-full"
         placeholder="Paste nevent or naddr here..."
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => input$.next(e.target.value)}
       />
 
       {pointer ? (
@@ -98,7 +111,7 @@ function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boole
       <div className="flex gap-2 justify-end mt-2">
         <label className="label">
           <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+          <input type="checkbox" checked={hidden} onChange={(e) => hidden$.next(e.target.checked)} />
         </label>
         <button className="btn btn-primary" onClick={handleAdd} disabled={!event}>
           Add
@@ -145,9 +158,9 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
   const displayName = profile?.displayName ?? note.author.npub.slice(0, 8) + "...";
 
   return (
-    <div className="card bg-base-100 shadow-sm">
-      <div className="card-body">
-        <div className="card-title flex gap-2 items-center">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
+        <div className="font-semibold flex gap-2 items-center">
           <div className="avatar">
             <div className="w-10 rounded-full">
               <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt={displayName} />
@@ -156,10 +169,10 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
           <div>{displayName}</div>
           <div className="ms-auto text-sm opacity-60">{note.createdAt.toLocaleString()}</div>
         </div>
-        <p className="line-clamp-5">{note.event.content}</p>
+        <NoteContent event={note.event} maxLength={500} />
 
         {onRemove && (
-          <div className="card-actions justify-end">
+          <div className="flex gap-2 justify-end">
             <button className="btn btn-sm btn-error" onClick={onRemove}>
               Remove
             </button>
@@ -173,7 +186,7 @@ function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?:
 function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRemove?: () => void }) {
   const article = use$(
     () => eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)),
-    [getReplaceableAddressFromPointer(pointer)],
+    [getReplaceableAddressFromPointer(pointer), pointer.relays?.join("|")],
   );
   const profile = use$(() => article?.author.profile$, [article]);
 
@@ -207,9 +220,9 @@ function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRem
   const displayName = profile?.displayName ?? article.author.npub.slice(0, 8) + "...";
 
   return (
-    <div className="card bg-base-100 shadow-sm">
-      <div className="card-body">
-        <div className="card-title flex gap-2 items-center">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
+        <div className="font-semibold flex gap-2 items-center">
           <div className="avatar">
             <div className="w-10 rounded-full">
               <img src={profile?.picture ?? `https://robohash.org/${article.author.pubkey}.png`} alt={displayName} />
@@ -227,7 +240,7 @@ function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRem
         </div>
 
         {onRemove && (
-          <div className="card-actions justify-end">
+          <div className="flex gap-2 justify-end">
             <button className="btn btn-sm btn-error" onClick={onRemove}>
               Remove
             </button>
@@ -254,29 +267,24 @@ function BookmarkManager({ user }: { user: User }) {
   const hiddenNotes = useMemo(() => hidden?.filter((pointer) => isEventPointer(pointer)), [hidden]);
   const hiddenArticles = useMemo(() => hidden?.filter((pointer) => isAddressPointer(pointer)), [hidden]);
 
-  const [unlocking, setUnlocking] = useState(false);
+  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
+  const unlocking = use$(unlocking$);
 
   const handleAdd = async (event: NostrEvent, hidden: boolean) => {
-    if (!signer || !outboxes?.length) return;
+    if (!signer) return;
 
     try {
-      await actions.exec(BookmarkEvent, event, undefined, hidden).forEach(async (signed) => {
-        eventStore.add(signed);
-        await pool.publish(outboxes, signed);
-      });
+      await actions.run(BookmarkEvent, event, undefined, hidden);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add bookmark");
+      throw err;
     }
   };
 
   const handleRemove = async (event: EventPointer | AddressPointer, hidden: boolean) => {
-    if (!signer || !outboxes?.length) return;
+    if (!signer) return;
 
     try {
-      await actions.exec(UnbookmarkEvent, event, undefined, hidden).forEach(async (signed) => {
-        eventStore.add(signed);
-        await pool.publish(outboxes, signed);
-      });
+      await actions.run(UnbookmarkEvent, event, undefined, hidden);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to remove bookmark");
     }
@@ -286,12 +294,12 @@ function BookmarkManager({ user }: { user: User }) {
     if (!bookmarks || !signer || unlocking) return;
 
     try {
-      setUnlocking(true);
+      unlocking$.next(true);
       await bookmarks.unlock(signer);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to unlock hidden bookmarks");
     } finally {
-      setUnlocking(false);
+      unlocking$.next(false);
     }
   };
 
@@ -304,8 +312,8 @@ function BookmarkManager({ user }: { user: User }) {
 
       {/* Unlock Hidden Bookmarks */}
       {hasHidden && !hidden && (
-        <div className="card bg-base-100 shadow-md mb-6">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-100  mb-6">
+          <div className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-semibold">Hidden Bookmarks Available</h3>

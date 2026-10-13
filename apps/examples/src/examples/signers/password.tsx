@@ -3,11 +3,13 @@
  * @tags nip-19, nip-49, signers, password, encryption
  * @related signers/accounts
  */
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject } from "rxjs";
+
 import { PasswordSigner } from "applesauce-signers";
 import { generateSecretKey } from "applesauce-core/helpers";
 import { decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useState } from "react";
-import { useLocalStorage } from "react-use";
+import { useCallback, useMemo } from "react";
 
 const STORAGE_KEY = "nip49-example-ncryptsec";
 
@@ -16,7 +18,7 @@ function ProfileCard({ pubkey, handleLock }: { pubkey: string; handleLock: () =>
   const npub = npubEncode(pubkey);
 
   return (
-    <div className="card w-96 bg-base-100 shadow-xl">
+    <div className="border border-base-300 w-96 bg-base-100 ">
       <figure className="px-10 pt-10">
         <div className="avatar">
           <div className="w-24 rounded-full">
@@ -24,7 +26,7 @@ function ProfileCard({ pubkey, handleLock }: { pubkey: string; handleLock: () =>
           </div>
         </div>
       </figure>
-      <div className="card-body">
+      <div className="p-4">
         <div>
           <div className="font-semibold">Hex Public Key:</div>
           <div className="text-sm break-all">{pubkey}</div>
@@ -33,7 +35,7 @@ function ProfileCard({ pubkey, handleLock }: { pubkey: string; handleLock: () =>
           <div className="font-semibold">Npub:</div>
           <div className="text-sm break-all">{npub}</div>
         </div>
-        <div className="card-actions justify-end">
+        <div className="flex gap-2 justify-end">
           <button className="btn btn-primary" onClick={handleLock}>
             Lock
           </button>
@@ -52,17 +54,18 @@ function UnlockForm({
   onReset: () => void;
   error?: string;
 }) {
-  const [password, setPassword] = useState("");
+  const password$ = useMemo(() => new BehaviorSubject(""), []);
+  const password = use$(password$);
 
   const handleSubmit = async () => {
     await onUnlock(password);
   };
 
   return (
-    <div className="card w-96 bg-base-100 shadow-xl">
-      <div className="card-body">
-        <h2 className="card-title">Unlock Your Profile</h2>
-        <div className="form-control w-full">
+    <div className="border border-base-300 w-96 bg-base-100 ">
+      <div className="p-4">
+        <h2 className="font-semibold">Unlock Your Profile</h2>
+        <div className="flex flex-col gap-2 w-full">
           <label className="label">
             <span className="label-text">Enter your password</span>
           </label>
@@ -71,11 +74,11 @@ function UnlockForm({
             placeholder="Password"
             className="input input-bordered w-full"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => password$.next(e.target.value)}
           />
         </div>
         {error && <div className="text-error text-sm">{error}</div>}
-        <div className="card-actions justify-end gap-2">
+        <div className="flex gap-2 justify-end gap-2">
           <button className="btn btn-ghost" onClick={onReset}>
             Reset
           </button>
@@ -96,18 +99,21 @@ function SetupForm({
   onSubmit: (data: { nsec: string; password: string }) => Promise<void>;
   error?: string;
 }) {
-  const [nsec, setNsec] = useState("");
-  const [password, setPassword] = useState("");
+  const nsec$ = useMemo(() => new BehaviorSubject(""), []);
+  const nsec = use$(nsec$);
+
+  const password$ = useMemo(() => new BehaviorSubject(""), []);
+  const password = use$(password$);
 
   const handleSubmit = async () => {
     await onSubmit({ nsec, password });
   };
 
   return (
-    <div className="card w-96 bg-base-100 shadow-xl">
-      <div className="card-body">
-        <h2 className="card-title">Setup Your Profile</h2>
-        <div className="form-control w-full">
+    <div className="border border-base-300 w-96 bg-base-100 ">
+      <div className="p-4">
+        <h2 className="font-semibold">Setup Your Profile</h2>
+        <div className="flex flex-col gap-2 w-full">
           <label className="label">
             <span className="label-text">Enter your nsec (optional)</span>
           </label>
@@ -116,13 +122,13 @@ function SetupForm({
             placeholder="nsec1..."
             className="input input-bordered w-full"
             value={nsec}
-            onChange={(e) => setNsec(e.target.value)}
+            onChange={(e) => nsec$.next(e.target.value)}
           />
           <label className="label">
             <span className="label-text-alt">Leave empty to generate new keys</span>
           </label>
         </div>
-        <div className="form-control w-full">
+        <div className="flex flex-col gap-2 w-full">
           <label className="label">
             <span className="label-text">Choose an encryption password</span>
           </label>
@@ -131,11 +137,11 @@ function SetupForm({
             placeholder="Password"
             className="input input-bordered w-full"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => password$.next(e.target.value)}
           />
         </div>
         {error && <div className="text-error text-sm">{error}</div>}
-        <div className="card-actions justify-end">
+        <div className="flex gap-2 justify-end">
           <button className="btn btn-primary" onClick={handleSubmit}>
             Submit
           </button>
@@ -147,22 +153,32 @@ function SetupForm({
 
 // Main component that manages state and orchestrates the other components
 export default function Nip49Profile() {
-  const [signer] = useState(() => new PasswordSigner());
-  const [pubkey, setPubkey] = useState<string>();
-  const [error, setError] = useState<string>();
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const signer = useMemo(() => {
+    const signer = new PasswordSigner();
+    signer.ncryptsec = localStorage.getItem(STORAGE_KEY) ?? undefined;
+    return signer;
+  }, []);
+  const pubkey$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const pubkey = use$(pubkey$);
 
-  const [saved, setSaved] = useLocalStorage<string>(STORAGE_KEY, undefined, { raw: true });
+  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const error = use$(error$);
 
-  // Check for stored encrypted key on mount
-  if (saved) signer.ncryptsec = saved;
+  const isUnlocked$ = useMemo(() => new BehaviorSubject(false), []);
+  const isUnlocked = use$(isUnlocked$);
 
-  const [isSetup, setIsSetup] = useState(signer.ncryptsec !== undefined);
+  const persistKey = useCallback((key: string | undefined) => {
+    if (key) localStorage.setItem(STORAGE_KEY, key);
+    else localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  const isSetup$ = useMemo(() => new BehaviorSubject(signer.ncryptsec !== undefined), []);
+  const isSetup = use$(isSetup$);
 
   const handleInitialSetup = useCallback(
     async ({ nsec, password }: { nsec: string; password: string }) => {
       try {
-        setError(undefined);
+        error$.next(undefined);
 
         // Generate new key if nsec is empty
         let privateKey: Uint8Array;
@@ -186,37 +202,37 @@ export default function Nip49Profile() {
         if (!signer.ncryptsec) throw new Error("Failed to encrypt key");
 
         // Store encrypted key
-        setSaved(signer.ncryptsec);
+        persistKey(signer.ncryptsec);
 
         // Get and set public key
         const pubkey = await signer.getPublicKey();
-        setPubkey(pubkey);
-        setIsUnlocked(true);
-        setIsSetup(true);
+        pubkey$.next(pubkey);
+        isUnlocked$.next(true);
+        isSetup$.next(true);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Unknown error occurred");
+        error$.next(e instanceof Error ? e.message : "Unknown error occurred");
       }
     },
-    [signer, setSaved],
+    [signer, persistKey],
   );
 
   const handleReset = useCallback(() => {
     signer.key = null;
     signer.ncryptsec = undefined;
-    setSaved(undefined);
-    setIsSetup(false);
-  }, [setSaved, signer]);
+    persistKey(undefined);
+    isSetup$.next(false);
+  }, [persistKey, signer]);
 
   const handleUnlock = useCallback(
     async (password: string) => {
       try {
-        setError(undefined);
+        error$.next(undefined);
         await signer.unlock(password);
         const pubkey = await signer.getPublicKey();
-        setPubkey(pubkey);
-        setIsUnlocked(true);
+        pubkey$.next(pubkey);
+        isUnlocked$.next(true);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to unlock");
+        error$.next(e instanceof Error ? e.message : "Failed to unlock");
       }
     },
     [signer],
@@ -224,8 +240,8 @@ export default function Nip49Profile() {
 
   const handleLock = useCallback(() => {
     signer.lock();
-    setIsUnlocked(false);
-    setPubkey(undefined);
+    isUnlocked$.next(false);
+    pubkey$.next(undefined);
   }, [signer]);
 
   // Render the appropriate component based on state

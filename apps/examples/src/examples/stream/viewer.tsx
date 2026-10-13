@@ -3,20 +3,26 @@
  * @tags nip-53, stream, viewer, chat
  * @related feed/relay-timeline
  */
+import { castTimelineStream } from "applesauce-common/observable";
+import { default as NoteContent } from "../../components/note-content";
+import { publishEvent } from "../../extra/publish";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, shareReplay, map } from "rxjs";
+
 import { Stream, StreamChatMessage } from "applesauce-common/casts";
 import { StreamChatMessageFactory } from "applesauce-common/factories";
-import { castTimelineStream } from "applesauce-common/observable";
+
 import { EventStore, mapEventsToStore } from "applesauce-core";
-import { buildCommonEventRelationFilters, relaySet, unixNow } from "applesauce-core/helpers";
+import { buildCommonEventRelationFilters, relaySet, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { kinds } from "applesauce-core/helpers";
-import { memo, useMemo, useState } from "react";
+
+import { memo, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import ReactPlayer from "react-player";
-import { map } from "rxjs";
+
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -36,17 +42,17 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function StreamCard({ stream }: { stream: Stream }) {
-  const host = use$(() => stream.host.profile$, [stream.id]);
+  const host = use$(() => stream.host.profile$, [stream]);
   const { title, image, viewers } = stream;
 
   return (
-    <div className="card bg-base-100 shadow-md">
+    <div className="border border-base-300 bg-base-100 ">
       {image && (
         <figure>
           <img src={image} alt={title} className="h-48 w-full object-cover" />
         </figure>
       )}
-      <div className="card-body">
+      <div className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="avatar">
             <div className="w-8 rounded-full">
@@ -57,10 +63,10 @@ function StreamCard({ stream }: { stream: Stream }) {
             </div>
           </div>
           <span className="text-sm font-medium">{host?.displayName || stream.host.pubkey}</span>
-          <div className="badge badge-success badge-sm">live</div>
+          <div className="badge badge-success badge">live</div>
         </div>
 
-        <h2 className="card-title text-lg">{title}</h2>
+        <h2 className="font-semibold text-lg">{title}</h2>
 
         {viewers !== undefined && (
           <div className="text-sm text-base-content/60 mt-2">
@@ -110,13 +116,15 @@ function ChatMessage({ message, relays }: { message: StreamChatMessage; relays: 
       <div className="chat-header">
         {profile?.displayName || message.author.pubkey}
         <time
-          className="text-xs opacity-50 ml-2"
+          className="text-sm opacity-50 ml-2"
           title={`Seen on ${message.seen?.size ?? 0}/${relays?.length ?? 0} chat relays`}
         >
           {message.createdAt.toLocaleTimeString()}
         </time>
       </div>
-      <div className="chat-bubble">{message.event.content}</div>
+      <div className="chat-bubble">
+        <NoteContent event={message.event} />
+      </div>
     </div>
   );
 }
@@ -176,7 +184,7 @@ function StreamChatDebugModal({ stream }: { stream: Stream }) {
 
           <div className="divider my-2">Chat relays</div>
           <p className="text-sm text-base-content/70">
-            Host inboxes and stream <code className="text-xs">relays</code> tags merged for chat. Badges show each
+            Host inboxes and stream <code className="text-sm">relays</code> tags merged for chat. Badges show each
             relay&apos;s role.
           </p>
           <div className="py-2 overflow-y-auto max-h-48">
@@ -225,9 +233,9 @@ function StreamChatDebugModal({ stream }: { stream: Stream }) {
 
           <div className="divider my-2">Raw event</div>
           <p className="text-sm text-base-content/70">
-            Kind {stream.event.kind} replaceable — <code className="text-xs">JSON.stringify</code> of the event.
+            Kind {stream.event.kind} replaceable — <code className="text-sm">JSON.stringify</code> of the event.
           </p>
-          <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-base-200 rounded-lg p-3 max-h-[min(50vh,24rem)] overflow-auto">
+          <pre className="text-sm font-mono whitespace-pre-wrap break-all bg-base-200 rounded-lg p-3 max-h-[min(50vh,24rem)] overflow-auto">
             {rawJson}
           </pre>
 
@@ -248,7 +256,7 @@ function StreamChatDebugModal({ stream }: { stream: Stream }) {
 }
 
 function StreamChat({ stream, relays }: { stream: Stream; relays: string[] }) {
-  const chat = use$(() => stream.chat$, [stream.id]);
+  const chat = use$(() => stream.chat$, [stream]);
 
   // Subscribe to chat messages and zaps for the stream
   use$(
@@ -260,20 +268,20 @@ function StreamChat({ stream, relays }: { stream: Stream; relays: string[] }) {
           { reconnect: true, resubscribe: true },
         )
         .pipe(mapEventsToStore(eventStore)),
-    [stream.id, relays],
+    [stream, relays],
   );
 
   return (
     <>
       <div className="border-b border-base-300 p-4">
-        <div className="navbar">
-          <div className="navbar-start">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <div>
               <h3 className="font-bold text-lg">Live Chat</h3>
               <p className="text-sm text-base-content/60">{chat?.length || 0} messages</p>
             </div>
           </div>
-          <div className="navbar-end">
+          <div className="ms-auto">
             <StreamChatDebugModal stream={stream} />
           </div>
         </div>
@@ -303,9 +311,9 @@ function ChatMessageForm({ stream, relays }: { stream: Stream; relays: string[] 
 
     const event = await StreamChatMessageFactory.create(stream.event, values.content).sign(signer);
 
+    await publishEvent(pool, relays, event);
     eventStore.add(event);
     reset();
-    await pool.publish(relays, event);
   });
 
   return (
@@ -319,7 +327,7 @@ function ChatMessageForm({ stream, relays }: { stream: Stream; relays: string[] 
 }
 
 function StreamInfo({ stream }: { stream: Stream }) {
-  const host = use$(() => stream.host.profile$, [stream.id]);
+  const host = use$(() => stream.host.profile$, [stream]);
   const title = stream.title || "Untitled Stream";
   const summary = stream.summary;
   const status = stream.status;
@@ -370,14 +378,11 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
   return (
     <div className="h-screen bg-base-100 overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="navbar bg-base-200 border-b border-base-300">
-        <div className="navbar-start">
+      <div className="flex items-center gap-4 p-3 border-b border-base-300">
+        <div className="flex items-center gap-2">
           <button className="btn btn-ghost" onClick={onBack}>
             ← Back to Streams
           </button>
-        </div>
-        <div className="navbar-center">
-          <span className="text-lg font-semibold">Stream Viewer</span>
         </div>
       </div>
 
@@ -425,40 +430,48 @@ function StreamViewer({ stream, onBack }: { stream: Stream; onBack: () => void }
 }
 
 export default function StreamCastExample() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-  const [selectedStream, setSelectedStream] = useState<Stream | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
-  // Subscribe to stream events
-  use$(
+  const selectedStream$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedAddress = use$(selectedStream$);
+
+  const feed$ = useMemo(
     () =>
-      pool
-        .relay(relay)
-        .subscription({
-          kinds: [kinds.LiveEvent], // NIP-53 Live Event kind
-          since: unixNow() - 7 * 24 * 60 * 60, // Last 7 days
-        })
-        .pipe(mapEventsToStore(eventStore)),
+      relayTimeline(eventStore, pool, [relay], { kinds: [kinds.LiveEvent] }).pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
     [relay],
   );
-
-  // Get streams and cast them to Stream class
+  const feed = use$(feed$);
   const streams = use$(
-    () => eventStore.timeline({ kinds: [kinds.LiveEvent] }).pipe(castTimelineStream(Stream, eventStore)),
-    [],
+    () =>
+      feed$.pipe(
+        map((state) => state.events),
+        castTimelineStream(Stream, eventStore),
+      ),
+    [feed$],
   );
 
+  const selectedStream = streams?.find((stream) => stream.uid === selectedAddress);
   if (selectedStream) {
-    return <StreamViewer stream={selectedStream} onBack={() => setSelectedStream(null)} />;
+    return <StreamViewer stream={selectedStream} onBack={() => selectedStream$.next(null)} />;
   }
 
   return (
     <div className="container mx-auto my-8 px-4">
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-4">Live Streams</h1>
-        <RelayPicker value={relay} onChange={setRelay} />
+        {feed?.status === "loading" && <p role="status">Loading…</p>}
+        {feed?.errors.map((error) => (
+          <p key={error} role="alert" className="text-error">
+            {error}
+          </p>
+        ))}
+        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
       </div>
 
-      <StreamGrid streams={streams || []} onStreamSelect={setSelectedStream} />
+      <StreamGrid streams={streams || []} onStreamSelect={(stream) => selectedStream$.next(stream.uid)} />
     </div>
   );
 }

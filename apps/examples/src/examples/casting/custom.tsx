@@ -1,19 +1,24 @@
 /**
- * Example of using a custom cast class for NIP-34 Git Repository announcements
+ * Define a custom cast class for NIP-34 repository announcements.
+ * Ordinary clients should use the built-in GitRepository cast; this example teaches cast construction.
  * @tags casting, nip-34, git
  * @related casting/contacts, casting/thread
  */
-import { CastRefEventStore, EventCast } from "applesauce-common/casts/cast";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore, withImmediateValueOrDefault } from "applesauce-core";
+
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { CastRefEventStore, EventCast } from "applesauce-common/casts/cast";
+
+import { EventStore, withImmediateValueOrDefault } from "applesauce-core";
 import { addRelayHintsToPointer, getAddressPointerForEvent, naddrEncode } from "applesauce-core/helpers";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useState } from "react";
-import { map } from "rxjs";
+import { useMemo } from "react";
+import { map, BehaviorSubject, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -213,7 +218,7 @@ function RepositoryCard({ repo }: { repo: Repository }) {
         {repo.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-2">
             {repo.tags.map((tag) => (
-              <span key={tag} className="badge badge-sm badge-outline">
+              <span key={tag} className="badge  badge-outline">
                 {tag}
               </span>
             ))}
@@ -224,8 +229,8 @@ function RepositoryCard({ repo }: { repo: Repository }) {
         {repo.clone.length > 0 && (
           <div className="text-sm mb-2">
             <span className="font-medium">Clone: </span>
-            <code className="text-xs bg-base-200 px-2 py-1 rounded">{repo.clone[0]}</code>
-            <button className="btn btn-xs btn-ghost ml-2" onClick={() => navigator.clipboard.writeText(repo.clone[0])}>
+            <code className="text-sm bg-base-200 px-2 py-1 rounded">{repo.clone[0]}</code>
+            <button className="btn btn-sm btn-ghost ml-2" onClick={() => navigator.clipboard.writeText(repo.clone[0])}>
               Copy
             </button>
           </div>
@@ -242,7 +247,7 @@ function RepositoryCard({ repo }: { repo: Repository }) {
       </div>
 
       {/* Addressable event info */}
-      <div className="pt-2 border-t border-base-300/50 text-xs text-base-content/60">
+      <div className="pt-2 border-t border-base-300/50 text-sm text-base-content/60">
         <div className="mb-1">
           <span className="font-medium">Address: </span>
           <code className="bg-base-200 px-1 rounded">{repo.address}</code>
@@ -258,32 +263,33 @@ function RepositoryCard({ repo }: { repo: Repository }) {
 
 /** Main example component */
 export default function CustomCastExample() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
-  // Subscribe to repository events from the relay
-  use$(
+  const feed = use$(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [REPOSITORY_KIND], limit: 50 })
-        // Add all events to the store
-        .pipe(mapEventsToStore(eventStore)),
+      relayTimeline(eventStore, pool, [relay], { kinds: [REPOSITORY_KIND], limit: 50 }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(Repository, eventStore),
+            map((events) => ({ ...result, events })),
+          ),
+        ),
+      ),
     [relay],
   );
-
-  // Get repositories from the store and cast them to Repository instances
-  const repositories = use$(
-    () =>
-      eventStore.timeline({ kinds: [REPOSITORY_KIND] }).pipe(
-        // Cast events to Repository instances
-        castTimelineStream(Repository, eventStore),
-      ),
-    [],
-  );
+  const repositories = feed?.events;
 
   return (
     <div className="max-w-6xl w-full mx-auto my-8 px-4 gap-2 flex flex-col">
-      <RelayPicker value={relay} onChange={setRelay} />
+      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      {feed?.status === "loading" && <p role="status">Loading events…</p>}
+      {feed?.errors.map((error) => (
+        <p role="alert" className="text-error" key={error}>
+          {error}
+        </p>
+      ))}
+      {feed?.status !== "loading" && repositories?.length === 0 && <p>No events found.</p>}
 
       {repositories?.map((repo) => (
         <RepositoryCard key={repo.uid} repo={repo} />

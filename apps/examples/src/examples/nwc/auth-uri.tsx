@@ -3,6 +3,9 @@
  * @tags nwc, wallet, nip-47, authentication
  * @related nwc/connection-string, nwc/simple-wallet
  */
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject } from "rxjs";
+
 import {
   CommonWalletMethods,
   createWalletAuthURI,
@@ -11,7 +14,7 @@ import {
   WalletAuthURI,
 } from "applesauce-wallet-connect/helpers";
 import { generateSecretKey, getPublicKey } from "applesauce-core/helpers";
-import { useState } from "react";
+import { useMemo } from "react";
 import { useForm } from "react-hook-form";
 import QRCode from "../../components/qr-code";
 
@@ -58,8 +61,8 @@ function ParsedUriDisplay({ parsedUri }: { parsedUri?: WalletAuthURI | null }) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Parsed Authorization URI</h2>
-      <div className="card card-border bg-base-200">
-        <div className="card-body">
+      <div className="border border-base-300  bg-base-200">
+        <div className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <span className="font-medium">Client (Pubkey):</span>
@@ -217,8 +220,11 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
   const watchedMetadata = watch("metadata") || {};
   const watchedRelays = watch("relays") || [];
 
-  const [metadataKey, setMetadataKey] = useState("");
-  const [metadataValue, setMetadataValue] = useState("");
+  const metadataKey$ = useMemo(() => new BehaviorSubject(""), []);
+  const metadataKey = use$(metadataKey$);
+
+  const metadataValue$ = useMemo(() => new BehaviorSubject(""), []);
+  const metadataValue = use$(metadataValue$);
 
   const addRelay = () => {
     const currentRelays = [...watchedRelays];
@@ -260,8 +266,8 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
       const currentMetadata = { ...watchedMetadata };
       currentMetadata[metadataKey] = metadataValue;
       setValue("metadata", currentMetadata);
-      setMetadataKey("");
-      setMetadataValue("");
+      metadataKey$.next("");
+      metadataValue$.next("");
     }
   };
 
@@ -301,8 +307,8 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
     <div className="flex flex-col gap-4">
       <h2 className="text-2xl font-bold">Build Authorization URI</h2>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="card card-border bg-base-200">
-        <div className="card-body space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="border border-base-300  bg-base-200">
+        <div className="p-4 space-y-4">
           {/* Basic Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -484,14 +490,14 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
               <input
                 type="text"
                 value={metadataKey}
-                onChange={(e) => setMetadataKey(e.target.value)}
+                onChange={(e) => metadataKey$.next(e.target.value)}
                 placeholder="Key"
                 className="input input-bordered flex-1"
               />
               <input
                 type="text"
                 value={metadataValue}
-                onChange={(e) => setMetadataValue(e.target.value)}
+                onChange={(e) => metadataValue$.next(e.target.value)}
                 placeholder="Value"
                 className="input input-bordered flex-1"
               />
@@ -506,7 +512,7 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
                     <code className="px-2 py-1 rounded bg-base-300">
                       {key}: {value}
                     </code>
-                    <button type="button" onClick={() => removeMetadata(key)} className="btn btn-xs btn-error">
+                    <button type="button" onClick={() => removeMetadata(key)} className="btn btn-sm btn-error">
                       ×
                     </button>
                   </div>
@@ -525,39 +531,24 @@ function UriBuilder({ onUriGenerated }: { onUriGenerated: (uri: string) => void 
 }
 
 export default function AuthUriExample() {
-  const [inputUri, setInputUri] = useState("");
-  const [parsedUri, setParsedUri] = useState<WalletAuthURI | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [generatedUri, setGeneratedUri] = useState("");
+  const inputUri$ = useMemo(() => new BehaviorSubject(""), []);
+  const inputUri = use$(inputUri$);
 
-  // Handle URI input and parsing
-  const handleUriChange = (value: string) => {
-    setInputUri(value);
-    setError(null);
-    setParsedUri(null);
+  const generatedUri$ = useMemo(() => new BehaviorSubject(""), []);
+  const generatedUri = use$(generatedUri$);
 
-    if (!value.trim()) return;
-
+  const { parsedUri, error } = useMemo(() => {
+    if (!inputUri.trim()) return { parsedUri: null, error: null };
     try {
-      const parsed = parseWalletAuthURI(value);
-      setParsedUri(parsed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      return { parsedUri: parseWalletAuthURI(inputUri), error: null };
+    } catch (error) {
+      return { parsedUri: null, error: String(error) };
     }
-  };
-
-  // Handle URI generation
+  }, [inputUri]);
+  const handleUriChange = (value: string) => inputUri$.next(value);
   const handleUriGenerated = (uri: string) => {
-    setGeneratedUri(uri);
-    setInputUri(uri);
-    setError(null);
-
-    try {
-      const parsed = parseWalletAuthURI(uri);
-      setParsedUri(parsed);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to parse generated URI");
-    }
+    generatedUri$.next(uri);
+    inputUri$.next(uri);
   };
 
   return (
@@ -594,14 +585,14 @@ export default function AuthUriExample() {
             {generatedUri && (
               <div className="mb-4">
                 <h3 className="text-lg font-semibold mb-2">Generated URI:</h3>
-                <div className="card card-border bg-base-200">
+                <div className="border border-base-300  bg-base-200">
                   <QRCode
                     value={generatedUri}
                     size={300}
                     className="rounded mx-auto"
                     alt="Generated wallet auth QR code"
                   />
-                  <div className="card-body">
+                  <div className="p-4">
                     <code className="text-sm font-mono break-all select-all">{generatedUri}</code>
                     <button
                       onClick={() => navigator.clipboard.writeText(generatedUri)}

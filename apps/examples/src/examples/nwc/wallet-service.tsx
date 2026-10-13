@@ -3,16 +3,18 @@
  * @tags nip-47, nwc, wallet, service, server
  * @related nwc/simple-wallet
  */
+import { publishEvent } from "../../extra/publish";
+
 import { parseBolt11 } from "applesauce-common/helpers";
 import { unixNow } from "applesauce-core/helpers";
-import { useObservableEagerState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { WalletService, WalletServiceHandlers } from "applesauce-wallet-connect";
 import { CommonWalletMethods, WalletInfo, Transaction as WalletTransaction } from "applesauce-wallet-connect/helpers";
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
-import { useCallback, useMemo, useState } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useCallback, useMemo } from "react";
+import { BehaviorSubject, defer, catchError, finalize, switchMap, NEVER, concat, of, startWith } from "rxjs";
 import QRCode from "../../components/qr-code";
 
 // Available wallet methods that can be supported
@@ -39,18 +41,18 @@ const signer = new PrivateKeySigner();
 
 // Setup subscription and publish methods
 WalletService.subscriptionMethod = pool.subscription.bind(pool);
-WalletService.publishMethod = pool.publish.bind(pool);
+WalletService.publishMethod = (relays, event) => publishEvent(pool, relays, event);
 
 type Transaction = WalletTransaction & { id: string };
 
 function ConnectionInfo({ connectionString }: { connectionString: string }) {
   return (
-    <div className="bg-base-100 rounded-lg shadow p-4 flex gap-2">
+    <div className="bg-base-100 rounded-lg  p-4 flex gap-2">
       <QRCode value={connectionString} size={128} className="rounded" alt="Wallet connection QR code" />
       <div className="flex flex-col gap-2 items-start">
         <div>
           <h3 className="font-bold">Connection String</h3>
-          <code className="text-xs font-mono truncate select-all code">{connectionString}</code>
+          <code className="text-sm font-mono truncate select-all code">{connectionString}</code>
         </div>
         <button onClick={() => navigator.clipboard.writeText(connectionString)} className="btn btn-accent btn-sm">
           Copy
@@ -63,7 +65,7 @@ function ConnectionInfo({ connectionString }: { connectionString: string }) {
 // Card Components
 function BalanceCard({ balance, setBalance }: { balance: number; setBalance: (balance: number) => void }) {
   return (
-    <div className="bg-base-100 rounded-lg shadow p-6">
+    <div className="bg-base-100 rounded-lg  p-6">
       <h3 className="text-lg font-semibold mb-4 flex items-center">
         <span className="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
         get_balance
@@ -99,7 +101,7 @@ function WalletInfoCard({
   updateWalletInfo: (field: string, value: any) => void;
 }) {
   return (
-    <div className="bg-base-100 rounded-lg shadow p-6">
+    <div className="bg-base-100 rounded-lg  p-6">
       <h3 className="text-lg font-semibold mb-4 flex items-center">
         <span className="w-3 h-3 bg-purple-500 rounded-full mr-2"></span>
         get_info
@@ -159,7 +161,7 @@ function TransactionsCard({
   settleTransaction: (id: string) => void;
 }) {
   return (
-    <div className="bg-base-100 rounded-lg shadow p-6 xl:col-span-1 lg:col-span-2">
+    <div className="bg-base-100 rounded-lg  p-6 xl:col-span-1 lg:col-span-2">
       <h3 className="text-lg font-semibold mb-4 flex items-center">
         <span className="w-3 h-3 bg-orange-500 rounded-full mr-2"></span>
         list_transactions
@@ -240,7 +242,7 @@ function TransactionsCard({
                 ></span>
                 <span className="text-sm font-medium">{tx.description}</span>
                 <span
-                  className={`text-xs px-2 py-1 rounded-full ${
+                  className={`text-sm px-2 py-1 rounded-full ${
                     tx.state === "settled"
                       ? "bg-green-100 text-green-800"
                       : tx.state === "pending"
@@ -251,7 +253,7 @@ function TransactionsCard({
                   {tx.state}
                 </span>
               </div>
-              <div className="text-xs text-gray-600">
+              <div className="text-sm text-gray-600">
                 {Math.round(tx.amount / 1000).toLocaleString()} sats | Fees: {Math.round(tx.fees_paid / 1000)} sats
               </div>
             </div>
@@ -288,14 +290,14 @@ function MethodCard({
   details: string;
 }) {
   return (
-    <div className="bg-base-100 rounded-lg shadow p-6">
+    <div className="bg-base-100 rounded-lg  p-6">
       <h3 className="text-lg font-semibold mb-4 flex items-center">
         <span className={`w-3 h-3 ${color} rounded-full mr-2`}></span>
         {method}
       </h3>
       <div className="text-center text-gray-600">
         <p className="text-sm">{description}</p>
-        <p className="text-xs mt-2">{details}</p>
+        <p className="text-sm mt-2">{details}</p>
       </div>
     </div>
   );
@@ -337,29 +339,39 @@ const transactions$ = new BehaviorSubject<Transaction[]>([
 ]);
 
 export default function WalletServiceExample() {
-  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
-  const [supportedMethods, setSupportedMethods] = useState<string[]>([
-    "get_balance",
-    "get_info",
-    "make_invoice",
-    "pay_invoice",
-    "list_transactions",
-  ]);
-  const [walletService, setWalletService] = useState<WalletService | null>(null);
-  const [newRelay, setNewRelay] = useState<string>("");
+  const relays$ = useMemo(() => new BehaviorSubject<string[]>(DEFAULT_RELAYS), []);
+  const relays = use$(relays$);
 
-  const balance = useObservableEagerState(balance$);
-  const walletInfo = useObservableEagerState(walletInfo$);
-  const transactions = useObservableEagerState(transactions$);
+  const supportedMethods$ = useMemo(
+    () =>
+      new BehaviorSubject<string[]>(["get_balance", "get_info", "make_invoice", "pay_invoice", "list_transactions"]),
+    [],
+  );
+  const supportedMethods = use$(supportedMethods$);
+
+  const walletService$ = useMemo(() => new BehaviorSubject<WalletService | null>(null), []);
+  const walletService = use$(walletService$);
+
+  const newRelay$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const newRelay = use$(newRelay$);
+
+  const balance = use$(balance$);
+  const walletInfo = use$(walletInfo$);
+  const transactions = use$(transactions$);
 
   // New transaction form state
-  const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
-    type: "incoming",
-    state: "settled",
-    description: "",
-    amount: 0,
-    fees_paid: 0,
-  });
+  const newTransaction$ = useMemo(
+    () =>
+      new BehaviorSubject<Partial<Transaction>>({
+        type: "incoming",
+        state: "settled",
+        description: "",
+        amount: 0,
+        fees_paid: 0,
+      }),
+    [],
+  );
+  const newTransaction = use$(newTransaction$);
 
   // Create wallet service handlers
   const handlers = useMemo(() => {
@@ -434,24 +446,24 @@ export default function WalletServiceExample() {
           fees_paid: transaction.fees_paid,
         };
       };
+    }
 
-      if (supportedMethods.includes("lookup_invoice")) {
-        handlers.lookup_invoice = async (params) => {
-          if (params.payment_hash) {
-            const transaction = transactions$.value.find((tx) => tx.payment_hash === params.payment_hash);
-            if (!transaction) throw new NotFoundError("Invoice with payment hash not found");
-            return transaction;
-          }
+    if (supportedMethods.includes("lookup_invoice")) {
+      handlers.lookup_invoice = async (params) => {
+        if (params.payment_hash) {
+          const transaction = transactions$.value.find((tx) => tx.payment_hash === params.payment_hash);
+          if (!transaction) throw new NotFoundError("Invoice with payment hash not found");
+          return transaction;
+        }
 
-          if (params.invoice) {
-            const transaction = transactions$.value.find((tx) => tx.invoice === params.invoice);
-            if (!transaction) throw new NotFoundError("Invoice not found");
-            return transaction;
-          }
+        if (params.invoice) {
+          const transaction = transactions$.value.find((tx) => tx.invoice === params.invoice);
+          if (!transaction) throw new NotFoundError("Invoice not found");
+          return transaction;
+        }
 
-          throw new NotFoundError("Invoice not found");
-        };
-      }
+        throw new NotFoundError("Invoice not found");
+      };
     }
 
     return handlers;
@@ -465,8 +477,7 @@ export default function WalletServiceExample() {
         handlers,
       });
 
-      await service.start();
-      setWalletService(service);
+      walletService$.next(service);
     } catch (error) {
       console.error("Failed to start wallet service:", error);
       alert("Failed to start wallet service: " + (error as Error).message);
@@ -476,23 +487,40 @@ export default function WalletServiceExample() {
   const stopWalletService = useCallback(() => {
     if (walletService) {
       walletService.stop();
-      setWalletService(null);
+      walletService$.next(null);
     }
   }, [walletService]);
 
+  const serviceStatus = use$(
+    () =>
+      walletService
+        ? defer(() => walletService.start()).pipe(
+            switchMap(() => concat(of({ running: true, error: "" }), NEVER)),
+            startWith({ running: false, error: "" }),
+            catchError((error) => of({ running: false, error: String(error) })),
+            finalize(() => walletService.stop()),
+          )
+        : of({ running: false, error: "" }),
+    [walletService],
+  );
+
   const addRelay = useCallback(() => {
     if (newRelay && !relays.includes(newRelay)) {
-      setRelays((prev) => [...prev, newRelay]);
-      setNewRelay("");
+      relays$.next([...relays$.value, newRelay]);
+      newRelay$.next("");
     }
   }, [newRelay, relays]);
 
   const removeRelay = useCallback((relay: string) => {
-    setRelays((prev) => prev.filter((r) => r !== relay));
+    relays$.next(relays$.value.filter((r) => r !== relay));
   }, []);
 
   const toggleMethod = useCallback((method: string) => {
-    setSupportedMethods((prev) => (prev.includes(method) ? prev.filter((m) => m !== method) : [...prev, method]));
+    supportedMethods$.next(
+      supportedMethods$.value.includes(method)
+        ? supportedMethods$.value.filter((m) => m !== method)
+        : [...supportedMethods$.value, method],
+    );
   }, []);
 
   // Transaction management helpers
@@ -510,7 +538,7 @@ export default function WalletServiceExample() {
         preimage: newTransaction.state === "settled" ? Math.random().toString(36).substring(7) : undefined,
       };
       transactions$.next([transaction, ...transactions$.value]);
-      setNewTransaction({
+      newTransaction$.next({
         type: "incoming",
         state: "settled",
         description: "",
@@ -571,7 +599,7 @@ export default function WalletServiceExample() {
   return (
     <div className="min-h-screen overflow-y-auto">
       {/* Header */}
-      <header className="bg-base-100 shadow-sm">
+      <section className="border-b border-base-300">
         <div className="px-6 py-4">
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold">NWC Wallet Service</h1>
@@ -579,7 +607,13 @@ export default function WalletServiceExample() {
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-green-700">Service Running</span>
+                  <span className="text-sm font-medium text-green-700">
+                    {serviceStatus?.running
+                      ? "Service Running"
+                      : serviceStatus?.error
+                        ? "Service failed"
+                        : "Starting service…"}
+                  </span>
                 </div>
                 <button onClick={stopWalletService} className="btn btn-sm btn-error">
                   Stop Service
@@ -588,8 +622,13 @@ export default function WalletServiceExample() {
             )}
           </div>
         </div>
-      </header>
+      </section>
 
+      {serviceStatus?.error && (
+        <p role="alert" className="text-error">
+          {serviceStatus.error}
+        </p>
+      )}
       {!walletService ? (
         /* Setup View */
         <div className="p-6">
@@ -601,14 +640,14 @@ export default function WalletServiceExample() {
 
             <div className="grid md:grid-cols-2 gap-6">
               {/* Relay Configuration */}
-              <div className="bg-base-100 rounded-lg shadow p-6">
+              <div className="bg-base-100 rounded-lg  p-6">
                 <h3 className="text-lg font-semibold mb-4">Relay Configuration</h3>
                 <div className="space-y-4">
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={newRelay}
-                      onChange={(e) => setNewRelay(e.target.value)}
+                      onChange={(e) => newRelay$.next(e.target.value)}
                       placeholder="wss://relay.example.com"
                       className="flex-1 px-3 py-2 border rounded-md"
                     />
@@ -633,7 +672,7 @@ export default function WalletServiceExample() {
               </div>
 
               {/* Supported Methods Configuration */}
-              <div className="bg-base-100 rounded-lg shadow p-6">
+              <div className="bg-base-100 rounded-lg  p-6">
                 <h3 className="text-lg font-semibold mb-4">Supported Methods</h3>
                 <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
                   {AVAILABLE_METHODS.map((method) => (
@@ -681,7 +720,9 @@ export default function WalletServiceExample() {
               <TransactionsCard
                 transactions={transactions}
                 newTransaction={newTransaction}
-                setNewTransaction={setNewTransaction}
+                setNewTransaction={(value) =>
+                  newTransaction$.next(typeof value === "function" ? value(newTransaction$.value) : value)
+                }
                 addTransaction={addTransaction}
                 removeTransaction={removeTransaction}
                 settleTransaction={settleTransaction}

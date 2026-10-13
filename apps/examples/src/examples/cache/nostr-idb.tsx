@@ -3,6 +3,8 @@
  * @tags cache, indexeddb, offline
  * @related cache/window.nostrdb, feed/relay-timeline
  */
+import NoteContent from "../../components/note-content";
+
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
@@ -11,8 +13,21 @@ import { createEventLoaderForStore, createTimelineLoader } from "applesauce-load
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrIDB } from "nostr-idb";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, switchMap } from "rxjs";
+import { useMemo } from "react";
+import {
+  BehaviorSubject,
+  combineLatest,
+  debounceTime,
+  interval,
+  startWith,
+  switchMap,
+  Subject,
+  exhaustMap,
+  ignoreElements,
+  endWith,
+  catchError,
+  of,
+} from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -37,10 +52,11 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const saved = new BehaviorSubject<string[]>([]);
+const cacheError$ = new BehaviorSubject<string | undefined>(undefined);
 
 // Save all new events to the cache
-persistEventsToCache(eventStore, async (events) => {
-  await Promise.allSettled(
+const stopPersistence = persistEventsToCache(eventStore, async (events) => {
+  const results = await Promise.allSettled(
     events.map(async (event) => {
       // add the event to the cache
       await nostrIDB.add(event);
@@ -48,6 +64,16 @@ persistEventsToCache(eventStore, async (events) => {
       saved.next([...saved.value, event.id]);
     }),
   );
+  cacheError$.next(
+    results.some((result) => result.status === "rejected") ? "Some events could not be saved to the cache" : undefined,
+  );
+});
+
+// This module owns the shared cache for the application lifetime.
+import.meta.hot?.dispose(() => {
+  stopPersistence();
+  void nostrIDB.stop();
+  pool.close();
 });
 
 function ReplyLine({ reply }: { reply: Note }) {
@@ -65,7 +91,7 @@ function ReplyLine({ reply }: { reply: Note }) {
   );
 }
 
-// Note card component for kind 1 notes
+// Note row component for kind 1 notes
 function NoteCard({ note }: { note: Note }) {
   const profile = use$(note.author.profile$);
   const fromCache = isFromCache(note.event);
@@ -73,8 +99,8 @@ function NoteCard({ note }: { note: Note }) {
   const reply = use$(() => note.replyingTo$.pipe(castEventStream(Note, note.store)), [note.id]);
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
         {reply && <ReplyLine reply={reply} />}
 
         {/* Author info */}
@@ -93,7 +119,7 @@ function NoteCard({ note }: { note: Note }) {
         </div>
 
         {/* Note content */}
-        <div className="whitespace-pre-wrap wrap-break-word">{note.event.content}</div>
+        <NoteContent event={note.event} />
       </div>
     </div>
   );
@@ -115,7 +141,7 @@ function CacheStats() {
   ) || { notes: 0, profiles: 0 };
 
   return (
-    <div className="stats shadow">
+    <div className="stats ">
       <div className="stat">
         <div className="stat-title">Notes in Cache</div>
         <div className="stat-value">{notes || 0}</div>
@@ -132,8 +158,12 @@ function CacheStats() {
 }
 
 export default function NostrIDBExample() {
-  const [live, setLive] = useState(true);
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const cacheError = use$(cacheError$);
+  const live$ = useMemo(() => new BehaviorSubject(true), []);
+  const live = use$(live$);
+
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
   // Create a timeline loader that loads from the cache and the relay
   const loader = useMemo(
@@ -153,10 +183,22 @@ export default function NostrIDBExample() {
     [relay, live],
   );
 
-  // load initial page of events
-  useEffect(() => {
-    loader().subscribe();
-  }, []);
+  const page$ = useMemo(() => new Subject<void>(), []);
+  const page = use$(
+    () =>
+      page$.pipe(
+        startWith(undefined),
+        exhaustMap(() =>
+          loader().pipe(
+            ignoreElements(),
+            endWith({ loading: false, error: undefined as string | undefined }),
+            catchError((error) => of({ loading: false, error: String(error.message ?? error) })),
+            startWith({ loading: true, error: undefined as string | undefined }),
+          ),
+        ),
+      ),
+    [loader],
+  );
 
   // Get a timeline of notes from the store
   const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(debounceTime(500), castTimelineStream(Note)), []);
@@ -166,7 +208,7 @@ export default function NostrIDBExample() {
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-bold">nostr-idb Cache Example</h1>
-          <div className="badge badge-info badge-sm">
+          <div className="badge badge-info ">
             <span className="loading loading-dots loading-xs mr-1"></span>
             IndexedDB
           </div>
@@ -177,21 +219,33 @@ export default function NostrIDBExample() {
       </div>
 
       <CacheStats />
+      {cacheError && (
+        <p role="alert" className="text-error">
+          {cacheError}
+        </p>
+      )}
 
       <div className="flex gap-2 mt-2">
-        <RelayPicker value={relay} onChange={setRelay} />
-        <button className="btn btn-primary" onClick={() => setLive(!live)}>
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <button className="btn btn-primary" onClick={() => live$.next(!live)}>
           {live ? "Stop Live" : "Start Live"}
         </button>
       </div>
 
+      <p className="text-sm opacity-70">The timeline includes cached notes from previously selected relays.</p>
+      {page?.error && (
+        <p role="alert" className="text-error">
+          {page.error}
+        </p>
+      )}
+      {page?.loading && <p role="status">Loading notes…</p>}
       {/* Results */}
       <div className="flex gap-2 flex-col">
         {notes?.map((note) => (
           <NoteCard key={note.id} note={note} />
         ))}
 
-        <button className="btn btn-primary mx-auto mt-10" onClick={() => loader().subscribe()}>
+        <button className="btn btn-primary mx-auto mt-10" onClick={() => page$.next()} disabled={page?.loading}>
           Load More
         </button>
       </div>

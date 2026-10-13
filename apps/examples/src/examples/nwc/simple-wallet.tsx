@@ -3,12 +3,11 @@
  * @tags nip-47, nwc, wallet, lightning, payments
  * @related nwc/transactions, nwc/wallet-info
  */
-import { parseBolt11, ParsedInvoice } from "applesauce-common/helpers";
+import { parseBolt11 } from "applesauce-common/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
-  GetBalanceMethod,
   parseWalletConnectURI,
   PayInvoiceMethod,
   supportsMethod,
@@ -16,8 +15,21 @@ import {
   WalletSupport,
 } from "applesauce-wallet-connect/helpers";
 import { generateSecretKey } from "applesauce-core/helpers";
-import { useEffect, useMemo, useState } from "react";
-import { of } from "rxjs";
+import { useMemo } from "react";
+import {
+  of,
+  BehaviorSubject,
+  filter,
+  map,
+  startWith,
+  defer,
+  from,
+  tap,
+  catchError,
+  EMPTY,
+  finalize,
+  switchMap,
+} from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
@@ -45,8 +57,8 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
   return (
     <div className="space-y-2">
       {transactions.map((tx, index) => (
-        <div key={index} className="card card-border bg-base-200">
-          <div className="card-body p-4">
+        <div key={index} className="border border-base-300  bg-base-200">
+          <div className="p-4">
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
@@ -66,14 +78,14 @@ function TransactionList({ transactions }: { transactions: Transaction[] }) {
                   </span>
                 </div>
                 {tx.description && <p className="text-sm text-gray-600 mb-1">{tx.description}</p>}
-                <p className="text-xs text-gray-500">{formatDate(tx.created_at)}</p>
+                <p className="text-sm text-gray-500">{formatDate(tx.created_at)}</p>
               </div>
               <div className="text-right">
                 <div className="font-bold">
                   {tx.type === "incoming" ? "+" : "-"}
                   {formatMsats(tx.amount)} sats
                 </div>
-                {tx.fees_paid > 0 && <div className="text-xs text-gray-500">Fee: {formatMsats(tx.fees_paid)} sats</div>}
+                {tx.fees_paid > 0 && <div className="text-sm text-gray-500">Fee: {formatMsats(tx.fees_paid)} sats</div>}
               </div>
             </div>
           </div>
@@ -94,49 +106,44 @@ function CreateInvoiceModal({
   wallet?: WalletConnect;
   support?: WalletSupport | null;
 }) {
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [invoice, setInvoice] = useState<Transaction | null>(null);
-  const [isPaid, setIsPaid] = useState(false);
+  const amount$ = useMemo(() => new BehaviorSubject(""), []);
+  const amount = use$(amount$);
 
-  // Listen for payment notifications
-  const notifications = use$(() => wallet?.notifications$, [wallet]);
+  const description$ = useMemo(() => new BehaviorSubject(""), []);
+  const description = use$(description$);
 
-  // Check if notifications are supported
+  const loading$ = useMemo(() => new BehaviorSubject(false), []);
+  const loading = use$(loading$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const invoice$ = useMemo(() => new BehaviorSubject<Transaction | null>(null), []);
+  const invoice = use$(invoice$);
+
   const supportsNotifications = support?.notifications?.includes("payment_received");
-
-  // Reset state when modal opens/closes
-  useEffect(() => {
-    if (isOpen) {
-      setAmount("");
-      setDescription("");
-      setError(null);
-      setInvoice(null);
-      setIsPaid(false);
-      setLoading(false);
-    }
-  }, [isOpen]);
-
-  // Listen for payment notifications to detect when invoice is paid
-  useEffect(() => {
-    if (notifications && invoice && !isPaid) {
-      // Check if this notification is for our invoice
-      if (
-        notifications.notification_type === "payment_received" &&
-        notifications.notification.payment_hash === invoice.payment_hash
-      ) {
-        setIsPaid(true);
-      }
-    }
-  }, [notifications, invoice, isPaid]);
+  const isPaid =
+    use$(
+      () =>
+        wallet && invoice
+          ? wallet.notifications$.pipe(
+              filter(
+                (notification) =>
+                  notification.notification_type === "payment_received" &&
+                  notification.notification.payment_hash === invoice.payment_hash,
+              ),
+              map(() => true),
+              startWith(invoice.state === "settled"),
+            )
+          : of(false),
+      [wallet, invoice],
+    ) ?? false;
 
   const handleCreateInvoice = async () => {
     if (!wallet || !amount) return;
 
-    setLoading(true);
-    setError(null);
+    loading$.next(true);
+    error$.next(null);
 
     try {
       const amountMsats = parseInt(amount) * 1000; // Convert sats to msats
@@ -144,18 +151,17 @@ function CreateInvoiceModal({
         description: description || undefined,
         expiry: 3600, // 1 hour expiry
       });
-      setInvoice(result);
+      invoice$.next(result);
     } catch (err) {
       console.error("Failed to create invoice:", err);
-      setError(err instanceof Error ? err.message : "Failed to create invoice");
+      error$.next(err instanceof Error ? err.message : "Failed to create invoice");
     } finally {
-      setLoading(false);
+      loading$.next(false);
     }
   };
 
   const handleClose = () => {
-    setInvoice(null);
-    setIsPaid(false);
+    invoice$.next(null);
     onClose();
   };
 
@@ -169,7 +175,7 @@ function CreateInvoiceModal({
         {!invoice ? (
           // Invoice creation form
           <div className="space-y-4">
-            <div className="form-control">
+            <div className="flex flex-col gap-2">
               <label className="label">
                 <span className="label-text">Amount (sats)</span>
               </label>
@@ -178,12 +184,12 @@ function CreateInvoiceModal({
                 placeholder="1000"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => amount$.next(e.target.value)}
                 min="1"
               />
             </div>
 
-            <div className="form-control">
+            <div className="flex flex-col gap-2">
               <label className="label">
                 <span className="label-text">Description (optional)</span>
               </label>
@@ -192,7 +198,7 @@ function CreateInvoiceModal({
                 placeholder="Payment for..."
                 className="input input-bordered w-full"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => description$.next(e.target.value)}
               />
             </div>
 
@@ -234,8 +240,8 @@ function CreateInvoiceModal({
                 )}
 
                 {/* Invoice details */}
-                <div className="card card-border bg-base-200 text-left">
-                  <div className="card-body p-4">
+                <div className="border border-base-300  bg-base-200 text-left">
+                  <div className="p-4">
                     <div className="space-y-2 text-sm">
                       <div>
                         <span className="font-medium">Amount:</span>
@@ -261,12 +267,12 @@ function CreateInvoiceModal({
 
                 {/* Payment request string */}
                 {invoice.invoice && (
-                  <div className="form-control">
+                  <div className="flex flex-col gap-2">
                     <label className="label">
                       <span className="label-text">Payment Request</span>
                     </label>
                     <textarea
-                      className="textarea textarea-bordered rounded text-xs w-full"
+                      className="textarea textarea-bordered rounded text-sm w-full"
                       value={invoice.invoice}
                       readOnly
                       rows={3}
@@ -300,63 +306,46 @@ function PayInvoiceModal({
   onClose: () => void;
   wallet: WalletConnect | undefined;
 }) {
-  const [invoiceString, setInvoiceString] = useState("");
-  const [parsedInvoice, setParsedInvoice] = useState<ParsedInvoice | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [paymentResult, setPaymentResult] = useState<PayInvoiceMethod["response"]["result"] | null>(null);
-  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const invoiceString$ = useMemo(() => new BehaviorSubject(""), []);
+  const invoiceString = use$(invoiceString$);
 
-  // Reset state when modal opens/closes
-  useEffect(() => {
-    if (isOpen) {
-      setInvoiceString("");
-      setParsedInvoice(null);
-      setParseError(null);
-      setPaymentResult(null);
-      setPaymentError(null);
-      setLoading(false);
-    }
-  }, [isOpen]);
+  const loading$ = useMemo(() => new BehaviorSubject(false), []);
+  const loading = use$(loading$);
 
-  // Parse invoice when input changes
-  useEffect(() => {
-    if (!invoiceString.trim()) {
-      setParsedInvoice(null);
-      setParseError(null);
-      return;
-    }
+  const paymentResult$ = useMemo(() => new BehaviorSubject<PayInvoiceMethod["response"]["result"] | null>(null), []);
+  const paymentResult = use$(paymentResult$);
 
+  const paymentError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const paymentError = use$(paymentError$);
+
+  const { parsedInvoice, parseError } = useMemo(() => {
+    if (!invoiceString.trim()) return { parsedInvoice: null, parseError: null };
     try {
-      const parsed = parseBolt11(invoiceString.trim());
-      setParsedInvoice(parsed);
-      setParseError(null);
-    } catch (err) {
-      console.error("Failed to parse invoice:", err);
-      setParsedInvoice(null);
-      setParseError(err instanceof Error ? err.message : "Invalid invoice format");
+      return { parsedInvoice: parseBolt11(invoiceString.trim()), parseError: null };
+    } catch (error) {
+      return { parsedInvoice: null, parseError: String(error) };
     }
   }, [invoiceString]);
 
   const handlePayInvoice = async () => {
     if (!wallet || !parsedInvoice) return;
 
-    setLoading(true);
-    setPaymentError(null);
+    loading$.next(true);
+    paymentError$.next(null);
 
     try {
       const result = await wallet.payInvoice(invoiceString.trim());
-      setPaymentResult(result);
+      paymentResult$.next(result);
     } catch (err) {
       console.error("Failed to pay invoice:", err);
-      setPaymentError(err instanceof Error ? err.message : "Failed to pay invoice");
+      paymentError$.next(err instanceof Error ? err.message : "Failed to pay invoice");
     } finally {
-      setLoading(false);
+      loading$.next(false);
     }
   };
 
   const handleClose = () => {
-    setPaymentResult(null);
+    paymentResult$.next(null);
     onClose();
   };
 
@@ -372,7 +361,7 @@ function PayInvoiceModal({
         {!paymentResult ? (
           <div className="space-y-4">
             {/* Invoice Input */}
-            <div className="form-control">
+            <div className="flex flex-col gap-2">
               <label className="label">
                 <span className="label-text">Lightning Invoice</span>
               </label>
@@ -381,7 +370,7 @@ function PayInvoiceModal({
                 className="textarea textarea-bordered w-full"
                 rows={4}
                 value={invoiceString}
-                onChange={(e) => setInvoiceString(e.target.value)}
+                onChange={(e) => invoiceString$.next(e.target.value)}
               />
             </div>
 
@@ -394,8 +383,8 @@ function PayInvoiceModal({
 
             {/* Invoice Details */}
             {parsedInvoice && !parseError && (
-              <div className="card card-border bg-base-200">
-                <div className="card-body p-4">
+              <div className="border border-base-300  bg-base-200">
+                <div className="p-4">
                   <h4 className="font-semibold mb-2">Invoice Details</h4>
                   <div className="space-y-2 text-sm">
                     <div>
@@ -424,7 +413,7 @@ function PayInvoiceModal({
                     {parsedInvoice.paymentHash && (
                       <div>
                         <span className="font-medium">Payment Hash:</span>
-                        <code className="ml-2 text-xs break-all">{parsedInvoice.paymentHash}</code>
+                        <code className="ml-2 text-sm break-all">{parsedInvoice.paymentHash}</code>
                       </div>
                     )}
                   </div>
@@ -463,13 +452,13 @@ function PayInvoiceModal({
           <div className="space-y-4">
             <div className="alert alert-success">Payment successful!</div>
 
-            <div className="card card-border bg-base-200">
-              <div className="card-body p-4">
+            <div className="border border-base-300  bg-base-200">
+              <div className="p-4">
                 <h4 className="font-semibold mb-2">Payment Details</h4>
                 <div className="space-y-2 text-sm">
                   <div>
                     <span className="font-medium">Preimage:</span>
-                    <code className="ml-2 text-xs break-all">{paymentResult.preimage}</code>
+                    <code className="ml-2 text-sm break-all">{paymentResult.preimage}</code>
                   </div>
                   {paymentResult.fees_paid && paymentResult.fees_paid > 0 && (
                     <div>
@@ -495,12 +484,15 @@ function PayInvoiceModal({
 }
 
 function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
-  const [uri, setUri] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const uri$ = useMemo(() => new BehaviorSubject(""), []);
+  const uri = use$(uri$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const handleUriChange = (value: string) => {
-    setUri(value);
-    setError(null);
+    uri$.next(value);
+    error$.next(null);
 
     if (!value.trim()) return;
 
@@ -511,7 +503,7 @@ function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) 
       onConnect(wallet);
     } catch (err) {
       console.error("Failed to parse URI:", err);
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      error$.next(err instanceof Error ? err.message : "Failed to parse URI");
     }
   };
 
@@ -537,27 +529,23 @@ function ConnectionUriInput({ onConnect }: { onConnect: (wallet: WalletConnect) 
 }
 
 function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => void }) {
-  const [relay, setRelay] = useState<string>("wss://relay.getalby.com/v1");
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.getalby.com/v1"), []);
+  const relay = use$(relay$);
+
   const wallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
-  useEffect(() => {
-    let connected = false;
-    const controller = new AbortController();
-
-    // Start waiting for the service to connect
-    wallet
-      .waitForService(controller.signal)
-      .then(() => {
-        connected = true;
-        onConnect(wallet);
-      })
-      .catch(() => {});
-
-    // Cleanup function to abort the waiting process
-    return () => {
-      if (!connected) controller.abort();
-    };
-  }, [wallet]);
+  use$(
+    () =>
+      defer(() => {
+        const controller = new AbortController();
+        return from(wallet.waitForService(controller.signal)).pipe(
+          tap(() => onConnect(wallet)),
+          catchError(() => EMPTY),
+          finalize(() => controller.abort()),
+        );
+      }),
+    [wallet, onConnect],
+  );
 
   const uri = useMemo(
     () =>
@@ -570,31 +558,36 @@ function ConnectAuthUri({ onConnect }: { onConnect: (wallet: WalletConnect) => v
       <a href={uri} className="bg-white p-4 rounded-lg">
         <QRCode value={uri} size={192} className="h-48 w-48" alt="Wallet auth QR code" />
       </a>
-      <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.getalby.com/v1"]} className="w-full" />
+      <RelayPicker
+        value={relay}
+        onChange={(value: typeof relay$.value) => relay$.next(value)}
+        common={["wss://relay.getalby.com/v1"]}
+        className="w-full"
+      />
       <a href={uri} className="btn btn-primary btn-block">
         Connect
       </a>
-      <code className="text-xs break-all select-all">{uri}</code>
+      <code className="text-sm break-all select-all">{uri}</code>
     </div>
   );
 }
 
 export default function SimpleWalletExample() {
-  const [wallet, setWallet] = useState<WalletConnect | undefined>(undefined);
+  const wallet$ = useMemo(() => new BehaviorSubject<WalletConnect | undefined>(undefined), []);
+  const wallet = use$(wallet$);
 
-  const [balance, setBalance] = useState<GetBalanceMethod["response"]["result"] | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [transactionsLoading, setTransactionsLoading] = useState(false);
-  const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
-  const [showPayInvoiceModal, setShowPayInvoiceModal] = useState(false);
+  const refreshBalance$ = useMemo(() => new BehaviorSubject(0), []);
+  const refreshTransactions$ = useMemo(() => new BehaviorSubject(0), []);
+  const showCreateInvoiceModal$ = useMemo(() => new BehaviorSubject(false), []);
+  const showCreateInvoiceModal = use$(showCreateInvoiceModal$);
+
+  const showPayInvoiceModal$ = useMemo(() => new BehaviorSubject(false), []);
+  const showPayInvoiceModal = use$(showPayInvoiceModal$);
 
   // Handle connection from URI input component
   const handleConnect = (wallet: WalletConnect) => {
     try {
-      setWallet(wallet);
-      setBalance(null);
-      setTransactions([]);
+      wallet$.next(wallet);
     } catch (err) {
       console.error("Failed to parse URI:", err);
       // Error handling is done in the ConnectionUriInput component
@@ -604,54 +597,43 @@ export default function SimpleWalletExample() {
   // Get wallet capabilities to check supported methods
   const support = use$(() => wallet?.support$ ?? of(undefined), [wallet]);
 
-  // Fetch wallet balance
-  const fetchBalance = async () => {
-    if (!wallet || !support) return;
-
-    if (!supportsMethod(support, "get_balance")) return;
-
-    setBalanceLoading(true);
-    try {
-      const balanceResult = await wallet.getBalance();
-      setBalance(balanceResult);
-    } catch (err) {
-      console.error("Failed to fetch balance:", err);
-    } finally {
-      setBalanceLoading(false);
-    }
-  };
-
-  // Fetch wallet transactions
-  const fetchTransactions = async () => {
-    if (!wallet || !support) return;
-
-    if (!supportsMethod(support, "list_transactions")) return;
-
-    setTransactionsLoading(true);
-    try {
-      const txResult = await wallet.listTransactions({ limit: 20 });
-      setTransactions(txResult.transactions);
-    } catch (err) {
-      console.error("Failed to fetch transactions:", err);
-    } finally {
-      setTransactionsLoading(false);
-    }
-  };
-
-  // Auto-fetch data when wallet becomes available
-  useEffect(() => {
-    if (wallet && support) {
-      fetchBalance();
-      fetchTransactions();
-    }
-  }, [wallet, support]);
-
-  // Disconnect function
-  const handleDisconnect = () => {
-    setWallet(undefined);
-    setBalance(null);
-    setTransactions([]);
-  };
+  const balanceResult = use$(
+    () =>
+      wallet && support && supportsMethod(support, "get_balance")
+        ? refreshBalance$.pipe(
+            switchMap(() =>
+              defer(() => wallet.getBalance()).pipe(
+                map((balance) => ({ balance, loading: false, error: null as string | null })),
+                startWith({ balance: null, loading: true, error: null }),
+                catchError((error) => of({ balance: null, loading: false, error: String(error) })),
+              ),
+            ),
+          )
+        : of({ balance: null, loading: false, error: null }),
+    [wallet, support, refreshBalance$],
+  );
+  const transactionResult = use$(
+    () =>
+      wallet && support && supportsMethod(support, "list_transactions")
+        ? refreshTransactions$.pipe(
+            switchMap(() =>
+              defer(() => wallet.listTransactions({ limit: 20 })).pipe(
+                map((result) => ({ transactions: result.transactions, loading: false, error: null as string | null })),
+                startWith({ transactions: [] as Transaction[], loading: true, error: null }),
+                catchError((error) => of({ transactions: [] as Transaction[], loading: false, error: String(error) })),
+              ),
+            ),
+          )
+        : of({ transactions: [] as Transaction[], loading: false, error: null }),
+    [wallet, support, refreshTransactions$],
+  );
+  const balance = balanceResult?.balance;
+  const transactions = transactionResult?.transactions ?? [];
+  const balanceLoading = balanceResult?.loading ?? false;
+  const transactionsLoading = transactionResult?.loading ?? false;
+  const fetchBalance = () => refreshBalance$.next(refreshBalance$.value + 1);
+  const fetchTransactions = () => refreshTransactions$.next(refreshTransactions$.value + 1);
+  const handleDisconnect = () => wallet$.next(undefined);
 
   const canMakeInvoice = support && supportsMethod(support, "make_invoice");
   const canPayInvoice = support && supportsMethod(support, "pay_invoice");
@@ -660,6 +642,16 @@ export default function SimpleWalletExample() {
   return (
     <div className="container mx-auto max-w-md px-4 py-6">
       <div className="space-y-6">
+        {balanceResult?.error && (
+          <p role="alert" className="text-error">
+            {balanceResult.error}
+          </p>
+        )}
+        {transactionResult?.error && (
+          <p role="alert" className="text-error">
+            {transactionResult.error}
+          </p>
+        )}
         {/* Header */}
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-2">Simple NWC Wallet</h1>
@@ -700,8 +692,8 @@ export default function SimpleWalletExample() {
 
         {/* Balance Display */}
         {wallet && support && (
-          <div className="card card-border bg-primary text-primary-content">
-            <div className="card-body p-6 text-center">
+          <div className="border border-base-300  bg-primary text-primary-content">
+            <div className="p-4 p-6 text-center">
               <h2 className="text-lg font-semibold mb-2">Balance</h2>
               {balanceLoading ? (
                 <div className="flex justify-center">
@@ -724,11 +716,15 @@ export default function SimpleWalletExample() {
             <button
               className="btn btn-success"
               disabled={!canMakeInvoice}
-              onClick={() => setShowCreateInvoiceModal(true)}
+              onClick={() => showCreateInvoiceModal$.next(true)}
             >
               Create Invoice
             </button>
-            <button className="btn btn-warning" disabled={!canPayInvoice} onClick={() => setShowPayInvoiceModal(true)}>
+            <button
+              className="btn btn-warning"
+              disabled={!canPayInvoice}
+              onClick={() => showPayInvoiceModal$.next(true)}
+            >
               Pay Invoice
             </button>
           </div>
@@ -762,33 +758,37 @@ export default function SimpleWalletExample() {
         )}
 
         {/* Create Invoice Modal */}
-        <CreateInvoiceModal
-          isOpen={showCreateInvoiceModal}
-          onClose={() => {
-            setShowCreateInvoiceModal(false);
-            // Refresh balance and transactions when modal closes
-            if (wallet && support) {
-              fetchBalance();
-              fetchTransactions();
-            }
-          }}
-          wallet={wallet}
-          support={support}
-        />
+        {showCreateInvoiceModal && (
+          <CreateInvoiceModal
+            isOpen={showCreateInvoiceModal}
+            onClose={() => {
+              showCreateInvoiceModal$.next(false);
+              // Refresh balance and transactions when modal closes
+              if (wallet && support) {
+                fetchBalance();
+                fetchTransactions();
+              }
+            }}
+            wallet={wallet}
+            support={support}
+          />
+        )}
 
         {/* Pay Invoice Modal */}
-        <PayInvoiceModal
-          isOpen={showPayInvoiceModal}
-          onClose={() => {
-            setShowPayInvoiceModal(false);
-            // Refresh balance and transactions when modal closes
-            if (wallet && support) {
-              fetchBalance();
-              fetchTransactions();
-            }
-          }}
-          wallet={wallet}
-        />
+        {showPayInvoiceModal && (
+          <PayInvoiceModal
+            isOpen={showPayInvoiceModal}
+            onClose={() => {
+              showPayInvoiceModal$.next(false);
+              // Refresh balance and transactions when modal closes
+              if (wallet && support) {
+                fetchBalance();
+                fetchTransactions();
+              }
+            }}
+            wallet={wallet}
+          />
+        )}
       </div>
     </div>
   );

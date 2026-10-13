@@ -3,15 +3,19 @@
  * @tags wallet, mint, cashu, discovery
  * @related wallet/wallet
  */
-import { castUser, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, shareReplay, map } from "rxjs";
+
+import { castUser, User } from "applesauce-common/casts";
+
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { MintInfo, MintRecommendation } from "applesauce-wallet/casts";
 import { CASHU_MINT_INFO_KIND, MINT_RECOMMENDATION_KIND } from "applesauce-wallet/helpers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import RelayPicker from "../../components/relay-picker";
 
 // Make sure casts are registered
@@ -49,17 +53,19 @@ function Username({ user }: { user: User }) {
   return <>{displayName || user.pubkey.slice(0, 8) + "..."}</>;
 }
 
-// Component to display a single mint info card in the list
+// Component to display a single mint info border border-base-300 in the list
 function MintInfoCard({ mintInfo, onClick }: { mintInfo: MintInfo; onClick: () => void }) {
   const author = useMemo(() => castUser(mintInfo.event.pubkey, eventStore), [mintInfo.event.pubkey]);
 
   return (
-    <div className="card bg-base-100 cursor-pointer" onClick={onClick}>
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100 cursor-pointer" onClick={onClick}>
+      <div className="p-4 p-4">
         <div className="flex items-start gap-4">
           <Avatar user={author} />
           <div className="flex-1">
-            <h2 className="card-title">{mintInfo.metadata?.name || mintInfo.metadata?.display_name || mintInfo.url}</h2>
+            <h2 className="font-semibold">
+              {mintInfo.metadata?.name || mintInfo.metadata?.display_name || mintInfo.url}
+            </h2>
             <p className="text-base-content/70 mb-2">
               <Username user={author} />
             </p>
@@ -92,8 +98,8 @@ function RecommendationCard({ recommendation }: { recommendation: MintRecommenda
   const author = useMemo(() => castUser(recommendation.event.pubkey, eventStore), [recommendation.event.pubkey]);
 
   return (
-    <div className="card bg-base-200">
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-200">
+      <div className="p-4 p-4">
         <div className="flex items-start gap-3">
           <Avatar user={author} size="w-10" />
           <div className="flex-1">
@@ -123,7 +129,7 @@ function MintDetailsView({ mintInfo, onBack }: { mintInfo: MintInfo; onBack: () 
     return pool
       .subscription(Array.from(relays), { kinds: [MINT_RECOMMENDATION_KIND], "#u": [mintInfo.url] })
       .pipe(mapEventsToStore(eventStore));
-  }, [mintInfo.id]);
+  }, [mintInfo, Array.from(mintInfo.seen ?? []).join("|")]);
 
   // Get recommendations for this mint
   const recommendations = use$(() => mintInfo.recomendations$, [mintInfo.id]);
@@ -134,9 +140,9 @@ function MintDetailsView({ mintInfo, onBack }: { mintInfo: MintInfo; onBack: () 
         ← Back to List
       </button>
 
-      <div className="card bg-base-100">
-        <div className="card-body p-4">
-          <h1 className="card-title mb-4">
+      <div className="border border-base-300 bg-base-100">
+        <div className="p-4 p-4">
+          <h1 className="font-semibold mb-4">
             {mintInfo.metadata?.name || mintInfo.metadata?.display_name || "Unnamed Mint"}
           </h1>
 
@@ -214,30 +220,32 @@ function MintDetailsView({ mintInfo, onBack }: { mintInfo: MintInfo; onBack: () 
 
 // Main component
 export default function MintDiscovery() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-  const [selectedMint, setSelectedMint] = useState<MintInfo | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
-  // Subscribe to mint info events from the relay
-  use$(
+  const selectedMint$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedAddress = use$(selectedMint$);
+
+  const feed$ = useMemo(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [CASHU_MINT_INFO_KIND] })
-        .pipe(
-          // deduplicate events using the event store
-          mapEventsToStore(eventStore),
-        ),
+      relayTimeline(eventStore, pool, [relay], { kinds: [CASHU_MINT_INFO_KIND] }).pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
     [relay],
   );
-
-  // Get mint info events from the store and cast them
+  const feed = use$(feed$);
   const mints = use$(
-    () => eventStore.timeline({ kinds: [CASHU_MINT_INFO_KIND] }).pipe(castTimelineStream(MintInfo, eventStore)),
-    [],
+    () =>
+      feed$.pipe(
+        map((state) => state.events),
+        castTimelineStream(MintInfo, eventStore),
+      ),
+    [feed$],
   );
 
+  const selectedMint = mints?.find((mint) => mint.uid === selectedAddress);
   // If a mint is selected, show the details view
-  if (selectedMint) return <MintDetailsView mintInfo={selectedMint} onBack={() => setSelectedMint(null)} />;
+  if (selectedMint) return <MintDetailsView mintInfo={selectedMint} onBack={() => selectedMint$.next(null)} />;
 
   // Otherwise show the list view
   return (
@@ -247,13 +255,19 @@ export default function MintDiscovery() {
         <p className="text-base-content/70 mb-4">
           Browse Cashu mint information events (kind:38172) published on Nostr relays.
         </p>
-        <RelayPicker value={relay} onChange={setRelay} />
+        {feed?.status === "loading" && <p role="status">Loading…</p>}
+        {feed?.errors.map((error) => (
+          <p key={error} role="alert" className="text-error">
+            {error}
+          </p>
+        ))}
+        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
       </div>
 
       <div className="flex flex-col gap-2">
         {mints && mints.length > 0 ? (
           mints.map((mintInfo) => (
-            <MintInfoCard key={mintInfo.id} mintInfo={mintInfo} onClick={() => setSelectedMint(mintInfo)} />
+            <MintInfoCard key={mintInfo.id} mintInfo={mintInfo} onClick={() => selectedMint$.next(mintInfo.uid)} />
           ))
         ) : (
           <div className="text-center py-8 text-base-content/60">

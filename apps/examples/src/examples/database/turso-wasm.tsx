@@ -3,15 +3,23 @@
  * @tags database, turso, sqlite, wasm
  * @related database/worker-relay
  */
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject, defer, catchError, of, combineLatest, switchMap, map, startWith } from "rxjs";
+
 import { AsyncEventStore } from "applesauce-core";
-import { Filter, NostrEvent, isEvent } from "applesauce-core/helpers";
+import { NostrEvent, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
 import { connect } from "@tursodatabase/database-wasm/vite";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useRef, useMemo } from "react";
 
 // Initialize database and event store
 let eventDatabase: TursoWasmEventDatabase | null = null;
 let eventStore: AsyncEventStore | null = null;
+
+// This module owns the shared database for the application lifetime.
+import.meta.hot?.dispose(() => {
+  void eventDatabase?.close();
+});
 
 // Check if SharedArrayBuffer is supported
 function isSharedArrayBufferSupported(): boolean {
@@ -134,93 +142,61 @@ function EventsTable({ events }: { events: NostrEvent[] }) {
 
 // Main component
 export default function TursoWasmExample() {
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [events, setEvents] = useState<NostrEvent[]>([]);
-  const [kindFilter, setKindFilter] = useState<number | null>(null);
-  const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
+  const isLoading$ = useMemo(() => new BehaviorSubject(false), []);
+  const isLoading = use$(isLoading$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const operationError = use$(error$);
+
+  const kindFilter$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
+  const kindFilter = use$(kindFilter$);
+
+  const importStats$ = useMemo(
+    () => new BehaviorSubject<{ total: number; added: number; failed: number } | null>(null),
+    [],
+  );
+  const importStats = use$(importStats$);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check SharedArrayBuffer support and initialize database on mount
-  useEffect(() => {
-    const init = async () => {
-      // First check SharedArrayBuffer support
-      const isSupported = isSharedArrayBufferSupported();
-
-      if (!isSupported) {
-        setError(
-          "SharedArrayBuffer is not supported in this browser. Turso WASM requires SharedArrayBuffer support to function properly.",
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const success = await initializeDatabase();
-        if (success) {
-          setIsInitialized(true);
-          await loadAllEvents();
-        } else {
-          setError("Failed to initialize database");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    init();
-  }, []);
-
-  // Load all events
-  const loadAllEvents = useCallback(async () => {
-    if (!eventStore) return;
-
-    try {
-      const allEvents = await eventStore.getTimeline({ limit: 1000 });
-      setEvents(allEvents);
-    } catch (err) {
-      console.error("Failed to load events:", err);
-      setError(err instanceof Error ? err.message : "Failed to load events");
-    }
-  }, []);
-
-  // Filterevents
-  const filterEvents = useCallback(async () => {
-    if (!eventStore) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const filter: Filter = {
-        limit: 1000,
-      };
-
-      if (kindFilter !== null) {
-        filter.kinds = [kindFilter];
-      }
-
-      const results = await eventStore.getTimeline(filter);
-      setEvents(results);
-    } catch (err) {
-      console.error("Filterfailed:", err);
-      setError(err instanceof Error ? err.message : "Filterfailed");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [kindFilter]);
-
-  // Handle filter form submission
-  const handleFilter = async (e: FormEvent) => {
+  const startup = use$(
+    () =>
+      defer(async () => {
+        if (!isSharedArrayBufferSupported())
+          throw new Error("Turso WASM requires SharedArrayBuffer and cross-origin isolation headers");
+        if (!(await initializeDatabase())) throw new Error("Failed to initialize database");
+        return { ready: true, error: undefined as string | undefined };
+      }).pipe(catchError((error) => of({ ready: false, error: String(error.message ?? error) }))),
+    [],
+  );
+  const isInitialized = startup?.ready ?? false;
+  const refresh$ = useMemo(() => new BehaviorSubject(0), []);
+  const query = use$(
+    () =>
+      isInitialized && eventStore
+        ? combineLatest([kindFilter$, refresh$]).pipe(
+            switchMap(([kind]) =>
+              eventStore!.timeline({ limit: 1000, ...(kind === null ? {} : { kinds: [kind] }) }).pipe(
+                map((events) => ({ events, loading: false, error: undefined as string | undefined })),
+                catchError((error) =>
+                  of({ events: [] as NostrEvent[], loading: false, error: String(error.message ?? error) }),
+                ),
+                startWith({ events: [] as NostrEvent[], loading: true, error: undefined as string | undefined }),
+              ),
+            ),
+          )
+        : of(undefined),
+    [isInitialized],
+  );
+  const events = query?.events ?? [];
+  const error = operationError ?? startup?.error ?? query?.error;
+  const loadAllEvents = () => {
+    kindFilter$.next(null);
+    refresh$.next(refresh$.value + 1);
+  };
+  const handleFilter = (e: FormEvent) => {
     e.preventDefault();
-    await filterEvents();
+    refresh$.next(refresh$.value + 1);
   };
 
   // Handle file import
@@ -229,21 +205,21 @@ export default function TursoWasmExample() {
     if (!file) return;
 
     if (!file.name.endsWith(".jsonl")) {
-      setError("Please select a .jsonl file");
+      error$.next("Please select a .jsonl file");
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    isLoading$.next(true);
+    error$.next(null);
 
     try {
       const stats = await importEventsFromJsonl(file);
-      setImportStats(stats);
+      importStats$.next(stats);
       await loadAllEvents(); // Reload events after import
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
+      error$.next(err instanceof Error ? err.message : "Import failed");
     } finally {
-      setIsLoading(false);
+      isLoading$.next(false);
     }
 
     // Reset file input
@@ -255,7 +231,7 @@ export default function TursoWasmExample() {
   // Handle export
   const handleExport = () => {
     if (events.length === 0) {
-      setError("No events to export");
+      error$.next("No events to export");
       return;
     }
 
@@ -272,19 +248,19 @@ export default function TursoWasmExample() {
 
     if (!eventStore) return;
 
-    setIsLoading(true);
-    setError(null);
+    isLoading$.next(true);
+    error$.next(null);
 
     try {
       // Use removeByFilters with empty filter to clear all events
       await eventStore.removeByFilters({});
 
-      setEvents([]);
-      setImportStats(null);
+      refresh$.next(refresh$.value + 1);
+      importStats$.next(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear database");
+      error$.next(err instanceof Error ? err.message : "Failed to clear database");
     } finally {
-      setIsLoading(false);
+      isLoading$.next(false);
     }
   };
 
@@ -293,7 +269,7 @@ export default function TursoWasmExample() {
       <div className="container mx-auto p-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold mb-6">Turso WASM SQLite Example</h1>
-          {isLoading ? (
+          {isLoading || startup === undefined || query?.loading ? (
             <div className="flex items-center justify-center gap-2">
               <span className="loading loading-spinner loading-lg"></span>
               <span>Initializing database...</span>
@@ -308,8 +284,8 @@ export default function TursoWasmExample() {
                   <ul className="list-disc list-inside space-y-1 text-sm">
                     <li>Ensure your browser supports SharedArrayBuffer (Chrome 68+, Firefox 79+, Safari 15.2+)</li>
                     <li>Make sure your server is configured with the required headers:</li>
-                    <li className="ml-4 font-mono text-xs">Cross-Origin-Opener-Policy: same-origin</li>
-                    <li className="ml-4 font-mono text-xs">Cross-Origin-Embedder-Policy: require-corp</li>
+                    <li className="ml-4 font-mono text-sm">Cross-Origin-Opener-Policy: same-origin</li>
+                    <li className="ml-4 font-mono text-sm">Cross-Origin-Embedder-Policy: require-corp</li>
                     <li>If running locally, try accessing via HTTPS or localhost</li>
                   </ul>
                 </div>
@@ -328,7 +304,7 @@ export default function TursoWasmExample() {
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-bold">Turso WASM SQLite Example</h1>
-          <div className="badge badge-success badge-sm">
+          <div className="badge badge-success ">
             <span className="loading loading-dots loading-xs mr-1"></span>
             SharedArrayBuffer Supported
           </div>
@@ -370,10 +346,14 @@ export default function TursoWasmExample() {
               accept=".jsonl"
               onChange={handleFileImport}
               className="hidden"
-              disabled={isLoading}
+              disabled={isLoading || query?.loading}
             />
-            <button onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="btn btn-primary">
-              {isLoading ? (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || query?.loading}
+              className="btn btn-primary"
+            >
+              {isLoading || startup === undefined || query?.loading ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
                   Importing...
@@ -405,9 +385,9 @@ export default function TursoWasmExample() {
             <label className="block text-sm font-medium mb-2">Event Kind</label>
             <select
               value={kindFilter ?? ""}
-              onChange={(e) => setKindFilter(e.target.value === "" ? null : Number(e.target.value))}
+              onChange={(e) => kindFilter$.next(e.target.value === "" ? null : Number(e.target.value))}
               className="select select-bordered w-48"
-              disabled={isLoading}
+              disabled={isLoading || query?.loading}
             >
               <option value="">Any</option>
               <option value="0">Profile (0)</option>
@@ -434,7 +414,7 @@ export default function TursoWasmExample() {
               <option value="10007">App-specific Data (10007)</option>
               <option value="10015">Interests List (10015)</option>
               <option value="10030">User Status (10030)</option>
-              <option value="13194">File Metadata (13194)</option>
+              <option value="1063">File Metadata (1063)</option>
               <option value="30000">Follow Sets (30000)</option>
               <option value="30001">Communities (30001)</option>
               <option value="30008">Profile Badges (30008)</option>
@@ -470,8 +450,8 @@ export default function TursoWasmExample() {
           </div>
 
           <div>
-            <button type="submit" disabled={isLoading} className="btn btn-primary">
-              {isLoading ? (
+            <button type="submit" disabled={isLoading || query?.loading} className="btn btn-primary">
+              {isLoading || startup === undefined || query?.loading ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
                   Filtering...
@@ -489,7 +469,7 @@ export default function TursoWasmExample() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Events ({events.length})</h2>
           {events.length > 0 && (
-            <button onClick={loadAllEvents} disabled={isLoading} className="btn btn-sm btn-outline">
+            <button onClick={loadAllEvents} disabled={isLoading || query?.loading} className="btn btn-sm btn-outline">
               Load All Events
             </button>
           )}

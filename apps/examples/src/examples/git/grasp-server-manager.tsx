@@ -3,6 +3,8 @@
  * @tags nip-34, git, grasp, server, management
  * @related git/favorite-repos-feed, blossom/server-manager, bookmarks/manager
  */
+import { publishEvent } from "../../extra/publish";
+
 import { castUser, type User } from "applesauce-common/casts";
 import { GitGraspListFactory } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
@@ -10,7 +12,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -39,7 +41,7 @@ function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void 
           {iconUrl ? (
             <img src={iconUrl} alt="" className="w-full h-full object-cover" />
           ) : (
-            <span className="text-xs" title="Grasp relay">
+            <span className="text-sm" title="Grasp relay">
               ⚙
             </span>
           )}
@@ -49,7 +51,7 @@ function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void 
       <div className="flex-1 min-w-0">
         <span className="font-mono text-sm truncate">{name || url}</span>
         <br />
-        <small className="text-xs font-mono">{url}</small>
+        <small className="text-sm font-mono">{url}</small>
       </div>
 
       <div className="flex gap-1">
@@ -62,15 +64,18 @@ function GraspServerItem({ url, onRemove }: { url: string; onRemove: () => void 
 }
 
 function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<void> }) {
-  const [input, setInput] = useState("");
-  const [isAdding, setIsAdding] = useState(false);
+  const input$ = useMemo(() => new BehaviorSubject(""), []);
+  const input = use$(input$);
+
+  const isAdding$ = useMemo(() => new BehaviorSubject(false), []);
+  const isAdding = use$(isAdding$);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!input.trim() || isAdding) return;
 
-      setIsAdding(true);
+      isAdding$.next(true);
       try {
         let url = input.trim();
         if (!url.startsWith("wss://") && !url.startsWith("ws://") && !url.startsWith("http")) {
@@ -78,11 +83,11 @@ function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<
         }
         new URL(url);
         await onAdd(url);
-        setInput("");
-      } catch {
-        alert("Invalid URL format");
+        input$.next("");
+      } catch (error) {
+        alert(String(error));
       } finally {
-        setIsAdding(false);
+        isAdding$.next(false);
       }
     },
     [input, onAdd, isAdding],
@@ -97,7 +102,7 @@ function AddGraspServerForm({ onAdd }: { onAdd: (url: string) => void | Promise<
           className="input input-bordered flex-1"
           placeholder="wss://grasp.example.com or grasp.example.com"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => input$.next(e.target.value)}
           disabled={isAdding}
         />
         <button
@@ -117,19 +122,21 @@ function GraspServerManagerView({ user }: { user: User }) {
   const outboxes = use$(user.outboxes$);
   const graspList = use$(user.graspServers$);
   const servers = graspList?.servers ?? [];
-  const [error, setError] = useState<string | null>(null);
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const publishSigned = useCallback(
     async (factory: GitGraspListFactory) => {
-      if (!signer || !outboxes?.length) return;
-      setError(null);
+      if (!signer) throw new Error("Sign in before changing your server list");
+      error$.next(null);
       try {
         const signed = await factory.sign(signer);
         eventStore.add(signed);
-        await pool.publish(outboxes, signed);
+        await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/", "wss://nos.lol/"], signed);
       } catch (err) {
         console.error(err);
-        setError(err instanceof Error ? err.message : "Failed to publish grasp list");
+        error$.next(err instanceof Error ? err.message : "Failed to publish grasp list");
+        throw err;
       }
     },
     [signer, outboxes],
@@ -137,14 +144,15 @@ function GraspServerManagerView({ user }: { user: User }) {
 
   const handleAdd = useCallback(
     async (url: string) => {
-      if (!signer || !outboxes?.length) return;
-      setError(null);
+      if (!signer) throw new Error("Sign in before changing your server list");
+      error$.next(null);
       try {
         if (graspList) await publishSigned(GitGraspListFactory.modify(graspList.event).addServer(url));
         else await publishSigned(GitGraspListFactory.create().addServer(url));
       } catch (err) {
         console.error(err);
-        setError(err instanceof Error ? err.message : "Failed to add grasp server");
+        error$.next(err instanceof Error ? err.message : "Failed to add grasp server");
+        throw err;
       }
     },
     [graspList, signer, outboxes, publishSigned],
@@ -152,13 +160,13 @@ function GraspServerManagerView({ user }: { user: User }) {
 
   const handleRemove = useCallback(
     async (url: string) => {
-      if (!graspList || !signer || !outboxes?.length) return;
-      setError(null);
+      if (!graspList || !signer) return;
+      error$.next(null);
       try {
         await publishSigned(GitGraspListFactory.modify(graspList.event).removeServer(url));
       } catch (err) {
         console.error(err);
-        setError(err instanceof Error ? err.message : "Failed to remove grasp server");
+        error$.next(err instanceof Error ? err.message : "Failed to remove grasp server");
       }
     },
     [graspList, signer, outboxes, publishSigned],
@@ -171,8 +179,8 @@ function GraspServerManagerView({ user }: { user: User }) {
           <h1 className="text-3xl font-bold mb-2">Grasp Server Manager</h1>
           <p className="text-base-content/70">
             Manage NIP-34 grasp service relays (kind 10317). Lists are built with{" "}
-            <code className="text-xs">GitGraspListFactory</code> and shown via the{" "}
-            <code className="text-xs">GitGraspList</code> cast on <code className="text-xs">gitGraspList$</code>.
+            <code className="text-sm">GitGraspListFactory</code> and shown via the{" "}
+            <code className="text-sm">GitGraspList</code> cast on <code className="text-sm">gitGraspList$</code>.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -205,7 +213,7 @@ function GraspServerManagerView({ user }: { user: User }) {
           <h2 className="text-lg font-semibold mb-3">Outbox relays</h2>
           <div className="text-sm flex flex-wrap gap-1">
             {outboxes.map((relay) => (
-              <span key={relay} className="text-xs bg-base-200 rounded px-2 py-1 font-mono">
+              <span key={relay} className="text-sm bg-base-200 rounded px-2 py-1 font-mono">
                 {relay.replace("wss://", "").replace("ws://", "")}
               </span>
             ))}
@@ -220,7 +228,7 @@ function GraspServerManagerView({ user }: { user: User }) {
 
         {outboxes && outboxes.length === 0 ? (
           <div className="alert alert-warning mb-4">
-            <span>No outbox relays yet. Publish a NIP-65 relay list so your grasp list can be published.</span>
+            <span>No NIP-65 outbox relays yet. Publishing uses fallback relays.</span>
           </div>
         ) : null}
 

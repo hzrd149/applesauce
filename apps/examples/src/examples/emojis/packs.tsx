@@ -3,15 +3,20 @@
  * @tags nip-30, nip-51, emojis, feed, relay
  * @related notes/rendering
  */
+import { castTimelineStream } from "applesauce-common/observable";
+
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, map, switchMap, of } from "rxjs";
+
 import { EmojiPack } from "applesauce-common/casts";
 import { EMOJI_PACK_KIND } from "applesauce-common/helpers";
-import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+
+import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -38,7 +43,7 @@ function EmojiPreviewRow({ pack }: { pack: EmojiPack }) {
           />
         </div>
       ))}
-      {pack.emojis.length > 6 && <span className="text-xs text-base-content/60">+{pack.emojis.length - 6}</span>}
+      {pack.emojis.length > 6 && <span className="text-sm text-base-content/60">+{pack.emojis.length - 6}</span>}
     </div>
   );
 }
@@ -53,7 +58,7 @@ function PackAuthor({ pack, compact = false }: { pack: EmojiPack; compact?: bool
       <img src={picture} alt={displayName} className={compact ? "h-9 w-9 rounded-full" : "h-12 w-12 rounded-full"} />
       <div className="min-w-0">
         <div className="truncate text-sm font-medium">{displayName}</div>
-        <div className="truncate text-xs text-base-content/60">{pack.author.pubkey}</div>
+        <div className="truncate text-sm text-base-content/60">{pack.author.pubkey}</div>
         {!compact && profile?.about && (
           <div className="mt-1 line-clamp-2 text-sm text-base-content/70">{profile.about}</div>
         )}
@@ -75,9 +80,9 @@ function PackFeedItem({ pack, selected, onSelect }: { pack: EmojiPack; selected:
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-lg font-semibold">{pack.name || pack.identifier}</div>
-          <div className="truncate text-xs text-base-content/60">{pack.identifier}</div>
+          <div className="truncate text-sm text-base-content/60">{pack.identifier}</div>
         </div>
-        <div className="shrink-0 rounded-full bg-base-200 px-2 py-1 text-xs text-base-content/70">
+        <div className="shrink-0 rounded-full bg-base-200 px-2 py-1 text-sm text-base-content/70">
           {pack.emojis.length} emoji{pack.emojis.length === 1 ? "" : "s"}
         </div>
       </div>
@@ -106,7 +111,7 @@ function EmojiGrid({ pack }: { pack: EmojiPack }) {
             />
           </div>
           <div className="mt-3 truncate font-mono text-sm">:{emoji.shortcode}:</div>
-          {emoji.address && <div className="mt-1 text-xs text-base-content/60">{emoji.address.identifier}</div>}
+          {emoji.address && <div className="mt-1 text-sm text-base-content/60">{emoji.address.identifier}</div>}
         </div>
       ))}
     </div>
@@ -141,20 +146,28 @@ function PackDetail({ pack }: { pack: EmojiPack }) {
 }
 
 export default function EmojiPacksExample() {
-  const [relay, setRelay] = useState("wss://relay.ditto.pub");
-  const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.ditto.pub"), []);
+  const relay = use$(relay$);
 
-  const packs = use$(
+  const query$ = useMemo(() => new BehaviorSubject(""), []);
+  const query = use$(query$);
+
+  const selectedId$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedId = use$(selectedId$);
+
+  const feed = use$(
     () =>
-      relay
-        ? pool
-            .relay(relay)
-            .subscription({ kinds: [EMOJI_PACK_KIND], limit: 200 })
-            .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(EmojiPack, eventStore))
-        : undefined,
+      relayTimeline(eventStore, pool, [relay], { kinds: [EMOJI_PACK_KIND], limit: 200 }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(EmojiPack, eventStore),
+            map((events) => ({ ...result, events })),
+          ),
+        ),
+      ),
     [relay],
   );
+  const packs = feed?.events;
 
   const filteredPacks = useMemo(() => {
     if (!packs) return undefined;
@@ -171,35 +184,31 @@ export default function EmojiPacksExample() {
     });
   }, [packs, query]);
 
-  useEffect(() => {
-    if (!filteredPacks || filteredPacks.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-
-    if (!selectedId || !filteredPacks.some((pack) => pack.id === selectedId)) {
-      setSelectedId(filteredPacks[0].id);
-    }
-  }, [filteredPacks, selectedId]);
-
-  const selectedPack = filteredPacks?.find((pack) => pack.id === selectedId) ?? filteredPacks?.[0];
+  const selectedPack = filteredPacks?.find((pack) => pack.uid === selectedId) ?? filteredPacks?.[0];
 
   return (
     <div className="flex w-full h-[calc(100vh-7rem)] flex-col gap-4 p-4 overflow-hidden">
-      <RelayPicker value={relay} onChange={setRelay} />
+      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      {feed?.status === "loading" && <p role="status">Loading events…</p>}
+      {feed?.errors.map((error) => (
+        <p role="alert" className="text-error" key={error}>
+          {error}
+        </p>
+      ))}
+      {feed?.status !== "loading" && packs?.length === 0 && <p>No events found.</p>}
 
       <div className="flex gap-2 flex-1 overflow-hidden">
         <section className="rounded-2xl bg-base-200/60 p-2 max-w-sm h-full overflow-y-auto overflow-x-hidden">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Pack Feed</h2>
-            <div className="text-xs text-base-content/60">{filteredPacks?.length ?? 0} shown</div>
+            <div className="text-sm text-base-content/60">{filteredPacks?.length ?? 0} shown</div>
           </div>
 
           <div className="mt-3">
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => query$.next(e.target.value)}
               placeholder="Filter by name, identifier, or author"
               className="input input-bordered w-full"
             />
@@ -228,8 +237,8 @@ export default function EmojiPacksExample() {
               <PackFeedItem
                 key={pack.uid}
                 pack={pack}
-                selected={pack.id === selectedPack?.id}
-                onSelect={() => setSelectedId(pack.id)}
+                selected={pack.uid === selectedPack?.uid}
+                onSelect={() => selectedId$.next(pack.uid)}
               />
             ))}
           </div>

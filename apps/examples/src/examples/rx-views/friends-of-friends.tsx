@@ -7,19 +7,8 @@ import { combineLatestByValue, EventStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useState } from "react";
-import {
-  BehaviorSubject,
-  catchError,
-  combineLatest,
-  filter,
-  map,
-  Observable,
-  of,
-  switchMap,
-  takeUntil,
-  timer,
-} from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, catchError, combineLatest, filter, map, Observable, of, switchMap, timeout } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -45,7 +34,8 @@ function FriendsOfFriendsView(user$: Observable<User>) {
           map((name) => name ?? contact.npub.slice(0, 12) + "…"),
         ),
         contacts: contact.contacts$.pipe(
-          takeUntil(timer(10_000)), // 10s timeout for contact list request
+          filter((value) => value !== undefined),
+          timeout({ first: 10_000 }), // 10s timeout for contact list request
           catchError((err) => of(err as Error)), // Catch error and pass back to UI
         ),
       }),
@@ -71,11 +61,11 @@ function ContactCard({
 
   const countBadge =
     theirContacts instanceof Error ? (
-      <span className="badge badge-error badge-sm">err</span>
+      <span className="badge badge-error badge">err</span>
     ) : theirContacts === undefined ? (
-      <span className="loading loading-spinner loading-xs opacity-30" />
+      <span className="loading loading-spinner loading-sm opacity-30" />
     ) : (
-      <span className="badge badge-ghost badge-sm">{theirContacts.length}</span>
+      <span className="badge badge-ghost badge">{theirContacts.length}</span>
     );
 
   return (
@@ -90,7 +80,7 @@ function ContactCard({
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate text-sm">{name}</div>
-        <div className="text-xs text-base-content/40 font-mono">{contact.pubkey.slice(0, 12)}…</div>
+        <div className="text-sm text-base-content/40 font-mono">{contact.pubkey.slice(0, 12)}…</div>
       </div>
       <div className="shrink-0">{countBadge}</div>
     </button>
@@ -111,7 +101,7 @@ function ActiveUserHeader({ user }: { user: User }) {
       </div>
       <div className="min-w-0">
         <div className="font-semibold text-base">{name}</div>
-        <div className="text-xs text-base-content/50 font-mono truncate">{user.pubkey}</div>
+        <div className="text-sm text-base-content/50 font-mono truncate">{user.pubkey}</div>
       </div>
     </div>
   );
@@ -136,7 +126,8 @@ function BreadcrumbItem({ user, isLast, onClick }: { user: User; isLast: boolean
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function FriendsOfFriends() {
-  const [history, setHistory] = useState<User[]>([]);
+  const history$ = useMemo(() => new BehaviorSubject<User[]>([]), []);
+  const history = use$(history$);
 
   // Single stable subject — pushing here drives the entire view
   const user$ = useMemo(() => new BehaviorSubject<User | null>(null), []);
@@ -152,17 +143,17 @@ export default function FriendsOfFriends() {
     if (!pubkey) return;
     const user = castUser(pubkey, eventStore);
     user$.next(user);
-    setHistory([user]);
+    history$.next([user]);
   };
 
   const navigateTo = (contact: User) => {
     user$.next(contact);
-    setHistory((prev) => [...prev, contact]);
+    history$.next(((prev: typeof history$.value) => [...prev, contact])(history$.value));
   };
 
   const navigateToHistoryItem = (index: number) => {
     user$.next(history[index]);
-    setHistory((prev) => prev.slice(0, index + 1));
+    history$.next(((prev: typeof history$.value) => prev.slice(0, index + 1))(history$.value));
   };
 
   const contacts = contactsMap ? [...contactsMap.entries()] : null;
@@ -205,7 +196,7 @@ export default function FriendsOfFriends() {
 
             {contacts === null && (
               <div className="flex items-center gap-2 text-sm text-base-content/50">
-                <span className="loading loading-spinner loading-xs" />
+                <span className="loading loading-spinner loading-sm" />
                 Loading contacts…
               </div>
             )}

@@ -17,7 +17,10 @@ import {
   isNamedNapplet,
   isNappletSnapshot,
   isRootNapplet,
+  isValidNamedNapplet,
   isValidNapplet,
+  isValidNappletSnapshot,
+  isValidRootNapplet,
   NAPPLET_KIND,
   NAPPLET_ROOT_KIND,
   NAPPLET_SNAPSHOT_KIND,
@@ -165,5 +168,20 @@ describe("napplet lineage", () => {
     ]);
     expect(getNappletParentPointer(event)).toBeUndefined();
     expect(getNappletRootPointer(event)).toBeUndefined();
+  });
+});
+
+describe("per-kind validators", () => {
+  it("only accept valid manifests of their own kind", () => {
+    const root = user.event({ kind: NAPPLET_ROOT_KIND, content: "root", tags: [["x", HASH]] });
+    const snapshot = user.event({ kind: NAPPLET_SNAPSHOT_KIND, content: "snap", tags: [["x", HASH]] });
+
+    expect(isValidNamedNapplet(named())).toBe(true);
+    expect(isValidNamedNapplet(root)).toBe(false);
+    expect(isValidNamedNapplet(named([], ""))).toBe(false);
+    expect(isValidRootNapplet(root)).toBe(true);
+    expect(isValidRootNapplet(snapshot)).toBe(false);
+    expect(isValidNappletSnapshot(snapshot)).toBe(true);
+    expect(isValidNappletSnapshot(named())).toBe(false);
   });
 });

@@ -3,6 +3,8 @@
  * @tags nip-58, profile, badges, editing
  * @related badges/profile
  */
+import { publishEvent } from "../../extra/publish";
+
 import { Badge, BadgeAward, castUser, ProfileBadges, User } from "applesauce-common/casts";
 import { ProfileBadgesFactory } from "applesauce-common/factories";
 import {
@@ -19,7 +21,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -56,7 +58,7 @@ function reorder<T>(arr: T[], from: number, to: number): T[] {
   return copy;
 }
 
-// ---- Badge slot card for the pinned list ----
+// ---- Badge slot row for the pinned list ----
 
 function PinnedBadgeCard({
   badge,
@@ -107,12 +109,12 @@ function PinnedBadgeCard({
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{name}</div>
-        {badge?.description && <div className="text-xs text-base-content/60 truncate">{badge.description}</div>}
+        {badge?.description && <div className="text-sm text-base-content/60 truncate">{badge.description}</div>}
       </div>
       {award && (
-        <div className="text-xs text-base-content/50 hidden sm:block">{award.createdAt.toLocaleDateString()}</div>
+        <div className="text-sm text-base-content/50 hidden sm:block">{award.createdAt.toLocaleDateString()}</div>
       )}
-      <button className="btn btn-ghost btn-xs btn-square" onClick={() => onRemove(index)} title="Remove">
+      <button className="btn btn-ghost btn-sm btn-square" onClick={() => onRemove(index)} title="Remove">
         ✕
       </button>
     </div>
@@ -176,8 +178,8 @@ function AwardPickerRow({
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{name}</div>
-        {badge?.description && <div className="text-xs text-base-content/60 truncate">{badge.description}</div>}
-        <div className="text-xs text-base-content/40">
+        {badge?.description && <div className="text-sm text-base-content/60 truncate">{badge.description}</div>}
+        <div className="text-sm text-base-content/40">
           Issued by {formatPubkey(award.issuer.pubkey)} · {award.createdAt.toLocaleDateString()}
         </div>
       </div>
@@ -238,16 +240,25 @@ function EditorView({ user }: { user: User }) {
   const profileBadges = use$(() => user.profileBadges$, [user.pubkey]);
   const mailboxes = use$(() => user.mailboxes$, [user.pubkey]);
 
-  const [showPicker, setShowPicker] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [dragState, setDragState] = useState<DragState>({ dragging: null, over: null });
-  const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([]);
+  const showPicker$ = useMemo(() => new BehaviorSubject(false), []);
+  const showPicker = use$(showPicker$);
+
+  const busy$ = useMemo(() => new BehaviorSubject(false), []);
+  const busy = use$(busy$);
+
+  const dragState$ = useMemo(() => new BehaviorSubject<DragState>({ dragging: null, over: null }), []);
+  const dragState = use$(dragState$);
+
+  const publishLog$ = useMemo(() => new BehaviorSubject<PublishLogEntry[]>([]), []);
+  const publishLog = use$(publishLog$);
 
   const badgesRef = useRef(profileBadges);
   badgesRef.current = profileBadges;
   const mailboxesRef = useRef(mailboxes);
   mailboxesRef.current = mailboxes;
 
+  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const error = use$(error$);
   const slots = profileBadges?.slots ?? [];
 
   const publishRelays = useMemo(() => (mailboxes ? relaySet(RELAYS, mailboxes.outboxes) : RELAYS), [mailboxes]);
@@ -256,26 +267,27 @@ function EditorView({ user }: { user: User }) {
     const signer = signer$.value;
     if (!signer) return;
 
-    setBusy(true);
+    busy$.next(true);
+    error$.next(undefined);
     try {
       const signed = await factory.sign(signer);
       const relays = mailboxesRef.current ? relaySet(RELAYS, mailboxesRef.current.outboxes) : RELAYS;
-      const responses = await pool.publish(relays, signed);
+      const responses = await publishEvent(pool, relays, signed);
       eventStore.add(signed);
 
-      setPublishLog((prev) => [
+      publishLog$.next([
         {
           id: signed.id,
           action,
           timestamp: new Date(),
           results: responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })),
         },
-        ...prev,
+        ...publishLog$.value,
       ]);
     } catch (err) {
-      console.error(`Failed to ${action}`, err);
+      error$.next(err instanceof Error ? err.message : `Failed to ${action}`);
     } finally {
-      setBusy(false);
+      busy$.next(false);
     }
   }, []);
 
@@ -291,7 +303,7 @@ function EditorView({ user }: { user: User }) {
       ],
       { eventStore },
     );
-  }, [user, mailboxes]);
+  }, [user]);
 
   const awards = use$(() => user.badgeAwards$, [user.pubkey]);
 
@@ -300,17 +312,16 @@ function EditorView({ user }: { user: User }) {
   }, [slots]);
 
   // ---- drag handlers ----
-  const onDragStart = useCallback((i: number) => setDragState({ dragging: i, over: null }), []);
-  const onDragOver = useCallback((i: number) => setDragState((s) => ({ ...s, over: i })), []);
+  const onDragStart = useCallback((i: number) => dragState$.next({ dragging: i, over: null }), []);
+  const onDragOver = useCallback((i: number) => dragState$.next({ ...dragState$.value, over: i }), []);
   const onDragEnd = useCallback(() => {
-    setDragState((prev) => {
-      if (prev.dragging !== null && prev.over !== null && prev.dragging !== prev.over) {
-        const current = badgesRef.current?.slots ?? [];
-        const reordered = reorder(current, prev.dragging, prev.over);
-        runAction("reorder", getFactory(badgesRef.current?.event).slots(reordered));
-      }
-      return { dragging: null, over: null };
-    });
+    const { dragging, over } = dragState$.value;
+    if (dragging !== null && over !== null && dragging !== over) {
+      const current = badgesRef.current?.slots ?? [];
+      const reordered = reorder(current, dragging, over);
+      void runAction("reorder", getFactory(badgesRef.current?.event).slots(reordered));
+    }
+    dragState$.next({ dragging: null, over: null });
   }, [runAction]);
 
   const handleRemove = useCallback(
@@ -325,7 +336,7 @@ function EditorView({ user }: { user: User }) {
 
   const handleAdd = useCallback(
     (award: BadgeAward) => {
-      setShowPicker(false);
+      showPicker$.next(false);
       runAction(
         "add",
         getFactory(badgesRef.current?.event).addSlot({
@@ -346,14 +357,19 @@ function EditorView({ user }: { user: User }) {
         </div>
         <div className="flex items-center gap-2">
           {busy && <span className="loading loading-spinner loading-sm" />}
-          <span className="badge badge-ghost font-mono text-xs">{formatPubkey(user.pubkey)}</span>
+          <span className="badge badge-ghost font-mono text-sm">{formatPubkey(user.pubkey)}</span>
         </div>
       </div>
 
+      {error && (
+        <p role="alert" className="text-error">
+          {error}
+        </p>
+      )}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Pinned Badges ({slots.length})</h2>
-          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => setShowPicker(true)}>
+          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => showPicker$.next(true)}>
             + Add Badge
           </button>
         </div>
@@ -393,7 +409,7 @@ function EditorView({ user }: { user: User }) {
         <h2 className="text-lg font-semibold">Publish Relays</h2>
         <div className="flex flex-wrap gap-1">
           {publishRelays.map((relay) => (
-            <span key={relay} className="badge badge-outline badge-sm font-mono">
+            <span key={relay} className="badge badge-outline  font-mono">
               {relay.replace("wss://", "")}
             </span>
           ))}
@@ -405,7 +421,7 @@ function EditorView({ user }: { user: User }) {
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Publish Log</h2>
-            <button className="btn btn-ghost btn-xs" onClick={() => setPublishLog([])}>
+            <button className="btn btn-ghost btn-sm" onClick={() => publishLog$.next([])}>
               Clear
             </button>
           </div>
@@ -414,14 +430,12 @@ function EditorView({ user }: { user: User }) {
               <div key={entry.id} className="border border-base-300 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-sm capitalize">{entry.action}</span>
-                  <span className="text-xs text-base-content/50">{entry.timestamp.toLocaleTimeString()}</span>
+                  <span className="text-sm text-base-content/50">{entry.timestamp.toLocaleTimeString()}</span>
                 </div>
                 <div className="space-y-1">
                   {entry.results.map((r) => (
-                    <div key={r.relay} className="flex items-center gap-2 text-xs font-mono">
-                      <span className={`badge badge-xs ${r.ok ? "badge-success" : "badge-error"}`}>
-                        {r.ok ? "OK" : "FAIL"}
-                      </span>
+                    <div key={r.relay} className="flex items-center gap-2 text-sm font-mono">
+                      <span className={`badge  ${r.ok ? "badge-success" : "badge-error"}`}>{r.ok ? "OK" : "FAIL"}</span>
                       <span className="text-base-content/70">{r.relay.replace("wss://", "")}</span>
                       {r.message && <span className="text-base-content/40 truncate">{r.message}</span>}
                     </div>
@@ -438,7 +452,7 @@ function EditorView({ user }: { user: User }) {
           awards={awards}
           pinnedAddresses={pinnedAddresses}
           onAdd={handleAdd}
-          onClose={() => setShowPicker(false)}
+          onClose={() => showPicker$.next(false)}
         />
       )}
 

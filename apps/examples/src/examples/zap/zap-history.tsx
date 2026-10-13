@@ -3,6 +3,8 @@
  * @tags nip-57, nip-65, zap, graph, lightning, outbox, cast, visualization, chart.js, react-chartjs-2
  * @related zap/timeline, zap/loading-zaps
  */
+import { BehaviorSubject, exhaustMap, materialize, scan, startWith, of, EMPTY } from "rxjs";
+
 import { Zap } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { castUser, EventStore, mapEventsToStore } from "applesauce-core";
@@ -19,10 +21,9 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
-import { Filter, kinds } from "applesauce-core/helpers";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Filter, kinds, relaySet } from "applesauce-core/helpers";
+import { useMemo } from "react";
 import { Bar } from "react-chartjs-2";
-import { EMPTY } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -95,15 +96,21 @@ function prepareChartData(zaps: Zap[], userPubkey: string, mode: ChartMode) {
 }
 
 export default function ZapGraph() {
-  const [pubkey, setPubkey] = useState<string>(DEFAULT_PUBKEY);
-  const [loading, setLoading] = useState(false);
-  const [limit] = useState(50);
-  const [chartMode, setChartMode] = useState<ChartMode>("amount");
-  const [scaleType, setScaleType] = useState<ScaleType>("linear");
+  const pubkey$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_PUBKEY), []);
+  const pubkey = use$(pubkey$);
+
+  const limit = 50;
+  const chartMode$ = useMemo(() => new BehaviorSubject<ChartMode>("amount"), []);
+  const chartMode = use$(chartMode$);
+
+  const scaleType$ = useMemo(() => new BehaviorSubject<ScaleType>("linear"), []);
+  const scaleType = use$(scaleType$);
 
   // Cast the pubkey into a User and subscribe to its outbox relays (NIP-65)
   const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
-  const relays = use$(user.outboxes$);
+  const outboxes = use$(user.outboxes$);
+  const inboxes = use$(user.inboxes$);
+  const relays = useMemo(() => relaySet(inboxes, outboxes, lookupRelays$.value), [inboxes, outboxes]);
 
   // Build filters for incoming (#p) and outgoing (#P) zaps
   const filters = useMemo<Filter[]>(
@@ -129,17 +136,30 @@ export default function ZapGraph() {
   // Cast the live timeline of zap events into Zap instances
   const zaps = use$(() => eventStore.timeline(filters).pipe(castTimelineStream(Zap, eventStore)), [filters]);
 
-  const loadMore = useCallback(() => {
-    if (!loader) return;
-
-    setLoading(true);
-    loader().subscribe({ complete: () => setLoading(false) });
-  }, [loader]);
-
-  // Load the first page whenever the loader (pubkey / outbox relays) changes
-  useEffect(() => {
-    if (loader) loadMore();
-  }, [loader]);
+  const pages$ = useMemo(() => new BehaviorSubject(0), []);
+  const paging = use$(
+    () =>
+      loader
+        ? pages$.pipe(
+            exhaustMap(() =>
+              loader().pipe(
+                materialize(),
+                scan(
+                  (status, notification) =>
+                    notification.kind === "N"
+                      ? status
+                      : { loading: false, error: notification.kind === "E" ? String(notification.error) : "" },
+                  { loading: true, error: "" },
+                ),
+                startWith({ loading: true, error: "" }),
+              ),
+            ),
+          )
+        : of({ loading: false, error: "No relay list available" }),
+    [loader, pages$],
+  );
+  const loading = paging?.loading ?? false;
+  const loadMore = () => pages$.next(pages$.value + 1);
 
   const chartData = useMemo(() => {
     if (!pubkey || !zaps || zaps.length === 0) return null;
@@ -167,8 +187,13 @@ export default function ZapGraph() {
 
   return (
     <div className="container mx-auto my-8 p-4">
+      {paging?.error && (
+        <p className="text-error" role="alert">
+          {paging.error}
+        </p>
+      )}
       <div className="mb-6">
-        <PubkeyPicker value={pubkey} onChange={setPubkey} />
+        <PubkeyPicker value={pubkey} onChange={(next: typeof pubkey$.value) => pubkey$.next(next)} />
       </div>
 
       {pubkey ? (
@@ -184,13 +209,13 @@ export default function ZapGraph() {
               <div className="join">
                 <button
                   className={`btn join-item ${chartMode === "amount" ? "btn-active" : ""}`}
-                  onClick={() => setChartMode("amount")}
+                  onClick={() => chartMode$.next("amount")}
                 >
                   Amount
                 </button>
                 <button
                   className={`btn join-item ${chartMode === "count" ? "btn-active" : ""}`}
-                  onClick={() => setChartMode("count")}
+                  onClick={() => chartMode$.next("count")}
                 >
                   Count
                 </button>
@@ -198,13 +223,13 @@ export default function ZapGraph() {
               <div className="join">
                 <button
                   className={`btn join-item ${scaleType === "linear" ? "btn-active" : ""}`}
-                  onClick={() => setScaleType("linear")}
+                  onClick={() => scaleType$.next("linear")}
                 >
                   Linear
                 </button>
                 <button
                   className={`btn join-item ${scaleType === "logarithmic" ? "btn-active" : ""}`}
-                  onClick={() => setScaleType("logarithmic")}
+                  onClick={() => scaleType$.next("logarithmic")}
                 >
                   Log
                 </button>
@@ -212,8 +237,8 @@ export default function ZapGraph() {
             </div>
           </div>
 
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body">
+          <div className="border border-base-300 bg-base-100 ">
+            <div className="p-4">
               {chartData ? (
                 <Bar data={chartData} options={chartOptions} />
               ) : (

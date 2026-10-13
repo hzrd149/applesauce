@@ -3,15 +3,18 @@
  * @tags nip-10, nip-57, casting, thread, replies, zaps
  * @related casting/contacts, zap/timeline
  */
+import { default as NoteContent } from "../../components/note-content";
+import { BehaviorSubject, map } from "rxjs";
+
 import { Note, Zap } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";
 import { kinds, npubEncode, relaySet } from "applesauce-core/helpers";
-import { decodeEventPointer, EventPointer } from "applesauce-core/helpers/pointers";
+import { decodeEventPointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { lookupRelays$ } from "../../settings";
 
 // Setup event store
@@ -76,7 +79,7 @@ function NoteItem({ note }: { note: Note }) {
             print
           </button>
         </div>
-        <p className="whitespace-pre-wrap overflow-hidden text-ellipsis">{note.event.content.trim()}</p>
+        <NoteContent event={note.event} />
         {zaps && zaps.length > 0 && (
           <div className="mt-2 pt-2 border-t border-base-300/50">
             <div className="flex items-center gap-2 mb-1">
@@ -105,33 +108,31 @@ function NoteItem({ note }: { note: Note }) {
 }
 
 export default function ThreadExample() {
-  const [neventInput, setNeventInput] = useState(
-    "nostr:nevent1qqsd4xdw2zfm23xrcmpxeze8pysp0nyrwcwstnt0v5z9hymfqtne6gczyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qg6waehxw309ac8junpd45kgtnxd9shg6npvchxxmmd9uq3kamnwvaz7tmjv4kxz7fwwajhxar9wfhxyarr9e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qcyqqqqqqguy5qm0",
+  const neventInput$ = useMemo(
+    () =>
+      new BehaviorSubject(
+        "nostr:nevent1qqsd4xdw2zfm23xrcmpxeze8pysp0nyrwcwstnt0v5z9hymfqtne6gczyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qg6waehxw309ac8junpd45kgtnxd9shg6npvchxxmmd9uq3kamnwvaz7tmjv4kxz7fwwajhxar9wfhxyarr9e3k7mf0qy2hwumn8ghj7un9d3shjtnyv9kh2uewd9hj7qghwaehxw309aex2mrp0yh8qunfd4skctnwv46z7qcyqqqqqqguy5qm0",
+      ),
+    [],
   );
-  const [eventPointer, setEventPointer] = useState<EventPointer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const neventInput = use$(neventInput$);
 
-  // Decode nip-19 nevent
-  useEffect(() => {
-    if (!neventInput.trim()) {
-      setEventPointer(null);
-      setError(null);
-      return;
-    }
-
-    try {
-      const pointer = decodeEventPointer(neventInput.trim().replace(/^nostr:/, ""));
-      if (pointer) {
-        setEventPointer(pointer);
-        setError(null);
-      } else {
-        throw new Error("Input must be a nevent (NIP-19 event pointer)");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to decode nevent");
-      setEventPointer(null);
-    }
-  }, [neventInput]);
+  const decoded = use$(
+    () =>
+      neventInput$.pipe(
+        map((input) => {
+          if (!input.trim()) return { pointer: null, error: null };
+          try {
+            return { pointer: decodeEventPointer(input.trim().replace(/^nostr:/, "")), error: null };
+          } catch (error) {
+            return { pointer: null, error: error instanceof Error ? error.message : "Invalid event pointer" };
+          }
+        }),
+      ),
+    [neventInput$],
+  );
+  const eventPointer = decoded?.pointer;
+  const error = decoded?.error;
 
   // Load the event and cast it to a note
   const note = use$(() => {
@@ -168,7 +169,7 @@ export default function ThreadExample() {
           className="input input-bordered w-full"
           placeholder="nevent1..."
           value={neventInput}
-          onChange={(e) => setNeventInput(e.target.value)}
+          onChange={(e) => neventInput$.next(e.target.value)}
         />
       </div>
 

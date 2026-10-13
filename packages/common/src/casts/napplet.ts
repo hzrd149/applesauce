@@ -27,11 +27,17 @@ import {
   isNamedNapplet,
   isNappletSnapshot,
   isRootNapplet,
+  isValidNamedNapplet,
   isValidNapplet,
+  isValidNappletSnapshot,
+  isValidRootNapplet,
+  NamedNappletEvent,
   NAPPLET_KIND,
   NAPPLET_ROOT_KIND,
   NAPPLET_SNAPSHOT_KIND,
   NappletEvent,
+  NappletSnapshotEvent,
+  RootNappletEvent,
 } from "../helpers/napplet.js";
 import { CommentsModel } from "../models/comments.js";
 import { ReactionsModel } from "../models/reactions.js";
@@ -44,11 +50,11 @@ import { Reaction } from "./reaction.js";
 import { Share } from "./share.js";
 import { Zap } from "./zap.js";
 
-/** Cast for NIP-5D napplet manifests (kinds 5129, 15129 and 35129) */
-export class Napplet extends EventCast<NappletEvent> {
+/** Cast for any NIP-5D napplet manifest (kinds 5129, 15129 and 35129) */
+export class Napplet<T extends NappletEvent = NappletEvent> extends EventCast<T> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidNapplet(event)) throw new Error("Invalid napplet manifest");
-    super(event, store);
+    super(event as T, store);
   }
 
   /** The sha256 of the napplet `index.html` artifact */
@@ -62,10 +68,6 @@ export class Napplet extends EventCast<NappletEvent> {
   /** The short display label */
   get title() {
     return getNappletTitle(this.event);
-  }
-  /** The `d` tag identifier of a named napplet */
-  get identifier() {
-    return getNappletIdentifier(this.event);
   }
   /** The archetypes the napplet advertises */
   get archetypes() {
@@ -107,15 +109,6 @@ export class Napplet extends EventCast<NappletEvent> {
   /** Whether this is a kind 35129 named napplet */
   get isNamed() {
     return isNamedNapplet(this.event);
-  }
-
-  /** The address of the napplet this snapshot derives from */
-  get parentPointer() {
-    return getNappletParentPointer(this.event);
-  }
-  /** The address of the root napplet this snapshot's lineage originates from */
-  get rootPointer() {
-    return getNappletRootPointer(this.event);
   }
 
   /** An address pointer for root and named napplets, or an event pointer for snapshots */
@@ -161,26 +154,68 @@ export class Napplet extends EventCast<NappletEvent> {
       store.model(SharesModel, this.event).pipe(castTimelineStream(Share, store)),
     );
   }
+}
+
+/** Base class for root and named napplets that snapshots can derive from */
+class AddressableNapplet<T extends RootNappletEvent | NamedNappletEvent> extends Napplet<T> {
+  /** The `kind:pubkey:identifier` address used by snapshot `a` and `A` tags */
+  get coordinate(): string {
+    return super.coordinate!;
+  }
 
   /** Subscribes to the snapshots that derive directly from this napplet */
-  get snapshots$(): ChainableObservable<Napplet[]> {
+  get snapshots$(): ChainableObservable<NappletSnapshot[]> {
     return this.$$ref("snapshots$", (store) =>
-      this.coordinate
-        ? store
-            .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], "#a": [this.coordinate] })
-            .pipe(castTimelineStream(Napplet, store))
-        : of([]),
+      store
+        .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], "#a": [this.coordinate] })
+        .pipe(castTimelineStream(NappletSnapshot, store)),
     );
   }
   /** Subscribes to every snapshot whose lineage originates from this napplet */
-  get lineage$(): ChainableObservable<Napplet[]> {
+  get lineage$(): ChainableObservable<NappletSnapshot[]> {
     return this.$$ref("lineage$", (store) =>
-      this.coordinate
-        ? store
-            .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], "#A": [this.coordinate] })
-            .pipe(castTimelineStream(Napplet, store))
-        : of([]),
+      store
+        .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], "#A": [this.coordinate] })
+        .pipe(castTimelineStream(NappletSnapshot, store)),
     );
+  }
+}
+
+/** Cast for a NIP-5D root napplet (kind 15129) */
+export class RootNapplet extends AddressableNapplet<RootNappletEvent> {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
+    if (!isValidRootNapplet(event)) throw new Error("Invalid root napplet");
+    super(event, store);
+  }
+}
+
+/** Cast for a NIP-5D named napplet (kind 35129) */
+export class NamedNapplet extends AddressableNapplet<NamedNappletEvent> {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
+    if (!isValidNamedNapplet(event)) throw new Error("Invalid named napplet");
+    super(event, store);
+  }
+
+  /** The `d` tag identifier of the napplet */
+  get identifier(): string {
+    return getNappletIdentifier(this.event)!;
+  }
+}
+
+/** Cast for a NIP-5D napplet snapshot (kind 5129) */
+export class NappletSnapshot extends Napplet<NappletSnapshotEvent> {
+  constructor(event: NostrEvent, store: CastRefEventStore) {
+    if (!isValidNappletSnapshot(event)) throw new Error("Invalid napplet snapshot");
+    super(event, store);
+  }
+
+  /** The address of the napplet this snapshot derives from */
+  get parentPointer() {
+    return getNappletParentPointer(this.event);
+  }
+  /** The address of the root napplet this snapshot's lineage originates from */
+  get rootPointer() {
+    return getNappletRootPointer(this.event);
   }
 
   /** Subscribes to the napplet this snapshot derives from */
@@ -218,7 +253,7 @@ Object.defineProperty(User.prototype, "napplets$", {
 Object.defineProperty(User.prototype, "napplet$", {
   get(this: User) {
     return this.$$ref("napplet$", (store) =>
-      store.replaceable({ kind: NAPPLET_ROOT_KIND, pubkey: this.pubkey }).pipe(castEventStream(Napplet, store)),
+      store.replaceable({ kind: NAPPLET_ROOT_KIND, pubkey: this.pubkey }).pipe(castEventStream(RootNapplet, store)),
     );
   },
   configurable: true,
@@ -230,7 +265,7 @@ Object.defineProperty(User.prototype, "nappletSnapshots$", {
     return this.$$ref("nappletSnapshots$", (store) =>
       store
         .timeline({ kinds: [NAPPLET_SNAPSHOT_KIND], authors: [this.pubkey] })
-        .pipe(castTimelineStream(Napplet, store)),
+        .pipe(castTimelineStream(NappletSnapshot, store)),
     );
   },
   configurable: true,
@@ -242,8 +277,8 @@ declare module "applesauce-core/casts" {
     /** Subscribes to the user's root and named napplets */
     get napplets$(): ChainableObservable<Napplet[]>;
     /** Subscribes to the user's root (kind 15129) napplet */
-    get napplet$(): ChainableObservable<Napplet | undefined>;
+    get napplet$(): ChainableObservable<RootNapplet | undefined>;
     /** Subscribes to the user's napplet snapshots */
-    get nappletSnapshots$(): ChainableObservable<Napplet[]>;
+    get nappletSnapshots$(): ChainableObservable<NappletSnapshot[]>;
   }
 }

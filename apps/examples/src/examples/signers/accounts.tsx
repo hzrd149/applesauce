@@ -3,11 +3,12 @@
  * @tags signers, accounts, management
  * @related signers/password, signers/bunker
  */
+import { BehaviorSubject, tap, ignoreElements, merge, Subject } from "rxjs";
+
 import { AccountManager } from "applesauce-accounts";
 import { registerCommonAccountTypes, PrivateKeyAccount } from "applesauce-accounts/accounts";
 import { use$ } from "applesauce-react/hooks";
-import { useCallback, useState } from "react";
-import { merge, Subject } from "rxjs";
+import { useCallback, useMemo } from "react";
 
 interface AccountMetadata {
   name: string;
@@ -28,21 +29,12 @@ if (activeAccountId) {
   if (account) manager.setActive(account);
 }
 
-// Save accounts whenever they change
 const manualSave = new Subject<void>();
-merge(manualSave, manager.accounts$).subscribe(() => {
-  localStorage.setItem("accounts", JSON.stringify(manager.toJSON()));
-});
-
-// Save active account whenever it changes
-manager.active$.subscribe((account) => {
-  if (account) localStorage.setItem("activeAccount", account.id);
-  else localStorage.removeItem("activeAccount");
-});
 
 function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> }) {
   const activeAccount = use$(manager.active$);
-  const [name, setName] = useState(account.metadata?.name || "");
+  const name$ = useMemo(() => new BehaviorSubject(account.metadata?.name || ""), []);
+  const name = use$(name$);
 
   const saveName = useCallback(() => {
     manager.setAccountMetadata(account, { name });
@@ -58,7 +50,9 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
   }, [account]);
 
   return (
-    <div className={`card bg-base-100 shadow-md ${activeAccount?.id === account.id ? "border-primary border-2" : ""}`}>
+    <div
+      className={`border border-base-300 bg-base-100  ${activeAccount?.id === account.id ? "border-primary border-2" : ""}`}
+    >
       <figure className="px-4 pt-4">
         <img
           src={`https://robohash.org/${account.pubkey}.png`}
@@ -66,12 +60,12 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
           className="rounded-full w-24 h-24"
         />
       </figure>
-      <div className="card-body">
+      <div className="p-4">
         <input
           type="text"
           className="input input-bordered w-full"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => name$.next(e.target.value)}
           placeholder="Account name"
           onBlur={saveName}
         />
@@ -80,7 +74,7 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
           {account.pubkey.slice(0, 8)}...{account.pubkey.slice(-8)}
         </p>
 
-        <div className="card-actions justify-end">
+        <div className="flex gap-2 justify-end">
           <button className="btn btn-primary" onClick={setActive} disabled={activeAccount?.id === account.id}>
             Set Active
           </button>
@@ -94,6 +88,26 @@ function AccountCard({ account }: { account: PrivateKeyAccount<AccountMetadata> 
 }
 
 export default function AccountManagerExample() {
+  // Persist while this example owns the account manager UI.
+  use$(
+    () =>
+      merge(manualSave, manager.accounts$).pipe(
+        tap(() => localStorage.setItem("accounts", JSON.stringify(manager.toJSON()))),
+        ignoreElements(),
+      ),
+    [],
+  );
+  use$(
+    () =>
+      manager.active$.pipe(
+        tap((account) => {
+          if (account) localStorage.setItem("activeAccount", account.id);
+          else localStorage.removeItem("activeAccount");
+        }),
+        ignoreElements(),
+      ),
+    [],
+  );
   const accounts = use$(manager.accounts$);
 
   const createNewAccount = useCallback(() => {

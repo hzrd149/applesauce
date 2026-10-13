@@ -3,15 +3,17 @@
  * @tags nip-65, loader, async, parallel
  * @related loader/social-graph
  */
+import { use$ } from "applesauce-react/hooks";
+
 import { castUser } from "applesauce-common/casts";
-import { EventStore } from "applesauce-core";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { mapEventsToTimeline } from "applesauce-core/observable";
 import { loadAsyncMap } from "applesauce-loaders/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
-import { lastValueFrom } from "rxjs";
+import { useMemo } from "react";
+import { lastValueFrom, BehaviorSubject, defer, from, map, catchError, of, startWith } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -48,7 +50,7 @@ async function loadUserData(pubkey: string, timeout: number) {
               authors: [pubkey],
               limit: 10,
             })
-            .pipe(mapEventsToTimeline()),
+            .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
         );
       }) satisfies Promise<NostrEvent[]>,
     },
@@ -57,39 +59,26 @@ async function loadUserData(pubkey: string, timeout: number) {
 }
 
 export default function ParallelAsyncLoadingExample() {
-  const [pubkey, setPubkey] = useState<string>("");
-  const [timeout, setTimeout] = useState<number>(30000);
-  const [data, setData] = useState<Awaited<ReturnType<typeof loadUserData>> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loadTime, setLoadTime] = useState<number | null>(null);
+  const pubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const pubkey = use$(pubkey$);
 
-  useEffect(() => {
-    if (!pubkey.trim()) {
-      setData(null);
-      setError(null);
-      setLoadTime(null);
-      return;
-    }
+  const timeout$ = useMemo(() => new BehaviorSubject<number>(30000), []);
+  const timeout = use$(timeout$);
 
-    setLoading(true);
-    setError(null);
-    const startTime = performance.now();
-
-    loadUserData(pubkey, timeout)
-      .then((result) => {
-        const elapsed = performance.now() - startTime;
-        setData(result);
-        setLoadTime(elapsed);
-        setLoading(false);
-      })
-      .catch((err) => {
-        const elapsed = performance.now() - startTime;
-        setError(err instanceof Error ? err.message : "Failed to load data");
-        setLoadTime(elapsed);
-        setLoading(false);
-      });
+  const result = use$(() => {
+    if (!pubkey.trim()) return of({ data: null, loading: false, error: null, loadTime: null });
+    return defer(() => {
+      const started = performance.now();
+      return from(loadUserData(pubkey, timeout)).pipe(
+        map((data) => ({ data, loading: false, error: null as string | null, loadTime: performance.now() - started })),
+        catchError((error) =>
+          of({ data: null, loading: false, error: String(error), loadTime: performance.now() - started }),
+        ),
+        startWith({ data: null, loading: true, error: null, loadTime: null }),
+      );
+    });
   }, [pubkey, timeout]);
+  const { data, loading, error, loadTime } = result ?? { data: null, loading: false, error: null, loadTime: null };
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-6xl">
@@ -100,7 +89,11 @@ export default function ParallelAsyncLoadingExample() {
       </p>
 
       <div className="mb-6 space-y-4">
-        <PubkeyPicker value={pubkey} onChange={setPubkey} placeholder="Enter pubkey or nostr identifier..." />
+        <PubkeyPicker
+          value={pubkey}
+          onChange={(value: typeof pubkey$.value) => pubkey$.next(value)}
+          placeholder="Enter pubkey or nostr identifier..."
+        />
         <div className="flex items-center gap-2">
           <label htmlFor="timeout" className="font-semibold">
             Timeout (ms):
@@ -111,7 +104,7 @@ export default function ParallelAsyncLoadingExample() {
             min="100"
             step="100"
             value={timeout}
-            onChange={(e) => setTimeout(Number(e.target.value))}
+            onChange={(e) => timeout$.next(Number(e.target.value))}
             className="input input-bordered w-32"
           />
         </div>
@@ -140,9 +133,9 @@ export default function ParallelAsyncLoadingExample() {
       {!loading && data && (
         <div className="space-y-6">
           {/* Profile Section */}
-          <div className="card bg-base-100">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Profile</h2>
+          <div className="border border-base-300 bg-base-100">
+            <div className="p-4">
+              <h2 className="font-semibold mb-4">Profile</h2>
               {data.profile ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-4">
@@ -201,9 +194,9 @@ export default function ParallelAsyncLoadingExample() {
           </div>
 
           {/* Mailboxes Section */}
-          <div className="card bg-base-100">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Mailboxes (NIP-65)</h2>
+          <div className="border border-base-300 bg-base-100">
+            <div className="p-4">
+              <h2 className="font-semibold mb-4">Mailboxes (NIP-65)</h2>
               {data.mailboxes ? (
                 <div className="space-y-4">
                   {data.mailboxes.outboxes && data.mailboxes.outboxes.length > 0 && (
@@ -244,9 +237,9 @@ export default function ParallelAsyncLoadingExample() {
           </div>
 
           {/* Events Section */}
-          <div className="card bg-base-100">
-            <div className="card-body">
-              <h2 className="card-title mb-4">Last 10 Kind 1 Events</h2>
+          <div className="border border-base-300 bg-base-100">
+            <div className="p-4">
+              <h2 className="font-semibold mb-4">Last 10 Kind 1 Events</h2>
               {data.events && data.events.length > 0 ? (
                 <div className="space-y-4">
                   {data.events.map((event) => (

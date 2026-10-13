@@ -3,11 +3,17 @@
  * @tags nip-10, nip-22, comment, feed, replies
  * @related content/articles, casting/thread
  */
-import { Comment } from "applesauce-common/casts";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { publishEvent } from "../../extra/publish";
+import { CreateComment } from "applesauce-actions/actions";
+import { ActionRunner } from "applesauce-actions";
+import NoteContent from "../../components/note-content";
+
+import { Comment, castUser } from "applesauce-common/casts";
 import { COMMENT_KIND, CommentPointer } from "applesauce-common/helpers";
 import { CommentsModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
-import { CommentFactory } from "applesauce-common/factories";
+
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, NostrEvent, persistEventsToCache, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -15,8 +21,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useEffect, useState } from "react";
-import { BehaviorSubject, EMPTY } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, EMPTY, map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -50,6 +56,9 @@ const appRelays = new BehaviorSubject<string[]>(["wss://relay.damus.io/", "wss:/
 const selectedThread$ = new BehaviorSubject<CommentPointer | null>(null);
 
 const signer = new ExtensionSigner();
+const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
+  await publishEvent(pool, relays?.length ? relays : appRelays.value, event);
+});
 
 /** Component to render a single comment in the feed */
 function CommentItem({ comment }: { comment: Comment }) {
@@ -65,7 +74,7 @@ function CommentItem({ comment }: { comment: Comment }) {
   // Get parent comment author profile if parent is a comment
   const parentProfile = use$(() => {
     if (!parentEvent || parentEvent.kind !== COMMENT_KIND) return undefined;
-    return eventStore.profile({ pubkey: parentEvent.pubkey });
+    return castUser(parentEvent, eventStore).profile$;
   }, [parentEvent?.pubkey, parentEvent?.kind]);
 
   // Format pointer info for display
@@ -125,7 +134,7 @@ function CommentItem({ comment }: { comment: Comment }) {
 
       {/* Comment Content */}
       <div className="mb-3">
-        <p className="whitespace-pre-wrap">{comment.event.content}</p>
+        <NoteContent event={comment.event} />
       </div>
 
       {/* Root Event Info - What they're commenting on */}
@@ -137,7 +146,7 @@ function CommentItem({ comment }: { comment: Comment }) {
               <span>
                 Kind {rootEvent.kind} event by {rootEvent.pubkey.slice(0, 8)}...
               </span>
-              {rootEvent.content && <div className="mt-1 text-xs truncate">{rootEvent.content.slice(0, 100)}...</div>}
+              {rootEvent.content && <div className="mt-1 text-sm truncate">{rootEvent.content.slice(0, 100)}...</div>}
             </div>
           ) : (
             <span>{formatPointer(rootPointer)}</span>
@@ -158,50 +167,50 @@ function ReplyForm({
   onSuccess?: () => void;
   onCancel?: () => void;
 }) {
-  const relays = use$(appRelays);
-  const [content, setContent] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const content$ = useMemo(() => new BehaviorSubject(""), []);
+  const content = use$(content$);
+
+  const isSubmitting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isSubmitting = use$(isSubmitting$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
 
     try {
-      setIsSubmitting(true);
-      setError(null);
+      isSubmitting$.next(true);
+      error$.next(null);
 
       // Check for signer
       if (typeof window === "undefined" || !(window as any).nostr) {
-        setError("No Nostr extension found. Please install a Nostr browser extension like Alby or nos2x.");
+        error$.next("No Nostr extension found. Please install a Nostr browser extension like Alby or nos2x.");
         return;
       }
 
-      // Create and sign comment
-      const signed = await CommentFactory.create(parentEvent, content.trim()).sign(signer);
-
-      // Publish to relays
-      await pool.publish(relays, signed);
+      await actions.run(CreateComment, parentEvent, content.trim());
 
       // Clear form and notify success
-      setContent("");
+      content$.next("");
       if (onSuccess) onSuccess();
     } catch (err) {
       console.error("Failed to create comment:", err);
-      setError(err instanceof Error ? err.message : "Failed to create comment");
+      error$.next(err instanceof Error ? err.message : "Failed to create comment");
     } finally {
-      setIsSubmitting(false);
+      isSubmitting$.next(false);
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 w-full">
-      <div className="form-control w-full">
+      <div className="flex flex-col gap-2 w-full">
         <textarea
           className="textarea textarea-bordered w-full"
           placeholder="Write a reply..."
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => content$.next(e.target.value)}
           rows={3}
           disabled={isSubmitting}
         />
@@ -234,7 +243,8 @@ function ReplyForm({
 function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: number }) {
   const profile = use$(comment.author.profile$);
   const replies = use$(comment.replies$);
-  const [showReplyForm, setShowReplyForm] = useState(false);
+  const showReplyForm$ = useMemo(() => new BehaviorSubject(false), []);
+  const showReplyForm = use$(showReplyForm$);
 
   const displayName = profile?.displayName || comment.author.npub;
   const picture = profile?.picture || `https://robohash.org/${comment.author.pubkey}.png`;
@@ -251,17 +261,17 @@ function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: numbe
             </div>
             <div className="flex-1">
               <h4 className="font-semibold text-sm">{displayName}</h4>
-              <p className="text-xs text-base-content/60">{comment.author.npub}</p>
+              <p className="text-sm text-base-content/60">{comment.author.npub}</p>
             </div>
-            <time className="text-xs text-base-content/60">{comment.createdAt.toLocaleString()}</time>
+            <time className="text-sm text-base-content/60">{comment.createdAt.toLocaleString()}</time>
           </div>
 
           <div className="mb-2">
-            <p className="whitespace-pre-wrap text-sm">{comment.event.content}</p>
+            <NoteContent event={comment.event} />
             {!showReplyForm && (
               <button
                 className="btn btn-link btn-primary p-2 float-right"
-                onClick={() => setShowReplyForm(!showReplyForm)}
+                onClick={() => showReplyForm$.next(!showReplyForm)}
               >
                 Reply
               </button>
@@ -271,9 +281,9 @@ function ThreadComment({ comment, depth = 0 }: { comment: Comment; depth?: numbe
           {showReplyForm && (
             <ReplyForm
               parentEvent={comment.event}
-              onCancel={() => setShowReplyForm(false)}
+              onCancel={() => showReplyForm$.next(false)}
               onSuccess={() => {
-                setShowReplyForm(false);
+                showReplyForm$.next(false);
               }}
             />
           )}
@@ -306,8 +316,7 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
   }, [pointerKey]);
 
   // Load all comments in the thread by subscribing to comments that reference the root
-  // The event store loader will handle fetching these automatically when we request them via the model
-  // But we can also proactively subscribe to ensure we get all comments
+  // Models query the store; explicit collection subscriptions fetch network comments.
   use$(() => {
     if (rootPointer.type !== "event" && rootPointer.type !== "address") return EMPTY;
 
@@ -318,7 +327,7 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
           ? // Root is a normal event
             { "#E": [rootPointer.id] }
           : // Root is a replaceable event
-            { "#a": [`${rootPointer.kind}:${rootPointer.pubkey}:${rootPointer.identifier}`] }),
+            { "#A": [`${rootPointer.kind}:${rootPointer.pubkey}:${rootPointer.identifier}`] }),
         limit: 500,
       })
       .pipe(mapEventsToStore(eventStore));
@@ -345,7 +354,7 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
             <h2 className="text-xl font-semibold mb-3">Root Event</h2>
             {rootEvent ? (
               <div className="bg-base-200 rounded-lg p-4 overflow-auto max-h-96">
-                <pre className="text-xs">
+                <pre className="text-sm">
                   <code>{JSON.stringify(rootEvent, null, 2)}</code>
                 </pre>
               </div>
@@ -397,19 +406,12 @@ function ThreadView({ rootPointer, onBack }: { rootPointer: CommentPointer; onBa
 export default function CommentFeed() {
   const relays = use$(appRelays);
   const selectedThread = use$(selectedThread$);
-  const [selectedRelay, setSelectedRelay] = useState(relays[0] || "");
-
-  // Sync selectedRelay with relays array
-  useEffect(() => {
-    if (relays.length > 0 && !relays.includes(selectedRelay)) {
-      setSelectedRelay(relays[0]);
-    } else if (relays.length === 0) {
-      setSelectedRelay("");
-    }
-  }, [relays, selectedRelay]);
+  const selectedRelay$ = useMemo(() => new BehaviorSubject(relays[0] || ""), []);
+  const requestedRelay = use$(selectedRelay$);
+  const selectedRelay = relays.includes(requestedRelay) ? requestedRelay : (relays[0] ?? "");
 
   const handleRelayChange = (relay: string) => {
-    setSelectedRelay(relay);
+    selectedRelay$.next(relay);
     if (relay && !relays.includes(relay)) {
       appRelays.next(relaySet(relays, relay));
     }
@@ -420,27 +422,25 @@ export default function CommentFeed() {
     appRelays.next(newRelays);
     // Update selected relay if the removed one was selected
     if (selectedRelay === relayToRemove && newRelays.length > 0) {
-      setSelectedRelay(newRelays[0]);
+      selectedRelay$.next(newRelays[0]);
     } else if (newRelays.length === 0) {
-      setSelectedRelay("");
+      selectedRelay$.next("");
     }
   };
 
-  // Subscribe to kind 1111 comments
-  use$(
+  const feed = use$(
     () =>
-      pool.subscription(relays, { kinds: [COMMENT_KIND], limit: 200 }).pipe(
-        // Add all events to the store
-        mapEventsToStore(eventStore),
+      relayTimeline(eventStore, pool, relays, { kinds: [COMMENT_KIND], limit: 200 }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(Comment, eventStore),
+            map((comments) => ({ ...result, comments })),
+          ),
+        ),
       ),
     [relays],
   );
-
-  // Get all comments from the store
-  const comments = use$(
-    () => eventStore.timeline({ kinds: [COMMENT_KIND] }).pipe(castTimelineStream(Comment, eventStore)),
-    [],
-  );
+  const comments = feed?.comments ?? [];
 
   if (selectedThread) return <ThreadView rootPointer={selectedThread} onBack={() => selectedThread$.next(null)} />;
 
@@ -471,7 +471,12 @@ export default function CommentFeed() {
       </div>
 
       <div className="flex flex-col gap-4">
-        {comments === undefined ? (
+        {feed?.errors.map((error) => (
+          <p role="alert" className="text-error" key={error}>
+            {error}
+          </p>
+        ))}
+        {feed?.status === "loading" ? (
           <div className="flex justify-center my-8">
             <span className="loading loading-spinner loading-lg"></span>
           </div>

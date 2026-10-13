@@ -3,7 +3,11 @@
  * @tags nip-02, nip-61, nutzap, contacts, lightning, cashu
  * @related nutzap/zap-feed, nutzap/zap-profile
  */
-import { MintQuoteBolt11Response, Wallet } from "@cashu/cashu-ts";
+import UnlockView from "../../components/unlock-view";
+import { nutzapStorage$, prepareNutzap, resumeNutzap } from "../../extra/nutzap-quote";
+import { publishEvent } from "../../extra/publish";
+
+import { MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { castUser, User } from "applesauce-common/casts/user";
@@ -14,10 +18,10 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
-import { IndexedDBCouch } from "applesauce-wallet/helpers";
+
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
@@ -32,9 +36,8 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), (event, relays) =>
-  pool.publish(relays ?? [], event),
+  publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event),
 );
-const couch = new IndexedDBCouch();
 
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {
@@ -85,77 +88,70 @@ function InvoiceQRCode({ value }: { value: string }) {
 
 // Zap modal component
 function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: () => void; onClose: () => void }) {
-  const [amount, setAmount] = useState(21);
-  const [comment, setComment] = useState("");
-  const [selectedMint, setSelectedMint] = useState<string>("");
-  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
+  const amount$ = useMemo(() => new BehaviorSubject(21), []);
+  const amount = use$(amount$);
+
+  const comment$ = useMemo(() => new BehaviorSubject(""), []);
+  const comment = use$(comment$);
+
+  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const selectedMintOverride = use$(selectedMint$);
+
+  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
+  const quote = use$(quote$);
+
+  const isProcessing$ = useMemo(() => new BehaviorSubject(false), []);
+  const isProcessing = use$(isProcessing$);
+
+  const status$ = useMemo(() => new BehaviorSubject<"input" | "invoice" | "paid">("input"), []);
+  const status = use$(status$);
 
   const nutzapInfo = use$(contact.nutzap$);
 
-  // Set default selected mint when mints change
-  useEffect(() => {
-    if (nutzapInfo && nutzapInfo.mints.length > 0) {
-      if (!selectedMint || !nutzapInfo.mints.some((m) => m.mint === selectedMint)) {
-        setSelectedMint(nutzapInfo.mints[0].mint);
-      }
-    }
-  }, [nutzapInfo, selectedMint]);
-
-  const handleZap = async () => {
-    if (!selectedMint || !nutzapInfo || !nutzapInfo.p2pk) {
-      alert("Contact doesn't have proper nutzap info");
-      return;
-    }
-
-    setIsProcessing(true);
+  const selectedMint = nutzapInfo?.mints.some((mint) => mint.mint === selectedMintOverride)
+    ? selectedMintOverride
+    : (nutzapInfo?.mints[0]?.mint ?? "");
+  const storage = use$(nutzapStorage$);
+  const resume = async () => {
+    if (!storage) return;
+    isProcessing$.next(true);
     try {
-      // Create mint and wallet
-      const wallet = new Wallet(selectedMint);
-      await wallet.loadMint();
-
-      // Request a quote for minting
-      const quote = await wallet.createMintQuoteBolt11(amount);
-      setQuote(quote);
-      setStatus("invoice");
-
-      // Wait for payment using WebSocket
-      try {
-        await wallet.on.onceMintPaid(quote.quote, {
-          timeoutMs: 60_000, // 1 minute
-        });
-
-        // Payment received - mint proofs with P2PK lock
-        const proofs = await wallet.ops.mintBolt11(amount, quote.quote).asP2PK({ pubkey: nutzapInfo.p2pk }).run();
-
-        // Create token from proofs
-        const tokens = { mint: selectedMint, proofs: proofs, unit: "sat" };
-
-        // Create nutzap event
-        await actions.run(NutzapProfile, contact.pubkey, tokens, { comment, couch });
-
-        setStatus("paid");
-        onZapSent?.();
-      } catch (paymentError) {
-        const errorMessage = (paymentError as Error).message;
-        if (errorMessage.includes("Timeout") || errorMessage.includes("timeout")) {
-          alert("Payment not received within 1 minute");
-        } else {
-          alert("Failed to receive payment: " + errorMessage);
-        }
-      }
+      await resumeNutzap(
+        storage,
+        (recipient, token, comment, couch) => actions.run(NutzapProfile, recipient, token, { comment, couch }),
+        (quote) => {
+          quote$.next(quote);
+          status$.next("invoice");
+        },
+      );
+      status$.next("paid");
+      onZapSent?.();
     } catch (error) {
-      alert("Failed to create zap: " + error);
+      alert(String(error));
     } finally {
-      setIsProcessing(false);
+      isProcessing$.next(false);
+    }
+  };
+  const handleZap = async () => {
+    if (!storage || !selectedMint || !nutzapInfo?.p2pk) return;
+    try {
+      await prepareNutzap(storage, {
+        mint: selectedMint,
+        amount,
+        recipient: contact.pubkey,
+        p2pk: nutzapInfo.p2pk,
+        comment,
+      });
+      await resume();
+    } catch (error) {
+      alert(String(error));
     }
   };
 
   const handleClose = () => {
-    setStatus("input");
-    setQuote(null);
-    setComment("");
+    status$.next("input");
+    quote$.next(null);
+    comment$.next("");
     onClose();
   };
 
@@ -163,6 +159,9 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
     return (
       <dialog id="zap_contact_modal" className="modal modal-open">
         <div className="modal-box">
+          <button className="btn btn-outline mb-4" disabled={isProcessing} onClick={resume}>
+            Resume pending zap
+          </button>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">Unable to Zap</h2>
             <button className="btn btn-circle btn-ghost" onClick={handleClose}>
@@ -199,7 +198,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
               <select
                 className="select select-bordered w-full"
                 value={selectedMint}
-                onChange={(e) => setSelectedMint(e.target.value)}
+                onChange={(e) => selectedMint$.next(e.target.value)}
                 disabled={nutzapInfo.mints.length === 0}
               >
                 {nutzapInfo.mints.length === 0 ? (
@@ -221,7 +220,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
                 type="number"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onChange={(e) => amount$.next(Number(e.target.value))}
                 min="1"
               />
             </div>
@@ -231,7 +230,7 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
               <textarea
                 className="textarea textarea-bordered w-full"
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={(e) => comment$.next(e.target.value)}
                 placeholder="Say something nice..."
               />
             </div>
@@ -281,21 +280,21 @@ function ZapModal({ contact, onZapSent, onClose }: { contact: User; onZapSent?: 
   );
 }
 
-// Contact card component
+// Contact border border-base-300 component
 function ContactCard({ contact, onZap }: { contact: User; onZap: (user: User) => void }) {
   const nutzapInfo = use$(contact.nutzap$);
   const canZap = !!nutzapInfo?.mints.length && !!nutzapInfo?.p2pk;
 
   return (
-    <div className="card bg-base-100 shadow-sm hover:shadow-md transition-shadow">
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100   transition-">
+      <div className="p-4">
         <div className="flex items-center gap-3">
           <Avatar user={contact} />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold truncate">
               <Username user={contact} />
             </h3>
-            <p className="text-xs opacity-70 truncate">{npubEncode(contact.pubkey).slice(0, 16)}...</p>
+            <p className="text-sm opacity-70 truncate">{npubEncode(contact.pubkey).slice(0, 16)}...</p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <button className="btn btn-primary btn-sm" onClick={() => onZap(contact)} disabled={canZap === false}>
@@ -310,17 +309,18 @@ function ContactCard({ contact, onZap }: { contact: User; onZap: (user: User) =>
 
 // Main contacts view component
 function ContactsView({ user }: { user: User }) {
-  const [selected, setSelected] = useState<User | null>(null);
+  const selected$ = useMemo(() => new BehaviorSubject<User | null>(null), []);
+  const selected = use$(selected$);
 
   // Get contacts from user.contacts$
   const contacts = use$(user.contacts$);
 
   const handleZap = (user: User) => {
-    setSelected(user);
+    selected$.next(user);
   };
 
   const handleCloseModal = () => {
-    setSelected(null);
+    selected$.next(null);
   };
 
   return (
@@ -387,9 +387,8 @@ export default function NutzapContacts() {
     pubkey$.next(newPubkey);
   }, []);
 
-  // Show login view if not logged in
+  const storage = use$(nutzapStorage$);
   if (!signer || !pubkey || !user) return <LoginView onLogin={handleLogin} />;
-
-  // Show main contacts view when both storage and login are ready
+  if (!storage) return <UnlockView onUnlock={(storage) => nutzapStorage$.next(storage)} />;
   return <ContactsView user={user} />;
 }

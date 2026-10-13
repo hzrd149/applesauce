@@ -2,7 +2,9 @@ import { AccountManager } from "applesauce-accounts";
 import { ExtensionAccount, NostrConnectAccount, registerCommonAccountTypes } from "applesauce-accounts/accounts";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionMissingError, NostrConnectSigner } from "applesauce-signers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject, NEVER, catchError, defer, finalize, from, merge, of, tap } from "rxjs";
 import QRCode from "./qr-code";
 
 const ACCOUNTS_STORAGE_KEY = "accounts";
@@ -31,85 +33,101 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
   }, []);
 
   const restoreAttempted = useRef(false);
+  const restoredLogin = useRef(false);
   const qrAbortRef = useRef<AbortController | null>(null);
   const qrSignerRef = useRef<NostrConnectSigner | null>(null);
   const qrSessionRef = useRef(0);
   const qrRelayTimeoutRef = useRef<number | null>(null);
 
-  const [bunkerUri, setBunkerUri] = useState("");
-  const [qrRelay, setQrRelay] = useState(DEFAULT_QR_RELAY);
-  const [loadingMethod, setLoadingMethod] = useState<"extension" | "bunker" | null>(null);
-  const [qrUri, setQrUri] = useState<string | null>(null);
-  const [qrConnecting, setQrConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const accountsSubscription = manager.accounts$.subscribe(() => {
-      localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(manager.toJSON(true)));
-    });
-
-    const activeSubscription = manager.active$.subscribe((account) => {
-      if (account) localStorage.setItem(ACTIVE_STORAGE_KEY, account.id);
-      else localStorage.removeItem(ACTIVE_STORAGE_KEY);
-    });
-
-    return () => {
-      accountsSubscription.unsubscribe();
-      activeSubscription.unsubscribe();
-    };
-  }, [manager]);
-
-  useEffect(() => {
-    if (restoreAttempted.current) return;
-    restoreAttempted.current = true;
-
-    try {
-      const savedAccounts = JSON.parse(localStorage.getItem(ACCOUNTS_STORAGE_KEY) || "[]");
-      manager.fromJSON(savedAccounts, true);
-
-      for (const account of manager.accounts) {
-        if (account instanceof NostrConnectAccount) account.signer = createPoolBackedSigner(account, pool);
-      }
-
-      const activeAccountId = localStorage.getItem(ACTIVE_STORAGE_KEY);
-      if (!activeAccountId) return;
-
-      const activeAccount = manager.getAccount(activeAccountId);
-      if (!activeAccount) return;
-
-      manager.setActive(activeAccount);
-      void onLogin(activeAccount.signer, activeAccount.pubkey);
-    } catch (err) {
-      console.error("Failed to restore saved accounts", err);
-      localStorage.removeItem(ACCOUNTS_STORAGE_KEY);
-      localStorage.removeItem(ACTIVE_STORAGE_KEY);
-    }
-  }, [manager, onLogin, pool]);
-
-  const stopQrSession = useCallback((resetRelayTimer = true, closeSigner = true) => {
-    qrSessionRef.current += 1;
-    // Keep the signer open after a successful login since the app is now using it
-    if (closeSigner) {
-      qrAbortRef.current?.abort();
-      void qrSignerRef.current?.close();
-    }
-    qrAbortRef.current = null;
-    qrSignerRef.current = null;
-    setQrUri(null);
-    setQrConnecting(false);
-
-    if (resetRelayTimer && qrRelayTimeoutRef.current) {
-      window.clearTimeout(qrRelayTimeoutRef.current);
-      qrRelayTimeoutRef.current = null;
-    }
-  }, []);
-
-  useEffect(
-    () => () => {
-      stopQrSession();
-    },
-    [stopQrSession],
+  const state$ = useMemo(
+    () =>
+      new BehaviorSubject({
+        bunkerUri: "",
+        qrRelay: DEFAULT_QR_RELAY,
+        loadingMethod: null as "extension" | "bunker" | null,
+        qrUri: null as string | null,
+        qrConnecting: false,
+        error: null as string | null,
+      }),
+    [],
   );
+  const { bunkerUri, qrRelay, loadingMethod, qrUri, qrConnecting, error } = use$(state$);
+  const update = useCallback(
+    (changes: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...changes }),
+    [state$],
+  );
+
+  // Restore before subscribing to persistence so initial empty values cannot overwrite saved accounts.
+  use$(
+    () =>
+      defer(() => {
+        if (!restoreAttempted.current) {
+          restoreAttempted.current = true;
+          try {
+            manager.fromJSON(JSON.parse(localStorage.getItem(ACCOUNTS_STORAGE_KEY) || "[]"), true);
+            for (const account of manager.accounts) {
+              if (account instanceof NostrConnectAccount) account.signer = createPoolBackedSigner(account, pool);
+            }
+            const activeId = localStorage.getItem(ACTIVE_STORAGE_KEY);
+            const active = activeId ? manager.getAccount(activeId) : undefined;
+            if (active) manager.setActive(active);
+          } catch (error) {
+            update({ error: error instanceof Error ? error.message : "Failed to restore saved accounts" });
+          }
+        }
+        return merge(
+          manager.accounts$.pipe(
+            tap(() => localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(manager.toJSON(true)))),
+          ),
+          manager.active$.pipe(
+            tap((account) => {
+              if (account) localStorage.setItem(ACTIVE_STORAGE_KEY, account.id);
+              else localStorage.removeItem(ACTIVE_STORAGE_KEY);
+            }),
+          ),
+        );
+      }),
+    [manager, pool, update],
+  );
+
+  use$(
+    () =>
+      defer(() => {
+        if (restoredLogin.current) return of(undefined);
+        restoredLogin.current = true;
+        const active = manager.active;
+        return active ? from(Promise.resolve(onLogin(manager.signer, active.pubkey))) : of(undefined);
+      }).pipe(
+        catchError((error) => {
+          update({ error: error instanceof Error ? error.message : "Failed to restore login" });
+          return of(undefined);
+        }),
+      ),
+    [manager, onLogin, update],
+  );
+
+  const stopQrSession = useCallback(
+    (resetRelayTimer = true, closeSigner = true) => {
+      qrSessionRef.current += 1;
+      // Keep the signer open after a successful login since the app is now using it
+      if (closeSigner) {
+        qrAbortRef.current?.abort();
+        void qrSignerRef.current?.close();
+      }
+      qrAbortRef.current = null;
+      qrSignerRef.current = null;
+      update({ qrUri: null, qrConnecting: false });
+
+      if (resetRelayTimer && qrRelayTimeoutRef.current) {
+        window.clearTimeout(qrRelayTimeoutRef.current);
+        qrRelayTimeoutRef.current = null;
+      }
+    },
+    [update],
+  );
+
+  // The QR signer transfers ownership on login; pending sessions must close on unmount.
+  use$(() => NEVER.pipe(finalize(() => stopQrSession())), [stopQrSession]);
 
   const activateAccount = useCallback(
     async (account: ExtensionAccount | NostrConnectAccount) => {
@@ -129,42 +147,42 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
       else manager.addAccount(account);
 
       manager.setActive(activeAccount);
-      setError(null);
-      await onLogin(activeAccount.signer, activeAccount.pubkey);
+      update({ error: null });
+      await onLogin(manager.signer, activeAccount.pubkey);
     },
-    [manager, onLogin],
+    [manager, onLogin, update],
   );
 
   const handleExtensionLogin = useCallback(async () => {
     try {
-      setLoadingMethod("extension");
-      setError(null);
+      update({ loadingMethod: "extension" });
+      update({ error: null });
 
       const account = await ExtensionAccount.fromExtension();
       await activateAccount(account);
     } catch (err) {
-      if (err instanceof ExtensionMissingError) setError("No Nostr extension found");
-      else setError(err instanceof Error ? err.message : "Failed to login with extension");
+      if (err instanceof ExtensionMissingError) update({ error: "No Nostr extension found" });
+      else update({ error: err instanceof Error ? err.message : "Failed to login with extension" });
     } finally {
-      setLoadingMethod(null);
+      update({ loadingMethod: null });
     }
-  }, [activateAccount]);
+  }, [activateAccount, update]);
 
   const handleBunkerLogin = useCallback(async () => {
     if (!bunkerUri.trim()) return;
 
     try {
-      setLoadingMethod("bunker");
-      setError(null);
+      update({ loadingMethod: "bunker" });
+      update({ error: null });
 
       const signer = await NostrConnectSigner.fromBunkerURI(bunkerUri.trim(), { pool });
       const pubkey = await signer.getPublicKey();
       await activateAccount(new NostrConnectAccount(pubkey, signer));
-      setBunkerUri("");
+      update({ bunkerUri: "" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to connect to bunker");
+      update({ error: err instanceof Error ? err.message : "Failed to connect to bunker" });
     } finally {
-      setLoadingMethod(null);
+      update({ loadingMethod: null });
     }
   }, [activateAccount, bunkerUri, pool]);
 
@@ -172,7 +190,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
     async (relay: string) => {
       const nextRelay = relay.trim();
       if (!nextRelay) {
-        setError("Enter a relay URL for QR login");
+        update({ error: "Enter a relay URL for QR login" });
         return;
       }
 
@@ -181,9 +199,9 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
       qrAbortRef.current?.abort();
       void qrSignerRef.current?.close();
 
+      let timeoutId: number | undefined;
       try {
-        setError(null);
-        setQrConnecting(true);
+        update({ error: null, qrConnecting: true });
 
         const signer = new NostrConnectSigner({
           pool,
@@ -191,15 +209,15 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
         });
 
         qrSignerRef.current = signer;
-        setQrUri(
-          signer.getNostrConnectURI({
+        update({
+          qrUri: signer.getNostrConnectURI({
             name: "Applesauce Example",
           }),
-        );
+        });
 
         const controller = new AbortController();
         qrAbortRef.current = controller;
-        const timeoutId = window.setTimeout(() => controller.abort(), 60000);
+        timeoutId = window.setTimeout(() => controller.abort(), 60000);
 
         await signer.waitForSigner(controller.signal);
         if (qrSessionRef.current !== session) return;
@@ -213,20 +231,22 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
       } catch (err) {
         if (qrSessionRef.current !== session) return;
 
-        if (err instanceof Error && err.message === "Aborted") setError("Connection timeout. Please try again.");
-        else if (err instanceof Error && err.message !== "Closed") setError(err.message);
-        else if (!(err instanceof Error)) setError("QR code login failed");
+        if (err instanceof Error && err.message === "Aborted")
+          update({ error: "Connection timeout. Please try again." });
+        else if (err instanceof Error && err.message !== "Closed") update({ error: err.message });
+        else if (!(err instanceof Error)) update({ error: "QR code login failed" });
 
-        setQrUri(null);
-        setQrConnecting(false);
+        stopQrSession();
+      } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       }
     },
-    [activateAccount, pool, stopQrSession],
+    [activateAccount, pool, stopQrSession, update],
   );
 
   const handleQrRelayChange = useCallback(
     (value: string) => {
-      setQrRelay(value);
+      update({ qrRelay: value });
       if (!qrUri) return;
 
       if (qrRelayTimeoutRef.current) window.clearTimeout(qrRelayTimeoutRef.current);
@@ -234,7 +254,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
         void handleQrLogin(value);
       }, 300);
     },
-    [handleQrLogin, qrUri],
+    [handleQrLogin, qrUri, update],
   );
 
   return (
@@ -288,7 +308,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
               <input
                 type="text"
                 value={bunkerUri}
-                onChange={(event) => setBunkerUri(event.target.value)}
+                onChange={(event) => update({ bunkerUri: event.target.value })}
                 placeholder="bunker://..."
                 className="input input-bordered w-full"
                 disabled={loadingMethod !== null || qrConnecting}

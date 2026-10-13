@@ -3,6 +3,11 @@
  * @tags nip-69, poll, timeline, voting
  * @related feed/relay-timeline
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+import { castUser } from "applesauce-common/casts";
+import { publishEvent } from "../../extra/publish";
+import { BehaviorSubject, combineLatest, map, materialize, scan, startWith } from "rxjs";
+
 import { PollResponseFactory } from "applesauce-common/factories";
 import {
   getPollEndsAt,
@@ -15,14 +20,14 @@ import {
   POLL_KIND,
   POLL_RESPONSE_KIND,
 } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { getDisplayName, mergeRelaySets, NostrEvent, ProfileContent } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -45,7 +50,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
 }
 
 interface ResponseItemProps {
@@ -70,7 +75,7 @@ function ResponseItem({ response, options }: ResponseItemProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <div className="font-bold text-sm truncate">{displayName}</div>
-            <time className="text-xs text-base-content/50 font-mono flex-shrink-0 ml-2">
+            <time className="text-sm text-base-content/50 font-mono flex-shrink-0 ml-2">
               {new Date(response.created_at * 1000).toLocaleString()}
             </time>
           </div>
@@ -80,7 +85,7 @@ function ResponseItem({ response, options }: ResponseItemProps) {
               {selectedOptions.map((opt) => opt.label).join(", ") || "Unknown option"}
             </span>
           </div>
-          {response.content && <div className="text-xs text-base-content/60 mt-2 italic">"{response.content}"</div>}
+          {response.content && <div className="text-sm text-base-content/60 mt-2 italic">"{response.content}"</div>}
         </div>
       </div>
     </li>
@@ -94,10 +99,17 @@ interface VotingFormProps {
 }
 
 function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
-  const [comment, setComment] = useState("");
-  const [isVoting, setIsVoting] = useState(false);
-  const [voteError, setVoteError] = useState<string | null>(null);
+  const selectedOptions$ = useMemo(() => new BehaviorSubject<string[]>([]), []);
+  const selectedOptions = use$(selectedOptions$);
+
+  const comment$ = useMemo(() => new BehaviorSubject(""), []);
+  const comment = use$(comment$);
+
+  const isVoting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isVoting = use$(isVoting$);
+
+  const voteError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const voteError = use$(voteError$);
 
   const options = getPollOptions(poll);
   const pollType = getPollType(poll);
@@ -106,47 +118,50 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
 
   const handleOptionChange = (optionId: string, checked: boolean) => {
     if (pollType === "singlechoice") {
-      setSelectedOptions(checked ? [optionId] : []);
+      selectedOptions$.next(checked ? [optionId] : []);
     } else {
-      setSelectedOptions((prev) => (checked ? [...prev, optionId] : prev.filter((id) => id !== optionId)));
+      selectedOptions$.next(
+        ((prev: typeof selectedOptions$.value) =>
+          checked ? [...prev, optionId] : prev.filter((id) => id !== optionId))(selectedOptions$.value),
+      );
     }
   };
 
   const handleSubmitVote = async () => {
     if (selectedOptions.length === 0) {
-      setVoteError("Please select at least one option");
+      voteError$.next("Please select at least one option");
       return;
     }
 
     try {
-      setIsVoting(true);
-      setVoteError(null);
+      isVoting$.next(true);
+      voteError$.next(null);
 
       // Create and sign the poll response event
       const response = PollResponseFactory.create(poll, selectedOptions);
       const signedResponse = await (comment.trim() ? response.comment(comment.trim()) : response).sign(signer);
 
       // Publish to the selected relay
-      await pool.publish(mergeRelaySets(selectedRelay, getPollRelays(poll)), signedResponse);
+      await publishEvent(pool, mergeRelaySets(selectedRelay, getPollRelays(poll)), signedResponse);
 
       // Notify parent component
       onVoteSubmitted(signedResponse);
 
       // Reset form
-      setSelectedOptions([]);
-      setComment("");
+      selectedOptions$.next([]);
+      comment$.next("");
     } catch (error) {
       console.error("Failed to submit vote:", error);
-      setVoteError(error instanceof Error ? error.message : "Failed to submit vote");
+      voteError$.next(error instanceof Error ? error.message : "Failed to submit vote");
     } finally {
-      setIsVoting(false);
+      isVoting$.next(false);
     }
   };
 
   if (isExpired) {
     return (
-      <div className="card bg-base-200 border-l-4 border-warning">
-        <div className="card-body">
+      <div className="border border-base-300 bg-base-200 border-l-4 border-warning">
+        <div className="p-4">
           <div className="text-warning font-semibold">Poll Expired</div>
           <div className="text-sm text-base-content/70">
             This poll ended on {new Date(endsAt! * 1000).toLocaleDateString()}
@@ -157,9 +172,9 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
   }
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
-        <h3 className="card-title text-lg mb-4">Cast Your Vote</h3>
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4">
+        <h3 className="font-semibold text-lg mb-4">Cast Your Vote</h3>
 
         <div className="flex flex-col gap-2">
           {options.map((option) => (
@@ -178,13 +193,13 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
           ))}
         </div>
 
-        <div className="form-control flex flex-col gap-2 mt-4">
+        <div className="flex flex-col gap-2 flex flex-col gap-2 mt-4">
           <label className="label">Comment (optional)</label>
           <textarea
             className="textarea textarea-bordered w-full"
             placeholder="Add a comment about your vote..."
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => comment$.next(e.target.value)}
             rows={2}
           />
         </div>
@@ -195,7 +210,7 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
           </div>
         )}
 
-        <div className="card-actions justify-end mt-4">
+        <div className="flex gap-2 justify-end mt-4">
           <button
             className="btn btn-primary"
             onClick={handleSubmitVote}
@@ -223,45 +238,33 @@ interface PollDetailsProps {
 }
 
 function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
-  const [responses, setResponses] = useState<NostrEvent[]>([]);
-  const [loadingResponses, setLoadingResponses] = useState(false);
-
   const question = getPollQuestion(poll);
   const options = getPollOptions(poll);
   const endsAt = getPollEndsAt(poll);
   const pollType = getPollType(poll);
 
-  // Load poll responses
-  useEffect(() => {
-    if (!selectedRelay) return;
+  const responseState = use$(
+    () =>
+      combineLatest([
+        pollResponseLoader({ value: poll.id, relays: [selectedRelay] }).pipe(
+          materialize(),
+          scan(
+            (state, notification) => ({
+              loading: notification.kind === "N",
+              error: notification.kind === "E" ? String(notification.error) : state.error,
+            }),
+            { loading: true, error: "" },
+          ),
+          startWith({ loading: true, error: "" }),
+        ),
+        eventStore.timeline({ kinds: [POLL_RESPONSE_KIND], "#e": [poll.id] }),
+      ]).pipe(map(([status, events]) => ({ ...status, responses: events }))),
+    [poll.id, selectedRelay],
+  );
+  const responses = responseState?.responses ?? [];
+  const loadingResponses = responseState?.loading ?? true;
 
-    setLoadingResponses(true);
-    const subscription = pollResponseLoader({
-      value: poll.id,
-      relays: [selectedRelay],
-    }).subscribe({
-      next: (response) => {
-        if (getPollResponsePollId(response) === poll.id) {
-          setResponses((prev) => {
-            // Avoid duplicates and maintain chronological order
-            if (prev.some((r) => r.id === response.id)) return prev;
-            return [...prev, response].sort((a, b) => a.created_at - b.created_at);
-          });
-        }
-      },
-      complete: () => setLoadingResponses(false),
-      error: (error) => {
-        console.error("Failed to load responses:", error);
-        setLoadingResponses(false);
-      },
-    });
-
-    return () => subscription.unsubscribe();
-  }, [poll.id, selectedRelay]);
-
-  const handleVoteSubmitted = (newResponse: NostrEvent) => {
-    setResponses((prev) => [...prev, newResponse].sort((a, b) => a.created_at - b.created_at));
-  };
+  const handleVoteSubmitted = (newResponse: NostrEvent) => eventStore.add(newResponse);
 
   // Calculate vote statistics
   const voteStats = useMemo(() => {
@@ -291,9 +294,9 @@ function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
           ← Back to polls
         </button>
 
-        <div className="card bg-base-100 shadow-lg">
-          <div className="card-body">
-            <h1 className="card-title text-2xl font-bold mb-4">{question}</h1>
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4">
+            <h1 className="font-semibold text-2xl font-bold mb-4">{question}</h1>
 
             {/* Poll metadata */}
             <div className="flex flex-wrap gap-4 text-sm text-base-content/70 mb-4">
@@ -345,10 +348,15 @@ function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
         <VotingForm poll={poll} onVoteSubmitted={handleVoteSubmitted} selectedRelay={selectedRelay} />
       </div>
 
+      {responseState?.error && (
+        <p role="alert" className="text-error">
+          {responseState.error}
+        </p>
+      )}
       {/* Responses List */}
-      <div className="card bg-base-100 shadow-lg">
-        <div className="card-body">
-          <h2 className="card-title text-xl mb-4">
+      <div className="border border-base-300 bg-base-100 ">
+        <div className="p-4">
+          <h2 className="font-semibold text-xl mb-4">
             Responses ({responses.length})
             {loadingResponses && <span className="loading loading-dots loading-sm"></span>}
           </h2>
@@ -363,7 +371,7 @@ function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <div className="font-bold text-sm">Poll Created</div>
-                    <time className="text-xs text-base-content/50 font-mono flex-shrink-0 ml-2">
+                    <time className="text-sm text-base-content/50 font-mono flex-shrink-0 ml-2">
                       {new Date(poll.created_at * 1000).toLocaleString()}
                     </time>
                   </div>
@@ -385,7 +393,7 @@ function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <div className="font-bold text-sm">Poll Ended</div>
-                      <time className="text-xs text-base-content/50 font-mono flex-shrink-0 ml-2">
+                      <time className="text-sm text-base-content/50 font-mono flex-shrink-0 ml-2">
                         {new Date(endsAt! * 1000).toLocaleString()}
                       </time>
                     </div>
@@ -408,39 +416,31 @@ interface PollCardProps {
 }
 
 function PollCard({ poll, onSelect, selectedRelay }: PollCardProps) {
-  const [responses, setResponses] = useState<NostrEvent[]>([]);
-  const [loadingResponses, setLoadingResponses] = useState(false);
-
   const question = getPollQuestion(poll);
   const options = getPollOptions(poll);
   const endsAt = getPollEndsAt(poll);
   const pollType = getPollType(poll);
 
-  // Load poll responses using tagValueLoader
-  useEffect(() => {
-    if (!selectedRelay) return;
-
-    setLoadingResponses(true);
-    const subscription = pollResponseLoader({
-      value: poll.id,
-      relays: [selectedRelay],
-    }).subscribe({
-      next: (response) => {
-        // Verify this response is for this poll
-        if (getPollResponsePollId(response) === poll.id) {
-          setResponses((prev) => {
-            // Avoid duplicates
-            if (prev.some((r) => r.id === response.id)) return prev;
-            return [...prev, response];
-          });
-        }
-      },
-      complete: () => setLoadingResponses(false),
-      error: () => setLoadingResponses(false),
-    });
-
-    return () => subscription.unsubscribe();
-  }, [poll.id, selectedRelay]);
+  const responseState = use$(
+    () =>
+      combineLatest([
+        pollResponseLoader({ value: poll.id, relays: [selectedRelay] }).pipe(
+          materialize(),
+          scan(
+            (state, notification) => ({
+              loading: notification.kind === "N",
+              error: notification.kind === "E" ? String(notification.error) : state.error,
+            }),
+            { loading: true, error: "" },
+          ),
+          startWith({ loading: true, error: "" }),
+        ),
+        eventStore.timeline({ kinds: [POLL_RESPONSE_KIND], "#e": [poll.id] }),
+      ]).pipe(map(([status, events]) => ({ ...status, responses: events }))),
+    [poll.id, selectedRelay],
+  );
+  const responses = responseState?.responses ?? [];
+  const loadingResponses = responseState?.loading ?? true;
 
   const isExpired = endsAt && endsAt < Math.floor(Date.now() / 1000);
 
@@ -469,12 +469,9 @@ function PollCard({ poll, onSelect, selectedRelay }: PollCardProps) {
   const totalVotes = Object.values(voteCounts).reduce((sum, count) => sum + count, 0);
 
   return (
-    <div
-      className="card bg-base-100 shadow-md border hover:shadow-lg transition-shadow cursor-pointer"
-      onClick={() => onSelect(poll)}
-    >
-      <div className="card-body">
-        <h3 className="card-title text-lg font-semibold mb-3">{question}</h3>
+    <div className="border border-base-300 bg-base-100  border   cursor-pointer" onClick={() => onSelect(poll)}>
+      <div className="p-4">
+        <h3 className="font-semibold text-lg font-semibold mb-3">{question}</h3>
 
         <div className="space-y-2">
           {options.map((option) => {
@@ -493,7 +490,7 @@ function PollCard({ poll, onSelect, selectedRelay }: PollCardProps) {
                       style={{ width: `${percentage}%` }}
                     ></div>
                   </div>
-                  <span className="text-xs text-base-content/70 min-w-[3rem] text-right">
+                  <span className="text-sm text-base-content/70 min-w-[3rem] text-right">
                     {votes} ({percentage.toFixed(1)}%)
                   </span>
                 </div>
@@ -502,17 +499,17 @@ function PollCard({ poll, onSelect, selectedRelay }: PollCardProps) {
           })}
         </div>
 
-        <div className="flex justify-between items-center mt-4 text-xs text-base-content/60">
+        <div className="flex justify-between items-center mt-4 text-sm text-base-content/60">
           <div className="flex items-center gap-4">
             <span>{pollType === "multiplechoice" ? "Multiple Choice" : "Single Choice"}</span>
             <span>
               {totalVotes} {totalVotes === 1 ? "response" : "responses"}
             </span>
-            {loadingResponses && <span className="loading loading-dots loading-xs"></span>}
+            {loadingResponses && <span className="loading loading-dots loading-sm"></span>}
           </div>
-          {isExpired && <span className="badge badge-error badge-sm">Expired</span>}
+          {isExpired && <span className="badge badge-error badge">Expired</span>}
           {endsAt && !isExpired && (
-            <span className="badge badge-warning badge-sm">Ends {new Date(endsAt * 1000).toLocaleDateString()}</span>
+            <span className="badge badge-warning badge">Ends {new Date(endsAt * 1000).toLocaleDateString()}</span>
           )}
         </div>
       </div>
@@ -548,30 +545,25 @@ function PollGrid({ polls, onPollSelect, selectedRelay }: PollGridProps) {
 }
 
 export default function PollGridApp() {
-  const [selectedRelay, setSelectedRelay] = useState("wss://relay.damus.io");
-  const [selectedPoll, setSelectedPoll] = useState<NostrEvent | null>(null);
+  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io"), []);
+  const selectedRelay = use$(selectedRelay$);
 
-  // Subscribe to poll events from the selected relay
-  use$(
+  const selectedPoll$ = useMemo(() => new BehaviorSubject<NostrEvent | null>(null), []);
+  const selectedPoll = use$(selectedPoll$);
+
+  const feed = use$(
     () =>
-      selectedRelay
-        ? pool
-            .relay(selectedRelay)
-            .subscription({
-              kinds: [POLL_KIND],
-              since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60, // Last 30 days
-              limit: 50,
-            })
-            .pipe(mapEventsToStore(eventStore))
-        : undefined,
+      relayTimeline(eventStore, pool, [selectedRelay], {
+        kinds: [POLL_KIND],
+        since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60,
+        limit: 50,
+      }),
     [selectedRelay],
   );
-
-  // Get polls from the event store
-  const polls = use$(() => eventStore.timeline({ kinds: [POLL_KIND] }), []);
+  const polls = feed?.events;
 
   if (selectedPoll) {
-    return <PollDetails poll={selectedPoll} onBack={() => setSelectedPoll(null)} selectedRelay={selectedRelay} />;
+    return <PollDetails poll={selectedPoll} onBack={() => selectedPoll$.next(null)} selectedRelay={selectedRelay} />;
   }
 
   return (
@@ -581,10 +573,23 @@ export default function PollGridApp() {
         <p className="text-base-content/70 mb-6">
           Browse and vote on NIP-88 polls from Nostr relays. Click on a poll to view details and cast your vote.
         </p>
-        <RelayPicker value={selectedRelay} onChange={setSelectedRelay} />
+        <RelayPicker
+          value={selectedRelay}
+          onChange={(next: typeof selectedRelay$.value) => selectedRelay$.next(next)}
+        />
       </div>
 
-      <PollGrid polls={polls || []} onPollSelect={setSelectedPoll} selectedRelay={selectedRelay} />
+      {feed?.status === "loading" && <p role="status">Loading polls…</p>}
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
+      <PollGrid
+        polls={polls || []}
+        onPollSelect={(next: typeof selectedPoll$.value) => selectedPoll$.next(next)}
+        selectedRelay={selectedRelay}
+      />
     </div>
   );
 }

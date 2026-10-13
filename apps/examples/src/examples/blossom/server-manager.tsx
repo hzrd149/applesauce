@@ -3,6 +3,8 @@
  * @tags nip-96, blossom, server, management
  * @related feed/relay-timeline, file/publisher
  */
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { type Action, ActionRunner } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
@@ -14,7 +16,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -30,9 +32,7 @@ createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 // Actions publish the server list to the user's outboxes
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  if (!relays?.length) throw new Error("No outbox relays found, publish a NIP-65 relay list first");
-  const results = await pool.publish(relays, event);
-  if (!results.some((r) => r.ok)) throw new Error(results.map((r) => `${r.from}: ${r.message}`).join(", "));
+  await publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
 });
 
 /** Replaces the whole server list, used for reordering */
@@ -62,7 +62,7 @@ function ServerItem({
   return (
     <div className="flex items-center gap-3 px-3 py-2">
       <div className="relative w-6 h-6 rounded bg-base-200 flex items-center justify-center overflow-hidden shrink-0">
-        <span className="text-xs">🌸</span>
+        <span className="text-sm">🌸</span>
         <img
           src={new URL("/favicon.ico", server).toString()}
           alt=""
@@ -74,19 +74,19 @@ function ServerItem({
       <a href={server.toString()} target="_blank" className="flex-1 min-w-0 font-mono text-sm truncate link-hover">
         {server.host}
       </a>
-      {isDefault && <span className="badge badge-primary badge-sm">Default</span>}
+      {isDefault && <span className="badge badge-primary ">Default</span>}
 
       <div className="flex gap-1">
-        <button className="btn btn-xs btn-ghost" onClick={() => onMove(-1)} disabled={isDefault} title="Move up">
+        <button className="btn btn-sm btn-ghost" onClick={() => onMove(-1)} disabled={isDefault} title="Move up">
           ↑
         </button>
-        <button className="btn btn-xs btn-ghost" onClick={() => onMove(1)} disabled={isLast} title="Move down">
+        <button className="btn btn-sm btn-ghost" onClick={() => onMove(1)} disabled={isLast} title="Move down">
           ↓
         </button>
-        <button className="btn btn-xs btn-ghost" onClick={onSetDefault} disabled={isDefault} title="Set as default">
+        <button className="btn btn-sm btn-ghost" onClick={onSetDefault} disabled={isDefault} title="Set as default">
           ⭐
         </button>
-        <button className="btn btn-xs btn-ghost text-error" onClick={onRemove} title="Remove server">
+        <button className="btn btn-sm btn-ghost text-error" onClick={onRemove} title="Remove server">
           ✕
         </button>
       </div>
@@ -98,18 +98,23 @@ function ServerManager({ user }: { user: User }) {
   const servers = use$(() => user.blossomServers$, [user.pubkey]);
   const outboxes = use$(() => user.outboxes$, [user.pubkey]);
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const busy$ = useMemo(() => new BehaviorSubject(false), []);
+  const busy = use$(busy$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const run = async <Args extends unknown[]>(action: (...args: Args) => Action, ...args: Args) => {
-    setBusy(true);
-    setError(null);
+    busy$.next(true);
+    error$.next(null);
     try {
       await actions.run(action, ...args);
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      error$.next(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
-      setBusy(false);
+      busy$.next(false);
     }
   };
 
@@ -123,11 +128,10 @@ function ServerManager({ user }: { user: User }) {
     try {
       url = new URL(/^https?:\/\//.test(value) ? value : `https://${value}`);
     } catch {
-      return setError("Invalid URL");
+      return error$.next("Invalid URL");
     }
 
-    await run(AddBlossomServer, url);
-    form.reset();
+    if (await run(AddBlossomServer, url)) form.reset();
   };
 
   const handleMove = (index: number, offset: number) => {
@@ -152,7 +156,9 @@ function ServerManager({ user }: { user: User }) {
         <div className="alert alert-warning">No outbox relays found, publish a NIP-65 relay list first</div>
       )}
 
-      {!servers?.length ? (
+      {servers === undefined ? (
+        <p role="status">Loading servers…</p>
+      ) : !servers.length ? (
         <div className="text-center py-12 text-base-content/60 border border-base-300 rounded">
           No Blossom servers yet
         </div>

@@ -3,6 +3,8 @@
  * @tags nip-65, nip-66, relay-discovery, mailbox, rx-views
  * @related relay-discovery/mailbox-map, relay-discovery/contacts-relays
  */
+import { BehaviorSubject, timeout, filter, catchError, isObservable, Observable, of, startWith, switchMap } from "rxjs";
+
 import { castUser, RelayDiscovery, RelayMonitor, User } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
@@ -10,8 +12,8 @@ import { combineLatestByValue, defined, EventStore, mapEventsToStore, mapEventsT
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useState } from "react";
-import { catchError, isObservable, Observable, of, startWith, switchMap, takeUntil, timer } from "rxjs";
+import { useMemo } from "react";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -45,7 +47,8 @@ function inboxStatusesView(user: User | Observable<User>, monitors: RelayMonitor
         // For each monitor get the status of the relay
         combineLatestByValue((monitor) =>
           monitor.relayStatus(url).pipe(
-            takeUntil(timer(15_000)), // 15s timeout for relay status request
+            filter((value) => value !== undefined),
+            timeout({ first: 15_000 }), // 15s timeout for relay status request
             startWith(undefined), // Start with undefined to avoid loading state
             catchError((err) => of(err as Error)), // Catch error and pass back to UI
           ),
@@ -72,7 +75,8 @@ function outboxStatusesView(user: User | Observable<User>, monitors: RelayMonito
         // For each monitor get the status of the relay
         combineLatestByValue((monitor) =>
           monitor.relayStatus(url).pipe(
-            takeUntil(timer(15_000)), // 15s timeout for relay status request
+            filter((value) => value !== undefined),
+            timeout({ first: 15_000 }), // 15s timeout for relay status request
             startWith(undefined), // Start with undefined to avoid loading state
             catchError((err) => of(err as Error)), // Catch error and pass back to UI
           ),
@@ -144,11 +148,11 @@ function RttBadge({ ms }: { ms: number | undefined }) {
 type RelayStatus = RelayDiscovery | null | Error | undefined;
 
 function StatusBadge({ discovery }: { discovery: RelayStatus }) {
-  if (discovery === undefined) return <span className="loading loading-ring loading-xs" />;
-  if (discovery === null) return <span className="badge badge-ghost badge-sm">Not monitored</span>;
-  if (discovery instanceof Error) return <span className="badge badge-error badge-sm">Error</span>;
-  if (discovery.rttOpen === undefined) return <span className="badge badge-warning badge-sm">Unknown</span>;
-  return <span className="badge badge-success badge-sm">Online</span>;
+  if (discovery === undefined) return <span className="loading loading-ring loading-sm" />;
+  if (discovery === null) return <span className="badge badge-ghost badge">Not monitored</span>;
+  if (discovery instanceof Error) return <span className="badge badge-error badge">Error</span>;
+  if (discovery.rttOpen === undefined) return <span className="badge badge-warning badge">Unknown</span>;
+  return <span className="badge badge-success badge">Online</span>;
 }
 
 function MonitorStatusRow({ monitor, discovery }: { monitor: RelayMonitor; discovery: RelayStatus }) {
@@ -158,21 +162,21 @@ function MonitorStatusRow({ monitor, discovery }: { monitor: RelayMonitor; disco
 
   return (
     <tr className="bg-base-200/40">
-      <td className="pl-10 text-xs text-base-content/60 italic">{name}</td>
+      <td className="pl-10 text-sm text-base-content/60 italic">{name}</td>
       <td>
         <StatusBadge discovery={discovery} />
       </td>
-      <td className="text-xs">
+      <td className="text-sm">
         <RttBadge ms={disc?.rttOpen} />
       </td>
-      <td className="text-xs">
+      <td className="text-sm">
         <RttBadge ms={disc?.rttRead} />
       </td>
-      <td className="text-xs">
+      <td className="text-sm">
         <RttBadge ms={disc?.rttWrite} />
       </td>
-      <td className="text-xs text-base-content/60">{disc?.networkType ?? "—"}</td>
-      <td className="text-xs text-base-content/60">
+      <td className="text-sm text-base-content/60">{disc?.networkType ?? "—"}</td>
+      <td className="text-sm text-base-content/60">
         {disc?.supportedNIPs
           ? disc.supportedNIPs.slice(0, 5).join(", ") + (disc.supportedNIPs.length > 5 ? "…" : "")
           : "—"}
@@ -192,7 +196,7 @@ function RelayRow({ url, statuses }: { url: string; statuses: Map<RelayMonitor, 
             <div className="w-5 h-5 shrink-0 rounded-full border border-base-300 overflow-hidden bg-base-200">
               <img src={icon} alt="" className="w-full h-full object-cover" />
             </div>
-            <span className="font-mono text-xs truncate font-semibold">{url}</span>
+            <span className="font-mono text-sm truncate font-semibold">{url}</span>
           </div>
         </td>
       </tr>
@@ -224,7 +228,7 @@ function StatusTable({ label, statusMap }: { label: string; statusMap: RelayStat
       </p>
       {statusMap === undefined ? (
         <div className="flex items-center gap-2 text-sm text-base-content/50">
-          <span className="loading loading-spinner loading-xs" />
+          <span className="loading loading-spinner loading-sm" />
           Waiting for relay list…
         </div>
       ) : (
@@ -256,9 +260,14 @@ function StatusTable({ label, statusMap }: { label: string; statusMap: RelayStat
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function MailboxStatuses() {
-  const [discoveryRelay, setDiscoveryRelay] = useState(DEFAULT_DISCOVERY_RELAY);
-  const [selectedMonitorPubkeys, setSelectedMonitorPubkeys] = useState<string[]>([DEFAULT_DISCOVERY_MONITOR]);
-  const [selectedPubkey, setSelectedPubkey] = useState("");
+  const discoveryRelay$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_RELAY), []);
+  const discoveryRelay = use$(discoveryRelay$);
+
+  const selectedMonitorPubkeys$ = useMemo(() => new BehaviorSubject<string[]>([DEFAULT_DISCOVERY_MONITOR]), []);
+  const selectedMonitorPubkeys = use$(selectedMonitorPubkeys$);
+
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
 
   // Subscribe to monitor announcements on the discovery relay
   const monitors = use$(
@@ -279,12 +288,12 @@ export default function MailboxStatuses() {
 
   const inboxStatuses = use$(
     () => (user && selectedMonitors.length > 0 ? inboxStatusesView(user, selectedMonitors) : undefined),
-    [user?.pubkey, selectedMonitors.map((m) => m.uid).join(",")],
+    [user?.pubkey, selectedMonitors],
   );
 
   const outboxStatuses = use$(
     () => (user && selectedMonitors.length > 0 ? outboxStatusesView(user, selectedMonitors) : undefined),
-    [user?.pubkey, selectedMonitors.map((m) => m.uid).join(",")],
+    [user?.pubkey, selectedMonitors],
   );
 
   return (
@@ -298,11 +307,21 @@ export default function MailboxStatuses() {
 
       {/* Controls */}
       <div className="flex flex-col gap-2">
-        <RelayPicker value={discoveryRelay} onChange={setDiscoveryRelay} />
+        <RelayPicker
+          value={discoveryRelay}
+          onChange={(next: typeof discoveryRelay$.value) => discoveryRelay$.next(next)}
+        />
         {monitors && monitors.length > 0 && (
-          <MonitorPicker monitors={monitors} value={selectedMonitorPubkeys} onChange={setSelectedMonitorPubkeys} />
+          <MonitorPicker
+            monitors={monitors}
+            value={selectedMonitorPubkeys}
+            onChange={(next: typeof selectedMonitorPubkeys$.value) => selectedMonitorPubkeys$.next(next)}
+          />
         )}
-        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+        <PubkeyPicker
+          value={selectedPubkey}
+          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
+        />
       </div>
 
       {!selectedPubkey && (

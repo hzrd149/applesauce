@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { COMMENT_KIND } from "../../helpers/comment.js";
 import { NAPPLET_KIND, NAPPLET_ROOT_KIND, NAPPLET_SNAPSHOT_KIND } from "../../helpers/napplet.js";
-import { Napplet } from "../napplet.js";
+import { NamedNapplet, Napplet, NappletSnapshot, RootNapplet } from "../napplet.js";
 import { castUser } from "../user.js";
 
 const user = new FakeUser();
@@ -46,11 +46,15 @@ describe("Napplet", () => {
     expect(() => new Napplet(user.note("hi"), {} as any)).toThrow();
   });
 
+  it("accepts every napplet kind", () => {
+    const { store, root, named, snapshot } = setup();
+    for (const event of [root, named, snapshot]) expect(new Napplet(event, store).artifactHash).toBe(HASH);
+  });
+
   it("exposes manifest getters", () => {
     const { store, named } = setup();
     const napplet = new Napplet(named, store);
 
-    expect(napplet.identifier).toBe("feed");
     expect(napplet.artifactHash).toBe(HASH);
     expect(napplet.title).toBe("Feed");
     expect(napplet.description).toBe("A feed viewer");
@@ -59,6 +63,7 @@ describe("Napplet", () => {
     expect(napplet.requiredDomains).toEqual(["relay"]);
     expect(napplet.optionalDomains).toEqual(["theme"]);
     expect(napplet.isSnapshot).toBe(false);
+    expect(napplet.isNamed).toBe(true);
     expect(napplet.address.startsWith("naddr1")).toBe(true);
   });
 
@@ -67,29 +72,7 @@ describe("Napplet", () => {
     const napplet = new Napplet(snapshot, store);
 
     expect(napplet.isSnapshot).toBe(true);
-    expect(napplet.identifier).toBeUndefined();
     expect(napplet.address.startsWith("nevent1")).toBe(true);
-  });
-
-  it("resolves snapshots$ and lineage$", async () => {
-    const { store, root, named, snapshot } = setup();
-
-    const snapshots = await firstValueFrom(new Napplet(named, store).snapshots$);
-    expect(snapshots.map((s) => s.id)).toEqual([snapshot.id]);
-
-    const lineage = await firstValueFrom(new Napplet(root, store).lineage$);
-    expect(lineage.map((s) => s.id)).toEqual([snapshot.id]);
-
-    expect(await firstValueFrom(new Napplet(snapshot, store).snapshots$)).toEqual([]);
-  });
-
-  it("resolves parent$ and root$ for snapshots", async () => {
-    const { store, root, named, snapshot } = setup();
-    const napplet = new Napplet(snapshot, store);
-
-    expect((await firstValueFrom(napplet.parent$))?.id).toBe(named.id);
-    expect((await firstValueFrom(napplet.root$))?.id).toBe(root.id);
-    expect(await firstValueFrom(new Napplet(named, store).parent$)).toBeUndefined();
   });
 
   it("resolves comments$", async () => {
@@ -114,6 +97,59 @@ describe("Napplet", () => {
   });
 });
 
+describe("RootNapplet", () => {
+  it("only accepts kind 15129", () => {
+    const { store, root, named } = setup();
+    expect(new RootNapplet(root, store).isRoot).toBe(true);
+    expect(() => new RootNapplet(named, store)).toThrow();
+  });
+
+  it("resolves lineage$ as snapshots", async () => {
+    const { store, root, snapshot } = setup();
+    const lineage = await firstValueFrom(new RootNapplet(root, store).lineage$);
+
+    expect(lineage.map((s) => s.id)).toEqual([snapshot.id]);
+    expect(lineage[0]).toBeInstanceOf(NappletSnapshot);
+  });
+});
+
+describe("NamedNapplet", () => {
+  it("only accepts kind 35129", () => {
+    const { store, root } = setup();
+    expect(() => new NamedNapplet(root, store)).toThrow();
+  });
+
+  it("exposes the identifier", () => {
+    const { store, named } = setup();
+    expect(new NamedNapplet(named, store).identifier).toBe("feed");
+  });
+
+  it("resolves snapshots$ as snapshots", async () => {
+    const { store, named, snapshot } = setup();
+    const snapshots = await firstValueFrom(new NamedNapplet(named, store).snapshots$);
+
+    expect(snapshots.map((s) => s.id)).toEqual([snapshot.id]);
+    expect(snapshots[0]).toBeInstanceOf(NappletSnapshot);
+  });
+});
+
+describe("NappletSnapshot", () => {
+  it("only accepts kind 5129", () => {
+    const { store, named } = setup();
+    expect(() => new NappletSnapshot(named, store)).toThrow();
+  });
+
+  it("resolves parent$ and root$", async () => {
+    const { store, root, named, snapshot } = setup();
+    const napplet = new NappletSnapshot(snapshot, store);
+
+    expect(napplet.parentPointer?.identifier).toBe("feed");
+    expect((await firstValueFrom(napplet.parent$))?.id).toBe(named.id);
+    expect((await firstValueFrom(napplet.upstream$))?.id).toBe(named.id);
+    expect((await firstValueFrom(napplet.root$))?.id).toBe(root.id);
+  });
+});
+
 describe("User napplet getters", () => {
   it("resolves napplets$, napplet$ and nappletSnapshots$", async () => {
     const { store, root, named, snapshot } = setup();
@@ -121,9 +157,10 @@ describe("User napplet getters", () => {
 
     const napplets = await firstValueFrom(author.napplets$);
     expect(napplets.map((n) => n.id).sort()).toEqual([root.id, named.id].sort());
-    expect((await firstValueFrom(author.napplet$))?.id).toBe(root.id);
+    expect(await firstValueFrom(author.napplet$)).toBeInstanceOf(RootNapplet);
 
     const snapshots = await firstValueFrom(author.nappletSnapshots$);
     expect(snapshots.map((n) => n.id)).toEqual([snapshot.id]);
+    expect(snapshots[0]).toBeInstanceOf(NappletSnapshot);
   });
 });

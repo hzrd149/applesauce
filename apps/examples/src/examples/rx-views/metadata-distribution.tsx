@@ -2,6 +2,8 @@
  * Check which metadata events are present on a user's outbox relays
  * @tags nip-65, outbox, metadata, distribution, rx-views
  */
+import { BehaviorSubject, isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
+
 import { castUser, User } from "applesauce-common/casts";
 import { catchErrorInline, combineLatestByValue, defined, EventStore, mapEventsToTimeline } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
@@ -9,8 +11,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { Relay, RelayPool } from "applesauce-relay";
 import { kinds } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
-import { isObservable, map, Observable, of, switchMap, takeUntil, timer } from "rxjs";
+import { useMemo } from "react";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -93,15 +95,15 @@ function KindBadge({ label, event }: { label: string; event: NostrEvent | undefi
         className="flex flex-col items-center gap-0.5 px-2 py-1 rounded border border-success/30 bg-success/10"
         title={`kind ${event.kind} — ${date}`}
       >
-        <span className="text-success text-xs font-medium leading-none">{label}</span>
-        <span className="text-success/60 text-[10px] leading-none">{age}</span>
+        <span className="text-success text-sm font-medium leading-none">{label}</span>
+        <span className="text-success/60 text-sm leading-none">{age}</span>
       </div>
     );
   }
 
   return (
     <div className="flex items-center px-2 py-1 rounded border border-base-300 bg-base-200/40 opacity-40">
-      <span className="text-xs leading-none">{label}</span>
+      <span className="text-sm leading-none">{label}</span>
     </div>
   );
 }
@@ -120,7 +122,7 @@ function RelayRow({
   const kindByNumber = useMemo(() => {
     if (!events || events instanceof Error) return new Map<number, NostrEvent>();
     const map = new Map<number, NostrEvent>();
-    for (const event of events) map.set(event.kind, event);
+    for (const event of events) if (!map.has(event.kind)) map.set(event.kind, event);
     return map;
   }, [events]);
 
@@ -136,11 +138,11 @@ function RelayRow({
         <div className="w-5 h-5 shrink-0 rounded-full border border-base-300 overflow-hidden bg-base-300">
           {icon && <img src={icon} alt="" className="w-full h-full object-cover" />}
         </div>
-        <span className="font-mono text-xs font-semibold flex-1 truncate">{relay.url}</span>
-        {isLoading && <span className="loading loading-spinner loading-xs opacity-40" />}
-        {isError && <span className="badge badge-error badge-sm">Error</span>}
+        <span className="font-mono text-sm font-semibold flex-1 truncate">{relay.url}</span>
+        {isLoading && <span className="loading loading-spinner loading-sm opacity-40" />}
+        {isError && <span className="badge badge-error badge">Error</span>}
         {!isLoading && !isError && (
-          <span className="text-xs text-base-content/40">
+          <span className="text-sm text-base-content/40">
             {presentCount}/{KIND_LABELS.length}
           </span>
         )}
@@ -149,7 +151,7 @@ function RelayRow({
       {/* Kind grid */}
       <div className="p-3">
         {isError ? (
-          <p className="text-xs text-error/70">{(events as Error).message}</p>
+          <p className="text-sm text-error/70">{(events as Error).message}</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {visibleLabels.map((label) => (
@@ -181,7 +183,7 @@ function UserHeader({ user }: { user: User }) {
       </div>
       <div className="min-w-0">
         <div className="font-semibold">{name}</div>
-        <div className="text-xs text-base-content/50 font-mono truncate">{user.pubkey}</div>
+        <div className="text-sm text-base-content/50 font-mono truncate">{user.pubkey}</div>
       </div>
     </div>
   );
@@ -190,7 +192,8 @@ function UserHeader({ user }: { user: User }) {
 // ─── Main Example ──────────────────────────────────────────────────────────────
 
 export default function MetadataDistribution() {
-  const [selectedPubkey, setSelectedPubkey] = useState("");
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
 
   const user = useMemo(() => (selectedPubkey ? castUser(selectedPubkey, eventStore) : undefined), [selectedPubkey]);
 
@@ -222,7 +225,10 @@ export default function MetadataDistribution() {
         </p>
       </div>
 
-      <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+      <PubkeyPicker
+        value={selectedPubkey}
+        onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
+      />
 
       {!selectedPubkey && (
         <p className="text-sm text-base-content/40">Enter a pubkey above to inspect their relay metadata coverage.</p>
@@ -234,7 +240,7 @@ export default function MetadataDistribution() {
 
           {relayEntries === null && (
             <div className="flex items-center gap-2 text-sm text-base-content/50">
-              <span className="loading loading-spinner loading-xs" />
+              <span className="loading loading-spinner loading-sm" />
               Waiting for outbox relay list…
             </div>
           )}

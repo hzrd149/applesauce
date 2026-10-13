@@ -3,6 +3,10 @@
  * @tags nip-02, nip-65, outbox, feed, social
  * @related outbox/relay-selection, feed/relay-timeline
  */
+import NoteContent from "../../components/note-content";
+
+import { castUser, Note as NoteCast, castEvent } from "applesauce-common/casts";
+
 import {
   defined,
   EventStore,
@@ -23,16 +27,16 @@ import {
   unixNow,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
-import { use$, useObservableEagerState } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { SubmitHandler } from "react-hook-form";
-import { useObservable } from "react-use";
-import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap } from "rxjs";
+
+import { BehaviorSubject, debounceTime, map, of, shareReplay, switchMap, startWith } from "rxjs";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
@@ -79,9 +83,7 @@ const maxRelaysPerUser$ = new BehaviorSubject(4);
 /** An observable of the users contacts */
 const contacts$ = pubkey$.pipe(
   // Wait for user to login
-  defined(),
-  // Get the contacts for the user
-  switchMap((pubkey) => eventStore.contacts(pubkey)),
+  switchMap((pubkey) => (pubkey ? castUser(pubkey, eventStore).contacts$.pipe(startWith(undefined)) : of(undefined))),
 );
 
 /** An observable of contacts with outboxes and unhealthy relays filtered out */
@@ -93,7 +95,7 @@ const contactsWithOutboxes$ = contacts$.pipe(
   // Ignore unhealthy relays from the liveness tracker
   ignoreUnhealthyRelaysOnPointers(liveness),
   // Only calculate it once
-  shareReplay(1),
+  shareReplay({ bufferSize: 1, refCount: true }),
 );
 
 // Create an observable of contacts -> contacts with relay selection / fallbacks
@@ -105,7 +107,7 @@ const selection$ = contactsWithOutboxes$.pipe(
   // Select the best relays for the contacts
   filterOptimalRelays(maxConnections$, maxRelaysPerUser$),
   // Keep the last value so reconnection works
-  shareReplay(1),
+  shareReplay({ bufferSize: 1, refCount: true }),
 );
 
 // Create an observable that converts selection to an outbox map
@@ -165,15 +167,16 @@ function NoteRelay({ relay }: { relay: string }) {
         </div>
       </div>
 
-      <div className="truncate text-xs">{name}</div>
+      <div className="truncate text-sm">{name}</div>
     </div>
   );
 }
 
 function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
+  const cast = useMemo(() => castEvent(note, NoteCast, eventStore), [note]);
   // Subscribe to the request and wait for the profile event
-  const profile = use$(() => eventStore.profile(note.pubkey), [note.pubkey]);
-  const mailboxes = use$(() => eventStore.mailboxes(note.pubkey), [note.pubkey]);
+  const profile = use$(cast.author.profile$);
+  const mailboxes = use$(cast.author.mailboxes$);
 
   const displayName = getDisplayName(profile, note.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${note.pubkey}.png`);
@@ -193,14 +196,14 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
             <a className="font-semibold text-sm link" onClick={() => preview$.next({ pubkey: note.pubkey })}>
               {displayName}
             </a>
-            <span className="text-xs text-base-content/60">
+            <span className="text-sm text-base-content/60">
               {new Date(note.created_at * 1000).toLocaleTimeString()}
             </span>
-            <span className="text-xs text-base-content/60 ms-auto">
+            <span className="text-sm text-base-content/60 ms-auto">
               From {selection?.length ?? 0} of {mailboxes?.outboxes.length ?? 0} outboxes
             </span>
           </div>
-          <p className="text-sm leading-relaxed break-words">{note.content}</p>
+          <NoteContent event={note} />
         </div>
       </div>
       <div className="flex gap-4 mt-4">
@@ -214,8 +217,8 @@ function Note({ note, selection }: { note: NostrEvent; selection?: string[] }) {
 
 // User Avatar Component for sidebar
 function UserAvatar({ user }: { user: ProfilePointer }) {
-  const profile = use$(() => eventStore.profile(user), [user.pubkey]);
-  use$(() => eventStore.mailboxes(user), [user.pubkey]);
+  const profile = use$(() => castUser(user, eventStore).profile$, [user]);
+  use$(() => castUser(user, eventStore).mailboxes$, [user]);
 
   const displayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "...");
   const avatarUrl = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
@@ -230,7 +233,7 @@ function UserAvatar({ user }: { user: ProfilePointer }) {
           <img src={avatarUrl} className="w-full h-full object-cover" />
         </div>
       </div>
-      <div className="text-xs max-w-16 overflow-hidden truncate">{displayName}</div>
+      <div className="text-sm max-w-16 overflow-hidden truncate">{displayName}</div>
     </div>
   );
 }
@@ -243,7 +246,8 @@ function UserIssuesSection({
   selection: any[] | null | undefined;
   contacts: any[] | null | undefined;
 }) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const expandedSections$ = useMemo(() => new BehaviorSubject<Set<string>>(new Set()), []);
+  const expandedSections = use$(expandedSections$);
 
   // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
   const missingRelaysUsers = useMemo(() => {
@@ -282,7 +286,7 @@ function UserIssuesSection({
     } else {
       newExpanded.add(sectionId);
     }
-    setExpandedSections(newExpanded);
+    expandedSections$.next(newExpanded);
   };
 
   const totalIssues = missingRelaysUsers.length + orphanedUsers.length;
@@ -307,9 +311,9 @@ function UserIssuesSection({
                 <div className="text-sm">{expandedSections.has("missing-relays") ? "▼" : "▶"}</div>
                 <div className="font-medium text-warning">Missing Relays</div>
               </div>
-              <div className="badge badge-warning badge-sm">{missingRelaysUsers.length}</div>
+              <div className="badge badge-warning badge-md">{missingRelaysUsers.length}</div>
             </div>
-            <div className="text-xs text-base-content/60 ml-6">Users without any relays (no NIP-65 published)</div>
+            <div className="text-sm text-base-content/60 ml-6">Users without any relays (no NIP-65 published)</div>
           </button>
 
           {expandedSections.has("missing-relays") && (
@@ -338,9 +342,9 @@ function UserIssuesSection({
                 <div className="text-sm">{expandedSections.has("orphaned-users") ? "▼" : "▶"}</div>
                 <div className="font-medium text-error">Orphaned Users</div>
               </div>
-              <div className="badge badge-error badge-sm">{orphanedUsers.length}</div>
+              <div className="badge badge-error badge-md">{orphanedUsers.length}</div>
             </div>
-            <div className="text-xs text-base-content/60 ml-6">Users who lost all relays after selection</div>
+            <div className="text-sm text-base-content/60 ml-6">Users who lost all relays after selection</div>
           </button>
 
           {expandedSections.has("orphaned-users") && (
@@ -364,8 +368,8 @@ function UserIssuesSection({
 function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
   const previewUser = use$(preview$);
 
-  const profile = use$(() => (previewUser ? eventStore.profile(previewUser) : undefined), [previewUser?.pubkey]);
-  const mailboxes = use$(() => (previewUser ? eventStore.mailboxes(previewUser) : undefined), [previewUser?.pubkey]);
+  const profile = use$(() => (previewUser ? castUser(previewUser, eventStore).profile$ : undefined), [previewUser]);
+  const mailboxes = use$(() => (previewUser ? castUser(previewUser, eventStore).mailboxes$ : undefined), [previewUser]);
 
   // get the selected user
   const selected = selection?.find((user) => user.pubkey === previewUser?.pubkey);
@@ -507,7 +511,8 @@ function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
 }
 
 function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relays: string[]) => void }) {
-  const [input, setInput] = useState<string>("");
+  const input$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const input = use$(input$);
 
   const addRelay: SubmitHandler<any> = (e) => {
     e.preventDefault();
@@ -518,7 +523,7 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
     if (!url.startsWith("wss://") && !url.startsWith("ws://")) url = `wss://${input}`;
 
     onChange(relaySet(relays, url));
-    setInput("");
+    input$.next("");
   };
 
   const removeRelay = (relay: string) => {
@@ -530,13 +535,18 @@ function RelayManager({ relays, onChange }: { relays: string[]; onChange: (relay
       {relays.map((relay) => (
         <div key={relay} className="flex gap-2 items-center justify-between">
           <div className="text-sm font-mono truncate">{relay}</div>
-          <button className="btn btn-square btn-warning btn-soft btn-xs text-lg" onClick={() => removeRelay(relay)}>
+          <button className="btn btn-square btn-warning btn-soft btn-sm text-lg" onClick={() => removeRelay(relay)}>
             -
           </button>
         </div>
       ))}
       <form className="flex gap-2" onSubmit={addRelay}>
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} className="input input-sm flex-1" />
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => input$.next(e.target.value)}
+          className="input input-sm flex-1"
+        />
         <button className="btn btn-square btn-primary btn-soft btn-sm text-lg" type="submit" disabled={!input}>
           +
         </button>
@@ -570,11 +580,11 @@ function RelayConnection({ relay, userCount, totalUsers }: { relay: string; user
         <div className="text-sm font-medium truncate" style={{ color }}>
           {relayDisplayName}
         </div>
-        <div className="text-xs text-base-content/60 truncate">{relay}</div>
+        <div className="text-sm text-base-content/60 truncate">{relay}</div>
       </div>
       <div className="flex flex-col items-end ml-2">
         <div className="text-sm font-medium">{userCount}</div>
-        <div className="text-xs text-base-content/60">{coveragePercentage}%</div>
+        <div className="text-sm text-base-content/60">{coveragePercentage}%</div>
       </div>
     </div>
   );
@@ -627,21 +637,21 @@ function UnhealthyRelay({ relay }: { relay: string }) {
           {relayDisplayName}
         </div>
         <div className="flex items-center gap-2 mt-1">
-          <div className={`badge badge-sm ${getStateBadge(state?.state || "unknown")}`}>
+          <div className={`badge badge-md ${getStateBadge(state?.state || "unknown")}`}>
             {state?.state || "unknown"}
           </div>
           {isInBackoff && backoffRemaining > 0 && (
-            <div className="text-xs text-base-content/60">Backoff: {formatBackoffTime(backoffRemaining)}</div>
+            <div className="text-sm text-base-content/60">Backoff: {formatBackoffTime(backoffRemaining)}</div>
           )}
         </div>
       </div>
       <div className="flex flex-col items-end ml-2">
         {state?.state === "dead" && (
-          <button className="btn btn-xs btn-outline btn-error" onClick={handleRevive} title="Revive this relay">
+          <button className="btn btn-sm btn-outline btn-error" onClick={handleRevive} title="Revive this relay">
             Revive
           </button>
         )}
-        {state?.failureCount && <div className="text-xs text-base-content/60 mt-1">{state.failureCount} failures</div>}
+        {state?.failureCount && <div className="text-sm text-base-content/60 mt-1">{state.failureCount} failures</div>}
       </div>
     </div>
   );
@@ -649,13 +659,13 @@ function UnhealthyRelay({ relay }: { relay: string }) {
 
 // Main Social Feed Component
 export default function SocialFeedExample() {
-  const pubkey = useObservableEagerState(pubkey$);
-  const maxConnections = useObservableEagerState(maxConnections$);
-  const maxRelaysPerUser = useObservableEagerState(maxRelaysPerUser$);
+  const pubkey = use$(pubkey$);
+  const maxConnections = use$(maxConnections$);
+  const maxRelaysPerUser = use$(maxRelaysPerUser$);
 
   // Start live and timeline subscriptions on mount (and stop them on unmount)
-  useObservable(live$);
-  useObservable(timeline$);
+  use$(live$);
+  use$(timeline$);
 
   // Select the best relays for the contacts
   const outboxes = use$(contactsWithOutboxes$);
@@ -699,7 +709,7 @@ export default function SocialFeedExample() {
           {pubkey ? (
             <div className="min-h-screen">
               {/* Feed Header */}
-              <div className="sticky top-0 bg-base-50/95 backdrop-blur-sm border-b border-base-300 p-2 mb-4 z-10">
+              <div className="border-b border-base-300 p-2 mb-4">
                 <h1 className="text-2xl font-bold mb-2">Social Feed</h1>
                 <p className="text-base-content/60 text-sm">
                   Connected to {sortedRelays.length} relays • {selection?.length || 0} contacts
@@ -778,7 +788,7 @@ export default function SocialFeedExample() {
                 onChange={(e) => maxConnections$.next(Number(e.target.value))}
                 className="range range-primary range-sm"
               />
-              <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+              <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
                 <span>1</span>
                 <span>100</span>
                 <span>200</span>
@@ -799,7 +809,7 @@ export default function SocialFeedExample() {
                 onChange={(e) => maxRelaysPerUser$.next(Number(e.target.value))}
                 className="range range-primary range-sm"
               />
-              <div className="w-full flex justify-between text-xs px-2 text-base-content/60">
+              <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
                 <span>0</span>
                 <span>15</span>
                 <span>30</span>

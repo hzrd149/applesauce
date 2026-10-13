@@ -4,7 +4,7 @@
  * @related torrent/feed
  */
 import { Napplet, User } from "applesauce-common/casts";
-import { mergeBlossomServers, NAPPLET_KINDS } from "applesauce-common/helpers";
+import { getNappletIdentifier, mergeBlossomServers, NAPPLET_KINDS } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -45,7 +45,8 @@ function prettify(identifier: string) {
 /** Picks a human friendly title, falling back to the identifier and then the kind */
 function getTitle(napplet: Napplet) {
   if (napplet.title) return napplet.title;
-  if (napplet.identifier) return prettify(napplet.identifier);
+  const identifier = getNappletIdentifier(napplet.event);
+  if (identifier) return prettify(identifier);
   return napplet.isRoot ? "Untitled napplet" : "Untitled snapshot";
 }
 

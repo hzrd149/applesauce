@@ -3,9 +3,12 @@
  * @tags database, worker, relay
  * @related cache/worker-relay
  */
+import NoteContent from "../../components/note-content";
+import { BehaviorSubject, combineLatest, debounceTime, switchMap, map, catchError, of, startWith, from } from "rxjs";
 
 import { WorkerRelayInterface } from "@snort/worker-relay";
-import { AsyncEventStore, BehaviorSubject, IAsyncEventDatabase } from "applesauce-core";
+import { castUser } from "applesauce-common/casts";
+import { AsyncEventStore, IAsyncEventDatabase } from "applesauce-core";
 import {
   Filter,
   KnownEvent,
@@ -21,18 +24,16 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$, useObservableEagerState } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { nanoid } from "nanoid";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { useDebounce } from "react-use";
+import { ChangeEvent, FormEvent, useRef, useMemo } from "react";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
 import ImportEventsButton from "../../components/import-events-button";
 import { lookupRelays$ } from "../../settings";
 
-// in dev mode import esm module, i have no idea why it has to work like this
-const workerScript = import.meta.env.DEV
-  ? new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url)
-  : new WorkerVite();
+// The prebuilt development worker is an asset; production bundles the source worker.
+const devWorkerUrl = new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url);
+const workerScript = import.meta.env.DEV ? new Worker(devWorkerUrl, { type: "module" }) : new WorkerVite();
 
 const workerRelay = new WorkerRelayInterface(workerScript);
 
@@ -78,15 +79,18 @@ class WorkerRelayEventDatabase implements IAsyncEventDatabase {
   }
   async hasReplaceable(kind: number, pubkey: string, identifier?: string): Promise<boolean> {
     return (
-      (await this.relay.count(["REQ", pubkey, { kinds: [kind], authors: [pubkey], identifiers: [identifier ?? ""] }])) >
-      0
+      (await this.relay.count([
+        "REQ",
+        pubkey,
+        { kinds: [kind], authors: [pubkey], ...(kind >= 30000 ? { "#d": [identifier ?? ""] } : {}) },
+      ])) > 0
     );
   }
   async getReplaceable(kind: number, pubkey: string, identifier?: string): Promise<NostrEvent | undefined> {
     const res = await this.relay.query([
       "REQ",
       pubkey,
-      { kinds: [kind], authors: [pubkey], identifiers: [identifier ?? ""] },
+      { kinds: [kind], authors: [pubkey], ...(kind >= 30000 ? { "#d": [identifier ?? ""] } : {}) },
     ]);
     return res.length > 0 ? res[0] : undefined;
   }
@@ -94,7 +98,7 @@ class WorkerRelayEventDatabase implements IAsyncEventDatabase {
     const res = await this.relay.query([
       "REQ",
       pubkey,
-      { kinds: [kind], authors: [pubkey], identifiers: [identifier ?? ""] },
+      { kinds: [kind], authors: [pubkey], ...(kind >= 30000 ? { "#d": [identifier ?? ""] } : {}) },
     ]);
     return res;
   }
@@ -112,6 +116,12 @@ const eventDatabase = new WorkerRelayEventDatabase(workerRelay);
 const eventStore = new AsyncEventStore({ database: eventDatabase });
 
 const pool = new RelayPool();
+
+// This module owns the shared worker database for the application lifetime.
+import.meta.hot?.dispose(() => {
+  workerScript.terminate();
+  pool.close();
+});
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
@@ -194,7 +204,7 @@ async function importEventsFromJsonl(
 
 // Profile hook for username lookup
 function useProfile(pubkey: string) {
-  return use$(() => eventStore.profile({ pubkey }), [pubkey]);
+  return use$(() => castUser(pubkey, eventStore).profile$, [pubkey]);
 }
 
 // Event row component
@@ -245,7 +255,7 @@ function AnyEventTable({ events }: { events: NostrEvent[] }) {
 
 function ProfileList({ events }: { events: KnownEvent<kinds.Metadata>[] }) {
   return (
-    <ul className="list bg-base-100 rounded-box shadow-md">
+    <ul className="list bg-base-100 rounded-box ">
       {events.map((event) => {
         const profile = getProfileContent(event);
 
@@ -259,9 +269,9 @@ function ProfileList({ events }: { events: KnownEvent<kinds.Metadata>[] }) {
             </div>
             <div>
               <div className="font-bold text-md">{getDisplayName(profile, event.pubkey.slice(0, 8) + "...")}</div>
-              <div className="text-xs uppercase font-semibold opacity-60">{profile.nip05}</div>
+              <div className="text-sm uppercase font-semibold opacity-60">{profile.nip05}</div>
             </div>
-            <p className="list-col-wrap text-xs whitespace-pre truncate max-h-48">{profile.about}</p>
+            <p className="list-col-wrap text-sm whitespace-pre truncate max-h-48">{profile.about}</p>
 
             <button className="btn btn-soft btn-primary absolute top-2 right-2" onClick={() => viewEvent$.next(event)}>
               View
@@ -294,8 +304,8 @@ function NoteCard({ note }: { note: NostrEvent }) {
   const profile = useProfile(note.pubkey);
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
         {/* Author info */}
         <div className="flex items-center gap-3 mb-3">
           <img
@@ -313,12 +323,12 @@ function NoteCard({ note }: { note: NostrEvent }) {
         </div>
 
         {/* Note content */}
-        <div className="whitespace-pre-wrap break-words">{note.content}</div>
+        <NoteContent event={note} />
 
         {/* Note metadata */}
         <div className="flex justify-between items-center mt-4 pt-3 border-t border-base-300">
-          <div className="text-xs text-base-content/50 font-mono">{note.id.slice(0, 16)}...</div>
-          <div className="text-xs text-base-content/50">{note.tags.length > 0 && `${note.tags.length} tags`}</div>
+          <div className="text-sm text-base-content/50 font-mono">{note.id.slice(0, 16)}...</div>
+          <div className="text-sm text-base-content/50">{note.tags.length > 0 && `${note.tags.length} tags`}</div>
         </div>
       </div>
     </div>
@@ -327,66 +337,72 @@ function NoteCard({ note }: { note: NostrEvent }) {
 
 // Main search component
 function WorkerRelaySearch() {
-  const [kind, setKind] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<NostrEvent[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<OperationError | null>(null);
-  const [importStats, setImportStats] = useState<{ total: number; added: number; failed: number } | null>(null);
+  const kind$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
+  const kind = use$(kind$);
+
+  const searchQuery$ = useMemo(() => new BehaviorSubject(""), []);
+  const searchQuery = use$(searchQuery$);
+
+  const isLoading$ = useMemo(() => new BehaviorSubject(false), []);
+  const isLoading = use$(isLoading$);
+
+  const error$ = useMemo(() => new BehaviorSubject<OperationError | null>(null), []);
+  const error = use$(error$);
+
+  const importStats$ = useMemo(
+    () => new BehaviorSubject<{ total: number; added: number; failed: number } | null>(null),
+    [],
+  );
+  const importStats = use$(importStats$);
 
   const viewEvent = useObservableEagerState(viewEvent$);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastImportFileRef = useRef<File | null>(null);
 
-  const loadEvents = useCallback(async () => {
-    const filter: Filter = {
-      limit: 1000,
-    };
-
-    // Build filter
-    if (kind !== null) filter.kinds = [kind];
-    if (searchQuery.trim()) filter.search = searchQuery.trim();
-
-    console.log(filter);
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const events = await eventStore.getTimeline(filter);
-      setSearchResults(events);
-    } catch {
-      setError({ message: "Search failed. Check the filters and try again.", retry: "search" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [kind, searchQuery, eventStore]);
-
-  const handleSearch = async (e: FormEvent) => {
+  const refresh$ = useMemo(() => new BehaviorSubject(0), []);
+  const query = use$(
+    () =>
+      combineLatest([kind$, searchQuery$.pipe(debounceTime(500)), refresh$]).pipe(
+        switchMap(([kind, search]) => {
+          const filter: Filter = {
+            limit: 1000,
+            ...(kind === null ? {} : { kinds: [kind] }),
+            ...(search.trim() ? { search: search.trim() } : {}),
+          };
+          return eventStore.timeline(filter).pipe(
+            map((events) => ({ events, loading: false, error: undefined as string | undefined })),
+            catchError(() =>
+              of({
+                events: [] as NostrEvent[],
+                loading: false,
+                error: "Search failed. Check the filters and try again.",
+              }),
+            ),
+            startWith({ events: [] as NostrEvent[], loading: true, error: undefined as string | undefined }),
+          );
+        }),
+      ),
+    [],
+  );
+  const searchResults = query?.events ?? [];
+  const loadEvents = () => refresh$.next(refresh$.value + 1);
+  const handleSearch = (e: FormEvent) => {
     e.preventDefault();
-    await loadEvents();
+    loadEvents();
   };
 
-  // Load events when kind changes
-  useEffect(() => {
-    loadEvents();
-  }, [kind]);
-
-  // Load events 500 ms after finish typing
-  useDebounce(loadEvents, 500, [searchQuery]);
-
   const importFile = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
+    isLoading$.next(true);
+    error$.next(null);
 
     try {
       const stats = await importEventsFromJsonl(file, eventStore);
-      setImportStats(stats);
+      importStats$.next(stats);
       await loadEvents(); // Reload events after import
     } catch {
-      setError({ message: "Import failed. Choose a valid .jsonl file and try again.", retry: "import" });
+      error$.next({ message: "Import failed. Choose a valid .jsonl file and try again.", retry: "import" });
     } finally {
-      setIsLoading(false);
+      isLoading$.next(false);
     }
   };
 
@@ -396,7 +412,7 @@ function WorkerRelaySearch() {
     if (!file) return;
 
     if (!file.name.endsWith(".jsonl")) {
-      setError({ message: "Please select a .jsonl file" });
+      error$.next({ message: "Please select a .jsonl file" });
       return;
     }
 
@@ -412,7 +428,7 @@ function WorkerRelaySearch() {
   // Handle export
   const handleExport = () => {
     if (searchResults.length === 0) {
-      setError({ message: "No events to export" });
+      error$.next({ message: "No events to export" });
       return;
     }
 
@@ -422,19 +438,19 @@ function WorkerRelaySearch() {
   };
 
   const clearDatabase = async () => {
-    setIsLoading(true);
-    setError(null);
+    isLoading$.next(true);
+    error$.next(null);
 
     try {
       // Use removeByFilters with empty filter to clear all events
       await eventStore.removeByFilters({});
 
-      setSearchResults([]);
-      setImportStats(null);
+      loadEvents();
+      importStats$.next(null);
     } catch {
-      setError({ message: "Database couldn't be cleared. Try again.", retry: "clear" });
+      error$.next({ message: "Database couldn't be cleared. Try again.", retry: "clear" });
     } finally {
-      setIsLoading(false);
+      isLoading$.next(false);
     }
   };
 
@@ -455,7 +471,7 @@ function WorkerRelaySearch() {
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-3xl font-bold">Searchable browser SQLite event database with import/export</h1>
-          <div className="badge badge-success badge-sm">
+          <div className="badge badge-success ">
             <span className="loading loading-dots loading-xs mr-1"></span>
             Worker Relay
           </div>
@@ -467,14 +483,14 @@ function WorkerRelaySearch() {
       </div>
 
       {/* Error Display */}
-      {error && (
+      {(error || query?.error) && (
         <div className="alert alert-error mb-6">
-          <span>{error.message}</span>
-          {error.retry && (
-            <button className="btn btn-sm" onClick={retryError} disabled={isLoading}>
-              {error.retry === "search"
+          <span>{error?.message ?? query?.error}</span>
+          {error?.retry && (
+            <button className="btn btn-sm" onClick={retryError} disabled={isLoading || query?.loading}>
+              {error?.retry === "search"
                 ? "Retry Search"
-                : error.retry === "import"
+                : error?.retry === "import"
                   ? "Try Import Again"
                   : "Retry Clear"}
             </button>
@@ -506,9 +522,13 @@ function WorkerRelaySearch() {
               accept=".jsonl"
               onChange={handleFileImport}
               className="hidden"
-              disabled={isLoading}
+              disabled={isLoading || query?.loading}
             />
-            <button onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="btn btn-primary">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || query?.loading}
+              className="btn btn-primary"
+            >
               {isLoading ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
@@ -548,7 +568,7 @@ function WorkerRelaySearch() {
             <label className="block text-sm font-medium mb-2">Event Kind</label>
             <select
               value={kind ?? ""}
-              onChange={(e) => (e.target.value === "" ? setKind(null) : setKind(Number(e.target.value)))}
+              onChange={(e) => (e.target.value === "" ? kind$.next(null) : kind$.next(Number(e.target.value)))}
               className="select select-bordered w-48"
             >
               <option value="">Any</option>
@@ -576,7 +596,7 @@ function WorkerRelaySearch() {
               <option value="10007">App-specific Data (10007)</option>
               <option value="10015">Interests List (10015)</option>
               <option value="10030">User Status (10030)</option>
-              <option value="13194">File Metadata (13194)</option>
+              <option value="1063">File Metadata (1063)</option>
               <option value="30000">Follow Sets (30000)</option>
               <option value="30001">Communities (30001)</option>
               <option value="30008">Profile Badges (30008)</option>
@@ -616,14 +636,14 @@ function WorkerRelaySearch() {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => searchQuery$.next(e.target.value)}
               placeholder="Search events..."
               className="input input-bordered w-64"
             />
           </div>
 
           <div>
-            <button type="submit" disabled={isLoading} className="btn btn-primary">
+            <button type="submit" disabled={isLoading || query?.loading} className="btn btn-primary">
               {isLoading ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
@@ -655,18 +675,18 @@ function WorkerRelaySearch() {
           ))}
 
         {/* No Results Message */}
-        {!isLoading && searchQuery && searchResults.length === 0 && !error && (
+        {!isLoading && !query?.loading && searchQuery && searchResults.length === 0 && !error && (
           <div className="text-center text-base-content/70 mt-8">No events found for “{searchQuery}”</div>
         )}
 
-        {!isLoading && !searchQuery && searchResults.length === 0 && !error && (
+        {!isLoading && !query?.loading && !searchQuery && searchResults.length === 0 && !error && (
           <div className="text-center text-base-content/70 mt-8">No events in database, import some</div>
         )}
       </div>
 
       <dialog className={`modal ${viewEvent ? "modal-open" : ""}`}>
         <div className="modal-box">
-          <pre className="text-xs overflow-auto font-mono">{JSON.stringify(viewEvent, null, 2)}</pre>
+          <pre className="text-sm overflow-auto font-mono">{JSON.stringify(viewEvent, null, 2)}</pre>
         </div>
         <form method="dialog" className="modal-backdrop">
           <button onClick={() => viewEvent$.next(null)}>close</button>
@@ -677,12 +697,16 @@ function WorkerRelaySearch() {
 }
 
 export default function WorkerRelayDatabaseRoute() {
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    workerRelayReady.then(() => setReady(true)).catch(() => setFailed(true));
-  }, []);
+  const startup = use$(
+    () =>
+      from(workerRelayReady).pipe(
+        map(() => ({ ready: true, failed: false })),
+        catchError(() => of({ ready: false, failed: true })),
+        startWith({ ready: false, failed: false }),
+      ),
+    [],
+  );
+  const { ready, failed } = startup ?? { ready: false, failed: false };
 
   if (failed) {
     return (

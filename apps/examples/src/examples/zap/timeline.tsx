@@ -3,15 +3,19 @@
  * @tags nip-57, zap, timeline, lightning
  * @related zap/graph, nutzap/zap-feed
  */
-import { castUser, User, Zap } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import type { Link } from "applesauce-content/nast";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, shareReplay, map } from "rxjs";
+
+import { castUser, User, Zap } from "applesauce-common/casts";
+
+import { type Link } from "applesauce-content/nast";
+import { EventStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useState } from "react";
+import { useMemo } from "react";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -111,25 +115,25 @@ function ZapEvent({ zap }: { zap: Zap }) {
       )}
 
       {isProfileZap ? (
-        <div className="card card-sm bg-base-100 shadow-md">
-          <div className="card-body">
+        <div className="border border-base-300  bg-base-100 ">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <Avatar user={zap.recipient} />
               <div className="flex flex-col">
-                <h2 className="card-title">
+                <h2 className="font-semibold">
                   <Username user={zap.recipient} />
                 </h2>
-                <span className="text-xs text-gray-500">Profile zap</span>
+                <span className="text-sm text-gray-500">Profile zap</span>
               </div>
             </div>
           </div>
         </div>
       ) : zappedEvent ? (
-        <div className="card card-sm bg-base-100 shadow-md">
-          <div className="card-body">
+        <div className="border border-base-300  bg-base-100 ">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <Avatar user={castUser(zappedEvent.pubkey, eventStore)} />
-              <h2 className="card-title">
+              <h2 className="font-semibold">
                 <Username user={castUser(zappedEvent.pubkey, eventStore)} />
               </h2>
             </div>
@@ -137,8 +141,8 @@ function ZapEvent({ zap }: { zap: Zap }) {
           </div>
         </div>
       ) : addressPointer ? (
-        <div className="card card-sm bg-base-200 shadow-md opacity-50">
-          <div className="card-body">
+        <div className="border border-base-300  bg-base-200  opacity-50">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
@@ -147,21 +151,21 @@ function ZapEvent({ zap }: { zap: Zap }) {
                   {addressPointer.identifier}
                 </p>
                 {addressPointer.relays && addressPointer.relays.length > 0 && (
-                  <p className="text-xs text-gray-500">Checking relays: {addressPointer.relays.join(", ")}</p>
+                  <p className="text-sm text-gray-500">Checking relays: {addressPointer.relays.join(", ")}</p>
                 )}
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="card card-sm bg-base-200 shadow-md opacity-50">
-          <div className="card-body">
+        <div className="border border-base-300  bg-base-200  opacity-50">
+          <div className="p-4">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-mono">Loading event: {eventPointer!.id}</p>
                 {eventPointer!.relays && eventPointer!.relays.length > 0 && (
-                  <p className="text-xs text-gray-500">Checking relays: {eventPointer!.relays.join(", ")}</p>
+                  <p className="text-sm text-gray-500">Checking relays: {eventPointer!.relays.join(", ")}</p>
                 )}
               </div>
             </div>
@@ -173,23 +177,36 @@ function ZapEvent({ zap }: { zap: Zap }) {
 }
 
 export default function ZapsTimeline() {
-  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
+  const relay = use$(relay$);
 
-  use$(
+  const feed$ = useMemo(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [kinds.Zap], limit: 100 }, { reconnect: true })
-        .pipe(mapEventsToStore(eventStore)),
+      relayTimeline(eventStore, pool, [relay], { kinds: [kinds.Zap] }).pipe(
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
     [relay],
   );
-
-  const zaps = use$(() => eventStore.timeline({ kinds: [kinds.Zap] }).pipe(castTimelineStream(Zap, eventStore)), []);
+  const feed = use$(feed$);
+  const zaps = use$(
+    () =>
+      feed$.pipe(
+        map((state) => state.events),
+        castTimelineStream(Zap, eventStore),
+      ),
+    [feed$],
+  );
 
   return (
     <div className="container mx-auto p-2 h-full max-w-4xl">
       <div className="flex gap-2 mb-4">
-        <RelayPicker value={relay} onChange={setRelay} />
+        {feed?.status === "loading" && <p role="status">Loading…</p>}
+        {feed?.errors.map((error) => (
+          <p key={error} role="alert" className="text-error">
+            {error}
+          </p>
+        ))}
+        <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
       </div>
 
       <div className="flex flex-col gap-4">

@@ -3,15 +3,21 @@
  * @tags feed, timeline, relay, cache
  * @related feed/reactions-timeline, feed/loading-reactions
  */
-import { castEvent, Note } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+
+import NoteContent from "../../components/note-content";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, map, switchMap, of } from "rxjs";
+
+import { castEvent, Note } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
 import { Filter, getDisplayName, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useState } from "react";
+import { useMemo } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -62,8 +68,8 @@ function NoteEvent({ note }: { note: Note }) {
   const replyingToNote = replyingToEvent ? castEvent(replyingToEvent, Note, note.store) : null;
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
         {replyingToNote && <ReplyingTo note={replyingToNote} />}
         <div className="flex items-center gap-4">
           <div className="avatar">
@@ -71,37 +77,42 @@ function NoteEvent({ note }: { note: Note }) {
               <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt="Profile" />
             </div>
           </div>
-          <h2 className="card-title">{getDisplayName(profile)}</h2>
+          <h2 className="font-semibold">{getDisplayName(profile)}</h2>
         </div>
-        <p>{note.event.content}</p>
+        <NoteContent event={note.event} />
       </div>
     </div>
   );
 }
 
 export default function RelayTimeline() {
-  const [relay, setRelay] = useState("wss://relay.devvul.com");
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.devvul.com"), []);
+  const relay = use$(relay$);
 
-  // Create a timeline observable
-  const events = use$(
+  const feed = use$(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [1] })
-        .pipe(
-          // deduplicate events using the event store
-          mapEventsToStore(eventStore),
-          // collect all events into a timeline
-          mapEventsToTimeline(),
-          // Cast events to Notes
-          castTimelineStream(Note),
+      relayTimeline(eventStore, pool, [relay], { kinds: [1] }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(Note, eventStore),
+            map((events) => ({ ...result, events })),
+          ),
         ),
+      ),
     [relay],
   );
+  const events = feed?.events;
 
   return (
     <div className="container mx-auto my-8 px-4">
-      <RelayPicker value={relay} onChange={setRelay} />
+      <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+      {feed?.status === "loading" && <p role="status">Loading events…</p>}
+      {feed?.errors.map((error) => (
+        <p role="alert" className="text-error" key={error}>
+          {error}
+        </p>
+      ))}
+      {feed?.status !== "loading" && events?.length === 0 && <p>No events found.</p>}
 
       <div className="flex flex-col gap-4 py-4">
         {events?.map((note) => (

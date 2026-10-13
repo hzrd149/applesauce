@@ -3,20 +3,25 @@
  * @tags nip-23, nip-84, highlight, article, markdown
  * @related highlight/timeline, content/articles
  */
+import { castEventStream } from "applesauce-common/observable";
+import { Article } from "applesauce-common/casts";
+import { publishEvent } from "../../extra/publish";
+import { useMemo, useCallback } from "react";
+
 import { HighlightFactory } from "applesauce-common/factories";
-import { getArticleImage, getArticlePublished, getArticleSummary, getArticleTitle } from "applesauce-common/helpers";
+
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { defined, EventStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { kinds, NostrEvent } from "applesauce-core/helpers";
-import { AddressPointer, decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
-import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { kinds } from "applesauce-core/helpers";
+import { decodePointer, npubEncode } from "applesauce-core/helpers/pointers";
+import React, { useImperativeHandle, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { filter, of, take } from "rxjs";
+import { of, BehaviorSubject, map } from "rxjs";
 import { lookupRelays$ } from "../../settings";
 
 // Memoize plugins and components at module level
@@ -106,7 +111,7 @@ const HighlightButton = React.forwardRef<HighlightButtonRef, HighlightButtonProp
   return (
     <button
       ref={buttonRef}
-      className="fixed z-50 bg-primary text-primary-content rounded-full w-10 h-10 flex items-center justify-center shadow-lg cursor-pointer hover:bg-primary-focus transition-colors border-2 border-primary-content"
+      className="fixed z-50 bg-primary text-primary-content rounded-full w-10 h-10 flex items-center justify-center  cursor-pointer hover:bg-primary-focus transition-colors border-2 border-primary-content"
       style={{
         display: "none",
         userSelect: "none",
@@ -140,34 +145,51 @@ interface HighlightModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedText: string;
-  article: NostrEvent | null;
-  onPublish: (comment: string, relays: string[]) => void;
+  article: Article | null;
+  onPublish: (comment: string, relays: string[]) => Promise<void>;
 }
 
 function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: HighlightModalProps) {
-  const [comment, setComment] = useState("");
-  const [selectedRelays, setSelectedRelays] = useState<string[]>(["wss://relay.damus.io/"]);
-  const [customRelay, setCustomRelay] = useState("");
+  const comment$ = useMemo(() => new BehaviorSubject(""), []);
+  const comment = use$(comment$);
+
+  const selectedRelays$ = useMemo(() => new BehaviorSubject<string[]>(["wss://relay.damus.io/"]), []);
+  const selectedRelays = use$(selectedRelays$);
+
+  const customRelay$ = useMemo(() => new BehaviorSubject(""), []);
+  const customRelay = use$(customRelay$);
 
   const defaultRelays = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/", "wss://nostr.wine/"];
 
   const handleAddCustomRelay = () => {
     if (customRelay && !selectedRelays.includes(customRelay)) {
-      setSelectedRelays([...selectedRelays, customRelay]);
-      setCustomRelay("");
+      selectedRelays$.next([...selectedRelays, customRelay]);
+      customRelay$.next("");
     }
   };
 
   const toggleRelay = (relay: string) => {
-    setSelectedRelays((prev) => (prev.includes(relay) ? prev.filter((r) => r !== relay) : [...prev, relay]));
+    selectedRelays$.next(
+      selectedRelays$.value.includes(relay)
+        ? selectedRelays$.value.filter((r) => r !== relay)
+        : [...selectedRelays$.value, relay],
+    );
   };
 
-  const handlePublish = () => {
-    if (selectedText && selectedRelays.length > 0) {
-      onPublish(comment, selectedRelays);
-      setComment("");
+  const publishState$ = useMemo(() => new BehaviorSubject({ publishing: false, error: "" }), []);
+  const publishState = use$(publishState$);
+  const handlePublish = async () => {
+    if (!selectedText || !selectedRelays.length || publishState.publishing) return;
+    publishState$.next({ publishing: true, error: "" });
+    try {
+      await onPublish(comment, selectedRelays);
+      comment$.next("");
       onClose();
+    } catch (error) {
+      publishState$.next({ publishing: false, error: String(error) });
+      return;
     }
+    publishState$.next({ publishing: false, error: "" });
   };
 
   if (!isOpen) return null;
@@ -184,18 +206,18 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
         </div>
 
         {/* Comment input */}
-        <div className="form-control mb-4 flex flex-col gap-2">
+        <div className="flex flex-col gap-2 mb-4 flex flex-col gap-2">
           <label className="label">Comment (optional)</label>
           <textarea
             className="textarea textarea-bordered h-24 w-full"
             placeholder="Add your thoughts about this highlight..."
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => comment$.next(e.target.value)}
           />
         </div>
 
         {/* Relay selection */}
-        <div className="form-control mb-4">
+        <div className="flex flex-col gap-2 mb-4">
           <label className="label">Select relays to publish to:</label>
 
           {/* Default relays */}
@@ -220,7 +242,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
               className="input input-bordered flex-1"
               placeholder="wss://custom.relay.com/"
               value={customRelay}
-              onChange={(e) => setCustomRelay(e.target.value)}
+              onChange={(e) => customRelay$.next(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleAddCustomRelay()}
             />
             <button type="button" className="btn btn-outline" onClick={handleAddCustomRelay} disabled={!customRelay}>
@@ -248,11 +270,16 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
         {article && (
           <div className="bg-base-200 p-3 rounded mb-4">
             <p className="text-sm opacity-70">Highlighting from:</p>
-            <p className="font-semibold">{getArticleTitle(article)}</p>
-            <p className="text-sm">by {npubEncode(article.pubkey).slice(0, 12)}...</p>
+            <p className="font-semibold">{article.title}</p>
+            <p className="text-sm">by {npubEncode(article.author.pubkey).slice(0, 12)}...</p>
           </div>
         )}
 
+        {publishState.error && (
+          <p role="alert" className="text-error">
+            {publishState.error}
+          </p>
+        )}
         <div className="modal-action">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Cancel
@@ -261,7 +288,7 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
             type="button"
             className="btn btn-primary"
             onClick={handlePublish}
-            disabled={!selectedText || selectedRelays.length === 0}
+            disabled={publishState.publishing || !selectedText || selectedRelays.length === 0}
           >
             Publish Highlight
           </button>
@@ -271,9 +298,13 @@ function HighlightModal({ isOpen, onClose, selectedText, article, onPublish }: H
   );
 }
 
-function ArticleRenderer({ article }: { article: NostrEvent }) {
-  const [showModal, setShowModal] = useState(false);
-  const [selectedText, setSelectedText] = useState("");
+function ArticleRenderer({ article }: { article: Article }) {
+  const showModal$ = useMemo(() => new BehaviorSubject(false), []);
+  const showModal = use$(showModal$);
+
+  const selectedText$ = useMemo(() => new BehaviorSubject(""), []);
+  const selectedText = use$(selectedText$);
+
   const contentRef = useRef<HTMLDivElement>(null);
   const highlightButtonRef = useRef<HighlightButtonRef>(null);
 
@@ -298,8 +329,8 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
   }, []);
 
   const handleHighlight = useCallback((text: string) => {
-    setSelectedText(text);
-    setShowModal(true);
+    selectedText$.next(text);
+    showModal$.next(true);
     highlightButtonRef.current?.hide();
     window.getSelection()?.removeAllRanges();
   }, []);
@@ -308,26 +339,21 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
     async (comment: string, relays: string[]) => {
       try {
         // Get address pointer for the article
-        const addressPointer: AddressPointer = {
-          kind: article.kind,
-          pubkey: article.pubkey,
-          identifier: article.tags.find((tag) => tag[0] === "d")?.[1] || "",
-        };
+        const addressPointer = article.pointer;
 
         // Create and sign the highlight event
         let highlightFactory = HighlightFactory.create(selectedText, addressPointer);
         if (comment) highlightFactory = highlightFactory.comment(comment);
         const highlightEvent = await highlightFactory.sign(signer);
 
-        // Publish to selected relays (in a real app)
-        console.log("Publishing highlight to relays:", relays);
-        console.log("Highlight event:", highlightEvent);
+        await publishEvent(pool, relays, highlightEvent);
+        eventStore.add(highlightEvent);
 
         // Show success message
-        alert("Highlight published successfully! (This is a demo - check console for event)");
+        alert("Highlight published successfully!");
       } catch (error) {
         console.error("Failed to publish highlight:", error);
-        alert("Failed to publish highlight. Check console for details.");
+        throw error;
       }
     },
     [selectedText, article],
@@ -336,27 +362,25 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
   return (
     <div className="container mx-auto my-8 max-w-4xl px-4">
       <div className="py-4">
-        {getArticleImage(article) && (
+        {article.image && (
           <div className="w-full h-[300px] mb-6 rounded-lg overflow-hidden">
-            <img src={getArticleImage(article)} alt={getArticleTitle(article)} className="w-full h-full object-cover" />
+            <img src={article.image} alt={article.title} className="w-full h-full object-cover" />
           </div>
         )}
 
-        <h1 className="text-4xl font-bold mb-4">{getArticleTitle(article)}</h1>
-        <p className="text-lg opacity-70 mb-2">By {npubEncode(article.pubkey).slice(0, 8)}</p>
-        <p className="text-sm opacity-60 mb-8">
-          Published: {new Date(getArticlePublished(article) * 1000).toLocaleDateString()}
-        </p>
+        <h1 className="text-4xl font-bold mb-4">{article.title}</h1>
+        <p className="text-lg opacity-70 mb-2">By {npubEncode(article.author.pubkey).slice(0, 8)}</p>
+        <p className="text-sm opacity-60 mb-8">Published: {new Date(article.published * 1000).toLocaleDateString()}</p>
 
-        {getArticleSummary(article) && (
+        {article.summary && (
           <div className="bg-base-200 p-4 rounded-lg mb-6">
-            <p className="text-lg italic">{getArticleSummary(article)}</p>
+            <p className="text-lg italic">{article.summary}</p>
           </div>
         )}
 
         <div ref={contentRef} className="prose prose-lg max-w-none select-text" onMouseUp={handleMouseUp}>
           <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
-            {article.content}
+            {article.event.content}
           </ReactMarkdown>
         </div>
 
@@ -364,7 +388,7 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
 
         <HighlightModal
           isOpen={showModal}
-          onClose={() => setShowModal(false)}
+          onClose={() => showModal$.next(false)}
           selectedText={selectedText}
           article={article}
           onPublish={handlePublishHighlight}
@@ -375,29 +399,17 @@ function ArticleRenderer({ article }: { article: NostrEvent }) {
 }
 
 export default function ArticleHighlighter() {
-  const [naddr, setNaddr] = useState("");
-  const [addressPointer, setAddressPointer] = useState<AddressPointer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const naddr$ = useMemo(() => new BehaviorSubject(""), []);
+  const naddr = use$(naddr$);
 
-  // Parse naddr input
-  useEffect(() => {
-    if (!naddr.trim()) {
-      setAddressPointer(null);
-      setError(null);
-      return;
-    }
-
+  const { addressPointer, error } = useMemo(() => {
+    if (!naddr.trim()) return { addressPointer: null, error: null };
     try {
       const decoded = decodePointer(naddr.trim().replace(/^nostr:/, ""));
-      if (decoded.type === "naddr") {
-        setAddressPointer(decoded.data);
-        setError(null);
-      } else {
-        throw new Error("Please enter a valid naddr address");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid naddr format");
-      setAddressPointer(null);
+      if (decoded.type !== "naddr") throw new Error("Please enter a valid naddr address");
+      return { addressPointer: decoded.data, error: null };
+    } catch (error) {
+      return { addressPointer: null, error: String(error) };
     }
   }, [naddr]);
 
@@ -413,9 +425,8 @@ export default function ArticleHighlighter() {
         relays: addressPointer.relays,
       })
       .pipe(
-        defined(),
-        filter((event) => event.kind === kinds.LongFormArticle),
-        take(1),
+        map((event) => (event?.kind === kinds.LongFormArticle ? event : undefined)),
+        castEventStream(Article, eventStore),
       );
   }, [addressPointer?.kind, addressPointer?.pubkey, addressPointer?.identifier, addressPointer?.relays?.join("|")]);
 
@@ -425,10 +436,10 @@ export default function ArticleHighlighter() {
         <h1 className="text-4xl font-bold mb-8">Article Highlighter</h1>
 
         {/* naddr input */}
-        <div className="card bg-base-200 shadow-sm mb-8">
-          <div className="card-body">
-            <h2 className="card-title mb-4">Enter Article Address</h2>
-            <div className="form-control">
+        <div className="border border-base-300 bg-base-200  mb-8">
+          <div className="p-4">
+            <h2 className="font-semibold mb-4">Enter Article Address</h2>
+            <div className="flex flex-col gap-2">
               <label className="label">
                 <span className="label-text">NIP-23 Article Address (naddr)</span>
               </label>
@@ -438,7 +449,7 @@ export default function ArticleHighlighter() {
                   className={`input input-bordered flex-1 ${error ? "input-error" : ""}`}
                   placeholder="naddr1qqs..."
                   value={naddr}
-                  onChange={(e) => setNaddr(e.target.value)}
+                  onChange={(e) => naddr$.next(e.target.value)}
                 />
               </div>
               {error && (
@@ -480,7 +491,7 @@ export default function ArticleHighlighter() {
             </svg>
             <div>
               <h3 className="font-bold">Article not found</h3>
-              <div className="text-xs">
+              <div className="text-sm">
                 The article could not be loaded. This might be because:
                 <ul className="list-disc list-inside mt-1">
                   <li>The naddr address is invalid or malformed</li>
@@ -498,9 +509,9 @@ export default function ArticleHighlighter() {
 
         {/* Instructions */}
         {!addressPointer && (
-          <div className="card bg-base-100 shadow-sm">
-            <div className="card-body">
-              <h3 className="card-title">How to use:</h3>
+          <div className="border border-base-300 bg-base-100 ">
+            <div className="p-4">
+              <h3 className="font-semibold">How to use:</h3>
               <ol className="list-decimal list-inside space-y-2">
                 <li>Enter a nostr naddr address pointing to a NIP-23 long-form article</li>
                 <li>The article will load and display with full markdown rendering</li>

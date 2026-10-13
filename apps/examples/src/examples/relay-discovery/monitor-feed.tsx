@@ -3,6 +3,8 @@
  * @tags nip-66, relay-discovery, monitor, feed
  * @related relay-discovery/monitors-map, relay-discovery/attributes
  */
+import { BehaviorSubject, map } from "rxjs";
+
 import { RelayDiscovery, RelayMonitor } from "applesauce-common/casts";
 import { RELAY_DISCOVERY_KIND, RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
@@ -11,8 +13,8 @@ import { unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useState } from "react";
-import { map } from "rxjs";
+import { useMemo } from "react";
+
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -62,14 +64,14 @@ function RelayDiscoveryItem({ discovery }: { discovery: RelayDiscovery }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="font-mono text-sm font-medium truncate">{relayUrl}</div>
-        <div className="flex gap-4 text-xs text-base-content/60 mt-1">
+        <div className="flex gap-4 text-sm text-base-content/60 mt-1">
           {discovery.rttOpen !== undefined && <span>Open: {discovery.rttOpen}ms</span>}
           {discovery.rttRead !== undefined && <span>Read: {discovery.rttRead}ms</span>}
           {discovery.rttWrite !== undefined && <span>Write: {discovery.rttWrite}ms</span>}
           {discovery.networkType && <span>Network: {discovery.networkType}</span>}
         </div>
       </div>
-      <div className="text-xs text-base-content/50 shrink-0">
+      <div className="text-sm text-base-content/50 shrink-0">
         {new Date(discovery.event.created_at * 1000).toLocaleTimeString()}
       </div>
     </div>
@@ -84,7 +86,7 @@ function RelayDiscoveryFeed({ monitor, fallbackRelay }: { monitor: RelayMonitor;
       // Use monitor's outboxes$ observable with fallback to selected relay
       return pool
         .subscription(
-          monitor.author.outboxes$.pipe(map((outboxes) => outboxes || [fallbackRelay])),
+          monitor.author.outboxes$.pipe(map((outboxes) => (outboxes?.length ? outboxes : [fallbackRelay]))),
           {
             kinds: [RELAY_DISCOVERY_KIND],
             authors: [monitor.author.pubkey],
@@ -94,7 +96,7 @@ function RelayDiscoveryFeed({ monitor, fallbackRelay }: { monitor: RelayMonitor;
           { eventStore },
         )
         .pipe(mapEventsToStore(eventStore), mapEventsToTimeline(), castTimelineStream(RelayDiscovery));
-    }, [monitor.uid]) ?? [];
+    }, [monitor, fallbackRelay]) ?? [];
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -152,8 +154,11 @@ function RelayStatusBadge({ relay }: { relay: string }) {
 }
 
 export default function MonitorFeed() {
-  const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
-  const [selected, setSelected] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
+  const relay$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_RELAY), []);
+  const relay = use$(relay$);
+
+  const selected$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_MONITOR), []);
+  const selected = use$(selected$);
 
   // Get the monitor's announcement event
   const monitors = use$(
@@ -176,15 +181,21 @@ export default function MonitorFeed() {
   return (
     <div className="space-y-4 h-full overflow-hidden flex flex-col">
       <div className="p-4 flex flex-col gap-4">
-        <h2 className="card-title">Monitor Relay Discovery Feed</h2>
+        <h2 className="font-semibold">Monitor Relay Discovery Feed</h2>
         <p className="text-sm text-base-content/70">
           Select a relay (fallback) and a monitor to see a live feed of all relay discovery events that monitor is
           producing.
         </p>
 
         <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={setRelay} />
-          {monitors && <MonitorPicker monitors={monitors} onChange={setSelected} value={selected} />}
+          <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+          {monitors && (
+            <MonitorPicker
+              monitors={monitors}
+              onChange={(next: typeof selected$.value) => selected$.next(next)}
+              value={selected}
+            />
+          )}
         </div>
 
         {outboxes && (

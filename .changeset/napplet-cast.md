@@ -2,4 +2,4 @@
 "applesauce-common": minor
 ---
 
-Add `Napplet` cast with comment, reaction, zap, share, snapshot and lineage relationships.
+Add `Napplet`, `RootNapplet`, `NamedNapplet` and `NappletSnapshot` casts

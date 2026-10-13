@@ -9,7 +9,7 @@ import {
   LEGACY_PROFILE_BADGES_KIND,
   PROFILE_BADGES_KIND,
 } from "applesauce-common/helpers";
-import { castTimelineStream } from "applesauce-common/observable";
+import { castTimelineStream, castEventStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core/event-store";
 import {
   getAddressPointerForEvent,
@@ -17,20 +17,24 @@ import {
   kinds,
   normalizeToPubkey,
   relaySet,
+  AddressPointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo } from "react";
+import { useMemo, createContext, useContext } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
-const pubkey$ = new BehaviorSubject<string>(
-  normalizeToPubkey("npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr")!,
-);
-const selectedBadge$ = new BehaviorSubject<Badge | null>(null);
+type BrowserState = { pubkey: string; selected: AddressPointer | undefined };
+const BrowserContext = createContext<BehaviorSubject<BrowserState> | undefined>(undefined);
+function useBrowserState() {
+  const state = useContext(BrowserContext);
+  if (!state) throw new Error("Badge browser state is missing");
+  return state;
+}
 
 /** List of hard-coded relays to always use */
 const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
@@ -56,10 +60,8 @@ function RecipientAvatar({ user }: { user: User }) {
   const profile = use$(() => user.profile$, [user.pubkey]);
   const name = profile?.displayName || profile?.name || formatPubkey(user.pubkey);
 
-  const handleClick = useCallback(() => {
-    pubkey$.next(user.pubkey);
-    selectedBadge$.next(null);
-  }, [user.pubkey]);
+  const state$ = useBrowserState();
+  const handleClick = () => state$.next({ pubkey: user.pubkey, selected: undefined });
 
   return (
     <div className="avatar tooltip cursor-pointer" data-tip={name} onClick={handleClick}>
@@ -91,7 +93,7 @@ function ModalAwardRow({ award, index }: { award: BadgeAward; index: number }) {
         </svg>
       </div>
       <div className={isEven ? "timeline-start mb-10 md:text-end" : "timeline-end md:mb-10"}>
-        <time className="font-mono italic text-xs">{award.createdAt.toLocaleString()}</time>
+        <time className="font-mono italic text-sm">{award.createdAt.toLocaleString()}</time>
         <div className="text-sm">
           Awarded to {award.recipients.length} recipient{award.recipients.length === 1 ? "" : "s"}
         </div>
@@ -101,7 +103,13 @@ function ModalAwardRow({ award, index }: { award: BadgeAward; index: number }) {
 }
 
 function BadgeDetailsModal() {
-  const badge = use$(() => selectedBadge$, []);
+  const state$ = useBrowserState();
+  const selected = use$(state$).selected;
+  const badge = use$(
+    () => (selected ? eventStore.replaceable(selected).pipe(castEventStream(Badge, eventStore)) : undefined),
+    [selected],
+  );
+  const close = () => state$.next({ ...state$.value, selected: undefined });
   const pointer = useMemo(() => (badge ? getAddressPointerForEvent(badge.event) : undefined), [badge]);
 
   // Subscribe to all badge awards
@@ -109,7 +117,7 @@ function BadgeDetailsModal() {
     if (!badge || !pointer) return undefined;
 
     return pool.subscription(
-      badge.author.outboxes$.pipe(map((outboxes) => outboxes ?? [])),
+      badge.author.outboxes$.pipe(map((outboxes) => (outboxes?.length ? outboxes : RELAYS))),
       [{ kinds: [kinds.BadgeAward], "#a": [getReplaceableAddressFromPointer(pointer)] }],
       { eventStore },
     );
@@ -140,10 +148,7 @@ function BadgeDetailsModal() {
   return (
     <dialog className="modal modal-open">
       <div className="modal-box max-w-2xl">
-        <button
-          className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-          onClick={() => selectedBadge$.next(null)}
-        >
+        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={close}>
           ✕
         </button>
 
@@ -191,13 +196,14 @@ function BadgeDetailsModal() {
         )}
       </div>
       <form method="dialog" className="modal-backdrop">
-        <button onClick={() => selectedBadge$.next(null)}>close</button>
+        <button onClick={close}>close</button>
       </form>
     </dialog>
   );
 }
 
 function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAward; user: User }) {
+  const state$ = useBrowserState();
   const issuerProfile = use$(() => award?.issuer.profile$, [award]);
 
   const title = badge.name || badge.identifier || "Badge";
@@ -207,10 +213,10 @@ function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAwar
 
   return (
     <div
-      className="card border border-base-300 cursor-pointer hover:border-primary/40 transition-colors"
-      onClick={() => selectedBadge$.next(badge)}
+      className="border border-base-300 border border-base-300 cursor-pointer hover:border-primary/40 transition-colors"
+      onClick={() => state$.next({ ...state$.value, selected: badge.pointer })}
     >
-      <div className="card-body p-4 gap-3">
+      <div className="p-4 space-y-3 p-4 gap-3">
         <div className="flex items-center gap-3">
           <div className="avatar">
             <div className="w-14 rounded-xl bg-base-200">
@@ -223,9 +229,9 @@ function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAwar
           </div>
           <div className="flex-1 min-w-0">
             <div className="mb-1">
-              <span className="badge badge-ghost badge-sm">{isRecipient ? "Pinned" : "Award"}</span>
+              <span className="badge badge-ghost ">{isRecipient ? "Pinned" : "Award"}</span>
             </div>
-            <h3 className="card-title text-base truncate">{title}</h3>
+            <h3 className="font-semibold text-base truncate">{title}</h3>
           </div>
         </div>
         {description && <p className="text-sm text-base-content/80">{description}</p>}
@@ -237,7 +243,7 @@ function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAwar
                 {issuerProfile?.displayName || formatPubkey(award?.issuer.pubkey ?? "")}
               </span>
             </div>
-            <div className="text-xs">
+            <div className="text-sm">
               {award.recipients.length} recipient tag{award.recipients.length === 1 ? "" : "s"}
             </div>
           </div>
@@ -262,7 +268,7 @@ function AwardRow({ award, index, total }: { award: BadgeAward; index: number; t
 
   const content = (
     <>
-      <time className="font-mono italic text-xs">{award.createdAt.toLocaleString()}</time>
+      <time className="font-mono italic text-sm">{award.createdAt.toLocaleString()}</time>
       <div className="text-lg font-black">{name}</div>
       <div className="text-sm text-base-content/70">
         Issuer:{" "}
@@ -276,9 +282,10 @@ function AwardRow({ award, index, total }: { award: BadgeAward; index: number; t
     </>
   );
 
-  const handleClick = useCallback(() => {
-    if (badge) selectedBadge$.next(badge);
-  }, [badge]);
+  const state$ = useBrowserState();
+  const handleClick = () => {
+    if (badge) state$.next({ ...state$.value, selected: badge.pointer });
+  };
 
   return (
     <li className="cursor-pointer" onClick={handleClick}>
@@ -305,13 +312,20 @@ function AwardRow({ award, index, total }: { award: BadgeAward; index: number; t
 }
 
 export default function ProfileBadgesExample() {
-  const pubkey = use$(pubkey$);
+  const state$ = useMemo(
+    () =>
+      new BehaviorSubject<BrowserState>({
+        pubkey: normalizeToPubkey("npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr")!,
+        selected: undefined,
+      }),
+    [],
+  );
+  const { pubkey } = use$(state$);
 
   const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
   const profile = use$(() => (user ? user.profile$ : undefined), [user?.pubkey]);
   const profileBadges = use$(() => user?.profileBadges$, [user]);
   const badges = use$(() => user?.profileBadges$.badges$, [user]);
-  const mailboxes = use$(() => user?.mailboxes$, [user]);
 
   // Subscribe to a timeline of badges awards
   const awards = use$(() => {
@@ -335,81 +349,87 @@ export default function ProfileBadgesExample() {
       ],
       { eventStore },
     );
-  }, [user, mailboxes]);
+  }, [user]);
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6">
-      <PubkeyPicker value={pubkey ?? ""} onChange={(p) => pubkey$.next(p)} placeholder="npub1…" />
+    <BrowserContext.Provider value={state$}>
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        <PubkeyPicker
+          value={pubkey ?? ""}
+          onChange={(pubkey) => state$.next({ pubkey, selected: undefined })}
+          placeholder="npub1…"
+        />
 
-      {profile ? (
-        <div className="card border border-base-300">
-          <div className="card-body p-4 gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="card-title">
-                {profile.displayName || profile.name || formatPubkey(profile.event.pubkey)}
-              </h2>
-              <span className="badge badge-ghost badge-sm font-mono">{formatPubkey(profile.event.pubkey)}</span>
+        {profile ? (
+          <div className="border border-base-300 border border-base-300">
+            <div className="p-4 space-y-3 p-4 gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-semibold">
+                  {profile.displayName || profile.name || formatPubkey(profile.event.pubkey)}
+                </h2>
+                <span className="badge badge-ghost  font-mono">{formatPubkey(profile.event.pubkey)}</span>
+              </div>
+              {profile.metadata.about && <p className="text-sm text-base-content/70">{profile.metadata.about}</p>}
             </div>
-            {profile.metadata.about && <p className="text-sm text-base-content/70">{profile.metadata.about}</p>}
           </div>
-        </div>
-      ) : (
-        <div className="alert">
-          <span>Provide a pubkey to load profile metadata and badges.</span>
-        </div>
-      )}
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Pinned Badges</h2>
-          {profileBadges && <span className="badge badge-neutral">{profileBadges.count}</span>}
-        </div>
-        {profile && !profileBadges && (
-          <div className="flex justify-center py-4">
-            <span className="loading loading-spinner loading-md" />
-          </div>
-        )}
-        {profileBadges && profileBadges.slots.length === 0 && (
+        ) : (
           <div className="alert">
-            <span>This profile has not selected any badges yet.</span>
+            <span>Provide a pubkey to load profile metadata and badges.</span>
           </div>
         )}
-        {user && badges && badges.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {badges
-              .filter((slot) => !!slot.badge)
-              .map(({ badge, award }) => (
-                <BadgeSlotCard key={badge?.uid + "-" + award?.id} badge={badge!} award={award} user={user} />
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Pinned Badges</h2>
+            {profileBadges && <span className="badge badge-neutral">{profileBadges.count}</span>}
+          </div>
+          {profile && !profileBadges && (
+            <div className="flex justify-center py-4">
+              <span className="loading loading-spinner loading-md" />
+            </div>
+          )}
+          {profileBadges && profileBadges.slots.length === 0 && (
+            <div className="alert">
+              <span>This profile has not selected any badges yet.</span>
+            </div>
+          )}
+          {user && badges && badges.length > 0 && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {badges
+                .filter((slot) => !!slot.badge)
+                .map(({ badge, award }) => (
+                  <BadgeSlotCard key={badge?.uid + "-" + award?.id} badge={badge!} award={award} user={user} />
+                ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Badge award timeline</h2>
+            {awards && <span className="badge badge-neutral">{awards.length}</span>}
+          </div>
+          {pubkey && !awards && (
+            <div className="flex justify-center py-4">
+              <span className="loading loading-spinner loading-md" />
+            </div>
+          )}
+          {awards && awards.length === 0 && (
+            <div className="alert">
+              <span>No badge award events referencing this pubkey were found during this session.</span>
+            </div>
+          )}
+          {awards && awards.length > 0 && (
+            <ul className="timeline timeline-snap-icon max-md:timeline-compact timeline-vertical">
+              {awards.map((award, i) => (
+                <AwardRow key={award.id} award={award} index={i} total={awards.length} />
               ))}
-          </div>
-        )}
-      </section>
+            </ul>
+          )}
+        </section>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold">Badge award timeline</h2>
-          {awards && <span className="badge badge-neutral">{awards.length}</span>}
-        </div>
-        {pubkey && !awards && (
-          <div className="flex justify-center py-4">
-            <span className="loading loading-spinner loading-md" />
-          </div>
-        )}
-        {awards && awards.length === 0 && (
-          <div className="alert">
-            <span>No badge award events referencing this pubkey were found during this session.</span>
-          </div>
-        )}
-        {awards && awards.length > 0 && (
-          <ul className="timeline timeline-snap-icon max-md:timeline-compact timeline-vertical">
-            {awards.map((award, i) => (
-              <AwardRow key={award.id} award={award} index={i} total={awards.length} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <BadgeDetailsModal />
-    </div>
+        <BadgeDetailsModal />
+      </div>
+    </BrowserContext.Provider>
   );
 }

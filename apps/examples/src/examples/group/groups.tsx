@@ -3,20 +3,23 @@
  * @tags nip-29, nip-42, group, groups
  * @related group/relay-chat
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+
 import { encodeGroupPointer, getGroupPointerFromMetadata } from "applesauce-common/helpers";
-import { mapEventsToTimeline } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { getTagValue, NostrEvent } from "applesauce-core/helpers";
-import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useState } from "react";
-import { map } from "rxjs";
+import { useCallback, useMemo } from "react";
+import { BehaviorSubject } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // NIP-29 Group Metadata Event kind
 const GROUP_METADATA_KIND = 39000;
 
 const pool = new RelayPool();
+const eventStore = new EventStore();
 
 function GroupCard({ group, relay }: { group: NostrEvent; relay: string }) {
   const groupPointer = getGroupPointerFromMetadata(group, relay);
@@ -40,8 +43,8 @@ function GroupCard({ group, relay }: { group: NostrEvent; relay: string }) {
   const groupPointerString = encodeGroupPointer(groupPointer);
 
   return (
-    <div className="card bg-base-100 border border-base-300 hover:border-primary transition-colors">
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100 border border-base-300 hover:border-primary transition-colors">
+      <div className="p-4">
         <div className="flex items-start gap-3 mb-3">
           <div className="avatar shrink-0">
             <div className="w-16 h-16 rounded-lg bg-base-200 flex items-center justify-center">
@@ -50,7 +53,7 @@ function GroupCard({ group, relay }: { group: NostrEvent; relay: string }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="card-title truncate">{name}</h3>
+              <h3 className="font-semibold truncate">{name}</h3>
               {isPrivate && <div className="badge badge-soft badge-warning">Private</div>}
               {isPublic && <div className="badge badge-soft badge-success">Public</div>}
               {isOpen && <div className="badge badge-soft badge-info">Open</div>}
@@ -92,26 +95,19 @@ function GroupsGrid({ groups, relay }: { groups: NostrEvent[]; relay: string }) 
 }
 
 export default function GroupsExample() {
-  const [selectedRelay, setSelectedRelay] = useState("wss://pyramid.fiatjaf.com/");
+  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://pyramid.fiatjaf.com/"), []);
+  const selectedRelay = use$(selectedRelay$);
 
-  const groups = use$(() => {
-    if (!selectedRelay) return undefined;
-
-    return pool
-      .relay(selectedRelay)
-      .subscription({ kinds: [GROUP_METADATA_KIND] })
-      .pipe(
-        mapEventsToTimeline(),
-        map((events) => [...events]),
-      );
-  }, [selectedRelay]);
-
-  // Subscribe to authentication state for the selected relay
-  const challenge = useObservableEagerMemo(
-    () => (selectedRelay ? pool.relay(selectedRelay).challenge$ : undefined),
+  // NIP-29 metadata currently has helpers, rather than an event cast.
+  const feed = use$(
+    () => relayTimeline(eventStore, pool, selectedRelay ? [selectedRelay] : [], { kinds: [GROUP_METADATA_KIND] }),
     [selectedRelay],
   );
-  const authenticated = useObservableEagerMemo(
+  const groups = feed?.events;
+
+  // Subscribe to authentication state for the selected relay
+  const challenge = use$(() => (selectedRelay ? pool.relay(selectedRelay).challenge$ : undefined), [selectedRelay]);
+  const authenticated = use$(
     () => (selectedRelay ? pool.relay(selectedRelay).authenticated$ : undefined),
     [selectedRelay],
   );
@@ -135,7 +131,7 @@ export default function GroupsExample() {
   }, [selectedRelay, authenticated]);
 
   const handleRelayChange = useCallback((relay: string) => {
-    setSelectedRelay(relay);
+    selectedRelay$.next(relay);
   }, []);
 
   return (
@@ -143,8 +139,8 @@ export default function GroupsExample() {
       <div className="mb-8">
         <h1 className="mb-2">NIP-29 Groups Explorer</h1>
         <p className="text-base-content mb-6">
-          Browse groups using the NIP-29 specification. Select a relay to discover groups hosted on it. Each group card
-          displays the group pointer which can be selected and copied for use in other examples.
+          Browse groups using the NIP-29 specification. Select a relay to discover groups hosted on it. Each group
+          border border-base-300 displays the group pointer which can be selected and copied for use in other examples.
         </p>
 
         <div className="flex gap-2 items-center">
@@ -182,7 +178,7 @@ export default function GroupsExample() {
                 </svg>
                 <div className="flex-1">
                   <h3 className="font-bold">Authentication Available</h3>
-                  <div className="text-xs">
+                  <div className="text-sm">
                     This relay sent an authentication challenge. Authenticate to see private groups.
                   </div>
                 </div>
@@ -195,7 +191,16 @@ export default function GroupsExample() {
           <div className="mb-4">
             Found {groups?.length || 0} group{groups?.length !== 1 ? "s" : ""} on {selectedRelay}
           </div>
-          <GroupsGrid groups={groups || []} relay={selectedRelay} />
+          {feed?.errors.map((error) => (
+            <p key={error} role="alert" className="text-error">
+              {error}
+            </p>
+          ))}
+          {feed?.status === "loading" ? (
+            <p>Loading groups…</p>
+          ) : (
+            <GroupsGrid groups={groups || []} relay={selectedRelay} />
+          )}
         </>
       )}
 

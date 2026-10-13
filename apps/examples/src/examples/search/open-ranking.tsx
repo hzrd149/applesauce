@@ -3,278 +3,207 @@
  * @tags search, open-ranking, web-of-trust, nostr-web-token
  * @related search/vertex, search/primal
  */
+import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, ProfileContent } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { use$ } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
+import { useMemo } from "react";
+import { BehaviorSubject, catchError, defer, map, of, startWith, switchMap } from "rxjs";
+import { lookupRelays$ } from "../../settings";
+const eventStore = new EventStore();
+const pool = new RelayPool();
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
+type SearchState<T> = { status: "idle" | "loading" | "ready" | "error"; results: T[]; error?: string };
+function ProfileResult({ user }: { user: ProfilePointer }) {
+  const profile = use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
+  return (
+    <li className="flex gap-3 border-b border-base-300 py-3">
+      <img
+        className="h-12 w-12 rounded-full"
+        src={profile?.picture ?? `https://robohash.org/${user.pubkey}.png`}
+        alt=""
+      />
+      <div className="min-w-0 flex-1">
+        <a
+          href={`https://njump.me/${castUser(user, eventStore).npub}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-semibold"
+        >
+          {profile?.displayName ?? user.pubkey.slice(0, 12)}
+        </a>
+        <p className="text-sm break-words">{profile?.about}</p>
+      </div>
+      <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(castUser(user, eventStore).npub)}>
+        Copy npub
+      </button>
+    </li>
+  );
+}
+function Results({ state }: { state: SearchState<ProfilePointer> | undefined }) {
+  if (!state || state.status === "idle") return <p>Submit a query to search.</p>;
+  if (state.status === "loading") return <p role="status">Searching…</p>;
+  if (state.status === "error")
+    return (
+      <p role="alert" className="text-error">
+        {state.error}
+      </p>
+    );
+  return state.results.length ? (
+    <ul>
+      {state.results.map((user) => (
+        <ProfileResult key={user.pubkey} user={user} />
+      ))}
+    </ul>
+  ) : (
+    <p>No results found.</p>
+  );
+}
 import {
   DEFAULT_OPEN_RANKING_PROVIDER,
   OpenRanking,
   OpenRankingAlgorithm,
   OpenRankingSearchResult,
 } from "applesauce-extra";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
-import { RelayPool } from "applesauce-relay";
-import type { ISigner } from "applesauce-signers";
-import { nprofileEncode } from "applesauce-core/helpers/pointers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject } from "rxjs";
-
+import { type ISigner } from "applesauce-signers";
 import LoginView from "../../components/login-view";
-import { lookupRelays$ } from "../../settings";
-
-// Common Open Ranking providers to choose from
-const COMMON_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
-
-// Create an event store for all events
-const eventStore = new EventStore();
-
-// Create a relay pool to make relay connections
-const pool = new RelayPool();
-
-// Create unified event loader for the store
-// This will be called if the event store doesn't have the requested event
-createEventLoaderForStore(eventStore, pool, {
-  // Fallback to lookup relays if profiles cant be found
-  lookupRelays: lookupRelays$,
-});
-
-// Optional signer used to issue Nostr Web Tokens for authenticated requests
-const signer$ = new BehaviorSubject<ISigner | null>(null);
-const pubkey$ = new BehaviorSubject<string | null>(null);
-
-/** Create a hook for loading a users profile */
-function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
-}
-
-function ProfileListItem({ user }: { user: OpenRankingSearchResult }) {
-  const profile = useProfile(user);
-  const nprofile = nprofileEncode(user);
-
-  const displayName = getDisplayName(profile, user.pubkey.slice(0, 8));
-  const about = profile?.about || `User profile for ${displayName}`;
-  const pubkeyShort = user.pubkey.slice(0, 8).toUpperCase();
-
-  return (
-    <li className="list-row">
-      <div>
-        <img
-          className="size-10 rounded-box"
-          src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)}
-          alt={displayName}
-        />
-      </div>
-      <div>
-        <div>{displayName}</div>
-        <div className="text-xs uppercase font-semibold opacity-60">{pubkeyShort}</div>
-      </div>
-      <p className="list-col-wrap text-xs">{about}</p>
-      <div className="badge badge-primary" title="Web-of-trust rank">
-        {user.rank}
-      </div>
-      <a
-        href={`https://njump.me/${nprofile}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn btn-square btn-ghost"
-        title="View profile"
-      >
-        <svg
-          className="size-[1.2em]"
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-          <polyline points="15 3 21 3 21 9" />
-          <line x1="10" x2="21" y1="14" y2="3" />
-        </svg>
-      </a>
-    </li>
-  );
-}
-
 export default function OpenRankingSearch() {
-  const signer = use$(signer$);
-  const pubkey = use$(pubkey$);
-
-  const [provider, setProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
-  const [query, setQuery] = useState("");
-  const [algorithm, setAlgorithm] = useState<string>("");
-  const [algorithms, setAlgorithms] = useState<OpenRankingAlgorithm[]>([]);
-  const [searchResults, setSearchResults] = useState<OpenRankingSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [showLogin, setShowLogin] = useState(false);
-
-  // Create the Open Ranking client for the selected provider, passing the signer so point-of-view requests are authenticated with a Nostr Web Token
-  const openRanking = useMemo(() => new OpenRanking(provider, { signer: signer ?? undefined }), [provider, signer]);
-
-  // Discover which search algorithms the selected provider offers (ORE-01)
-  useEffect(() => {
-    let active = true;
-    openRanking
-      .discover()
-      .then((capabilities) => {
-        if (!active) return;
-        const supported = capabilities["/search/pubkeys"] ?? [];
-        setAlgorithms(supported);
-        // Default to the first (default) algorithm when the current selection is unavailable
-        setAlgorithm((current) => (supported.some((a) => a.id === current) ? current : (supported[0]?.id ?? "")));
-      })
-      .catch((err) => {
-        if (!active) return;
-        console.error("Failed to discover Open Ranking capabilities:", err);
-        setAlgorithms([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [openRanking]);
-
-  const handleSearch = async () => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearching(true);
-    setSearchError(null);
-
-    try {
-      // Personalized algorithms require a point-of-view pubkey
-      const selected = algorithms.find((a) => a.id === algorithm);
-      const results = await openRanking.userSearch(query.trim(), 20, {
-        algorithm: algorithm || undefined,
-        pov: selected?.pov ? (pubkey ?? undefined) : undefined,
-      });
-      setSearchResults(results);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to search";
-      setSearchError(errorMessage);
-      console.error("Search failed:", err);
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleSearch();
-  };
-
-  const handleLogin = async (newSigner: ISigner, newPubkey: string) => {
-    signer$.next(newSigner);
-    pubkey$.next(newPubkey);
-    setShowLogin(false);
-  };
-
-  // Show the login view when the user wants to enable Nostr Web Token auth
-  if (showLogin) return <LoginView onLogin={handleLogin} />;
-
+  const input$ = useMemo(
+    () => new BehaviorSubject({ provider: DEFAULT_OPEN_RANKING_PROVIDER, query: "", algorithm: "", showLogin: false }),
+    [],
+  );
+  const session$ = useMemo(() => new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null), []);
+  const commands$ = useMemo(
+    () => new BehaviorSubject<{ query: string; provider: string; algorithm: string; pubkey?: string } | null>(null),
+    [],
+  );
+  const input = use$(input$);
+  const session = use$(session$);
+  const client = useMemo(
+    () => new OpenRanking(input.provider, { signer: session?.signer }),
+    [input.provider, session?.signer],
+  );
+  const capabilities = use$(
+    () =>
+      defer(() => client.discover()).pipe(
+        map((capabilities) => ({
+          algorithms: capabilities["/search/pubkeys"] ?? ([] as OpenRankingAlgorithm[]),
+          error: "",
+          loading: false,
+        })),
+        startWith({ algorithms: [] as OpenRankingAlgorithm[], error: "", loading: true }),
+        catchError((error) =>
+          of({ algorithms: [] as OpenRankingAlgorithm[], error: String(error.message ?? error), loading: false }),
+        ),
+      ),
+    [client],
+  );
+  const algorithms = capabilities?.algorithms ?? [];
+  const algorithm = algorithms.find((algorithm) => algorithm.id === input.algorithm) ?? algorithms[0];
+  const state = use$(
+    () =>
+      commands$.pipe(
+        switchMap((command) => {
+          if (!command || command.provider !== input.provider || command.pubkey !== session?.pubkey)
+            return of<SearchState<OpenRankingSearchResult>>({ status: "idle", results: [] });
+          return defer(() =>
+            client.userSearch(command.query, 20, {
+              algorithm: command.algorithm || undefined,
+              pov: algorithm?.pov ? session?.pubkey : undefined,
+            }),
+          ).pipe(
+            map((results): SearchState<OpenRankingSearchResult> => ({ status: "ready", results })),
+            startWith<SearchState<OpenRankingSearchResult>>({ status: "loading", results: [] }),
+            catchError((error) =>
+              of<SearchState<OpenRankingSearchResult>>({
+                status: "error",
+                results: [],
+                error: String(error.message ?? error),
+              }),
+            ),
+          );
+        }),
+      ),
+    [client, input.provider, session?.pubkey, algorithm, commands$],
+  );
+  const update = (value: Partial<typeof input>) => input$.next({ ...input$.value, ...value });
+  if (input.showLogin)
+    return (
+      <LoginView
+        onLogin={(signer, pubkey) => {
+          session$.next({ signer, pubkey });
+          update({ showLogin: false });
+        }}
+      />
+    );
   return (
-    <div className="container mx-auto max-w-4xl p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="card-title text-2xl">Open Ranking Search</h1>
-        {signer ? (
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => {
-              signer$.next(null);
-              pubkey$.next(null);
-            }}
-          >
-            Sign out
-          </button>
-        ) : (
-          <button className="btn btn-sm btn-outline" onClick={() => setShowLogin(true)}>
-            Sign in for Nostr Web Token auth
-          </button>
-        )}
-      </div>
-
-      {/* Provider selection — algorithms are discovered from the chosen provider (ORE-01) */}
-      <div className="mb-2">
-        <div className="text-sm mb-1">Provider</div>
+    <div className="mx-auto max-w-4xl p-4 space-y-4">
+      <button className="btn btn-sm" onClick={() => (session ? session$.next(null) : update({ showLogin: true }))}>
+        {session ? "Sign out" : "Sign in for personalized ranking"}
+      </button>
+      <label className="flex flex-col gap-2">
+        Provider
         <input
-          type="text"
-          list="open-ranking-providers"
-          placeholder="https://provider.example.com"
-          className="input input-bordered w-full"
-          value={provider}
-          onChange={(e) => setProvider(e.target.value)}
+          className="input input-bordered"
+          value={input.provider}
+          onChange={(event) => update({ provider: event.target.value })}
         />
-        <datalist id="open-ranking-providers">
-          {COMMON_PROVIDERS.map((p) => (
-            <option key={p} value={p} />
-          ))}
-        </datalist>
-      </div>
-
-      <div className="flex gap-2 mb-4">
+      </label>
+      {capabilities?.error && (
+        <p role="alert" className="text-error">
+          {capabilities.error}
+        </p>
+      )}
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (input.query.trim())
+            commands$.next({
+              query: input.query.trim(),
+              provider: input.provider,
+              algorithm: algorithm?.id ?? "",
+              pubkey: session?.pubkey,
+            });
+        }}
+      >
         <input
-          type="text"
-          placeholder="Search for profiles..."
           className="input input-bordered flex-1"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyPress={handleKeyPress}
+          value={input.query}
+          placeholder="Search ranked profiles"
+          onChange={(event) => update({ query: event.target.value })}
         />
-        {algorithms.length > 0 && (
-          <select className="select select-bordered" value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
-            {algorithms.map((a) => (
-              <option key={a.id} value={a.id} disabled={a.pov && !signer}>
-                {a.name}
-                {a.pov ? " (point-of-view)" : ""}
-              </option>
-            ))}
-          </select>
-        )}
-        <button className="btn btn-primary" onClick={handleSearch} disabled={searching}>
-          {searching ? (
-            <>
-              <span className="loading loading-spinner loading-sm"></span>
-              Searching...
-            </>
-          ) : (
-            "Search"
-          )}
+        <select
+          className="select select-bordered"
+          value={algorithm?.id ?? ""}
+          onChange={(event) => update({ algorithm: event.target.value })}
+        >
+          {algorithms.map((algorithm) => (
+            <option key={algorithm.id} value={algorithm.id} disabled={algorithm.pov && !session}>
+              {algorithm.name}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn btn-primary"
+          disabled={
+            !input.query.trim() ||
+            state?.status === "loading" ||
+            capabilities?.loading ||
+            !!(algorithm?.pov && !session)
+          }
+        >
+          Search
         </button>
-      </div>
-
-      {/* Show search error */}
-      {searchError && (
-        <div className="alert alert-error">
-          <span>{searchError}</span>
-        </div>
-      )}
-
-      {/* Search Results */}
-      {searchResults.length > 0 && (
-        <>
-          <div className="text-sm mb-2">
-            <span>Search Results ({searchResults.length})</span>
-          </div>
-          <ul className="list bg-base-100 rounded-box">
-            {searchResults.map((user) => (
-              <ProfileListItem key={user.pubkey} user={user} />
-            ))}
-          </ul>
-        </>
-      )}
-
-      {/* Show message when no results */}
-      {query && !searching && searchResults.length === 0 && !searchError && (
-        <div className="alert alert-info">
-          <span>No results found. Try a different search query.</span>
-        </div>
-      )}
+      </form>
+      <Results state={state} />
+      {state?.results.map((user) => (
+        <p key={user.pubkey}>
+          {user.pubkey.slice(0, 12)}: rank {user.rank}
+        </p>
+      ))}
     </div>
   );
 }

@@ -5,28 +5,41 @@
  */
 import { GitRepository, User } from "applesauce-common/casts";
 import { GIT_REPOSITORY_KIND } from "applesauce-common/helpers";
-import { ReactionsModel } from "applesauce-common/models";
+import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
-import { castEvent } from "applesauce-core/casts";
 import {
   type Filter,
   ensureWebSocketURL,
   getDisplayName,
   getProfilePicture,
-  getReplaceableAddress,
+  getEventUID,
   naddrEncode,
   normalizeURL,
   npubEncode,
   relaySet,
 } from "applesauce-core/helpers";
 import { processTags } from "applesauce-core/helpers/tags";
-import { NostrEvent } from "applesauce-core/helpers/event";
-import { mapEventsToTimeline } from "applesauce-core/observable";
 import { createEventLoaderForStore, createReactionsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { combineLatest, lastValueFrom, map, of } from "rxjs";
+import { useCallback, useMemo } from "react";
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  defer,
+  endWith,
+  ignoreElements,
+  map,
+  of,
+  startWith,
+  switchMap,
+  tap,
+  Subject,
+  exhaustMap,
+  concat,
+  timer,
+} from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -43,8 +56,44 @@ createEventLoaderForStore(eventStore, pool, {
 
 const reactionLoader = createReactionsLoader(pool, { eventStore });
 
-function graspServersFromRepoTags(event: NostrEvent): string[] {
-  return relaySet(processTags(event.tags, (tag) => (tag[0] === "g" ? tag[1] : undefined)));
+type SearchStatus = { status: "loading" | "done" } | { status: "error"; message: string };
+type SearchState = SearchStatus & { repos: GitRepository[] };
+
+/** Runs a NIP-50 search on one relay and renders the matching repos from the store (latest revisions only) */
+function searchRepos(relay: string, query: string) {
+  const filter: Filter = { kinds: [GIT_REPOSITORY_KIND], limit: 50 };
+  if (query) filter.search = query;
+
+  return defer(() => {
+    // Addresses matched by this search; the store keeps only the newest revision of each
+    const matches = new Set<string>();
+
+    const status$ = pool
+      .relay(relay)
+      .request(filter, { timeout: 20_000 })
+      .pipe(
+        tap((event) => matches.add(getEventUID(event))),
+        mapEventsToStore(eventStore),
+        ignoreElements(),
+        endWith<SearchStatus>({ status: "done" }),
+        startWith<SearchStatus>({ status: "loading" }),
+        catchError((err) => of<SearchStatus>({ status: "error", message: err?.message ?? "Request failed" })),
+      );
+
+    return status$.pipe(
+      switchMap((status) =>
+        eventStore.timeline({ kinds: [GIT_REPOSITORY_KIND] }).pipe(
+          map((events) => events.filter((e) => matches.has(getEventUID(e)))),
+          castTimelineStream(GitRepository, eventStore),
+          map((repos): SearchState => ({ ...status, repos })),
+        ),
+      ),
+    );
+  });
+}
+
+function graspServersFromRepoTags(repo: GitRepository): string[] {
+  return relaySet(processTags(repo.event.tags, (tag) => (tag[0] === "g" ? tag[1] : undefined)));
 }
 
 function endpointHostname(url: string): string {
@@ -66,426 +115,380 @@ function toPoolRelayUrl(rawUrl: string): string | null {
   }
 }
 
-function MaintainerChip({ user }: { user: User }) {
-  const profile = use$(() => user.profile$, [user.pubkey]);
-  const displayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "…");
-  const picture = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
+function workshopUrl(repo: GitRepository) {
+  return `https://gitworkshop.dev/${npubEncode(repo.event.pubkey)}/${encodeURIComponent(repo.identifier)}`;
+}
+
+function naddrUri(repo: GitRepository) {
+  return `nostr:${naddrEncode(repo.pointer)}`;
+}
+
+function CopyButton({
+  value,
+  label = "Copy",
+  className = "btn btn-sm",
+}: {
+  value: string;
+  label?: string;
+  className?: string;
+}) {
+  const copy$ = useMemo(() => new Subject<void>(), []);
+  const copied =
+    use$(
+      () =>
+        copy$.pipe(
+          exhaustMap(() =>
+            defer(() => navigator.clipboard.writeText(value)).pipe(
+              switchMap(() => concat(of(true), timer(2000).pipe(map(() => false)))),
+              catchError(() => of(false)),
+            ),
+          ),
+        ),
+      [copy$, value],
+    ) ?? false;
 
   return (
-    <div className="flex items-center gap-2 min-w-0 max-w-[14rem] rounded border border-base-300 bg-base-200/40 px-2 py-1">
-      <div className="avatar shrink-0">
-        <div className="w-5 h-5 rounded-full border border-base-300">
-          <img src={picture} alt="" />
-        </div>
+    <button
+      type="button"
+      className={className}
+      title={value}
+      onClick={(e) => {
+        e.stopPropagation();
+        copy$.next();
+      }}
+    >
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+function Avatar({ user, size = "w-9 h-9" }: { user: User; size?: string }) {
+  const profile = use$(user.profile$);
+  return (
+    <div className="avatar shrink-0">
+      <div className={`${size} rounded-full border border-base-300`}>
+        <img src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)} alt="" />
       </div>
-      <span className="truncate text-xs font-medium text-base-content/90">{displayName}</span>
     </div>
   );
 }
 
-function EndpointChip({ pool, url, kind }: { pool: RelayPool; url: string; kind: "relay" | "grasp" }) {
-  const kindLabel = kind === "relay" ? "Relay" : "Grasp";
+function UserName({ user }: { user: User }) {
+  const profile = use$(user.profile$);
+  return <>{getDisplayName(profile, user.pubkey.slice(0, 8) + "…")}</>;
+}
 
+function MaintainerChip({ user }: { user: User }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 max-w-[14rem] rounded border border-base-300 px-2 py-1">
+      <Avatar user={user} size="w-6 h-6" />
+      <span className="truncate font-medium">
+        <UserName user={user} />
+      </span>
+    </div>
+  );
+}
+
+function EndpointChip({ url, kind }: { url: string; kind: "relay" | "grasp" }) {
   const display = use$(() => {
     const relayUrl = toPoolRelayUrl(url);
-    if (!relayUrl) {
-      return of({ icon: undefined as string | undefined, name: url });
-    }
+    if (!relayUrl) return of({ icon: undefined as string | undefined, name: url });
+
     const r = pool.relay(relayUrl);
     return combineLatest([r.icon$, r.information$]).pipe(
-      map(([icon, info]) => ({
-        icon,
-        name: (info?.name && info.name.trim()) || endpointHostname(url) || relayUrl,
-      })),
+      map(([icon, info]) => ({ icon, name: info?.name?.trim() || endpointHostname(url) })),
     );
-  }, [pool, url]);
+  }, [url]);
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 max-w-[14rem] rounded border border-base-300 bg-base-200/40 px-2 py-0.5 text-xs"
-      title={`${kindLabel}: ${url}`}
+      className="inline-flex items-center gap-1.5 max-w-[14rem] rounded border border-base-300 px-2 py-0.5"
+      title={`${kind === "relay" ? "Relay" : "Grasp"}: ${url}`}
     >
-      {display?.icon ? (
+      {display?.icon && (
         <img
           src={display.icon}
           alt=""
-          className="size-3.5 shrink-0 rounded-sm"
+          className="size-4 shrink-0 rounded-sm"
           loading="lazy"
-          onError={(e) => {
-            (e.target as HTMLImageElement).hidden = true;
-          }}
+          onError={(e) => ((e.target as HTMLImageElement).hidden = true)}
         />
-      ) : null}
-      <span className="truncate font-medium text-base-content/90">{display?.name ?? endpointHostname(url)}</span>
+      )}
+      <span className="truncate font-medium">{display?.name ?? endpointHostname(url)}</span>
     </span>
   );
 }
 
-function dedupeLatestRepoVersions(events: NostrEvent[]): NostrEvent[] {
-  const best = new Map<string, NostrEvent>();
-  for (const e of events) {
-    const addr = getReplaceableAddress(e);
-    if (!addr) continue;
-    const cur = best.get(addr);
-    if (!cur || e.created_at > cur.created_at) best.set(addr, e);
-  }
-  return Array.from(best.values()).sort((a, b) => b.created_at - a.created_at);
-}
-
-function useReactions(event: NostrEvent, relayHints: string[]) {
-  const reactions = use$(
-    () =>
-      eventStore.model(ReactionsModel, event).pipe(
-        map((list) =>
-          list.reduce(
-            (acc, reaction) => {
-              const content = reaction.content || "+";
-              acc[content] = (acc[content] || 0) + 1;
-              return acc;
-            },
-            {} as Record<string, number>,
-          ),
-        ),
-      ),
-    [event],
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <h3 className="font-semibold mb-2">{title}</h3>
+      {children}
+    </section>
   );
-
-  const hintsKey = relayHints.join("|");
-  use$(() => reactionLoader(event, relayHints), [event, hintsKey]);
-
-  return reactions ?? {};
 }
 
-function ReactionSection({ event, relayHints }: { event: NostrEvent; relayHints: string[] }) {
-  const reactions = useReactions(event, relayHints);
-  const entries = Object.entries(reactions);
+function Reactions({ repo, relay }: { repo: GitRepository; relay: string }) {
+  const reactions = use$(repo.reactions$);
+  use$(() => reactionLoader(repo.event, [relay, "wss://relay.ngit.dev/"]), [repo.id, relay]);
 
-  if (entries.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const r of reactions ?? []) counts.set(r.content || "+", (counts.get(r.content || "+") ?? 0) + 1);
+  if (counts.size === 0) return null;
 
   return (
-    <div className="mt-3">
-      <div className="text-xs uppercase tracking-wide text-base-content/60 mb-1">Reactions (kind 7)</div>
-      <div className="flex flex-wrap gap-2 mt-2">
-        {entries.map(([emoji, count]) => (
-          <div key={emoji} className="badge badge-outline badge-sm flex items-center gap-1">
-            <span>{emoji}</span>
-            <span>{count}</span>
-          </div>
+    <Section title="Reactions">
+      <div className="flex flex-wrap gap-2">
+        {[...counts].map(([emoji, count]) => (
+          <span key={emoji} className="badge badge-outline gap-1">
+            {emoji} {count}
+          </span>
         ))}
       </div>
-    </div>
+    </Section>
   );
 }
 
-function RepoCard({ pool, event, relayHints }: { pool: RelayPool; event: NostrEvent; relayHints: string[] }) {
-  const repo = useMemo(() => castEvent(event, GitRepository, eventStore), [event]);
-
-  const profile = use$(() => eventStore.profile(event.pubkey), [event.pubkey]);
-  const ownerName = getDisplayName(profile, event.pubkey.slice(0, 8) + "...");
-  const ownerPicture = getProfilePicture(profile, `https://robohash.org/${event.pubkey}.png`);
-
+function Upstream({ repo }: { repo: GitRepository }) {
   const upstream = use$(repo.upstream$);
-  const graspServers = useMemo(() => graspServersFromRepoTags(event), [event]);
-  const hasRelays = repo.relays.length > 0;
-  const hasGrasp = graspServers.length > 0;
-
-  const upstreamPubkey = upstream?.author.pubkey;
-  const upstreamProfile = use$(
-    () => (upstreamPubkey ? eventStore.profile(upstreamPubkey) : undefined),
-    [upstreamPubkey ?? ""],
-  );
-
-  const npub = useMemo(() => npubEncode(event.pubkey), [event.pubkey]);
-  const gitworkshopUrl = useMemo(
-    () => `https://gitworkshop.dev/${npub}/${encodeURIComponent(repo.identifier)}`,
-    [npub, repo.identifier],
-  );
-  const nostrNaddrUri = `nostr:${naddrEncode(repo.pointer)}`;
-
-  const upstreamWorkshopUrl = upstream
-    ? `https://gitworkshop.dev/${npubEncode(upstream.author.pubkey)}/${encodeURIComponent(upstream.identifier)}`
-    : "";
-  const upstreamNostrNaddrUri = upstream ? `nostr:${naddrEncode(upstream.pointer)}` : "";
-
-  const [naddrCopied, setNaddrCopied] = useState(false);
-  const [upstreamNaddrCopied, setUpstreamNaddrCopied] = useState(false);
-  const copyNaddr = async () => {
-    try {
-      await navigator.clipboard.writeText(nostrNaddrUri);
-      setNaddrCopied(true);
-      setTimeout(() => setNaddrCopied(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  };
-  const copyUpstreamNaddr = async () => {
-    if (!upstreamNostrNaddrUri) return;
-    try {
-      await navigator.clipboard.writeText(upstreamNostrNaddrUri);
-      setUpstreamNaddrCopied(true);
-      setTimeout(() => setUpstreamNaddrCopied(false), 2000);
-    } catch {
-      /* ignore */
-    }
-  };
+  if (!upstream) return null;
 
   return (
-    <article className="border border-base-300 bg-base-100 p-4">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start">
-        <div className="flex-1 min-w-0">
-          <div className="flex gap-4 justify-between items-start flex-wrap">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="avatar">
-                <div className="w-9 h-9 rounded-full border border-base-300">
-                  <img src={ownerPicture} alt={ownerName} />
-                </div>
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold leading-tight truncate">{repo.name ?? repo.identifier}</h2>
-                <p className="text-xs text-base-content/60 truncate">
-                  {ownerName} / <code>{repo.identifier}</code>
-                </p>
-              </div>
-            </div>
+    <Section title="Upstream repository">
+      <div className="flex flex-wrap items-center justify-between gap-3 border border-base-300 p-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar user={upstream.author} />
+          <div className="min-w-0 text-sm truncate">
+            <UserName user={upstream.author} /> / <code>{upstream.identifier}</code>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <a href={workshopUrl(upstream)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline">
+            Open
+          </a>
+          <CopyButton value={naddrUri(upstream)} label="Copy link" />
+        </div>
+      </div>
+    </Section>
+  );
+}
 
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <a href={gitworkshopUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline">
-                Open Git Workshop
-              </a>
-              <button type="button" className="btn btn-sm" onClick={() => void copyNaddr()} title={nostrNaddrUri}>
-                {naddrCopied ? "Copied" : "Copy naddr"}
-              </button>
+function RepoDetails({ repo, relay, onClose }: { repo: GitRepository; relay: string; onClose: () => void }) {
+  const graspServers = useMemo(() => graspServersFromRepoTags(repo), [repo]);
+
+  // Open the native dialog as soon as it mounts
+  const openDialog = useCallback((node: HTMLDialogElement | null) => {
+    if (node && !node.open) node.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={openDialog}
+      onClose={onClose}
+      onClick={(e) => e.target === e.currentTarget && e.currentTarget.close()}
+      className="m-auto w-[calc(100%_-_2rem)] max-w-3xl max-h-[90dvh] rounded border border-base-300 bg-base-100 text-base-content p-0 backdrop:bg-black/50"
+    >
+      <div className="flex flex-col gap-5 p-6">
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Avatar user={repo.author} size="w-12 h-12" />
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold truncate">{repo.name ?? repo.identifier}</h2>
+              <p className="text-sm text-base-content/60 truncate">
+                <UserName user={repo.author} /> / <code>{repo.identifier}</code>
+              </p>
             </div>
           </div>
+          <form method="dialog">
+            <button className="btn btn-sm btn-ghost" aria-label="Close">
+              ✕
+            </button>
+          </form>
+        </header>
 
-          {upstream && upstreamPubkey && (
-            <div className="mb-3 border border-base-300 bg-base-200/30 px-3 py-3">
-              <div className="text-xs uppercase tracking-wide text-base-content/60 mb-2">Upstream repository</div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="avatar shrink-0">
-                    <div className="w-9 h-9 rounded-full border border-base-300">
-                      <img
-                        src={getProfilePicture(upstreamProfile, `https://robohash.org/${upstreamPubkey}.png`)}
-                        alt=""
-                      />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      {getDisplayName(upstreamProfile, upstreamPubkey.slice(0, 8) + "…")} /{" "}
-                      <code className="text-xs">{upstream.identifier}</code>
-                    </div>
-                    <p className="text-xs text-base-content/60 mt-0.5">
-                      This repo references the above as its upstream.
-                    </p>
-                  </div>
+        {repo.description && <p className="text-sm text-base-content/80">{repo.description}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          <a href={workshopUrl(repo)} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-primary">
+            Open in Git Workshop
+          </a>
+          <CopyButton value={naddrUri(repo)} label="Copy naddr" />
+          {repo.webUrls[0] && (
+            <a href={repo.webUrls[0]} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-outline">
+              Website
+            </a>
+          )}
+        </div>
+
+        {repo.cloneUrls.length > 0 && (
+          <Section title="Clone">
+            <div className="flex flex-col gap-2">
+              {repo.cloneUrls.map((url) => (
+                <div key={url} className="flex items-center gap-2">
+                  <code className="flex-1 bg-base-200 px-2 py-1 break-all">{url}</code>
+                  <CopyButton value={url} className="btn btn-sm" />
                 </div>
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <a
-                    href={upstreamWorkshopUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-sm btn-outline"
-                  >
-                    Open Git Workshop
-                  </a>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => void copyUpstreamNaddr()}
-                    title={upstreamNostrNaddrUri}
-                  >
-                    {upstreamNaddrCopied ? "Copied" : "Copy naddr"}
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
-          )}
+          </Section>
+        )}
 
-          {repo.description && <p className="text-sm text-base-content/80 mb-3 max-w-3xl">{repo.description}</p>}
+        <Upstream repo={repo} />
 
-          <div className="text-xs text-base-content/60 mb-2 space-y-1">
-            <div>
-              Updated{" "}
-              <time dateTime={new Date(event.created_at * 1000).toISOString()}>{repo.createdAt.toLocaleString()}</time>
+        {repo.maintainers.length > 0 && (
+          <Section title="Maintainers">
+            <div className="flex flex-wrap gap-2">
+              {repo.maintainers.map((maintainer) => (
+                <MaintainerChip key={maintainer.pubkey} user={maintainer} />
+              ))}
             </div>
-            {repo.earliestUniqueCommit && (
-              <div>
-                <span className="font-medium text-base-content/80">Earliest unique commit</span>{" "}
-                <code className="bg-base-200 px-1">{repo.earliestUniqueCommit}</code>
-              </div>
-            )}
-          </div>
+          </Section>
+        )}
 
-          {repo.maintainers.length > 0 && (
-            <div className="mb-3">
-              <div className="text-xs uppercase tracking-wide text-base-content/60 mb-1">Maintainers</div>
-              <div className="flex flex-wrap gap-2">
-                {repo.maintainers.slice(0, 12).map((maintainer) => (
-                  <MaintainerChip key={maintainer.pubkey} user={maintainer} />
-                ))}
-              </div>
+        {(repo.relays.length > 0 || graspServers.length > 0) && (
+          <Section title="Relays & Grasp servers">
+            <div className="flex flex-wrap gap-2">
+              {repo.relays.map((r) => (
+                <EndpointChip key={r} url={r} kind="relay" />
+              ))}
+              {graspServers.map((g) => (
+                <EndpointChip key={g} url={g} kind="grasp" />
+              ))}
             </div>
-          )}
+          </Section>
+        )}
 
-          {(hasRelays || hasGrasp) && (
-            <div className="mb-3">
-              <div className="text-xs uppercase tracking-wide text-base-content/60 mb-1">
-                {hasRelays && hasGrasp ? "Relays & Grasp" : hasRelays ? "Relays" : "Grasp servers"}
-              </div>
-              <div className="flex flex-wrap gap-2 items-center">
-                {repo.relays.map((r) => (
-                  <EndpointChip key={r} pool={pool} url={r} kind="relay" />
-                ))}
-                {graspServers.map((g) => (
-                  <EndpointChip key={g} pool={pool} url={g} kind="grasp" />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {repo.hashtags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3">
-              {repo.hashtags.slice(0, 12).map((tag) => (
-                <span key={tag} className="badge badge-outline badge-sm">
+        {repo.hashtags.length > 0 && (
+          <Section title="Tags">
+            <div className="flex flex-wrap gap-1">
+              {repo.hashtags.map((tag) => (
+                <span key={tag} className="badge badge-outline">
                   {tag}
                 </span>
               ))}
             </div>
+          </Section>
+        )}
+
+        <Reactions repo={repo} relay={relay} />
+
+        <div className="text-base-content/60 space-y-1">
+          <div>Updated {repo.createdAt.toLocaleString()}</div>
+          {repo.earliestUniqueCommit && (
+            <div>
+              Earliest unique commit <code className="bg-base-200 px-1">{repo.earliestUniqueCommit}</code>
+            </div>
           )}
-
-          <div className="flex flex-col gap-2 text-sm">
-            {repo.cloneUrls[0] && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-base-content/60">Clone</span>
-                <code className="bg-base-200 px-2 py-1 text-xs break-all">{repo.cloneUrls[0]}</code>
-                <button
-                  type="button"
-                  className="btn btn-xs"
-                  onClick={() => navigator.clipboard.writeText(repo.cloneUrls[0] ?? "")}
-                >
-                  Copy
-                </button>
-              </div>
-            )}
-
-            {repo.webUrls[0] && (
-              <a href={repo.webUrls[0]} target="_blank" rel="noopener noreferrer" className="link link-primary w-fit">
-                Open repository website
-              </a>
-            )}
-          </div>
-
-          <ReactionSection event={event} relayHints={relayHints} />
         </div>
       </div>
-    </article>
+    </dialog>
+  );
+}
+
+function RepoRow({ repo, onSelect }: { repo: GitRepository; onSelect: () => void }) {
+  return (
+    <li
+      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-base-200/50"
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === "Enter" && onSelect()}
+    >
+      <Avatar user={repo.author} />
+      <div className="flex-1 min-w-0">
+        <div className="truncate">
+          <span className="font-semibold">{repo.name ?? repo.identifier}</span>
+          <span className="text-sm text-base-content/60">
+            {" "}
+            by <UserName user={repo.author} />
+          </span>
+        </div>
+        {repo.description && <p className="text-sm text-base-content/70 truncate">{repo.description}</p>}
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <a
+          href={workshopUrl(repo)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-sm btn-ghost"
+          onClick={(e) => e.stopPropagation()}
+        >
+          Open
+        </a>
+        <CopyButton value={naddrUri(repo)} label="Copy link" className="btn btn-sm btn-ghost" />
+      </div>
+    </li>
   );
 }
 
 export default function RepoSearchFeed() {
-  const [relay, setRelay] = useState(DEFAULT_INDEX_RELAY);
-  const [draftQuery, setDraftQuery] = useState("");
-  const [repos, setRepos] = useState<NostrEvent[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject(DEFAULT_INDEX_RELAY), []);
+  const query$ = useMemo(() => new BehaviorSubject(""), []);
+  const selected$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
 
-  const relayHints = useMemo(() => [relay, "wss://relay.ngit.dev/", "wss://relay.damus.io/"].filter(Boolean), [relay]);
+  const relay = use$(relay$);
+  const query = use$(query$);
+  const selected = use$(selected$);
 
-  const load = useCallback(
-    async (search: string) => {
-      setLoading(true);
-      setError(null);
-
-      const filter: Filter = {
-        kinds: [GIT_REPOSITORY_KIND],
-        limit: 50,
-      };
-      const q = search.trim();
-      if (q) filter.search = q;
-
-      try {
-        const timeline = await lastValueFrom(
-          pool
-            .relay(relay)
-            .request(filter, { timeout: 20_000 })
-            .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
-        );
-        setRepos(dedupeLatestRepoVersions(timeline));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Request failed");
-        setRepos([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [relay],
-  );
-
-  useEffect(() => {
-    void load("");
-  }, [load]);
+  const search = use$(() => searchRepos(relay, query), [relay, query]);
+  const repos = search?.repos ?? [];
+  const selectedRepo = selected ? repos.find((r) => r.uid === selected) : undefined;
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex-1">
-          <label className="label" htmlFor="repo-search-q">
-            <span className="label-text">Search repositories (NIP-50)</span>
-          </label>
-          <div className="join flex">
-            <input
-              id="repo-search-q"
-              type="search"
-              className="input input-bordered join-item flex-1"
-              placeholder="Filter indexed repos…"
-              value={draftQuery}
-              onChange={(e) => setDraftQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void load(draftQuery)}
-            />
-            <button
-              type="button"
-              className="btn btn-primary join-item"
-              disabled={loading}
-              onClick={() => void load(draftQuery)}
-            >
-              {loading ? <span className="loading loading-spinner loading-sm" /> : null}
-              Search
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <RelayPicker
-            value={relay}
-            onChange={setRelay}
-            common={[DEFAULT_INDEX_RELAY, "wss://relay.ngit.dev/", "wss://search.nos.today"]}
+    <div className="w-full max-w-4xl mx-auto px-4 py-8">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end">
+        <form
+          className="join flex flex-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            query$.next(String(new FormData(e.currentTarget).get("q") ?? "").trim());
+          }}
+        >
+          <input
+            name="q"
+            type="search"
+            className="input input-bordered join-item flex-1"
+            placeholder="Search repositories (NIP-50)…"
+            defaultValue={query}
           />
-        </div>
+          <button type="submit" className="btn btn-primary join-item" disabled={search?.status === "loading"}>
+            {search?.status === "loading" && <span className="loading loading-spinner loading-sm" />}
+            Search
+          </button>
+        </form>
+        <RelayPicker
+          value={relay}
+          onChange={(r) => relay$.next(r)}
+          common={[DEFAULT_INDEX_RELAY, "wss://relay.ngit.dev/", "wss://search.nos.today"]}
+        />
       </div>
 
-      {error && (
+      {search?.status === "error" && (
         <div className="alert alert-warning mb-4" role="alert">
-          {error}
+          {search.message}
         </div>
       )}
 
-      {loading && repos === null ? (
+      {repos.length > 0 ? (
+        <ul className="border border-base-300 divide-y divide-base-300">
+          {repos.map((repo) => (
+            <RepoRow key={repo.uid} repo={repo} onSelect={() => selected$.next(repo.uid)} />
+          ))}
+        </ul>
+      ) : !search || search.status === "loading" ? (
         <div className="border border-base-300 p-6 text-center">
           <span className="loading loading-spinner" />
           <p className="mt-3 text-base-content/70">Loading repository announcements…</p>
         </div>
-      ) : !repos || repos.length === 0 ? (
+      ) : (
         <div className="border border-base-300 p-6 text-center">
           <h2 className="font-semibold">No repositories found</h2>
           <p className="text-sm text-base-content/70 mt-2">Try another query or relay.</p>
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {repos.map((ev) => (
-            <RepoCard key={getReplaceableAddress(ev) ?? ev.id} pool={pool} event={ev} relayHints={relayHints} />
-          ))}
-        </div>
+      )}
+
+      {selectedRepo && (
+        <RepoDetails key={selectedRepo.uid} repo={selectedRepo} relay={relay} onClose={() => selected$.next(null)} />
       )}
     </div>
   );

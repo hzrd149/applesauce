@@ -3,6 +3,8 @@
  * @tags nip-02, nip-65, casting, contacts, follows
  * @related casting/mutes, casting/thread
  */
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { FollowUser, UnfollowUser } from "applesauce-actions/actions";
@@ -13,7 +15,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -27,7 +29,9 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Setup event store and relay pool
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())));
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
+  await publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+});
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
@@ -42,8 +46,8 @@ function ContactCard({ user, onUnfollow }: { user: User; onUnfollow: () => void 
   const picture = getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`);
 
   return (
-    <div className="card bg-base-100 shadow-sm">
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3 p-4">
         <div className="flex items-center gap-3">
           <div className="avatar">
             <div className="w-12 h-12 rounded-full">
@@ -64,30 +68,33 @@ function ContactCard({ user, onUnfollow }: { user: User; onUnfollow: () => void 
 }
 
 function AddContactForm({ onAdd }: { onAdd: (pubkey: string) => Promise<void> }) {
-  const [pubkey, setPubkey] = useState("");
-  const [adding, setAdding] = useState(false);
+  const pubkey$ = useMemo(() => new BehaviorSubject(""), []);
+  const pubkey = use$(pubkey$);
+
+  const adding$ = useMemo(() => new BehaviorSubject(false), []);
+  const adding = use$(adding$);
 
   const handleAdd = useCallback(async () => {
     if (!pubkey.trim()) return;
 
     try {
-      setAdding(true);
+      adding$.next(true);
       await onAdd(pubkey.trim());
-      setPubkey("");
+      pubkey$.next("");
     } catch (err) {
       console.error("Failed to add contact:", err);
       alert(err instanceof Error ? err.message : "Failed to add contact");
     } finally {
-      setAdding(false);
+      adding$.next(false);
     }
   }, [pubkey, onAdd]);
 
   return (
-    <div className="card bg-base-100 shadow-sm mb-4">
-      <div className="card-body">
-        <h3 className="card-title text-lg mb-2">Add Contact</h3>
+    <div className="border border-base-300 bg-base-100  mb-4">
+      <div className="p-4 space-y-3">
+        <h3 className="font-semibold text-lg mb-2">Add Contact</h3>
         <div className="flex gap-2">
-          <PubkeyPicker value={pubkey} onChange={setPubkey} className="flex-1" />
+          <PubkeyPicker value={pubkey} onChange={(value) => pubkey$.next(value)} className="flex-1" />
           <button className="btn btn-primary" onClick={handleAdd} disabled={!pubkey.trim() || adding}>
             {adding ? <span className="loading loading-spinner loading-sm" /> : "Add"}
           </button>
@@ -99,45 +106,23 @@ function AddContactForm({ onAdd }: { onAdd: (pubkey: string) => Promise<void> })
 
 function ContactManager({ user }: { user: User }) {
   const contacts = use$(() => user.contacts$, [user.pubkey]);
-  const outboxes = use$(() => user.outboxes$, [user.pubkey]);
 
-  const handleAdd = useCallback(
-    async (pubkey: string) => {
-      if (!outboxes?.length) {
-        throw new Error("No outbox relays available. Please set up your mailboxes (NIP-65).");
-      }
+  const handleAdd = useCallback(async (pubkey: string) => {
+    try {
+      await actions.run(FollowUser, pubkey);
+    } catch (err) {
+      throw err;
+    }
+  }, []);
 
-      try {
-        await actions.exec(FollowUser, pubkey).forEach(async (signed) => {
-          // Publish to outboxes
-          await pool.publish(outboxes, signed);
-        });
-      } catch (err) {
-        throw err;
-      }
-    },
-    [outboxes],
-  );
-
-  const handleUnfollow = useCallback(
-    async (contact: User) => {
-      if (!outboxes?.length) {
-        alert("No outbox relays available. Please set up your mailboxes (NIP-65).");
-        return;
-      }
-
-      try {
-        await actions.exec(UnfollowUser, contact.pubkey).forEach(async (signed) => {
-          // Publish to outboxes
-          await pool.publish(outboxes, signed);
-        });
-      } catch (err) {
-        console.error("Failed to unfollow:", err);
-        alert(err instanceof Error ? err.message : "Failed to unfollow user");
-      }
-    },
-    [outboxes],
-  );
+  const handleUnfollow = useCallback(async (contact: User) => {
+    try {
+      await actions.run(UnfollowUser, contact.pubkey);
+    } catch (err) {
+      console.error("Failed to unfollow:", err);
+      alert(err instanceof Error ? err.message : "Failed to unfollow user");
+    }
+  }, []);
 
   return (
     <div className="container mx-auto my-8 px-4 max-w-6xl">
@@ -149,7 +134,9 @@ function ContactManager({ user }: { user: User }) {
         <h2 className="text-xl font-semibold mb-2">Contacts {contacts ? `(${contacts.length})` : ""}</h2>
       </div>
 
-      {contacts && contacts.length > 0 ? (
+      {contacts === undefined ? (
+        <p role="status">Loading contacts…</p>
+      ) : contacts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {contacts.map((contact) => (
             <ContactCard key={contact.pubkey} user={contact} onUnfollow={() => handleUnfollow(contact)} />

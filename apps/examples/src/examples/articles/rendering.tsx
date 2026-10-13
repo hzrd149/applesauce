@@ -3,18 +3,25 @@
  * @tags nip-22, nip-23, content, articles, comments
  * @related content/simple-text, comment/feed
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { AddressPointer, getReplaceableAddressFromPointer } from "applesauce-core/helpers";
+import { publishEvent } from "../../extra/publish";
+import NoteContent from "../../components/note-content";
+import { BehaviorSubject, switchMap, of, map } from "rxjs";
+
 import { ActionRunner } from "applesauce-actions";
 import { CreateComment } from "applesauce-actions/actions";
 import { Article, Comment } from "applesauce-common/casts";
 import { CommentsModel } from "applesauce-common/models";
-import { castTimelineStream } from "applesauce-common/observable";
+import { castTimelineStream, castEventStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useState } from "react";
+import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
@@ -30,10 +37,10 @@ const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
   if (relays && relays.length > 0) {
-    await pool.publish(relays, event);
+    await publishEvent(pool, relays, event);
   } else {
     // Fallback to a default relay if none provided
-    await pool.publish(["wss://relay.primal.net/"], event);
+    await publishEvent(pool, ["wss://relay.primal.net/"], event);
   }
 });
 
@@ -42,7 +49,7 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
 });
 
-// Component for a single article card in the list
+// Component for a single article row in the list
 function ArticleCard({ article, onClick }: { article: Article; onClick: () => void }) {
   const author = article.author;
   const profile = use$(author.profile$);
@@ -56,7 +63,7 @@ function ArticleCard({ article, onClick }: { article: Article; onClick: () => vo
         {article.image ? (
           <img src={article.image} alt="" className="size-full object-cover" />
         ) : (
-          <div className="size-full flex items-center justify-center text-xs text-base-content/40">No image</div>
+          <div className="size-full flex items-center justify-center text-sm text-base-content/40">No image</div>
         )}
       </div>
       <div className="flex flex-col gap-1 p-4 overflow-hidden">
@@ -99,7 +106,7 @@ function CommentItem({ comment }: { comment: Comment }) {
         <span className="font-semibold">{profile?.displayName || author.npub.slice(0, 8)}</span>
         <span className="text-sm text-base-content/60">{comment.createdAt.toLocaleString()}</span>
       </div>
-      <p className="whitespace-pre-wrap">{comment.event.content}</p>
+      <NoteContent event={comment.event} />
     </div>
   );
 }
@@ -110,33 +117,44 @@ function CommentsSection({ article }: { article: Article }) {
     () => eventStore.model(CommentsModel, article.event).pipe(castTimelineStream(Comment, eventStore)),
     [article.id],
   );
-  const [commentText, setCommentText] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const commentText$ = useMemo(() => new BehaviorSubject(""), []);
+  const commentText = use$(commentText$);
 
+  const isSubmitting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isSubmitting = use$(isSubmitting$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const error = use$(error$);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentText.trim() || isSubmitting) return;
 
     try {
-      setIsSubmitting(true);
+      isSubmitting$.next(true);
+      error$.next(undefined);
       await actions.run(CreateComment, article.event, commentText.trim());
-      setCommentText("");
+      commentText$.next("");
     } catch (err) {
-      console.error("Failed to create comment:", err);
+      error$.next(err instanceof Error ? err.message : "Failed to create comment");
     } finally {
-      setIsSubmitting(false);
+      isSubmitting$.next(false);
     }
   };
 
   return (
     <div className="mt-8 border-t pt-8">
       <h2 className="text-2xl font-bold mb-4">Comments</h2>
+      {error && (
+        <p role="alert" className="text-error">
+          {error}
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="mb-6">
         <textarea
           className="textarea textarea-bordered w-full mb-2"
           placeholder="Write a comment..."
           value={commentText}
-          onChange={(e) => setCommentText(e.target.value)}
+          onChange={(e) => commentText$.next(e.target.value)}
           rows={3}
           disabled={isSubmitting}
         />
@@ -188,8 +206,17 @@ function ArticleView({ article, onBack }: { article: Article; onBack: () => void
 
 // Main component that orchestrates the entire view
 export default function ArticleViewer() {
-  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
-  const [selected, setSelected] = useState<Article | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
+  const relay = use$(relay$);
+
+  const selectedPointer$ = useMemo(() => new BehaviorSubject<AddressPointer | undefined>(undefined), []);
+  const selectedPointer = use$(selectedPointer$);
+  const selected = use$(
+    () =>
+      selectedPointer ? eventStore.replaceable(selectedPointer).pipe(castEventStream(Article, eventStore)) : undefined,
+    [selectedPointer],
+  );
+  const setSelected = (article: Article | null) => selectedPointer$.next(article?.pointer);
 
   // Subscribe to comments for the selected article
   use$(() => {
@@ -198,30 +225,27 @@ export default function ArticleViewer() {
       .relay(relay)
       .subscription({
         kinds: [1111],
-        "#a": [`30023:${selected.event.pubkey}:${selected.event.tags.find((t) => t[0] === "d")?.[1] || ""}`],
+        "#A": [getReplaceableAddressFromPointer(selected.pointer)],
       })
       .pipe(mapEventsToStore(eventStore));
   }, [selected?.id, relay]);
 
-  // Create a timeline observable for articles
-  const articles = use$(
+  const feed = use$(
     () =>
-      pool
-        .relay(relay)
-        .subscription({
-          kinds: [30023],
-          since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60, // Last 30 days
-        })
-        .pipe(
-          // deduplicate events using the event store
-          mapEventsToStore(eventStore),
-          // collect all events into a timeline
-          mapEventsToTimeline(),
-          // Cast to Article objects
-          castTimelineStream(Article, eventStore),
+      relayTimeline(eventStore, pool, [relay], {
+        kinds: [30023],
+        since: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60,
+      }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(Article, eventStore),
+            map((articles) => ({ ...result, articles })),
+          ),
         ),
+      ),
     [relay],
   );
+  const articles = feed?.articles;
 
   if (selected) {
     return <ArticleView article={selected} onBack={() => setSelected(null)} />;
@@ -231,8 +255,15 @@ export default function ArticleViewer() {
     <div className="container mx-auto max-w-6xl p-4">
       <div className="py-8">
         <h1 className="text-4xl font-bold mb-8">Articles</h1>
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
 
+        {feed?.status === "loading" && <p role="status">Loading articles…</p>}
+        {feed?.errors.map((error) => (
+          <p role="alert" className="text-error" key={error}>
+            {error}
+          </p>
+        ))}
+        {feed?.status !== "loading" && articles?.length === 0 && <p>No articles found.</p>}
         {relay && articles && <ArticleList articles={articles} onArticleSelect={setSelected} />}
       </div>
     </div>

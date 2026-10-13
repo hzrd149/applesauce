@@ -12,7 +12,6 @@ import { Link } from "applesauce-content/nast";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   decodeEventPointer,
-  Filter,
   isAudioURL,
   isImageURL,
   isVideoURL,
@@ -20,6 +19,7 @@ import {
   NostrEvent,
   relaySet,
   safeParse,
+  generateSecretKey,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
@@ -27,9 +27,24 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { SerializedWalletConnect, WalletConnect } from "applesauce-wallet-connect";
 import { ZapIcon } from "lucide-react";
-import { generateSecretKey } from "applesauce-core/helpers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, map, startWith, Subscription } from "rxjs";
+
+import { useMemo, useRef } from "react";
+import {
+  BehaviorSubject,
+  map,
+  startWith,
+  Observable,
+  of,
+  defer,
+  switchMap,
+  catchError,
+  filter,
+  take,
+  timeout,
+  merge,
+  tap,
+  ignoreElements,
+} from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -50,12 +65,6 @@ const wallet$ = new BehaviorSubject<WalletConnect | null>(
   // Load wallet connect from localstorage
   storedWallet ? WalletConnect.fromJSON(storedWallet, { pool }) : null,
 );
-
-// Save wallet connect to localstorage
-wallet$.subscribe((wallet) => {
-  if (wallet) localStorage.setItem("wallet-connect", JSON.stringify(wallet.toJSON()));
-  else localStorage.setItem("wallet-connect", "");
-});
 
 // The nevent we want to display
 const EVENTS = [
@@ -177,7 +186,7 @@ function ZapItem({ zap }: { zap: Zap }) {
   );
 }
 
-/** The note card rendered like a tweet */
+/** The note border border-base-300 rendered like a tweet */
 function NoteCard({ note, onZap }: { note: Note; onZap: () => void }) {
   const content = useRenderedContent(note.event, components);
   const zaps = use$(note.zaps$);
@@ -188,8 +197,8 @@ function NoteCard({ note, onZap }: { note: Note; onZap: () => void }) {
   );
 
   return (
-    <div className="card bg-base-100 shadow-xl max-w-4xl w-full">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100  max-w-4xl w-full">
+      <div className="p-4">
         <div className="flex items-center gap-3">
           <Avatar user={note.author} />
           <div>
@@ -200,7 +209,7 @@ function NoteCard({ note, onZap }: { note: Note; onZap: () => void }) {
 
         <div className="mt-3 text-base whitespace-pre-wrap">{content}</div>
 
-        <div className="card-actions justify-end mt-4">
+        <div className="flex gap-2 justify-end mt-4">
           <button className="btn btn-warning gap-2" onClick={onZap}>
             <ZapIcon />
             Zap this note
@@ -275,9 +284,14 @@ async function fetchZapInvoice(callback: string, zapRequest: NostrEvent, amount:
 // --- Connect Wallet Step ---
 
 function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletConnect) => void; onBack: () => void }) {
-  const [relay, setRelay] = useState("wss://relay.getalby.com/v1");
-  const [pasteUri, setPasteUri] = useState("");
-  const [pasteError, setPasteError] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.getalby.com/v1"), []);
+  const relay = use$(relay$);
+
+  const pasteUri$ = useMemo(() => new BehaviorSubject(""), []);
+  const pasteUri = use$(pasteUri$);
+
+  const pasteError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const pasteError = use$(pasteError$);
 
   const nwcWallet = useMemo(() => new WalletConnect({ pool, relays: [relay], secret: generateSecretKey() }), [relay]);
 
@@ -290,23 +304,30 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
     });
   }, [nwcWallet]);
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const connection = use$(
+    () =>
+      new Observable<{ error?: string }>((subscriber) => {
+        const controller = new AbortController();
+        void nwcWallet
+          .waitForService(controller.signal)
+          .then(() => {
+            if (controller.signal.aborted) return;
+            wallet$.next(nwcWallet);
+            onConnect(nwcWallet);
+            subscriber.next({});
+          })
+          .catch((error) => {
+            if (!controller.signal.aborted) subscriber.next({ error: String(error.message ?? error) });
+          });
+        return () => controller.abort();
+      }),
+    [nwcWallet, onConnect],
+  );
 
-    nwcWallet
-      .waitForService(controller.signal)
-      .then(() => {
-        wallet$.next(nwcWallet);
-        onConnect(nwcWallet);
-      })
-      .catch(() => {});
-
-    return () => controller.abort();
-  }, [nwcWallet]);
-
+  const connectionError = connection?.error;
   const handlePaste = (value: string) => {
-    setPasteUri(value);
-    setPasteError(null);
+    pasteUri$.next(value);
+    pasteError$.next(null);
 
     if (!value.trim()) return;
 
@@ -315,7 +336,7 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
       wallet$.next(w);
       onConnect(w);
     } catch (err) {
-      setPasteError(err instanceof Error ? err.message : "Invalid connection string");
+      pasteError$.next(err instanceof Error ? err.message : "Invalid connection string");
     }
   };
 
@@ -345,10 +366,15 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
         <a href={authUri} className="btn btn-primary btn-sm">
           Open in Wallet App
         </a>
-        <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.getalby.com/v1"]} className="w-full" />
+        <RelayPicker
+          value={relay}
+          onChange={(next: typeof relay$.value) => relay$.next(next)}
+          common={["wss://relay.getalby.com/v1"]}
+          className="w-full"
+        />
       </div>
 
-      <div className="divider text-xs opacity-50">OR PASTE CONNECTION STRING</div>
+      <div className="divider text-sm opacity-50">OR PASTE CONNECTION STRING</div>
 
       <textarea
         className="textarea textarea-bordered textarea-sm w-full font-mono"
@@ -357,7 +383,11 @@ function ConnectWalletStep({ onConnect, onBack }: { onConnect: (wallet: WalletCo
         onChange={(e) => handlePaste(e.target.value)}
         rows={3}
       />
-      {pasteError && <p className="text-error text-sm mt-1">{pasteError}</p>}
+      {(pasteError || connectionError) && (
+        <p className="text-error text-sm mt-1" role="alert">
+          {pasteError || connectionError}
+        </p>
+      )}
 
       <div className="flex items-center justify-center gap-2 text-sm opacity-70">
         <span className="loading loading-dots loading-sm"></span>
@@ -380,50 +410,135 @@ type ZapStep =
   | "error";
 
 function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
-  const [step, setStep] = useState<ZapStep>("select-amount");
-  const [sliderPosition, setSliderPosition] = useState(DEFAULT_SLIDER_POSITION);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [invoice, setInvoice] = useState<string | null>(null);
-  const [lnurlEndpoint, setLnurlEndpoint] = useState<LNURLPayEndpoint | null>(null);
-  const [lightningAddress, setLightningAddress] = useState<string | null>(null);
-  const [lnurlLoading, setLnurlLoading] = useState(false);
-  const [lnurlError, setLnurlError] = useState<string | null>(null);
-  const receiptSubRef = useRef<Subscription | null>(null);
-  const wallet = use$(wallet$);
+  const sliderPosition$ = useMemo(() => new BehaviorSubject(DEFAULT_SLIDER_POSITION), []);
+  const sliderPosition = use$(sliderPosition$);
 
+  const message$ = useMemo(() => new BehaviorSubject(""), []);
+  const message = use$(message$);
+
+  const wallet = use$(wallet$);
   const profile = use$(note.author.profile$);
   const inboxes = use$(note.author.inboxes$);
-
-  useEffect(() => {
-    if (!profile) return;
-
-    const addr = profile.lud16 || profile.lud06;
-    if (!addr) {
-      setLnurlError("This user has no lightning address set in their profile");
-      return;
-    }
-
-    setLightningAddress(addr);
-    setLnurlLoading(true);
-    setLnurlError(null);
-
-    fetchLNURLPayEndpoint(addr)
-      .then((endpoint) => {
-        setLnurlEndpoint(endpoint);
-        if (!endpoint.allowsNostr) {
-          setLnurlError("This user's lightning address does not support Nostr zaps (allowsNostr is false)");
-        }
-      })
-      .catch((err) => {
-        setLnurlError(err instanceof Error ? err.message : "Failed to fetch lightning address info");
-      })
-      .finally(() => setLnurlLoading(false));
-  }, [profile]);
-
-  useEffect(() => {
-    return () => receiptSubRef.current?.unsubscribe();
-  }, []);
+  const lightningAddress = profile?.lud16 || profile?.lud06;
+  const lnurl = use$(
+    () =>
+      note.author.profile$.pipe(
+        switchMap((profile) => {
+          const address = profile?.lud16 || profile?.lud06;
+          if (profile === undefined) return of({ endpoint: null as LNURLPayEndpoint | null, loading: true, error: "" });
+          if (!address)
+            return of({
+              endpoint: null as LNURLPayEndpoint | null,
+              loading: false,
+              error: "This user has no lightning address set in their profile",
+            });
+          return defer(() => fetchLNURLPayEndpoint(address)).pipe(
+            map((endpoint) => ({
+              endpoint,
+              loading: false,
+              error: endpoint.allowsNostr ? "" : "This lightning address does not support Nostr zaps",
+            })),
+            startWith({ endpoint: null as LNURLPayEndpoint | null, loading: true, error: "" }),
+            catchError((error) =>
+              of({ endpoint: null as LNURLPayEndpoint | null, loading: false, error: String(error.message ?? error) }),
+            ),
+          );
+        }),
+      ),
+    [note.author],
+  );
+  const lnurlEndpoint = lnurl?.endpoint;
+  const lnurlLoading = lnurl?.loading ?? true;
+  const lnurlError = lnurl?.error;
+  type Operation = { step: ZapStep; invoice: string | null; error: string | null };
+  type Command =
+    | { type: "view"; step: ZapStep; invoice: string | null }
+    | { type: "pay"; invoice: string; wallet: WalletConnect }
+    | {
+        type: "zap";
+        endpoint: LNURLPayEndpoint;
+        amount: number;
+        message: string;
+        relays: string[];
+        note: Note;
+        wallet: WalletConnect | null;
+      };
+  const commands$ = useMemo(
+    () => new BehaviorSubject<Command>({ type: "view", step: "select-amount", invoice: null }),
+    [],
+  );
+  const operation = use$(
+    () =>
+      commands$.pipe(
+        switchMap((command): Observable<Operation> => {
+          if (command.type === "view") return of({ step: command.step, invoice: command.invoice, error: null });
+          if (command.type === "pay")
+            return defer(() => command.wallet.payInvoice(command.invoice)).pipe(
+              map(() => ({ step: "success" as const, invoice: command.invoice, error: null })),
+              startWith({ step: "paying-with-wallet" as const, invoice: command.invoice, error: null }),
+              catchError((error) =>
+                of({
+                  step: "wallet-pay-error" as const,
+                  invoice: command.invoice,
+                  error: String(error.message ?? error),
+                }),
+              ),
+            );
+          return defer(async () => {
+            const request = await ZapRequestFactory.event(command.note.event, command.amount, command.relays)
+              .message(command.message)
+              .sign(signer);
+            const invoice = await fetchZapInvoice(command.endpoint.callback, request, command.amount);
+            return { request, invoice };
+          }).pipe(
+            switchMap(({ request, invoice }) => {
+              const receipt = pool
+                .subscription(command.relays, {
+                  kinds: [kinds.Zap],
+                  "#p": [command.note.author.pubkey],
+                  "#e": [command.note.id],
+                  since: Math.floor(Date.now() / 1000) - 10,
+                })
+                .pipe(
+                  mapEventsToStore(eventStore),
+                  castEventStream(Zap, eventStore),
+                  defined(),
+                  filter((zap) => zap.request.id === request.id),
+                  take(1),
+                  timeout({ first: 120_000 }),
+                  map((): Operation => ({ step: "success", invoice, error: null })),
+                  catchError((error) =>
+                    of<Operation>({
+                      step: "error",
+                      invoice,
+                      error: `Unable to confirm zap receipt: ${String(error.message ?? error)}`,
+                    }),
+                  ),
+                );
+              const payment: Observable<Operation> = command.wallet
+                ? defer(() => command.wallet!.payInvoice(invoice)).pipe(
+                    map(() => ({ step: "success" as const, invoice, error: null })),
+                    startWith({ step: "paying-with-wallet" as const, invoice, error: null }),
+                    catchError((error) =>
+                      of({ step: "wallet-pay-error" as const, invoice, error: String(error.message ?? error) }),
+                    ),
+                  )
+                : of({ step: "awaiting-payment", invoice, error: null });
+              return merge(receipt, payment);
+            }),
+            startWith<Operation>({ step: "fetching-invoice", invoice: null, error: null }),
+            catchError((error) =>
+              of<Operation>({ step: "error", invoice: null, error: String(error.message ?? error) }),
+            ),
+          );
+        }),
+      ),
+    [commands$],
+  );
+  const step = operation?.step ?? "select-amount";
+  const invoice = operation?.invoice ?? null;
+  const error = operation?.error;
+  const setStep = (step: ZapStep) => commands$.next({ type: "view", step, invoice });
 
   const effectiveAmount = sliderToSats(sliderPosition);
   const amountMsats = effectiveAmount * 1000;
@@ -434,88 +549,26 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
     amountMsats >= (lnurlEndpoint?.minSendable ?? 0) &&
     amountMsats <= (lnurlEndpoint?.maxSendable ?? Infinity);
 
-  const handleZap = useCallback(async () => {
+  const handleZap = () => {
     if (!lnurlEndpoint || !canZap) return;
-
-    setStep("fetching-invoice");
-    setError(null);
-
-    try {
-      const zapRelays = (inboxes || DEFAULT_RELAYS).slice(0, 5);
-
-      const zapRequest = await ZapRequestFactory.event(note.event, amountMsats, zapRelays)
-        .message(message)
-        .sign(signer);
-
-      const bolt11 = await fetchZapInvoice(lnurlEndpoint.callback, zapRequest, amountMsats);
-      setInvoice(bolt11);
-      setStep("awaiting-payment");
-
-      const receiptFilter: Filter = {
-        kinds: [kinds.Zap],
-        "#p": [note.author.pubkey],
-        "#e": [note.id],
-        since: Math.floor(Date.now() / 1000) - 10,
-      };
-
-      const sub = pool
-        .subscription(zapRelays, receiptFilter)
-        .pipe(
-          // Add zap events to store for UI updates
-          mapEventsToStore(eventStore),
-          // Parse zap events
-          castEventStream(Zap),
-          // Filter out bad zaps
-          defined(),
-        )
-        .subscribe((zap) => {
-          // Look for a zap receipt that matches our request
-          if (zap.request.id === zapRequest.id) {
-            setStep("success");
-            sub.unsubscribe();
-          }
-        });
-
-      receiptSubRef.current = sub;
-    } catch (err) {
-      console.error("Zap failed:", err);
-      setError(err instanceof Error ? err.message : "Failed to create zap");
-      setStep("error");
-    }
-  }, [lnurlEndpoint, canZap, amountMsats, message, inboxes]);
-
-  const handleWalletPay = useCallback(
-    async (walletInstance?: WalletConnect) => {
-      const w = walletInstance || wallet;
-      if (!w || !invoice) return;
-
-      setStep("paying-with-wallet");
-      setError(null);
-
-      try {
-        await w.payInvoice(invoice);
-        setStep("success");
-      } catch (err) {
-        console.error("Wallet pay failed:", err);
-        setError(err instanceof Error ? err.message : "Failed to pay with wallet");
-        setStep("wallet-pay-error");
-      }
-    },
-    [wallet, invoice],
-  );
-
-  const handleDisconnectWallet = useCallback(() => {
+    commands$.next({
+      type: "zap",
+      endpoint: lnurlEndpoint,
+      amount: amountMsats,
+      message,
+      relays: relaySet(inboxes, DEFAULT_RELAYS).slice(0, 5),
+      note,
+      wallet,
+    });
+  };
+  const handleWalletPay = (walletInstance?: WalletConnect) => {
+    const target = walletInstance ?? wallet;
+    if (target && invoice) commands$.next({ type: "pay", invoice, wallet: target });
+  };
+  const handleDisconnectWallet = () => {
     wallet$.next(null);
     setStep("awaiting-payment");
-    setError(null);
-  }, []);
-
-  // Auto-pay with wallet when invoice is ready
-  useEffect(() => {
-    if (step === "awaiting-payment" && wallet && invoice) {
-      handleWalletPay();
-    }
-  }, [step, wallet, invoice, handleWalletPay]);
+  };
 
   return (
     <>
@@ -545,14 +598,14 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
       <div className="mb-4">
         {lnurlLoading && (
           <div className="flex items-center gap-2 text-sm opacity-70">
-            <span className="loading loading-spinner loading-xs"></span>
+            <span className="loading loading-spinner loading-sm"></span>
             Loading lightning address...
           </div>
         )}
         {lightningAddress && !lnurlError && lnurlEndpoint && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="badge badge-success badge-sm">Lightning</span>
-            <span className="font-mono text-xs">{lightningAddress}</span>
+            <span className="badge badge-success badge">Lightning</span>
+            <span className="font-mono text-sm">{lightningAddress}</span>
           </div>
         )}
         {lnurlError && (
@@ -562,7 +615,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
         )}
         {!profile && !lnurlLoading && (
           <div className="flex items-center gap-2 text-sm opacity-70">
-            <span className="loading loading-spinner loading-xs"></span>
+            <span className="loading loading-spinner loading-sm"></span>
             Loading profile...
           </div>
         )}
@@ -581,10 +634,10 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
               min="0"
               max={SLIDER_STEPS}
               value={sliderPosition}
-              onChange={(e) => setSliderPosition(Number(e.target.value))}
+              onChange={(e) => sliderPosition$.next(Number(e.target.value))}
               className="range range-warning range-sm w-full"
             />
-            <div className="relative text-xs opacity-40 h-4">
+            <div className="relative text-sm opacity-40 h-4">
               {(
                 [
                   [1, "1"],
@@ -607,13 +660,13 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
           </div>
 
           {lnurlEndpoint && (
-            <p className="text-xs opacity-50">
+            <p className="text-sm opacity-50">
               Min: {Math.ceil(lnurlEndpoint.minSendable / 1000).toLocaleString()} sats | Max:{" "}
               {Math.floor(lnurlEndpoint.maxSendable / 1000).toLocaleString()} sats
             </p>
           )}
 
-          <div className="form-control">
+          <div className="flex flex-col gap-2">
             <label className="label">
               <span className="label-text text-sm">Message (optional)</span>
             </label>
@@ -621,7 +674,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
               className="textarea textarea-bordered textarea-sm w-full"
               placeholder="Say something nice..."
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => message$.next(e.target.value)}
               rows={2}
             />
           </div>
@@ -671,7 +724,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
                   try {
                     const parsed = parseBolt11(invoice);
                     return (
-                      <div className="space-y-1 text-xs">
+                      <div className="space-y-1 text-sm">
                         {parsed.amount && (
                           <p>
                             <span className="font-medium">Amount:</span>{" "}
@@ -690,7 +743,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
                       </div>
                     );
                   } catch {
-                    return <p className="text-xs opacity-50">Could not parse invoice</p>;
+                    return <p className="text-sm opacity-50">Could not parse invoice</p>;
                   }
                 })()}
                 <textarea
@@ -705,7 +758,7 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
 
           {/* Wallet pay option */}
           <div className="w-full">
-            <div className="divider text-xs opacity-50">OR PAY WITH WALLET</div>
+            <div className="divider text-sm opacity-50">OR PAY WITH WALLET</div>
             {wallet ? (
               <button className="btn btn-warning btn-block" onClick={() => handleWalletPay()}>
                 Pay with Connected Wallet
@@ -804,7 +857,6 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
               className="btn btn-warning"
               onClick={() => {
                 setStep("select-amount");
-                setError(null);
               }}
             >
               Try Again
@@ -820,19 +872,16 @@ function ZapForm({ note, onClose }: { note: Note; onClose: () => void }) {
 
 function ZapModal({ note }: { note: Note }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [formKey, setFormKey] = useState(0);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    // Remount ZapForm fresh each time the dialog closes so state resets for next open
-    const handleClose = () => setFormKey((k) => k + 1);
-    dialog.addEventListener("close", handleClose);
-    return () => dialog.removeEventListener("close", handleClose);
-  }, []);
+  const formKey$ = useMemo(() => new BehaviorSubject(0), []);
+  const formKey = use$(formKey$);
 
   return (
-    <dialog id="zap_modal" ref={dialogRef} className="modal">
+    <dialog
+      id="zap_modal"
+      ref={dialogRef}
+      onClose={() => formKey$.next(((key: typeof formKey$.value) => key + 1)(formKey$.value))}
+      className="modal"
+    >
       <div className="modal-box max-w-md">
         <ZapForm key={formKey} note={note} onClose={() => dialogRef.current?.close()} />
       </div>
@@ -845,6 +894,14 @@ function ZapModal({ note }: { note: Note }) {
 
 // --- Main Component ---
 export default function ZapModalExample() {
+  use$(
+    () =>
+      wallet$.pipe(
+        tap((wallet) => localStorage.setItem("wallet-connect", wallet ? JSON.stringify(wallet.toJSON()) : "")),
+        ignoreElements(),
+      ),
+    [],
+  );
   // Load the note event using the full pointer so the event loader knows which relays to check
   const noteEvent = use$(() => eventStore.event(eventPointer), [eventPointer.id]);
   const note = useMemo(() => (noteEvent ? castEvent(noteEvent, Note) : undefined), [noteEvent]);
@@ -878,7 +935,7 @@ export default function ZapModalExample() {
         <div className="flex flex-col items-center gap-4">
           <span className="loading loading-spinner loading-lg"></span>
           <p className="text-sm opacity-70">Loading note from relays...</p>
-          <p className="text-xs opacity-40 font-mono break-all max-w-md">{eventPointer.id}</p>
+          <p className="text-sm opacity-40 font-mono break-all max-w-md">{eventPointer.id}</p>
         </div>
       )}
     </div>

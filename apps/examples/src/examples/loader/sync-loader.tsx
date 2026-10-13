@@ -3,13 +3,16 @@
  * @tags loader, nip-77, negentropy, sync
  * @related loader/paginated-timeline, negentrapy/relay-difference
  */
+import { castUser } from "applesauce-common/casts";
+import { BehaviorSubject, combineLatest, scan, startWith, map, catchError, of } from "rxjs";
+
 import { EventStore } from "applesauce-core";
 import { getSeenRelays, mergeRelaySets, normalizeToPubkey } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createSyncLoader, SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { NostrEvent } from "applesauce-core/helpers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -72,10 +75,10 @@ function StatusPanel({ status }: { status: SyncLoaderStatus }) {
         <tbody>
           {relays.map((relay) => (
             <tr key={relay.relay}>
-              <td className="font-mono text-xs">{hostname(relay.relay)}</td>
+              <td className="font-mono text-sm">{hostname(relay.relay)}</td>
               <td>
                 {relay.state}
-                {relay.error && <span className="text-error text-xs ml-2">{relay.error.message}</span>}
+                {relay.error && <span className="text-error text-sm ml-2">{relay.error.message}</span>}
               </td>
               <td>{relay.negentropy === undefined ? "—" : relay.negentropy ? "✅" : "❌"}</td>
               <td>{relay.method ?? "—"}</td>
@@ -105,10 +108,10 @@ function EventRow({
   return (
     <tr>
       <td className="opacity-50">{index + 1}</td>
-      <td className="font-mono text-xs">{event.id.slice(0, 12)}…</td>
+      <td className="font-mono text-sm">{event.id.slice(0, 12)}…</td>
       <td>{event.kind}</td>
       {relays.map((relay) => (
-        <td key={relay} className="text-xs">
+        <td key={relay} className="text-sm">
           {seen?.has(relay) ? (status?.relays[relay]?.method ?? "✅") : ""}
         </td>
       ))}
@@ -117,76 +120,73 @@ function EventRow({
 }
 
 export default function SyncLoaderExample() {
-  const [pubkey, setPubkey] = useState(DEFAULT_PUBKEY);
-  const [relaysText, setRelaysText] = useState("");
-  const [sinceDate, setSinceDate] = useState(() => dateInputValue(new Date(Date.now() - 14 * DAY)));
-  const [untilDate, setUntilDate] = useState(() => dateInputValue(new Date()));
+  const pubkey$ = useMemo(() => new BehaviorSubject(DEFAULT_PUBKEY), []);
+  const pubkey = use$(pubkey$);
 
-  const [status, setStatus] = useState<SyncLoaderStatus | null>(null);
-  const [events, setEvents] = useState<NostrEvent[]>([]);
-  const [running, setRunning] = useState(false);
+  const relaysText$ = useMemo(() => new BehaviorSubject(""), []);
+  const relaysText = use$(relaysText$);
 
-  const subscriptions = useRef<{ unsubscribe(): void }[]>([]);
+  const sinceDate$ = useMemo(() => new BehaviorSubject(dateInputValue(new Date(Date.now() - 14 * DAY))), []);
+  const sinceDate = use$(sinceDate$);
 
-  // Load the selected user's relay list and default the relay input to their outboxes
-  const mailboxes = use$(() => (pubkey ? eventStore.mailboxes(pubkey) : undefined), [pubkey]);
-  const outboxes = mailboxes?.outboxes?.join("\n");
-  useEffect(() => {
-    if (outboxes) setRelaysText(outboxes);
-  }, [outboxes]);
+  const untilDate$ = useMemo(() => new BehaviorSubject(dateInputValue(new Date())), []);
+  const untilDate = use$(untilDate$);
 
-  const relays = useMemo(() => mergeRelaySets(relaysText.split(/\s+/)), [relaysText]);
+  const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
+  const outboxes = use$(user.outboxes$);
+  const effectiveRelaysText = relaysText || outboxes?.join("\n") || "";
+  const relays = useMemo(() => mergeRelaySets(effectiveRelaysText.split(/\s+/)), [effectiveRelaysText]);
   const invalidRange = !!sinceDate && !!untilDate && sinceDate > untilDate;
-
-  const stop = useCallback(() => {
-    subscriptions.current.forEach((sub) => sub.unsubscribe());
-    subscriptions.current = [];
-    setRunning(false);
-  }, []);
-
-  const sync = useCallback(() => {
+  const run$ = useMemo(() => new BehaviorSubject<ReturnType<typeof syncLoader> | null>(null), []);
+  const run = use$(run$);
+  const state = use$<{ status: SyncLoaderStatus | null; events: NostrEvent[]; error?: string }>(
+    () =>
+      run
+        ? combineLatest([
+            run.status$,
+            run.events$.pipe(
+              scan((events, event) => [...events, event], [] as NostrEvent[]),
+              startWith([] as NostrEvent[]),
+            ),
+          ]).pipe(
+            map(([status, events]) => ({ status, events })),
+            catchError((error) => of({ status: null, events: [] as NostrEvent[], error: String(error) })),
+          )
+        : of({ status: null, events: [] as NostrEvent[] }),
+    [run],
+  );
+  const status = state?.status;
+  const events = state?.events ?? [];
+  const running = !!run && !status?.done && !state?.error;
+  const stop = () => run$.next(null);
+  const sync = () => {
     if (invalidRange) return;
-
-    stop();
-    setStatus(null);
-    setEvents([]);
-    setRunning(true);
-
-    // Bound the sync to the selected date range. Empty fields leave that side of the range unbounded.
     const since = startOfDay(sinceDate);
     const until = endOfDay(untilDate);
-
-    const { status$, events$ } = syncLoader({
-      relays,
-      filter: {
-        kinds: [1],
-        authors: [pubkey],
-        ...(since !== undefined && { since }),
-        ...(until !== undefined && { until }),
-      },
-    });
-
-    // Subscribe to both observables so the shared run drives status and events together
-    subscriptions.current = [
-      status$.subscribe({ next: setStatus }),
-      events$.subscribe({
-        next: (event) => setEvents((prev) => [...prev, event]),
-        complete: () => setRunning(false),
+    run$.next(
+      syncLoader({
+        relays,
+        filter: {
+          kinds: [1],
+          authors: [pubkey],
+          ...(since !== undefined && { since }),
+          ...(until !== undefined && { until }),
+        },
       }),
-    ];
-  }, [relays, pubkey, sinceDate, untilDate, invalidRange, stop]);
+    );
+  };
 
   return (
     <div className="container mx-auto my-8 flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <label className="text-sm font-bold">User</label>
-        <PubkeyPicker value={pubkey} onChange={setPubkey} />
+        <PubkeyPicker value={pubkey} onChange={(value: typeof pubkey$.value) => pubkey$.next(value)} />
 
         <label className="text-sm font-bold">Relays (defaults to the user's outboxes)</label>
         <textarea
-          className="textarea textarea-bordered font-mono text-xs h-28"
-          value={relaysText}
-          onChange={(e) => setRelaysText(e.target.value)}
+          className="textarea textarea-bordered font-mono text-sm h-28"
+          value={effectiveRelaysText}
+          onChange={(e) => relaysText$.next(e.target.value)}
           placeholder="wss://relay.example.com"
         />
 
@@ -198,7 +198,7 @@ export default function SyncLoaderExample() {
               className="input input-bordered"
               type="date"
               value={sinceDate}
-              onChange={(e) => setSinceDate(e.target.value)}
+              onChange={(e) => sinceDate$.next(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -207,7 +207,7 @@ export default function SyncLoaderExample() {
               className="input input-bordered"
               type="date"
               value={untilDate}
-              onChange={(e) => setUntilDate(e.target.value)}
+              onChange={(e) => untilDate$.next(e.target.value)}
             />
           </label>
         </div>
@@ -226,8 +226,7 @@ export default function SyncLoaderExample() {
           <button
             className="btn"
             onClick={() => {
-              setEvents([]);
-              setStatus(null);
+              stop();
             }}
           >
             Clear
@@ -235,6 +234,11 @@ export default function SyncLoaderExample() {
         </div>
       </div>
 
+      {state?.error && (
+        <p role="alert" className="text-error">
+          {state.error}
+        </p>
+      )}
       {status && <StatusPanel status={status} />}
 
       <div className="border border-base-300 rounded-lg p-4">
@@ -251,7 +255,7 @@ export default function SyncLoaderExample() {
               <th>Event ID</th>
               <th>Kind</th>
               {relays.map((relay) => (
-                <th key={relay} className="font-mono text-xs font-normal" title={relay}>
+                <th key={relay} className="font-mono text-sm font-normal" title={relay}>
                   {hostname(relay)}
                 </th>
               ))}

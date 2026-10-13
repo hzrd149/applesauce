@@ -3,6 +3,8 @@
  * @tags nip-17, nip-44, nip-59, messages, gift-wrap, encryption, dm
  * @related messages/legacy, gift-wrap/timeline
  */
+import { publishEvent } from "../../extra/publish";
+
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { SendWrappedMessage } from "applesauce-actions/actions";
@@ -25,11 +27,11 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
-import { addEvents, openDB } from "nostr-idb";
+import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, catchError, EMPTY, map, tap } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, catchError, EMPTY, map, scan, startWith, of, tap, materialize } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -59,6 +61,7 @@ const pool = new RelayPool();
 // Setup loaders for event store to load profiles
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
+  cacheRequest: async (filters) => getEventsForFilters(await cache, filters),
 });
 
 // Setup an action runner for running pre-built actions
@@ -66,7 +69,7 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (ev
   if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
   if (!relays) throw new Error("No relays found");
 
-  await pool.publish(relays, event);
+  await publishEvent(pool, relays.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
 });
 
 // Persist encrypted content to the storage backend
@@ -80,7 +83,6 @@ persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Create a in-memory set of failed gift wraps
 const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-gift-wraps") ?? "[]"));
-failed$.subscribe((failed) => localStorage.setItem("failed-gift-wraps", JSON.stringify(failed)));
 
 // Debug modal
 const debug$ = new BehaviorSubject<NostrEvent | null>(null);
@@ -117,34 +119,39 @@ function InlineRelayList({ relays }: { relays: string[] }) {
 }
 
 function MessageForm({ conversation }: { conversation: string }) {
-  const [message, setMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [expiration, setExpiration] = useState<string>();
+  const message$ = useMemo(() => new BehaviorSubject(""), []);
+  const message = use$(message$);
+
+  const sending$ = useMemo(() => new BehaviorSubject(false), []);
+  const sending = use$(sending$);
+
+  const expiration$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const expiration = use$(expiration$);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
 
     try {
-      setSending(true);
+      sending$.next(true);
 
       // Create and send gift wrapped message to all participants using action runner
       await actions.run(SendWrappedMessage, getConversationParticipants(conversation), message.trim(), {
         expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
       });
 
-      setMessage("");
+      message$.next("");
     } catch (err) {
       console.error("Failed to send message:", err);
     } finally {
-      setSending(false);
+      sending$.next(false);
     }
   };
 
   const toggleExpiration = () => {
     const arr = Object.keys(EXPIRATIONS);
     const next = expiration ? arr[arr.indexOf(expiration) + 1] : arr[0];
-    setExpiration(next);
+    expiration$.next(next);
   };
 
   return (
@@ -152,7 +159,7 @@ function MessageForm({ conversation }: { conversation: string }) {
       <input
         type="text"
         value={message}
-        onChange={(e) => setMessage(e.target.value)}
+        onChange={(e) => message$.next(e.target.value)}
         disabled={sending}
         placeholder="Type your message..."
         className="input input-bordered flex-grow"
@@ -185,7 +192,7 @@ function MessageGroup({ messages, pubkey }: { messages: Rumor[]; pubkey: string 
             {message.content}{" "}
             <a
               href="#"
-              className="text-xs text-base-content/50"
+              className="text-sm text-base-content/50"
               onClick={(e) => {
                 e.preventDefault();
                 const gift = eventStore
@@ -200,7 +207,7 @@ function MessageGroup({ messages, pubkey }: { messages: Rumor[]; pubkey: string 
         ))}
       </div>
       <div className="chat-footer opacity-50">
-        <time className="text-xs">{new Date(time * 1000).toLocaleString()}</time>
+        <time className="text-sm">{new Date(time * 1000).toLocaleString()}</time>
       </div>
     </div>
   );
@@ -292,7 +299,7 @@ function ConversationList({
                 .map((p) => npubEncode(p).slice(0, 8))
                 .join(", ")}
             </div>
-            <div className="text-xs font-semibold opacity-50">
+            <div className="text-sm font-semibold opacity-50">
               {new Date(lastMessage.created_at * 1000).toLocaleString()}
             </div>
           </div>
@@ -325,22 +332,25 @@ function GiftWrapDebugModal({ gift }: { gift: NostrEvent }) {
 }
 
 function HomeView({ user }: { user: User }) {
-  const [selectedConversation, setSelectedConversation] = useState<string>();
+  const selectedConversation$ = useMemo(() => new BehaviorSubject<string | undefined>(undefined), []);
+  const selectedConversation = use$(selectedConversation$);
+
   const signer = use$(signer$);
   const debug = use$(debug$);
-  const [since, setSince] = useState<number>(() => unixNow() - EXPIRATIONS["2w"]); // 2 weeks ago
-  const [synced, setSynced] = useState(0);
+  const since$ = useMemo(() => new BehaviorSubject<number>(unixNow() - EXPIRATIONS["2w"]), []);
+  const since = use$(since$);
+  // 2 weeks ago
   const failed = use$(failed$);
 
   // Subscribe to the users nip-17 inboxes
   const dmRelays = use$(user.directMessageRelays$);
 
   // Negentropy sync NIP-17 direct messages since timestamp
-  use$(
+  const syncStatus = use$(
     () =>
       // If no DM relays, return EMPTY
-      !dmRelays
-        ? EMPTY
+      !dmRelays?.length
+        ? of({ count: 0, loading: false, error: null as string | null })
         : pool
             .sync(
               dmRelays,
@@ -353,15 +363,23 @@ function HomeView({ user }: { user: User }) {
               SyncDirection.RECEIVE,
             )
             .pipe(
-              tap((message) => {
-                if (message.type === "received") setSynced((v) => v + 1);
-              }),
-              // Ignore errors
-              catchError(() => EMPTY),
+              materialize(),
+              scan(
+                (state, notification) =>
+                  notification.kind === "E"
+                    ? { ...state, loading: false, error: String(notification.error) }
+                    : notification.kind === "C"
+                      ? { ...state, loading: false }
+                      : { ...state, count: state.count + (notification.value.type === "received" ? 1 : 0) },
+                { count: 0, loading: true, error: null as string | null },
+              ),
+              startWith({ count: 0, loading: true, error: null as string | null }),
             ),
     // Resync when user, since, or DM relays change
     [user.pubkey, since, dmRelays?.join(",")],
   );
+
+  const synced = syncStatus?.count ?? 0;
 
   // Live subscription for new gift-wrapped messages (only future messages)
   use$(
@@ -385,19 +403,21 @@ function HomeView({ user }: { user: User }) {
   // Select all unlocked gift wraps
   const messages = use$(() => eventStore.model(WrappedMessagesModel, user.pubkey), [user.pubkey]);
 
-  const [unlocking, setUnlocking] = useState(false);
+  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
+  const unlocking = use$(unlocking$);
+
   const locked = use$(
     () =>
       eventStore
         .model(GiftWrapsModel, user.pubkey, false)
         // Filter out the failed gift wraps
         .pipe(map((events) => events.filter((e) => !failed.includes(e.id)))),
-    [user.pubkey, failed.length],
+    [user.pubkey, failed],
   );
 
   const unlock = async () => {
     if (!locked || !signer) return;
-    setUnlocking(true);
+    unlocking$.next(true);
     for (const gift of locked) {
       // Ignore previously failed gift wraps
       if (failed$.value.includes(gift.id)) continue;
@@ -409,26 +429,18 @@ function HomeView({ user }: { user: User }) {
         failed$.next([...failed$.value, gift.id]);
       }
     }
-    setUnlocking(false);
+    unlocking$.next(false);
   };
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = new Date(e.target.value);
-    setSince(Math.floor(date.getTime() / 1000));
+    since$.next(Math.floor(date.getTime() / 1000));
   };
 
   const formatDateForInput = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     return date.toISOString().split("T")[0];
   };
-
-  // Control the debug modal
-  const modal = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (!modal.current) return;
-    if (debug && !modal.current.open) modal.current.showModal();
-    else if (!debug && modal.current.open) modal.current.close();
-  }, [debug]);
 
   return (
     <div className="flex bg-base-200 overflow-hidden h-screen">
@@ -437,7 +449,7 @@ function HomeView({ user }: { user: User }) {
           {dmRelays ? <InlineRelayList relays={dmRelays} /> : <p className="text-error">No DM relays found</p>}
 
           <div className="flex items-center gap-2 whitespace-pre">
-            <label className="text-xs">Sync from:</label>
+            <label className="text-sm">Sync from:</label>
             <input
               type="date"
               className="input input-bordered input-sm"
@@ -446,7 +458,12 @@ function HomeView({ user }: { user: User }) {
             />
           </div>
 
-          <div className="text-xs opacity-70">
+          <div className="text-sm opacity-70">
+            {syncStatus?.error && (
+              <span role="alert" className="text-error">
+                {syncStatus.error}
+              </span>
+            )}{" "}
             {synced} events synced • {messages ? [...messages].length : 0} unlocked • {locked?.length ?? 0} locked •{" "}
             {failed.length} failed
           </div>
@@ -462,7 +479,7 @@ function HomeView({ user }: { user: User }) {
           <ConversationList
             messages={[...messages]}
             pubkey={user.pubkey}
-            onSelect={setSelectedConversation}
+            onSelect={(value: typeof selectedConversation$.value) => selectedConversation$.next(value)}
             selected={selectedConversation}
           />
         )}
@@ -478,17 +495,27 @@ function HomeView({ user }: { user: User }) {
       </div>
 
       {/* Gift wrap debug modal */}
-      <dialog id="debug-modal" className="modal" ref={modal}>
-        <div className="modal-box w-full max-w-6xl">{debug && <GiftWrapDebugModal gift={debug} />}</div>
-        <form method="dialog" className="modal-backdrop">
-          <button>close</button>
-        </form>
-      </dialog>
+      {debug && (
+        <dialog
+          id="debug-modal"
+          className="modal"
+          ref={(node) => {
+            if (node && !node.open) node.showModal();
+          }}
+          onClose={() => debug$.next(null)}
+        >
+          <div className="modal-box w-full max-w-6xl">{debug && <GiftWrapDebugModal gift={debug} />}</div>
+          <form method="dialog" className="modal-backdrop">
+            <button>close</button>
+          </form>
+        </dialog>
+      )}
     </div>
   );
 }
 
 function App() {
+  use$(() => failed$.pipe(tap((failed) => localStorage.setItem("failed-gift-wraps", JSON.stringify(failed)))), []);
   const storage = use$(storage$);
   const signer = use$(signer$);
   const user = use$(user$);

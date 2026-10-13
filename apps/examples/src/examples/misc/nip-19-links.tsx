@@ -16,8 +16,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer, decodePointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useEffect, useRef, useState } from "react";
-import { map } from "rxjs";
+import { useRef, useMemo } from "react";
+import { map, BehaviorSubject } from "rxjs";
 
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import RelayPicker from "../../components/relay-picker";
@@ -32,7 +32,8 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | ProfilePointer }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isExpanded$ = useMemo(() => new BehaviorSubject(false), []);
+  const isExpanded = use$(isExpanded$);
 
   // Load event for event pointers or address pointers
   const event = use$(() => {
@@ -50,7 +51,7 @@ function PointerPreview({ pointer }: { pointer: AddressPointer | EventPointer | 
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-xl font-semibold">Decoded Data</h2>
           {(isEventPointer(pointer) || isAddressPointer(pointer)) && (
-            <button className="btn btn-sm" onClick={() => setIsExpanded(!isExpanded)}>
+            <button className="btn btn-sm" onClick={() => isExpanded$.next(!isExpanded)}>
               {isExpanded ? "Hide" : "Show"} Event Preview
             </button>
           )}
@@ -90,7 +91,7 @@ function HandlerCard({
   const link = createHandlerLink(handler, pointer);
 
   return (
-    <div key={handler.id} className="card bg-base-100 shadow-md">
+    <div key={handler.id} className="border border-base-300 bg-base-100 ">
       <figure className="px-4 pt-4">
         <img
           src={getHandlerPicture(handler, `https://robohash.org/${handler.pubkey}.png`)}
@@ -98,8 +99,8 @@ function HandlerCard({
           className="rounded-xl w-24 h-24 object-cover"
         />
       </figure>
-      <div className="card-body">
-        <h2 className="card-title">{getHandlerName(handler)}</h2>
+      <div className="p-4">
+        <h2 className="font-semibold">{getHandlerName(handler)}</h2>
 
         <p className="text-sm">{getHandlerDescription(handler)}</p>
 
@@ -108,7 +109,7 @@ function HandlerCard({
           <p className="text-sm text-secondary ">{getHandlerSupportedKinds(handler).join(", ")}</p>
         </div>
 
-        <div className="card-actions mt-2 items-center">
+        <div className="flex gap-2 mt-2 items-center">
           {!link && <p className="text-sm text-red-500">Missing NIP-89 "web" link</p>}
 
           <div className="join ms-auto">
@@ -136,43 +137,30 @@ function HandlerCard({
 }
 
 export default function LinkHandlerExample() {
-  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [input, setInput] = useState<string>("");
-  const [pointer, setPointer] = useState<AddressPointer | EventPointer | ProfilePointer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
-  // First step: Process and parse the NIP-19 input
-  useEffect(() => {
-    if (!input.trim()) {
-      setPointer(null);
-      setError(null);
-      return;
-    }
+  const input$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const input = use$(input$);
 
-    setError(null);
-
+  const { pointer, error } = useMemo(() => {
+    if (!input.trim()) return { pointer: null, error: null };
     try {
-      // Try to decode the NIP-19 entity
-      let decoded = decodePointer(input.trim().replace(/^nostr:/, ""));
-
+      const decoded = decodePointer(input.trim().replace(/^nostr:/, ""));
       switch (decoded.type) {
         case "nprofile":
         case "naddr":
         case "nevent":
-          setPointer(decoded.data);
-          break;
+          return { pointer: decoded.data, error: null };
         case "note":
-          setPointer({ id: decoded.data });
-          break;
+          return { pointer: { id: decoded.data }, error: null };
         case "npub":
-          setPointer({ pubkey: decoded.data });
-          break;
+          return { pointer: { pubkey: decoded.data }, error: null };
         default:
           throw new Error(`Unknown NIP-19 entity type: ${decoded.type}`);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to decode input");
-      setPointer(null);
+    } catch (error) {
+      return { pointer: null, error: String(error) };
     }
   }, [input]);
 
@@ -218,14 +206,14 @@ export default function LinkHandlerExample() {
             className="input input-bordered w-full join-item min-w-xs"
             placeholder="Enter NIP-19 entity (e.g., npub1, note1, nevent1, naddr1, nprofile1)"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => input$.next(e.target.value)}
           />
-          <div className="btn join-item" onClick={() => setInput("")}>
+          <div className="btn join-item" onClick={() => input$.next("")}>
             Reset
           </div>
         </div>
 
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
       </div>
 
       {error && (

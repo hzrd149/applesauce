@@ -1,24 +1,29 @@
 import { normalizeURL } from "applesauce-core/helpers";
-import { useState } from "react";
+import { use$ } from "applesauce-react/hooks";
+import { useMemo } from "react";
+import { BehaviorSubject } from "rxjs";
 
 // Component for relay add form
 export default function RelayAddForm({ onSubmit }: { onSubmit: (relay: string) => void }) {
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
+  const state$ = useMemo(() => new BehaviorSubject({ url: "", error: "" }), []);
+  const { url, error } = use$(state$);
 
   const handleAddRelay = (e: React.FormEvent) => {
     e.preventDefault();
     let relay = url.trim();
 
-    if (!relay) return setError("Please enter a relay URL");
+    if (!relay) return state$.next({ url, error: "Please enter a relay URL" });
 
     // Basic URL validation
     if (!relay.startsWith("wss://") && !relay.startsWith("ws://")) relay = `wss://${relay}`;
 
     // Add relay to the BehaviorSubject
-    onSubmit(normalizeURL(relay));
-    setUrl("");
-    setError("");
+    try {
+      onSubmit(normalizeURL(relay));
+      state$.next({ url: "", error: "" });
+    } catch (error) {
+      state$.next({ url, error: error instanceof Error ? error.message : "Invalid relay URL" });
+    }
   };
 
   return (
@@ -30,8 +35,7 @@ export default function RelayAddForm({ onSubmit }: { onSubmit: (relay: string) =
           className="input input-bordered flex-1"
           value={url}
           onChange={(e) => {
-            setUrl(e.target.value);
-            setError("");
+            state$.next({ url: e.target.value, error: "" });
           }}
         />
         <button type="submit" className="btn btn-primary">

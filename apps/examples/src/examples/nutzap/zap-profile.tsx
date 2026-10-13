@@ -3,26 +3,29 @@
  * @tags nip-61, nutzap, profile, lightning
  * @related nutzap/zap-feed, nutzap/contacts
  */
-import { MintQuoteBolt11Response, Wallet } from "@cashu/cashu-ts";
+import { castTimelineStream } from "applesauce-common/observable";
+
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { NutzapInfo } from "applesauce-wallet/casts";
+import UnlockView from "../../components/unlock-view";
+import { nutzapStorage$, prepareNutzap, resumeNutzap } from "../../extra/nutzap-quote";
+import { publishEvent } from "../../extra/publish";
+
+import { MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { EventStore } from "applesauce-core";
+import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
+
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { NutzapProfile } from "applesauce-wallet/actions";
-import {
-  getNutzapInfoMints,
-  getNutzapInfoPubkey,
-  getNutzapInfoRelays,
-  IndexedDBCouch,
-  NUTZAP_INFO_KIND,
-} from "applesauce-wallet/helpers";
+import { NUTZAP_INFO_KIND } from "applesauce-wallet/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useEffect, useState } from "react";
-import { map } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, of } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -31,8 +34,9 @@ import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const actions = new ActionRunner(eventStore, signer, (event, relays) => pool.publish(relays ?? [], event));
-const couch = new IndexedDBCouch();
+const actions = new ActionRunner(eventStore, signer, (event, relays) =>
+  publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event),
+);
 
 // Create an address loader to load user profiles
 // Create unified event loader for the store
@@ -47,26 +51,20 @@ function TimelineItem({
   nutzapInfo,
   onSelect,
 }: {
-  nutzapInfo: NostrEvent;
-  onSelect: (nutzapInfo: NostrEvent) => void;
+  nutzapInfo: NutzapInfo;
+  onSelect: (nutzapInfo: NutzapInfo) => void;
 }) {
-  const mints = getNutzapInfoMints(nutzapInfo);
+  const mints = nutzapInfo.mints;
 
   // Load the actual profile data
-  const profile = use$(
-    () => eventStore.profile({ pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
-    [nutzapInfo],
-  );
+  const profile = use$(nutzapInfo.author.profile$);
 
-  const displayName = getDisplayName(profile) || npubEncode(nutzapInfo.pubkey);
-  const picture = getProfilePicture(profile, `https://robohash.org/${nutzapInfo.pubkey}.png`);
+  const displayName = getDisplayName(profile) || npubEncode(nutzapInfo.author.pubkey);
+  const picture = getProfilePicture(profile, `https://robohash.org/${nutzapInfo.author.pubkey}.png`);
 
   return (
-    <div
-      className="card bg-base-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-      onClick={() => onSelect(nutzapInfo)}
-    >
-      <div className="card-body p-4">
+    <div className="border border-base-300 bg-base-100   cursor-pointer" onClick={() => onSelect(nutzapInfo)}>
+      <div className="p-4">
         <div className="flex items-center gap-3">
           <div className="avatar">
             <div className="w-12 rounded-full">
@@ -75,7 +73,7 @@ function TimelineItem({
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold truncate">{displayName}</h3>
-            <p className="text-xs opacity-70 truncate">{npubEncode(nutzapInfo.pubkey)}</p>
+            <p className="text-sm opacity-70 truncate">{npubEncode(nutzapInfo.author.pubkey)}</p>
           </div>
           <div className="text-right">
             <div className="badge badge-primary">
@@ -88,24 +86,21 @@ function TimelineItem({
   );
 }
 
-// Profile card component
-function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
-  const mints = getNutzapInfoMints(nutzapInfo);
-  const relays = getNutzapInfoRelays(nutzapInfo);
-  const nutzapPubkey = getNutzapInfoPubkey(nutzapInfo);
+// Profile details component
+function ProfileCard({ nutzapInfo }: { nutzapInfo: NutzapInfo }) {
+  const mints = nutzapInfo.mints;
+  const relays = nutzapInfo.relays;
+  const nutzapPubkey = nutzapInfo.p2pk;
 
   // Load the actual profile data
-  const profile = use$(
-    () => eventStore.profile({ pubkey: nutzapInfo.pubkey, relays: mergeRelaySets(getSeenRelays(nutzapInfo)) }),
-    [nutzapInfo],
-  );
+  const profile = use$(nutzapInfo.author.profile$);
 
-  const displayName = getDisplayName(profile) || npubEncode(nutzapInfo.pubkey);
-  const picture = getProfilePicture(profile, `https://robohash.org/${nutzapInfo.pubkey}.png`);
+  const displayName = getDisplayName(profile) || npubEncode(nutzapInfo.author.pubkey);
+  const picture = getProfilePicture(profile, `https://robohash.org/${nutzapInfo.author.pubkey}.png`);
 
   return (
-    <div className="card bg-base-100 shadow-md max-w-xl mx-auto">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100  max-w-xl mx-auto">
+      <div className="p-4">
         <div className="flex items-center gap-4 mb-4">
           <div className="avatar">
             <div className="w-16 rounded-full">
@@ -113,8 +108,8 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
             </div>
           </div>
           <div>
-            <h2 className="card-title">{displayName}</h2>
-            <p className="text-sm opacity-70">{npubEncode(nutzapInfo.pubkey)}</p>
+            <h2 className="font-semibold">{displayName}</h2>
+            <p className="text-sm opacity-70">{npubEncode(nutzapInfo.author.pubkey)}</p>
           </div>
         </div>
 
@@ -132,7 +127,7 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
               <div key={i} className="text-sm bg-base-200 rounded px-2 py-1">
                 {mint.mint}
                 {mint.units && mint.units.length > 0 && (
-                  <span className="ml-2 text-xs opacity-70">({mint.units.join(", ")})</span>
+                  <span className="ml-2 text-sm opacity-70">({mint.units.join(", ")})</span>
                 )}
               </div>
             ))}
@@ -150,7 +145,7 @@ function ProfileCard({ nutzapInfo }: { nutzapInfo: NostrEvent }) {
           </div>
         </div>
 
-        <div className="card-actions justify-end">
+        <div className="flex gap-2 justify-end">
           <button
             className="btn btn-primary btn-lg"
             onClick={() => (document.getElementById("zap_modal") as HTMLDialogElement)?.showModal()}
@@ -179,88 +174,74 @@ function InvoiceQRCode({ value }: { value: string }) {
 }
 
 // Zap modal component
-function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent?: () => void }) {
-  const [amount, setAmount] = useState(21);
-  const [comment, setComment] = useState("");
-  const [selectedMint, setSelectedMint] = useState<string>("");
-  const [quote, setQuote] = useState<MintQuoteBolt11Response | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState<"input" | "invoice" | "paid">("input");
+function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent?: () => void }) {
+  const amount$ = useMemo(() => new BehaviorSubject(21), []);
+  const amount = use$(amount$);
 
-  const mints = getNutzapInfoMints(nutzapInfo);
-  const rawNutzapPubkey = getNutzapInfoPubkey(nutzapInfo);
-  // Set default selected mint when mints change
-  useEffect(() => {
-    if (mints.length > 0) {
-      // If no mint is selected or the selected mint is not in the current mints, select the first one
-      if (!selectedMint || !mints.some((m) => m.mint === selectedMint)) {
-        setSelectedMint(mints[0].mint);
-      }
-    }
-  }, [mints, selectedMint]);
+  const comment$ = useMemo(() => new BehaviorSubject(""), []);
+  const comment = use$(comment$);
 
-  // Ensure pubkey is properly prefixed with "02" for NIP-61 compliance
-  const nutzapPubkey = rawNutzapPubkey
-    ? rawNutzapPubkey.length === 64
-      ? `02${rawNutzapPubkey}`
-      : rawNutzapPubkey
-    : null;
+  const selectedMint$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const selectedMintOverride = use$(selectedMint$);
 
-  const handleZap = async () => {
-    if (!selectedMint || !nutzapPubkey) {
-      alert("Profile doesn't have proper nutzap info");
-      return;
-    }
+  const quote$ = useMemo(() => new BehaviorSubject<MintQuoteBolt11Response | null>(null), []);
+  const quote = use$(quote$);
 
-    setIsProcessing(true);
+  const isProcessing$ = useMemo(() => new BehaviorSubject(false), []);
+  const isProcessing = use$(isProcessing$);
+
+  const status$ = useMemo(() => new BehaviorSubject<"input" | "invoice" | "paid">("input"), []);
+  const status = use$(status$);
+
+  const mints = nutzapInfo.mints;
+
+  const selectedMint = mints.some((mint) => mint.mint === selectedMintOverride)
+    ? selectedMintOverride
+    : (mints[0]?.mint ?? "");
+  const nutzapPubkey = nutzapInfo.p2pk;
+  const storage = use$(nutzapStorage$);
+  const resume = async () => {
+    if (!storage) return;
+    isProcessing$.next(true);
     try {
-      // Create mint and wallet
-      const wallet = new Wallet(selectedMint);
-      await wallet.loadMint(); // Load mint keys
-
-      // Request a quote for minting
-      const quote = await wallet.createMintQuoteBolt11(amount);
-      setQuote(quote);
-      setStatus("invoice");
-
-      // Wait for payment using WebSocket (5 minute timeout)
-      try {
-        await wallet.on.onceMintPaid(quote.quote, {
-          timeoutMs: 60_000, // 1 minute
-        });
-
-        // Payment received - mint proofs with P2PK lock using the new wallet.ops API
-        const proofs = await wallet.ops.mintBolt11(amount, quote.quote).asP2PK({ pubkey: nutzapPubkey }).run();
-
-        // Create token from proofs
-        const tokens = { mint: selectedMint, proofs: proofs, unit: "sat" };
-
-        // Create and publish the nutzap event to the recipient's advertised relays.
-        await actions.run(NutzapProfile, nutzapInfo.pubkey, tokens, { comment, couch });
-
-        setStatus("paid");
-        onZapSent?.();
-      } catch (paymentError) {
-        const errorMessage = (paymentError as Error).message;
-        if (errorMessage.includes("Timeout") || errorMessage.includes("timeout")) {
-          console.error("Payment timeout:", paymentError);
-          alert("Payment not received within 5 minutes");
-        } else {
-          console.error("Payment failed:", paymentError);
-          alert("Failed to receive payment: " + errorMessage);
-        }
-      }
+      await resumeNutzap(
+        storage,
+        (recipient, token, comment, couch) => actions.run(NutzapProfile, recipient, token, { comment, couch }),
+        (quote) => {
+          quote$.next(quote);
+          status$.next("invoice");
+        },
+      );
+      status$.next("paid");
+      onZapSent?.();
     } catch (error) {
-      console.error("Zap failed:", error);
-      alert("Failed to create zap: " + error);
+      alert(String(error));
     } finally {
-      setIsProcessing(false);
+      isProcessing$.next(false);
+    }
+  };
+  const handleZap = async () => {
+    if (!storage || !selectedMint || !nutzapPubkey) return;
+    try {
+      await prepareNutzap(storage, {
+        mint: selectedMint,
+        amount,
+        recipient: nutzapInfo.author.pubkey,
+        p2pk: nutzapPubkey,
+        comment,
+      });
+      await resume();
+    } catch (error) {
+      alert(String(error));
     }
   };
 
   return (
     <dialog id="zap_modal" className="modal">
       <div className="modal-box">
+        <button className="btn btn-outline mb-4" disabled={isProcessing} onClick={resume}>
+          Resume pending zap
+        </button>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Zap Profile</h2>
           <form method="dialog">
@@ -275,7 +256,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
               <select
                 className="select select-bordered w-full"
                 value={selectedMint}
-                onChange={(e) => setSelectedMint(e.target.value)}
+                onChange={(e) => selectedMint$.next(e.target.value)}
                 disabled={mints.length === 0}
               >
                 {mints.length === 0 ? (
@@ -297,7 +278,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
                 type="number"
                 className="input input-bordered w-full"
                 value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onChange={(e) => amount$.next(Number(e.target.value))}
                 min="1"
               />
             </div>
@@ -307,7 +288,7 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
               <textarea
                 className="textarea textarea-bordered w-full"
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={(e) => comment$.next(e.target.value)}
                 placeholder="Say something nice..."
               />
             </div>
@@ -358,34 +339,32 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NostrEvent; onZapSent
 }
 
 export default function ZapProfile() {
-  const [selectedNutzapInfo, setSelectedNutzapInfo] = useState<NostrEvent | null>(null);
-  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
+  const selectedAddress$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const selectedAddress = use$(selectedAddress$);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
+  const relay = use$(relay$);
 
-  // Create a timeline observable for NUTZAP_INFO_KIND events
-  const timeline = use$(() => {
-    if (relay.length === 0) return undefined;
+  const feed = use$(
+    () => relayTimeline(eventStore, pool, relay ? [relay] : [], { kinds: [NUTZAP_INFO_KIND] }),
+    [relay],
+  );
+  const timeline = use$(() => of(feed?.events ?? []).pipe(castTimelineStream(NutzapInfo, eventStore)), [feed]);
+  const selectedNutzapInfo = timeline?.find((event) => event.uid === selectedAddress);
+  const setSelectedNutzapInfo = (event: NutzapInfo | null) => selectedAddress$.next(event?.uid ?? null);
 
-    return pool
-      .relay(relay)
-      .subscription({
-        kinds: [NUTZAP_INFO_KIND],
-      })
-      .pipe(
-        // deduplicate events using the event store
-        mapEventsToStore(eventStore),
-        // collect all events into a timeline
-        mapEventsToTimeline(),
-        // Duplicate the timeline array to make react happy
-        map((t) => [...t]),
-      );
-  }, [relay]);
-
+  const storage = use$(nutzapStorage$);
+  if (!storage) return <UnlockView onUnlock={(storage) => nutzapStorage$.next(storage)} />;
   return (
     <div className="container mx-auto my-8 p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Nutzap Profile</h1>
       </div>
 
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
       {selectedNutzapInfo ? (
         <div className="space-y-4">
           <button className="btn" onClick={() => setSelectedNutzapInfo(null)}>
@@ -402,14 +381,14 @@ export default function ZapProfile() {
       ) : (
         <div className="space-y-4">
           {/* Relay Selection */}
-          <RelayPicker value={relay} onChange={setRelay} className="flex-1" />
+          <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} className="flex-1" />
 
           <div className="mb-4">
             <h2 className="text-xl font-semibold mb-2">Recent Nutzap Profiles</h2>
             <p className="text-sm opacity-70">Click on a profile to view details and zap them</p>
           </div>
 
-          {!timeline && relay.length > 0 && (
+          {feed?.status === "loading" && relay.length > 0 && (
             <div className="text-center py-8">
               <span className="loading loading-spinner loading-lg"></span>
               <p className="mt-4">Loading nutzap profiles...</p>
@@ -424,7 +403,7 @@ export default function ZapProfile() {
             </div>
           )}
 
-          {timeline && timeline.length === 0 && relay.length > 0 && (
+          {feed?.status !== "loading" && timeline && timeline.length === 0 && relay.length > 0 && (
             <div className="text-center py-8">
               <div className="alert alert-info max-w-md mx-auto">
                 <span>No nutzap profiles found. Profiles will appear here as they are discovered.</span>

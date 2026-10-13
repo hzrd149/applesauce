@@ -3,12 +3,16 @@
  * @tags nip-47, nwc, wallet, transactions
  * @related nwc/simple-wallet, nwc/wallet-info
  */
+import { publishEvent } from "../../extra/publish";
+
+import { BehaviorSubject, Subject, defer, map, startWith, catchError, of, exhaustMap, scan } from "rxjs";
+
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import { parseWalletConnectURI, supportsMethod, Transaction } from "applesauce-wallet-connect/helpers";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -57,7 +61,7 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
             {isIncoming ? "+" : "-"}
             {amountSats.toLocaleString()} sats
           </div>
-          {feesSats > 0 && <div className="text-xs opacity-60">Fee: {feesSats.toLocaleString()} sats</div>}
+          {feesSats > 0 && <div className="text-sm opacity-60">Fee: {feesSats.toLocaleString()} sats</div>}
         </div>
       </div>
 
@@ -68,7 +72,7 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs opacity-70 mb-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm opacity-70 mb-2">
         <div>
           <span className="font-medium">Payment Hash: </span>
           <code className="break-all">{transaction.payment_hash}</code>
@@ -95,14 +99,14 @@ function TransactionItem({ transaction }: { transaction: Transaction }) {
 
       {transaction.metadata && Object.keys(transaction.metadata).length > 0 && (
         <details className="mb-2">
-          <summary className="cursor-pointer text-xs font-medium opacity-70">Metadata</summary>
-          <pre className="text-xs mt-1 p-2 bg-base-300 rounded overflow-x-auto">
+          <summary className="cursor-pointer text-sm font-medium opacity-70">Metadata</summary>
+          <pre className="text-sm mt-1 p-2 bg-base-300 rounded overflow-x-auto">
             {JSON.stringify(transaction.metadata, null, 2)}
           </pre>
         </details>
       )}
 
-      <div className="text-xs opacity-60 mt-2 pt-2 border-t border-base-300">
+      <div className="text-sm opacity-60 mt-2 pt-2 border-t border-base-300">
         <time className="font-mono">{createdDate.toLocaleString()}</time>
       </div>
     </div>
@@ -132,40 +136,25 @@ function TransactionTimeline({ transactions }: { transactions: Transaction[] }) 
 }
 
 export default function TransactionsExample() {
-  const [uri, setUri] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [parsed, setParsed] = useState<ReturnType<typeof parseWalletConnectURI> | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [methodError, setMethodError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [transactionType, setTransactionType] = useState<"incoming" | "outgoing" | undefined>(undefined);
-  const [includeUnpaid, setIncludeUnpaid] = useState(false);
+  const uri$ = useMemo(() => new BehaviorSubject(""), []);
+  const uri = use$(uri$);
 
-  const pageSize = 20;
+  const transactionType$ = useMemo(() => new BehaviorSubject<"incoming" | "outgoing" | undefined>(undefined), []);
+  const transactionType = use$(transactionType$);
 
-  // Handle URI input and parsing
-  const handleUriChange = (value: string) => {
-    setUri(value);
-    setError(null);
-    setParsed(null);
-    setTransactions([]);
-    setMethodError(null);
-    setCurrentPage(0);
-    setHasMore(true);
+  const includeUnpaid$ = useMemo(() => new BehaviorSubject(false), []);
+  const includeUnpaid = use$(includeUnpaid$);
 
-    if (!value.trim()) return;
-
+  const parseResult = useMemo(() => {
+    if (!uri.trim()) return { parsed: null, error: null };
     try {
-      const parsed = parseWalletConnectURI(value);
-      setParsed(parsed);
-    } catch (err) {
-      console.error("Failed to parse URI:", err);
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      return { parsed: parseWalletConnectURI(uri), error: null };
+    } catch (error) {
+      return { parsed: null, error: String(error) };
     }
-  };
-
+  }, [uri]);
+  const parsed = parseResult.parsed;
+  const handleUriChange = (value: string) => uri$.next(value);
   // Create WalletConnect instance
   const wallet = useMemo(() => {
     if (!parsed) return undefined;
@@ -176,7 +165,7 @@ export default function TransactionsExample() {
         ...parsed,
         secret,
         subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: pool.publish.bind(pool),
+        publishMethod: (relays, event) => publishEvent(pool, relays, event),
       });
 
       return walletConnect;
@@ -189,78 +178,79 @@ export default function TransactionsExample() {
   // Get wallet capabilities to check if list_transactions is supported
   const support = use$(() => wallet?.support$, [wallet]);
 
-  // Fetch transactions
-  const fetchTransactions = useCallback(
-    async (page: number = 0, append: boolean = false) => {
-      if (!wallet) return;
-
-      // Check if list_transactions method is supported
-      if (support && !supportsMethod(support, "list_transactions")) {
-        setMethodError("The connected wallet does not support the 'list_transactions' method.");
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      setMethodError(null);
-
-      try {
-        const params = {
-          limit: pageSize,
-          offset: page * pageSize,
-          type: transactionType,
-          unpaid: includeUnpaid,
-        };
-
-        const result = await wallet.listTransactions(params);
-
-        if (append) {
-          setTransactions((prev) => [...prev, ...result.transactions]);
-        } else {
-          setTransactions(result.transactions);
-        }
-
-        // Check if there are more transactions
-        setHasMore(result.transactions.length === pageSize);
-        setCurrentPage(page);
-      } catch (err) {
-        console.error("Failed to fetch transactions:", err);
-        setError(err instanceof Error ? err.message : "Failed to fetch transactions");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [wallet, support, transactionType, includeUnpaid, pageSize],
+  const pageSize = 20;
+  const fetch$ = useMemo(() => new Subject<{ page: number; append: boolean }>(), []);
+  type Result = { transactions: Transaction[]; loading: boolean; error: string | null; page: number; hasMore: boolean };
+  const result = use$(
+    () =>
+      fetch$.pipe(
+        exhaustMap(({ page, append }) => {
+          if (!wallet || !support || !supportsMethod(support, "list_transactions"))
+            return of<Result>({
+              transactions: [],
+              loading: false,
+              error: "list_transactions is unavailable",
+              page: 0,
+              hasMore: false,
+            });
+          return defer(() =>
+            wallet.listTransactions({
+              limit: pageSize,
+              offset: page * pageSize,
+              type: transactionType,
+              unpaid: includeUnpaid,
+            }),
+          ).pipe(
+            map((response) => ({
+              page,
+              append,
+              transactions: response.transactions,
+              loading: false,
+              error: null as string | null,
+              hasMore: response.transactions.length === pageSize,
+            })),
+            startWith({ page, append, transactions: [] as Transaction[], loading: true, error: null, hasMore: true }),
+            catchError((error) =>
+              of({
+                page,
+                append,
+                transactions: [] as Transaction[],
+                loading: false,
+                error: String(error),
+                hasMore: true,
+              }),
+            ),
+          );
+        }),
+        scan(
+          (previous: Result, next) => ({
+            ...next,
+            transactions:
+              next.loading || next.error
+                ? previous.transactions
+                : "append" in next && next.append
+                  ? [...previous.transactions, ...next.transactions]
+                  : next.transactions,
+          }),
+          { transactions: [], loading: false, error: null, page: 0, hasMore: true } as Result,
+        ),
+      ),
+    [wallet, support, transactionType, includeUnpaid, fetch$],
   );
-
-  // Load more transactions
-  const loadMore = useCallback(() => {
-    if (!loading && hasMore) {
-      fetchTransactions(currentPage + 1, true);
-    }
-  }, [fetchTransactions, currentPage, loading, hasMore]);
-
-  // Refresh transactions (reset to first page)
-  const refresh = useCallback(() => {
-    setCurrentPage(0);
-    setHasMore(true);
-    fetchTransactions(0, false);
-  }, [fetchTransactions]);
-
-  // Handle filter changes
-  const handleTypeChange = (type: "incoming" | "outgoing" | undefined) => {
-    setTransactionType(type);
-    setCurrentPage(0);
-    setHasMore(true);
-    setTransactions([]);
+  const transactions = result?.transactions ?? [];
+  const loading = result?.loading ?? false;
+  const hasMore = result?.hasMore ?? true;
+  const currentPage = result?.page ?? 0;
+  const error = parseResult.error || result?.error;
+  const methodError =
+    support && !supportsMethod(support, "list_transactions") ? "list_transactions is unsupported" : null;
+  const fetchTransactions = (page = 0, append = false) => fetch$.next({ page, append });
+  const refresh = () => fetchTransactions();
+  const loadMore = () => {
+    if (!loading && hasMore) fetchTransactions(currentPage + 1, true);
   };
-
-  const handleUnpaidChange = (unpaid: boolean) => {
-    setIncludeUnpaid(unpaid);
-    setCurrentPage(0);
-    setHasMore(true);
-    setTransactions([]);
-  };
+  const handleTypeChange = (type: "incoming" | "outgoing" | undefined) => transactionType$.next(type);
+  const handleUnpaidChange = (unpaid: boolean) => includeUnpaid$.next(unpaid);
 
   return (
     <div className="container mx-auto my-8 px-4">
@@ -291,7 +281,7 @@ export default function TransactionsExample() {
           <div className="my-4 space-y-4">
             {/* Filters */}
             <div className="flex flex-wrap gap-4 items-center my-4">
-              <div className="form-control">
+              <div className="flex flex-col gap-2">
                 <label className="label">
                   <span className="label-text">Transaction Type</span>
                 </label>
@@ -308,7 +298,7 @@ export default function TransactionsExample() {
                 </select>
               </div>
 
-              <div className="form-control">
+              <div className="flex flex-col gap-2">
                 <label className="label cursor-pointer">
                   <span className="label-text mr-2">Include Unpaid</span>
                   <input
@@ -361,7 +351,7 @@ export default function TransactionsExample() {
               </svg>
               <div>
                 <h3 className="font-bold">Method Not Supported</h3>
-                <div className="text-xs">{methodError}</div>
+                <div className="text-sm">{methodError}</div>
               </div>
             </div>
           </div>

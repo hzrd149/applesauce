@@ -3,11 +3,14 @@
  * @tags nip-46, signers, bunker, provider, nostr-connect
  * @related signers/bunker, cli/bunker-login
  */
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject, Observable } from "rxjs";
+
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionMissingError, ExtensionSigner, NostrConnectProvider, PrivateKeySigner } from "applesauce-signers";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useMemo } from "react";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 
@@ -43,15 +46,10 @@ const SignerSelector = ({
   onSignerChange: (signer: "extension" | "generated") => void;
   onGenerateKey: () => void;
 }) => {
-  const [extensionAvailable, setExtensionAvailable] = useState(false);
-
-  // Check if extension is available
-  useEffect(() => {
-    setExtensionAvailable(!!window.nostr);
-  }, []);
+  const extensionAvailable = !!window.nostr;
 
   return (
-    <div className="form-control w-full">
+    <div className="flex flex-col gap-2 w-full">
       <label className="label">
         <span className="label-text">Select Signer</span>
       </label>
@@ -86,9 +84,14 @@ const SignerSelector = ({
 
 // Component for starting provider with nostrconnect:// URI
 const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: string) => void }) => {
-  const [uri, setUri] = useState("");
-  const [parsedUri, setParsedUri] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
+  const uri$ = useMemo(() => new BehaviorSubject(""), []);
+  const uri = use$(uri$);
+
+  const parsedUri$ = useMemo(() => new BehaviorSubject<any>(null), []);
+  const parsedUri = use$(parsedUri$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const parseURI = () => {
     try {
@@ -105,15 +108,15 @@ const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: st
         permissions: url.searchParams.get("permissions") ? url.searchParams.get("permissions")!.split(",") : [],
       };
 
-      setParsedUri({
+      parsedUri$.next({
         client: url.hostname,
         secret: url.searchParams.get("secret") || "",
         metadata,
       });
-      setError(null);
+      error$.next(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
-      setParsedUri(null);
+      error$.next(err instanceof Error ? err.message : "Failed to parse URI");
+      parsedUri$.next(null);
     }
   };
 
@@ -124,10 +127,10 @@ const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: st
   };
 
   return (
-    <div className="card bg-base-200 shadow-md">
-      <div className="card-body">
-        <h3 className="card-title">Start with nostrconnect:// URI</h3>
-        <div className="form-control">
+    <div className="border border-base-300 bg-base-200 ">
+      <div className="p-4">
+        <h3 className="font-semibold">Start with nostrconnect:// URI</h3>
+        <div className="flex flex-col gap-2">
           <label className="label">
             <span className="label-text">Paste nostrconnect:// URI</span>
           </label>
@@ -136,7 +139,7 @@ const NostrConnectURISection = ({ onStartProvider }: { onStartProvider: (uri: st
             placeholder="nostrconnect://..."
             className="input input-bordered w-full"
             value={uri}
-            onChange={(e) => setUri(e.target.value)}
+            onChange={(e) => uri$.next(e.target.value)}
           />
         </div>
         <button className="btn btn-primary mt-2" onClick={parseURI} disabled={!uri.trim()}>
@@ -196,9 +199,9 @@ const BunkerURISection = ({
   };
 
   return (
-    <div className="card bg-base-200 shadow-md">
-      <div className="card-body">
-        <h3 className="card-title">Start and Wait for Client</h3>
+    <div className="border border-base-300 bg-base-200 ">
+      <div className="p-4">
+        <h3 className="font-semibold">Start and Wait for Client</h3>
         <p className="text-sm opacity-70 mb-4">
           Start the provider and wait for a client to connect. The bunker:// URI will be displayed as a QR code.
         </p>
@@ -223,16 +226,38 @@ const BunkerURISection = ({
 
 // Main component
 export default function BunkerProvider() {
-  const [selectedRelay, setSelectedRelay] = useState("wss://bucket.coracle.social/");
-  const [selectedSigner, setSelectedSigner] = useState<"extension" | "generated">("extension");
-  const [generatedKey, setGeneratedKey] = useState<PrivateKeySigner | null>(null);
-  const [provider, setProvider] = useState<NostrConnectProvider | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [bunkerUri, setBunkerUri] = useState<string>("");
-  const [showBunkerURI, setShowBunkerURI] = useState(false);
-  const [isProviderRunning, setIsProviderRunning] = useState(false);
+  const selectedRelay$ = useMemo(() => new BehaviorSubject("wss://bucket.coracle.social/"), []);
+  const selectedRelay = use$(selectedRelay$);
+
+  const selectedSigner$ = useMemo(() => new BehaviorSubject<"extension" | "generated">("extension"), []);
+  const selectedSigner = use$(selectedSigner$);
+
+  const generatedKey$ = useMemo(() => new BehaviorSubject<PrivateKeySigner | null>(null), []);
+  const generatedKey = use$(generatedKey$);
+
+  const provider$ = useMemo(() => new BehaviorSubject<NostrConnectProvider | null>(null), []);
+  const provider = use$(provider$);
+
+  const logs$ = useMemo(() => new BehaviorSubject<LogEntry[]>([]), []);
+  const logs = use$(logs$);
+
+  const bunkerUri$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const bunkerUri = use$(bunkerUri$);
+
+  const showBunkerURI$ = useMemo(() => new BehaviorSubject(false), []);
+  const showBunkerURI = use$(showBunkerURI$);
+
+  const isProviderRunning$ = useMemo(() => new BehaviorSubject(false), []);
+  const isProviderRunning = use$(isProviderRunning$);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
+  use$(
+    () =>
+      new Observable<void>(() => () => {
+        void provider?.stop();
+      }),
+    [provider],
+  );
 
   // Auto-scroll to bottom of logs
   const scrollToBottom = () => {
@@ -248,14 +273,14 @@ export default function BunkerProvider() {
       message,
       details,
     };
-    setLogs((prev) => [...prev, entry]);
+    logs$.next(((prev: typeof logs$.value) => [...prev, entry])(logs$.value));
     setTimeout(scrollToBottom, 100);
   }, []);
 
   // Generate new key
   const handleGenerateKey = useCallback(async () => {
     const signer = new PrivateKeySigner();
-    setGeneratedKey(signer);
+    generatedKey$.next(signer);
     const pubkey = await signer.getPublicKey();
     addLog("info", "Generated new key", { pubkey: pubkey, nsec: bytesToHex(signer.key) });
   }, [addLog]);
@@ -271,7 +296,7 @@ export default function BunkerProvider() {
       } else {
         const signer = generatedKey || new PrivateKeySigner();
         if (!generatedKey) {
-          setGeneratedKey(signer);
+          generatedKey$.next(signer);
         }
         const pubkey = await signer.getPublicKey();
         addLog("info", "Using generated key signer", { pubkey });
@@ -299,7 +324,7 @@ export default function BunkerProvider() {
           relays: [selectedRelay],
           upstream: signer,
           onClientConnect: (client) => {
-            setShowBunkerURI(false);
+            showBunkerURI$.next(false);
             addLog("connect", "Client connected", { client });
           },
           onClientDisconnect: (client) => {
@@ -336,8 +361,8 @@ export default function BunkerProvider() {
 
         await newProvider.start(uri);
 
-        setProvider(newProvider);
-        setIsProviderRunning(true);
+        provider$.next(newProvider);
+        isProviderRunning$.next(true);
         addLog("info", "Provider started successfully with URI");
       } catch (error) {
         addLog("error", "Failed to start provider with URI", {
@@ -362,7 +387,7 @@ export default function BunkerProvider() {
         signer: new PrivateKeySigner(),
         bunkerSecret: nanoid(16), // Generate random secret clients must present to connect
         onClientConnect: (client) => {
-          setShowBunkerURI(false);
+          showBunkerURI$.next(false);
           addLog("connect", "Client connected", { client });
         },
         onClientDisconnect: (client) => {
@@ -401,11 +426,11 @@ export default function BunkerProvider() {
 
       // Get bunker URI
       const uri = await newProvider.getBunkerURI();
-      setBunkerUri(uri);
+      bunkerUri$.next(uri);
 
-      setProvider(newProvider);
-      setIsProviderRunning(true);
-      setShowBunkerURI(true);
+      provider$.next(newProvider);
+      isProviderRunning$.next(true);
+      showBunkerURI$.next(true);
       addLog("info", "Provider started successfully, waiting for client", { bunkerUri: uri });
     } catch (error) {
       addLog("error", "Failed to start provider", { error: error instanceof Error ? error.message : "Unknown error" });
@@ -417,10 +442,10 @@ export default function BunkerProvider() {
     if (provider) {
       try {
         await provider.stop();
-        setProvider(null);
-        setIsProviderRunning(false);
-        setBunkerUri("");
-        setShowBunkerURI(false);
+        provider$.next(null);
+        isProviderRunning$.next(false);
+        bunkerUri$.next("");
+        showBunkerURI$.next(false);
         addLog("info", "Provider stopped");
       } catch (error) {
         addLog("error", "Failed to stop provider", { error: error instanceof Error ? error.message : "Unknown error" });
@@ -430,7 +455,7 @@ export default function BunkerProvider() {
 
   // Clear logs
   const clearLogs = useCallback(() => {
-    setLogs([]);
+    logs$.next([]);
   }, []);
 
   return (
@@ -440,13 +465,13 @@ export default function BunkerProvider() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Configuration */}
         <div className="space-y-6">
-          <div className="card bg-base-100 shadow-md">
-            <div className="card-body">
-              <h2 className="card-title">Configuration</h2>
+          <div className="border border-base-300 bg-base-100 ">
+            <div className="p-4">
+              <h2 className="font-semibold">Configuration</h2>
 
               <RelayPicker
                 value={selectedRelay}
-                onChange={setSelectedRelay}
+                onChange={(next: typeof selectedRelay$.value) => selectedRelay$.next(next)}
                 common={["wss://relay.nsec.app/", "wss://bucket.coracle.social/"]}
               />
 
@@ -454,7 +479,7 @@ export default function BunkerProvider() {
 
               <SignerSelector
                 selectedSigner={selectedSigner}
-                onSignerChange={setSelectedSigner}
+                onSignerChange={(next: typeof selectedSigner$.value) => selectedSigner$.next(next)}
                 onGenerateKey={handleGenerateKey}
               />
             </div>
@@ -464,9 +489,9 @@ export default function BunkerProvider() {
           <BunkerURISection onStartProvider={handleStartAndWait} bunkerUri={bunkerUri} showQR={showBunkerURI} />
 
           {isProviderRunning && (
-            <div className="card bg-base-100 shadow-md">
-              <div className="card-body">
-                <h3 className="card-title">Provider Controls</h3>
+            <div className="border border-base-300 bg-base-100 ">
+              <div className="p-4">
+                <h3 className="font-semibold">Provider Controls</h3>
                 <button className="btn btn-error w-full" onClick={handleStopProvider}>
                   Stop Provider
                 </button>
@@ -477,10 +502,10 @@ export default function BunkerProvider() {
 
         {/* Center Column - Logs */}
         <div className="lg:col-span-2">
-          <div className="card bg-base-100 shadow-md h-full">
-            <div className="card-body">
+          <div className="border border-base-300 bg-base-100  h-full">
+            <div className="p-4">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="card-title">Provider Logs</h2>
+                <h2 className="font-semibold">Provider Logs</h2>
                 <button className="btn btn-sm btn-outline" onClick={clearLogs}>
                   Clear Logs
                 </button>
@@ -510,7 +535,7 @@ export default function BunkerProvider() {
                       >
                         <div className="flex items-start gap-2">
                           <span
-                            className={`badge badge-sm ${
+                            className={`badge badge ${
                               entry.type === "error"
                                 ? "badge-error"
                                 : entry.type === "connect"
@@ -525,12 +550,12 @@ export default function BunkerProvider() {
                             {entry.type}
                           </span>
                           <span className="flex-1">{entry.message}</span>
-                          <span className="text-xs opacity-70 ms-auto">{entry.timestamp.toLocaleTimeString()}</span>
+                          <span className="text-sm opacity-70 ms-auto">{entry.timestamp.toLocaleTimeString()}</span>
                         </div>
                         {entry.details && (
                           <details className="mt-2">
                             <summary className="cursor-pointer text-sm opacity-70">View Details</summary>
-                            <pre className="mt-2 text-xs bg-base-300 p-2 rounded overflow-x-auto">
+                            <pre className="mt-2 text-sm bg-base-300 p-2 rounded overflow-x-auto">
                               {JSON.stringify(entry.details, null, 2)}
                             </pre>
                           </details>

@@ -3,14 +3,17 @@
  * @tags nip-10, nip-77, negentrapy, mentions
  * @related negentrapy/note-reactions, negentrapy/relay-difference
  */
-import { defined, EventStore, mapEventsToStore } from "applesauce-core";
+import NoteContent from "../../components/note-content";
+import { castUser } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
-import { BehaviorSubject, filter as rxFilter, map, NEVER, of, startWith, switchMap } from "rxjs";
+import { kinds, NostrEvent } from "applesauce-core/helpers";
+import { useMemo } from "react";
+import { BehaviorSubject, of, startWith, switchMap, materialize, scan, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -31,8 +34,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 
 // Mailboxes of user to fetch mentions for
 const mailboxes$ = pubkey$.pipe(
-  defined(),
-  switchMap((pubkey) => eventStore.mailboxes(pubkey)),
+  switchMap((pubkey) => (pubkey ? castUser(pubkey, eventStore).mailboxes$.pipe(startWith(undefined)) : of(undefined))),
   startWith(undefined),
 );
 
@@ -53,7 +55,7 @@ function RelayBadge({ relay }: { relay: string }) {
 
   return (
     <div
-      className={`badge badge-sm ${
+      className={`badge badge-md ${
         supported === undefined ? "badge-neutral animate-pulse" : supportsNIP77 ? "badge-success" : "badge-warning"
       }`}
       title={
@@ -75,12 +77,11 @@ function MentionEvent({ event }: { event: NostrEvent }) {
 
   // Try to load the profile
   const profile = use$(
-    () => eventStore.profile({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }),
-    [event.pubkey, seenRelays?.size],
+    () => castUser({ pubkey: event.pubkey, relays: seenRelays && Array.from(seenRelays) }, eventStore).profile$,
+    [event, seenRelays],
   );
 
   // Format the content to show a preview
-  const contentPreview = event.content.length > 200 ? event.content.slice(0, 200) + "..." : event.content;
 
   return (
     <div className="border-l-2 border-primary/20 pl-4 py-3">
@@ -93,9 +94,9 @@ function MentionEvent({ event }: { event: NostrEvent }) {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <span className="font-bold">{getDisplayName(profile, event.pubkey.slice(0, 8) + "...")}</span>
-            <span className="text-xs text-base-content/60">{new Date(event.created_at * 1000).toLocaleString()}</span>
+            <span className="text-sm text-base-content/60">{new Date(event.created_at * 1000).toLocaleString()}</span>
           </div>
-          <p className="text-sm whitespace-pre-wrap break-words">{contentPreview}</p>
+          <NoteContent event={event} maxLength={200} />
         </div>
       </div>
     </div>
@@ -160,28 +161,28 @@ export default function MentionsExample() {
     { label: "Last month", hours: 720 },
   ];
 
-  const pubkey = useObservableEagerState(pubkey$);
+  const pubkey = use$(pubkey$);
   const mailboxes = use$(mailboxes$);
-  const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[1]); // Default to "Last day"
+  const timeFilter$ = useMemo(() => new BehaviorSubject(TIME_FILTERS[1]), []);
+  const timeFilter = use$(timeFilter$);
+  // Default to "Last day"
 
   const since = useMemo(() => unixNow() - timeFilter.hours * 60 * 60, [timeFilter]);
 
-  // Run the sync when its active
-  use$(() => {
-    if (!pubkey || !mailboxes?.inboxes || mailboxes.inboxes.length === 0) return NEVER;
-
-    const filter: Filter = {
-      kinds: [kinds.ShortTextNote],
-      "#p": [pubkey],
-      since,
-    };
-
-    // Run the sync using the user's inbox relays
-    return pool.sync(mailboxes.inboxes, eventStore, filter).pipe(
-      rxFilter((message) => message.type === "received"),
-      map((message) => message.event),
-      // Add all events to the event store
-      mapEventsToStore(eventStore),
+  const sync = use$(() => {
+    if (!pubkey || !mailboxes?.inboxes.length) return of({ loading: false, error: null as string | null });
+    return pool.sync(mailboxes.inboxes, eventStore, { kinds: [kinds.ShortTextNote], "#p": [pubkey], since }).pipe(
+      materialize(),
+      scan(
+        (state, notification) =>
+          notification.kind === "E"
+            ? { loading: false, error: String(notification.error) }
+            : notification.kind === "C"
+              ? { ...state, loading: false }
+              : state,
+        { loading: true, error: null as string | null },
+      ),
+      startWith({ loading: true, error: null as string | null }),
     );
   }, [pubkey, mailboxes, since]);
 
@@ -196,7 +197,7 @@ export default function MentionsExample() {
           placeholder="Enter your pubkey or nostr identifier..."
         />
 
-        <div className="form-control w-full max-w-xs">
+        <div className="flex flex-col gap-2 w-full max-w-xs">
           <label className="label">
             <span className="label-text">Time range to sync</span>
           </label>
@@ -205,7 +206,7 @@ export default function MentionsExample() {
             value={timeFilter.hours}
             onChange={(e) => {
               const selectedFilter = TIME_FILTERS.find((f) => f.hours === parseInt(e.target.value));
-              if (selectedFilter) setTimeFilter(selectedFilter);
+              if (selectedFilter) timeFilter$.next(selectedFilter);
             }}
           >
             {TIME_FILTERS.map((filter) => (
@@ -233,7 +234,7 @@ export default function MentionsExample() {
             <h3 className="font-bold text-error mb-2">No Inbox Relays Found</h3>
             <div className="text-sm">
               <p className="mb-2">This user hasn't published a NIP-65 relay list or has no inbox relays configured.</p>
-              <p className="text-xs text-base-content/60">
+              <p className="text-sm text-base-content/60">
                 Without inbox relays, we can't sync mentions for this user. They need to publish their relay preferences
                 using a NIP-65 compatible client.
               </p>
@@ -258,7 +259,7 @@ export default function MentionsExample() {
               <p className="mb-1">
                 <strong>Time range:</strong> {timeFilter.label}
               </p>
-              <p className="text-xs text-base-content/60 mt-2">
+              <p className="text-sm text-base-content/60 mt-2">
                 Using inbox relays to sync mentions where this user was tagged in the selected time range.
               </p>
             </div>
@@ -266,11 +267,12 @@ export default function MentionsExample() {
         )}
       </div>
 
-      <SyncedMentions
-        pubkey={pubkey}
-        active={!!(pubkey && mailboxes?.inboxes && mailboxes.inboxes.length > 0)}
-        since={since}
-      />
+      {sync?.error && (
+        <p className="text-error" role="alert">
+          {sync.error}
+        </p>
+      )}
+      <SyncedMentions pubkey={pubkey} active={sync?.loading ?? false} since={since} />
     </div>
   );
 }

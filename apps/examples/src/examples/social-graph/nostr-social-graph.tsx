@@ -11,8 +11,24 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import localforage from "localforage";
 import { fromBinary, SocialGraph } from "nostr-social-graph";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, exhaustMap, Subscription, tap, throttleTime } from "rxjs";
+import { useCallback, useMemo } from "react";
+import {
+  BehaviorSubject,
+  tap,
+  map,
+  switchMap,
+  of,
+  scan,
+  auditTime,
+  concatMap,
+  concatWith,
+  defer,
+  ignoreElements,
+  materialize,
+  startWith,
+  catchError,
+  Observable,
+} from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -20,8 +36,7 @@ import { lookupRelays$ } from "../../settings";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-// Skip event signature verification for faster loading ( testing only )
-eventStore.verifyEvent = undefined;
+// Keep signature verification enabled for graph events received from relays.
 
 const STORAGE_GRAPH = "social-graph";
 const STORAGE_ROOT = "social-graph-root";
@@ -38,9 +53,7 @@ const graphLoader = createSocialGraphLoader(pool, { eventStore });
 // Live social graph instance (mutated by handleEvent as events arrive)
 const socialGraph$ = new BehaviorSubject<SocialGraph | undefined>(undefined);
 
-// The current state of the social graph sync
-const syncState$ = new BehaviorSubject<{ loaded: number } | null>(null);
-const sync$ = new BehaviorSubject<Subscription | null>(null);
+const commands$ = new BehaviorSubject<{ relay: string; level: number; since?: number; pubkey: string } | null>(null);
 
 // The current state of persisting the graph to local storage
 const saveState$ = new BehaviorSubject<"idle" | "saving" | "saved">("idle");
@@ -65,57 +78,14 @@ async function persistGraph() {
   }
 }
 
-/** Start a new social graph crawler */
+/** Starts a new crawler, replacing any previous run */
 function startSocialGraphSync(relay: string, level: number, since?: number) {
-  const root = socialGraph$.value?.getRoot();
-  if (!root) return;
-
-  // Reset the sync state
-  syncState$.next({ loaded: 0 });
-
-  // Create a new sync subscription
-  const sub = graphLoader({ pubkey: root, relays: [relay], distance: level, since })
-    .pipe(
-      // Pass all events to the social graph
-      tap((event) => socialGraph$.value?.handleEvent(event)),
-      // Add all events to the event store
-      mapEventsToStore(eventStore),
-      // Update the sync state
-      tap(() => {
-        const current = syncState$.value ?? { loaded: 0 };
-        syncState$.next({ loaded: current.loaded + 1 });
-      }),
-      // Limit updates to 1 per second
-      throttleTime(1000),
-      // Recalculate the follow distances after the throttle
-      exhaustMap(async () => {
-        await socialGraph$.value?.recalculateFollowDistances();
-        // cooldown for 1 second
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }),
-    )
-    .subscribe({
-      next: () => {
-        console.log("Triggered re-render");
-        socialGraph$.next(socialGraph$.value);
-      },
-      complete: () => {
-        sync$.next(null);
-        // Auto-save the graph when the sync completes
-        persistGraph().catch((err) => console.error("Failed to persist social graph", err));
-      },
-    });
-
-  sync$.next(sub);
+  const pubkey = socialGraph$.value?.getRoot();
+  if (pubkey) commands$.next({ relay, level, since, pubkey });
 }
-
-/** Cancel the current running sync */
+/** Cancels the current crawler */
 function stopSocialGraphSync() {
-  const sub = sync$.value;
-  if (sub) {
-    sub.unsubscribe();
-    sync$.next(null);
-  }
+  commands$.next(null);
 }
 
 /** Loads the social graph and session metadata from local storage, returns ms elapsed */
@@ -156,16 +126,15 @@ function UserAvatar({ user }: { user: User }) {
 }
 
 /** A row of avatars for a single follow distance */
-function DistanceRow({ graph, distance }: { graph: SocialGraph; distance: number }) {
-  // Force a re-render when the social graph changes
-  const [update, setUpdate] = useState(0);
-  useEffect(() => {
-    const sub = socialGraph$.subscribe(() => setUpdate((u) => u + 1));
-    return () => sub.unsubscribe();
-  }, [graph]);
-
-  // Re-compute when the graph reference changes (it re-emits after mutations)
-  const pubkeys = useMemo(() => Array.from(graph.getUsersByFollowDistance(distance)).sort(), [graph, distance, update]);
+function DistanceRow({ distance }: { graph: SocialGraph; distance: number }) {
+  const pubkeys =
+    use$(
+      () =>
+        socialGraph$.pipe(
+          map((current) => (current ? Array.from(current.getUsersByFollowDistance(distance)).sort() : [])),
+        ),
+      [distance],
+    ) ?? [];
   const preview = pubkeys.slice(0, 24);
   const users = useMemo(() => preview.map((pubkey) => castUser(pubkey, eventStore)), [preview.join("|")]);
 
@@ -199,25 +168,68 @@ function DistanceRow({ graph, distance }: { graph: SocialGraph; distance: number
 
 export default function NostrSocialGraphExample() {
   const graph = use$(socialGraph$);
-  const syncState = use$(syncState$);
-  const sync = use$(sync$);
+  const operation = use$(
+    () =>
+      commands$.pipe(
+        switchMap((command) => {
+          const initial = { loaded: 0, running: false, error: "" };
+          if (!command) return of(initial);
+          return graphLoader({
+            pubkey: command.pubkey,
+            relays: [command.relay],
+            distance: command.level,
+            since: command.since,
+          }).pipe(
+            tap((event) => socialGraph$.value?.handleEvent(event)),
+            mapEventsToStore(eventStore),
+            scan((loaded) => loaded + 1, 0),
+            auditTime(500),
+            concatMap(async (loaded) => {
+              await socialGraph$.value?.recalculateFollowDistances();
+              socialGraph$.next(socialGraph$.value);
+              return { loaded, running: true, error: "" };
+            }),
+            concatWith(defer(() => persistGraph()).pipe(ignoreElements())),
+            materialize(),
+            scan(
+              (state, notification) =>
+                notification.kind === "N"
+                  ? notification.value
+                  : { ...state, running: false, error: notification.kind === "E" ? String(notification.error) : "" },
+              initial,
+            ),
+            startWith({ ...initial, running: true }),
+          );
+        }),
+      ),
+    [],
+  );
+  const syncState = operation;
   const saveState = use$(saveState$);
-  const isRunning = !!sync;
+  const isRunning = operation?.running ?? false;
 
-  const [relay, setRelay] = useState("wss://index.hzrd149.com/");
-  const [level, setLevel] = useState(1); // Default to loading root and friends contacts
+  const relay$ = useMemo(() => new BehaviorSubject("wss://index.hzrd149.com/"), []);
+  const relay = use$(relay$);
+
+  const level$ = useMemo(() => new BehaviorSubject(1), []);
+  const level = use$(level$);
+  // Default to loading root and friends contacts
   // Lookback window in seconds, or null for "all time"
-  const [sinceSeconds, setSinceSeconds] = useState<number | null>(null);
-  const [initializing, setInitializing] = useState(true);
-  // Time in milliseconds it took to load the graph from local storage
-  const [loadTime, setLoadTime] = useState<number | null>(null);
+  const sinceSeconds$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
+  const sinceSeconds = use$(sinceSeconds$);
 
-  // On mount, try to restore a graph from local storage
-  useEffect(() => {
-    loadGraph()
-      .then((elapsed) => setLoadTime(elapsed))
-      .finally(() => setInitializing(false));
-  }, []);
+  const restored = use$(
+    () =>
+      defer(() => loadGraph()).pipe(
+        map((elapsed) => ({ loading: false, elapsed, error: "" })),
+        startWith({ loading: true, elapsed: null as number | null, error: "" }),
+        catchError((error) => of({ loading: false, elapsed: null, error: String(error.message ?? error) })),
+      ),
+    [],
+  );
+  const initializing = restored?.loading ?? true;
+  const loadTime = restored?.elapsed;
+  use$(() => new Observable<void>(() => () => stopSocialGraphSync()), []);
 
   const root = graph?.getRoot() ?? "";
 
@@ -248,8 +260,7 @@ export default function NostrSocialGraphExample() {
     stopSocialGraphSync();
     await clearStorage();
     socialGraph$.next(undefined);
-    syncState$.next(null);
-    setLoadTime(null);
+    commands$.next(null);
   }, []);
 
   return (
@@ -286,7 +297,7 @@ export default function NostrSocialGraphExample() {
               <label className="label pb-1">
                 <span className="label-text">Sync relay</span>
               </label>
-              <RelayPicker value={relay} onChange={setRelay} />
+              <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
             </div>
 
             <div>
@@ -296,7 +307,7 @@ export default function NostrSocialGraphExample() {
               <select
                 className="select select-bordered"
                 value={level}
-                onChange={(e) => setLevel(Number(e.target.value))}
+                onChange={(e) => level$.next(Number(e.target.value))}
                 disabled={isRunning}
               >
                 <option value={1}>1 (friends)</option>
@@ -314,7 +325,7 @@ export default function NostrSocialGraphExample() {
               <select
                 className="select select-bordered"
                 value={sinceSeconds ?? ""}
-                onChange={(e) => setSinceSeconds(e.target.value === "" ? null : Number(e.target.value))}
+                onChange={(e) => sinceSeconds$.next(e.target.value === "" ? null : Number(e.target.value))}
                 disabled={isRunning}
               >
                 <option value="">All time</option>
@@ -342,7 +353,7 @@ export default function NostrSocialGraphExample() {
                 onClick={handleSave}
                 disabled={!graph || saveState !== "idle"}
               >
-                {saveState === "saving" && <span className="loading loading-spinner loading-xs" />}
+                {saveState === "saving" && <span className="loading loading-spinner loading-sm" />}
                 {saveState === "saving" ? "Saving..." : saveState === "saved" ? "Saved" : "Save"}
               </button>
               <button className="btn btn-ghost join-item" onClick={handleClear}>
@@ -356,7 +367,7 @@ export default function NostrSocialGraphExample() {
             <div className={`badge ${isRunning ? "badge-success" : "badge-ghost"} ${isRunning ? "animate-pulse" : ""}`}>
               {isRunning ? "Running" : "Idle"}
             </div>
-            {isRunning && <span className="loading loading-spinner loading-xs" />}
+            {isRunning && <span className="loading loading-spinner loading-sm" />}
             <span className="text-sm">
               Loaded <span className="font-bold">{syncState?.loaded ?? 0}</span> follow events
             </span>

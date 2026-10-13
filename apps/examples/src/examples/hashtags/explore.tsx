@@ -3,16 +3,18 @@
  * @tags nip-91, hashtags, explore, filtering
  * @related feed/relay-timeline
  */
+import { Note, castEvent } from "applesauce-common/casts";
+import { relayTimeline } from "../../extra/relay-timeline";
+
 import { Link } from "applesauce-content/nast";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import { Filter, isTTag } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { ComponentMap, use$, useObservableEagerState, useRenderedContent } from "applesauce-react/hooks";
+import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useMemo, useState } from "react";
-import { map, of } from "rxjs";
+import { useMemo } from "react";
+import { of, BehaviorSubject, map, debounceTime, startWith } from "rxjs";
 
-import { useThrottle } from "react-use";
 import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
@@ -60,8 +62,9 @@ function EventCard({ event, onHashtagClick }: { event: NostrEvent; onHashtagClic
 
   const content = useRenderedContent(event, components);
 
-  // Get hashtags from event
-  const hashtags = useMemo(() => event.tags.filter((t) => t[0] === "t" && t[1]).map((t) => t[1] as string), [event]);
+  const note = useMemo(() => castEvent(event, Note, eventStore), [event]);
+  // Note has no hashtag getter; read its guarded t tags for this metadata.
+  const hashtags = note.event.tags.filter(isTTag).map((tag) => tag[1]);
 
   return (
     <div key={event.id} className="p-4 bg-base-200 rounded-lg overflow-hidden whitespace-pre-wrap">
@@ -70,7 +73,7 @@ function EventCard({ event, onHashtagClick }: { event: NostrEvent; onHashtagClic
       {hashtags.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
           {hashtags.map((tag) => (
-            <span key={tag} className="badge badge-sm badge-outline">
+            <span key={tag} className="badge badge-md badge-outline">
               #{tag}
             </span>
           ))}
@@ -81,24 +84,32 @@ function EventCard({ event, onHashtagClick }: { event: NostrEvent; onHashtagClic
 }
 
 export default function HashtagExploreExample() {
-  const [relayUrl, setRelayUrl] = useState<string>("");
-  const [hashtagInput, setHashtagInput] = useState<string>("");
-  const [useLocalFiltering, setUseLocalFiltering] = useState<boolean>(true);
+  const relayUrl$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const relayUrl = use$(relayUrl$);
+
+  const hashtagInput$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const hashtagInput = use$(hashtagInput$);
+
+  const useLocalFiltering$ = useMemo(() => new BehaviorSubject<boolean>(true), []);
+  const useLocalFiltering = use$(useLocalFiltering$);
 
   // Get relay instance and check NIP-91 support
   const relay = useMemo(() => (relayUrl ? pool.relay(relayUrl) : null), [relayUrl]);
-  const supportedNips = useObservableEagerState(relay?.supported$ ?? of(null));
+  const supportedNips = use$(() => relay?.supported$ ?? of(null), [relay]);
   const supportsNip91 = supportedNips?.includes(91) ?? false;
 
   // Parse hashtags from input (split by space/comma and filter empty)
-  const hashtagFilters = useMemo(() => {
-    return hashtagInput
+  const parseHashtags = (input: string) =>
+    input
       .split(/[\s,]+/)
-      .map((h) => h.trim().replace(/^#/, "").toLowerCase())
-      .filter((h) => h.length > 0);
-  }, [hashtagInput]);
-
-  const hashtags = useThrottle(hashtagFilters, 1000);
+      .map((tag) => tag.trim().replace(/^#/, "").toLowerCase())
+      .filter(Boolean);
+  const hashtagFilters = parseHashtags(hashtagInput);
+  const hashtags =
+    use$(
+      () => hashtagInput$.pipe(map(parseHashtags), debounceTime(1000), startWith([] as string[])),
+      [hashtagInput$],
+    ) ?? [];
 
   // Create filter for relay subscription (only used when not using local filtering)
   const relayFilter: Filter = useMemo(() => {
@@ -115,7 +126,7 @@ export default function HashtagExploreExample() {
     }
 
     return base;
-  }, [hashtags]);
+  }, [hashtags, supportsNip91]);
 
   // Create filter for local filtering (always uses AND logic)
   const localEvents = use$(() => {
@@ -125,23 +136,15 @@ export default function HashtagExploreExample() {
     });
   }, [hashtags]);
 
-  // Subscribe to events from relay (always subscribe, but filter may vary)
-  const relayEvents = use$(
-    () =>
-      relay
-        ? relay.subscription(relayFilter).pipe(
-            mapEventsToStore(eventStore),
-            mapEventsToTimeline(),
-            // Hack to make react update
-            map((e) => [...e]),
-          )
-        : undefined,
-    [relay, relayFilter],
-  );
-
+  const feed = use$(() => relayTimeline(eventStore, pool, relay ? [relay.url] : [], relayFilter), [relay, relayFilter]);
+  const relayEvents = feed?.events;
   // Get events from store - use local filtering if enabled, otherwise use relay-filtered results
   const events = useMemo(
-    () => (useLocalFiltering ? localEvents : relayEvents)?.filter((e) => e.tags.some(isTTag)),
+    () =>
+      (useLocalFiltering
+        ? localEvents?.filter((event) => relayEvents?.some((received) => received.id === event.id))
+        : relayEvents
+      )?.filter((e) => e.tags.some(isTTag)),
     [useLocalFiltering, localEvents, relayEvents],
   );
 
@@ -150,7 +153,7 @@ export default function HashtagExploreExample() {
     const normalized = hashtag.toLowerCase().trim();
     if (!hashtagInput.includes(normalized)) {
       // Append to existing input, preserving the original format
-      setHashtagInput((prev) => (prev.trim() ? `${prev.trim()} ${normalized}` : normalized));
+      hashtagInput$.next(hashtagInput$.value.trim() ? `${hashtagInput$.value.trim()} ${normalized}` : normalized);
     }
   };
 
@@ -158,7 +161,7 @@ export default function HashtagExploreExample() {
     <div className="container mx-auto p-2 h-full">
       <div className="flex gap-2 justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Hashtag Explorer</h1>
-        <RelayPicker value={relayUrl} onChange={setRelayUrl} />
+        <RelayPicker value={relayUrl} onChange={(value: typeof relayUrl$.value) => relayUrl$.next(value)} />
       </div>
 
       {/* Warning if relay doesn't support NIP-91 */}
@@ -191,7 +194,7 @@ export default function HashtagExploreExample() {
             type="checkbox"
             className="toggle toggle-primary"
             checked={useLocalFiltering}
-            onChange={(e) => setUseLocalFiltering(e.target.checked)}
+            onChange={(e) => useLocalFiltering$.next(e.target.checked)}
           />
         </label>
         {useLocalFiltering && (
@@ -211,7 +214,7 @@ export default function HashtagExploreExample() {
           placeholder="#hashtag1 #hashtag2"
           className="input input-bordered w-full"
           value={hashtagInput}
-          onChange={(e) => setHashtagInput(e.target.value)}
+          onChange={(e) => hashtagInput$.next(e.target.value)}
         />
         {hashtagFilters.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1">
@@ -222,7 +225,7 @@ export default function HashtagExploreExample() {
                   className="ml-1 hover:font-bold"
                   onClick={() => {
                     const newFilters = hashtagFilters.filter((t) => t !== tag);
-                    setHashtagInput(newFilters.join(" "));
+                    hashtagInput$.next(newFilters.join(" "));
                   }}
                 >
                   ×
@@ -233,6 +236,12 @@ export default function HashtagExploreExample() {
         )}
       </div>
 
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
+      {feed?.status === "loading" && <p>Loading hashtag events…</p>}
       {/* Events grid */}
       {relayUrl ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

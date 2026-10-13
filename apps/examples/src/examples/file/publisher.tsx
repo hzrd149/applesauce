@@ -3,6 +3,8 @@
  * @tags nip-94, nip-96, blossom, file-upload, publish, outbox
  * @related file/explorer, notes/simple-composer, blossom/server-manager
  */
+import { publishEvent } from "../../extra/publish";
+
 import { castEvent, castUser, FileMetadata, User } from "applesauce-common/casts";
 import { FileMetadataFactory } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
@@ -14,8 +16,8 @@ import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { ChangeEvent, DragEvent, useMemo, useRef } from "react";
+import { BehaviorSubject, map, Observable, defer, of, catchError } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
 
@@ -117,12 +119,14 @@ async function uploadFileToBlossom(
 }
 
 function ServerFavicon({ server }: { server: URL }) {
-  const [error, setError] = useState(false);
+  const error$ = useMemo(() => new BehaviorSubject(false), []);
+  const error = use$(error$);
+
   const faviconUrl = new URL("/favicon.ico", server).href;
 
   if (error) {
     return (
-      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-base-300 bg-base-200 text-[9px] font-semibold">
+      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-base-300 bg-base-200 text-sm font-semibold">
         {server.hostname[0]?.toUpperCase() ?? "?"}
       </div>
     );
@@ -134,7 +138,7 @@ function ServerFavicon({ server }: { server: URL }) {
       alt={server.hostname}
       title={server.hostname}
       className="h-5 w-5 rounded-full border border-base-300 bg-base-100"
-      onError={() => setError(true)}
+      onError={() => error$.next(true)}
     />
   );
 }
@@ -152,13 +156,15 @@ function ServerAvatarStack({ servers }: { servers: URL[] }) {
 }
 
 function FilePreview({ file, remoteUrl }: { file: File; remoteUrl?: string }) {
-  const [localUrl, setLocalUrl] = useState<string>();
-
-  useEffect(() => {
-    const next = URL.createObjectURL(file);
-    setLocalUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [file]);
+  const localUrl = use$(
+    () =>
+      new Observable<string>((subscriber) => {
+        const url = URL.createObjectURL(file);
+        subscriber.next(url);
+        return () => URL.revokeObjectURL(url);
+      }),
+    [file],
+  );
 
   const preview = remoteUrl || localUrl;
   if (!preview) return null;
@@ -186,7 +192,8 @@ function FilePreview({ file, remoteUrl }: { file: File; remoteUrl?: string }) {
 
 function FileDropZone({ disabled, onSelect }: { disabled?: boolean; onSelect: (file: File) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
+  const dragging$ = useMemo(() => new BehaviorSubject(false), []);
+  const dragging = use$(dragging$);
 
   const chooseFile = () => {
     if (!disabled) inputRef.current?.click();
@@ -200,7 +207,7 @@ function FileDropZone({ disabled, onSelect }: { disabled?: boolean; onSelect: (f
 
   const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    setDragging(false);
+    dragging$.next(false);
     if (disabled) return;
 
     const file = event.dataTransfer.files?.[0];
@@ -215,9 +222,9 @@ function FileDropZone({ disabled, onSelect }: { disabled?: boolean; onSelect: (f
         onClick={chooseFile}
         onDragOver={(event) => {
           event.preventDefault();
-          if (!disabled) setDragging(true);
+          if (!disabled) dragging$.next(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={() => dragging$.next(false)}
         onDrop={handleDrop}
         className={[
           "flex min-h-[22rem] w-full flex-col items-center justify-center rounded-[2rem] border-2 border-dashed px-8 py-12 text-center transition-colors",
@@ -276,7 +283,7 @@ function MetadataField({
 
 function RelayResponseList({ results }: { results: { relay: string; ok: boolean; message?: string }[] }) {
   return (
-    <ul className="space-y-2 text-xs font-mono">
+    <ul className="space-y-2 text-sm font-mono">
       {results.map((result) => (
         <li key={result.relay} className="flex items-center gap-2 rounded-xl border border-base-300 px-3 py-2">
           <span className={result.ok ? "text-success" : "text-error"}>{result.ok ? "ok" : "fail"}</span>
@@ -292,7 +299,7 @@ function UploadStatusList({ statuses }: { statuses: UploadStatus[] }) {
   if (statuses.length === 0) return null;
 
   return (
-    <ul className="space-y-2 text-xs font-mono">
+    <ul className="space-y-2 text-sm font-mono">
       {statuses.map((status) => (
         <li key={status.server} className="flex items-center gap-2 rounded-xl border border-base-300 px-3 py-2">
           <span
@@ -325,52 +332,61 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
   );
   const userDisplayName = getDisplayName(profile, user.pubkey.slice(0, 8) + "...");
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
-  const [draftPreview, setDraftPreview] = useState<Awaited<ReturnType<typeof FileMetadataFactory.fromUpload>> | null>(
-    null,
+  const state$ = useMemo(
+    () =>
+      new BehaviorSubject({
+        selectedFile: null as File | null,
+        uploadResult: null as UploadResult | null,
+        publishedEvent: null as NostrEvent | null,
+        uploading: false,
+        publishing: false,
+        useMediaOptimization: true,
+        error: null as string | null,
+        results: null as { relay: string; ok: boolean; message?: string }[] | null,
+        uploadStatuses: [] as UploadStatus[],
+        fields: {
+          summary: "",
+          alt: "",
+          thumbnail: "",
+          image: "",
+          dimensions: "",
+          blurhash: "",
+        } as MetadataFormState,
+      }),
+    [],
   );
-  const [publishedEvent, setPublishedEvent] = useState<NostrEvent | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [useMediaOptimization, setUseMediaOptimization] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<{ relay: string; ok: boolean; message?: string }[] | null>(null);
-  const [uploadStatuses, setUploadStatuses] = useState<UploadStatus[]>([]);
-  const [fields, setFields] = useState<MetadataFormState>({
-    summary: "",
-    alt: "",
-    thumbnail: "",
-    image: "",
-    dimensions: "",
-    blurhash: "",
-  });
+  const {
+    selectedFile,
+    uploadResult,
+    publishedEvent,
+    uploading,
+    publishing,
+    useMediaOptimization,
+    error,
+    results,
+    uploadStatuses,
+    fields,
+  } = use$(state$);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function buildDraft() {
-      if (!uploadResult) {
-        setDraftPreview(null);
-        return;
-      }
-
-      const draft = await FileMetadataFactory.create(uploadResult.metadata)
-        .summary(fields.summary || null)
-        .alt(fields.alt || null)
-        .thumbnail(fields.thumbnail || null)
-        .image(fields.image || null)
-        .dimensions(fields.dimensions || null)
-        .blurhash(fields.blurhash || null);
-
-      if (!cancelled) setDraftPreview(draft);
-    }
-
-    void buildDraft();
-    return () => {
-      cancelled = true;
-    };
-  }, [uploadResult, fields]);
+  const preview = use$(
+    () =>
+      uploadResult
+        ? defer(async () => {
+            const factory = FileMetadataFactory.create(uploadResult.metadata)
+              .summary(fields.summary || null)
+              .alt(fields.alt || null)
+              .thumbnail(fields.thumbnail || null)
+              .image(fields.image || null)
+              .dimensions(fields.dimensions || null)
+              .blurhash(fields.blurhash || null);
+            return { draft: await factory, factory, error: undefined as string | undefined };
+          }).pipe(
+            catchError((error) => of({ draft: undefined, factory: undefined, error: String(error.message ?? error) })),
+          )
+        : of(undefined),
+    [uploadResult, fields],
+  );
+  const draftPreview = preview?.draft;
 
   const publishedCast = useMemo(
     () => (publishedEvent ? castEvent(publishedEvent, FileMetadata, eventStore) : null),
@@ -378,50 +394,53 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
   );
   const authorProfile = use$(() => publishedCast?.author.profile$, [publishedCast?.author.pubkey]);
 
-  const resetFlow = () => {
-    setSelectedFile(null);
-    setUploadResult(null);
-    setDraftPreview(null);
-    setPublishedEvent(null);
-    setResults(null);
-    setUploadStatuses([]);
-    setError(null);
-    setFields({ summary: "", alt: "", thumbnail: "", image: "", dimensions: "", blurhash: "" });
-  };
+  const resetFlow = () =>
+    state$.next({
+      ...state$.value,
+      selectedFile: null,
+      uploadResult: null,
+      publishedEvent: null,
+      results: null,
+      uploadStatuses: [],
+      error: null,
+      fields: { summary: "", alt: "", thumbnail: "", image: "", dimensions: "", blurhash: "" },
+    });
 
   const handleFile = async (file: File) => {
-    setSelectedFile(file);
-    setUploadResult(null);
-    setDraftPreview(null);
-    setPublishedEvent(null);
-    setResults(null);
-    setUploadStatuses(
-      (blossomServers?.length ? blossomServers : DEFAULT_BLOSSOM_SERVERS).map((server) => ({
+    state$.next({
+      ...state$.value,
+      selectedFile: file,
+      uploadResult: null,
+      publishedEvent: null,
+      results: null,
+      uploading: true,
+      error: null,
+      uploadStatuses: (blossomServers?.length ? blossomServers : DEFAULT_BLOSSOM_SERVERS).map((server) => ({
         server: server.href,
         state: "pending",
       })),
-    );
-    setError(null);
-    setFields({ summary: file.name, alt: "", thumbnail: "", image: "", dimensions: "", blurhash: "" });
-
-    setUploading(true);
+      fields: { summary: file.name, alt: "", thumbnail: "", image: "", dimensions: "", blurhash: "" },
+    });
     try {
       const uploaded = await uploadFileToBlossom(file, signer, blossomServers, useMediaOptimization, {
         onStart: (server) =>
-          setUploadStatuses((current) =>
-            current.map((status) =>
+          state$.next({
+            ...state$.value,
+            uploadStatuses: state$.value.uploadStatuses.map((status) =>
               status.server === server.href ? { ...status, state: "uploading", message: undefined } : status,
             ),
-          ),
+          }),
         onUpload: (server) =>
-          setUploadStatuses((current) =>
-            current.map((status) =>
+          state$.next({
+            ...state$.value,
+            uploadStatuses: state$.value.uploadStatuses.map((status) =>
               status.server === server.href ? { ...status, state: "uploaded", message: undefined } : status,
             ),
-          ),
+          }),
         onError: (server, uploadError) =>
-          setUploadStatuses((current) =>
-            current.map((status) =>
+          state$.next({
+            ...state$.value,
+            uploadStatuses: state$.value.uploadStatuses.map((status) =>
               status.server === server.href
                 ? {
                     ...status,
@@ -430,42 +449,34 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
                   }
                 : status,
             ),
-          ),
+          }),
       });
-      setUploadResult(uploaded);
+      state$.next({ ...state$.value, uploadResult: uploaded });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      state$.next({ ...state$.value, error: err instanceof Error ? err.message : "Upload failed" });
     } finally {
-      setUploading(false);
+      state$.next({ ...state$.value, uploading: false });
     }
   };
 
   const handlePublish = async () => {
-    if (!draftPreview) return;
+    if (!draftPreview || state$.value.publishing) return;
 
-    setPublishing(true);
-    setError(null);
-    setResults(null);
+    state$.next({ ...state$.value, publishing: true, error: null, results: null });
     try {
-      const signed = await FileMetadataFactory.create({
-        ...uploadResult?.metadata,
-      })
-        .summary(fields.summary || null)
-        .alt(fields.alt || null)
-        .thumbnail(fields.thumbnail || null)
-        .image(fields.image || null)
-        .dimensions(fields.dimensions || null)
-        .blurhash(fields.blurhash || null)
-        .sign(signer);
-
-      const responses = await pool.publish(publishRelays, signed);
+      if (!preview?.factory) return;
+      const signed = await preview.factory.sign(signer);
+      const responses = await publishEvent(pool, publishRelays, signed);
       eventStore.add(signed);
-      setPublishedEvent(signed);
-      setResults(responses.map((response) => ({ relay: response.from, ok: response.ok, message: response.message })));
+      state$.next({ ...state$.value, publishedEvent: signed });
+      state$.next({
+        ...state$.value,
+        results: responses.map((response) => ({ relay: response.from, ok: response.ok, message: response.message })),
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Publish failed");
+      state$.next({ ...state$.value, error: err instanceof Error ? err.message : "Publish failed" });
     } finally {
-      setPublishing(false);
+      state$.next({ ...state$.value, publishing: false });
     }
   };
 
@@ -488,9 +499,9 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
             </p>
           </div>
           <div className="text-right">
-            <div className="text-xs text-base-content/60">Signed in as</div>
+            <div className="text-sm text-base-content/60">Signed in as</div>
             <div className="mt-1 text-sm font-semibold">{userDisplayName}</div>
-            <div className="mt-1 font-mono text-xs text-base-content/60">{npubEncode(user.pubkey).slice(0, 18)}...</div>
+            <div className="mt-1 font-mono text-sm text-base-content/60">{npubEncode(user.pubkey).slice(0, 18)}...</div>
           </div>
         </div>
 
@@ -498,14 +509,16 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
           <div className="flex items-center gap-3">
             <span className="text-base-content/60">Blossom servers</span>
             <ServerAvatarStack servers={blossomServers?.length ? blossomServers : DEFAULT_BLOSSOM_SERVERS} />
-            {!blossomServers?.length && <span className="text-xs text-base-content/50">using default server</span>}
+            {!blossomServers?.length && <span className="text-sm text-base-content/50">using default server</span>}
           </div>
           <label className="flex cursor-pointer items-center gap-2 text-base-content/80">
             <input
               type="checkbox"
               className="toggle toggle-sm"
               checked={useMediaOptimization}
-              onChange={() => setUseMediaOptimization((value) => !value)}
+              onChange={() =>
+                state$.next({ ...state$.value, useMediaOptimization: !state$.value.useMediaOptimization })
+              }
             />
             <span>Media optimization</span>
           </label>
@@ -524,8 +537,10 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
         </section>
       )}
 
-      {error && (
-        <section className="rounded-2xl border border-error/40 bg-base-100 p-4 text-sm text-error">{error}</section>
+      {(error || preview?.error) && (
+        <section className="rounded-2xl border border-error/40 bg-base-100 p-4 text-sm text-error">
+          {error || preview?.error}
+        </section>
       )}
 
       {selectedFile && !uploading && (
@@ -539,7 +554,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
                   {selectedFile.type || "Unknown MIME type"} · {formatBytes(selectedFile.size)}
                 </div>
               </div>
-              <button className="btn btn-sm" onClick={resetFlow}>
+              <button className="btn btn-sm" onClick={resetFlow} disabled={publishing}>
                 Choose another
               </button>
             </div>
@@ -568,7 +583,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
                   <img src={avatar} alt={displayName} className="h-12 w-12 rounded-full border border-base-300" />
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold">{displayName}</div>
-                    <div className="text-xs text-base-content/60">{publishedCast.createdAt.toLocaleString()}</div>
+                    <div className="text-sm text-base-content/60">{publishedCast.createdAt.toLocaleString()}</div>
                     <a
                       href={publishedCast.url}
                       target="_blank"
@@ -579,7 +594,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
                     </a>
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2 text-xs text-base-content/70">
+                <div className="mt-4 flex flex-wrap gap-2 text-sm text-base-content/70">
                   {publishedCast.type && (
                     <div className="rounded-full border border-base-300 px-2 py-1">{publishedCast.type}</div>
                   )}
@@ -607,26 +622,26 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
             <MetadataField
               label="Summary"
               value={fields.summary}
-              onChange={(summary) => setFields((current) => ({ ...current, summary }))}
+              onChange={(summary) => state$.next({ ...state$.value, fields: { ...state$.value.fields, summary } })}
               placeholder="Short title or summary"
             />
             <MetadataField
               label="Alt text"
               value={fields.alt}
-              onChange={(alt) => setFields((current) => ({ ...current, alt }))}
+              onChange={(alt) => state$.next({ ...state$.value, fields: { ...state$.value.fields, alt } })}
               placeholder="Accessibility description"
               textarea
             />
             <MetadataField
               label="Thumbnail URL"
               value={fields.thumbnail}
-              onChange={(thumbnail) => setFields((current) => ({ ...current, thumbnail }))}
+              onChange={(thumbnail) => state$.next({ ...state$.value, fields: { ...state$.value.fields, thumbnail } })}
               placeholder="https://..."
             />
             <MetadataField
               label="Preview image URL"
               value={fields.image}
-              onChange={(image) => setFields((current) => ({ ...current, image }))}
+              onChange={(image) => state$.next({ ...state$.value, fields: { ...state$.value.fields, image } })}
               placeholder="https://..."
             />
 
@@ -634,13 +649,15 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
               <MetadataField
                 label="Dimensions"
                 value={fields.dimensions}
-                onChange={(dimensions) => setFields((current) => ({ ...current, dimensions }))}
+                onChange={(dimensions) =>
+                  state$.next({ ...state$.value, fields: { ...state$.value.fields, dimensions } })
+                }
                 placeholder="1200x800"
               />
               <MetadataField
                 label="Blurhash"
                 value={fields.blurhash}
-                onChange={(blurhash) => setFields((current) => ({ ...current, blurhash }))}
+                onChange={(blurhash) => state$.next({ ...state$.value, fields: { ...state$.value.fields, blurhash } })}
                 placeholder="LEHV6nWB2yk8..."
               />
             </div>
@@ -649,7 +666,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
               <div className="text-sm font-semibold">Publish relays</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {publishRelays.map((relay) => (
-                  <div key={relay} className="rounded-full border border-base-300 px-2 py-1 text-xs font-mono">
+                  <div key={relay} className="rounded-full border border-base-300 px-2 py-1 text-sm font-mono">
                     {relay.replace(/^wss:\/\//, "")}
                   </div>
                 ))}
@@ -659,7 +676,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
             {draftPreview && (
               <div className="rounded-2xl border border-base-300 p-4">
                 <div className="text-sm font-semibold">Draft tags</div>
-                <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto text-xs font-mono text-base-content/80">
+                <ul className="mt-3 max-h-64 space-y-1 overflow-y-auto text-sm font-mono text-base-content/80">
                   {draftPreview.tags.map((tag, index) => (
                     <li key={`${tag[0]}-${index}`}>[{tag.map((part) => JSON.stringify(part)).join(", ")}]</li>
                   ))}
@@ -668,7 +685,7 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
             )}
 
             <div className="flex flex-wrap justify-end gap-2">
-              <button className="btn" onClick={resetFlow}>
+              <button className="btn" onClick={resetFlow} disabled={publishing}>
                 Reset
               </button>
               <button

@@ -3,6 +3,9 @@
  * @tags nip-84, highlight, timeline
  * @related highlight/article
  */
+import { relayTimeline } from "../../extra/relay-timeline";
+import { castUser } from "applesauce-common/casts";
+
 import {
   getHighlightAttributions,
   getHighlightComment,
@@ -13,7 +16,7 @@ import {
   getHighlightText,
   HighlightAttribution,
 } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
   getProfilePicture,
@@ -26,8 +29,8 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { naddrEncode, neventEncode, nprofileEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
-import { useMemo, useState } from "react";
-import { map } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -48,7 +51,7 @@ createEventLoaderForStore(eventStore, pool, {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
 }
 
 function HighlightCard({ highlight }: { highlight: NostrEvent }) {
@@ -84,8 +87,8 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
   const sourceLink = getSourceLink();
 
   return (
-    <div className="card shadow">
-      <div className="card-body">
+    <div className="border border-base-300 ">
+      <div className="p-4">
         {/* Author info */}
         <div className="flex items-center gap-4 mb-2">
           <div className="avatar">
@@ -137,7 +140,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
           .filter((a: HighlightAttribution) => a.role === "author")
           .map((author: HighlightAttribution, i: number) => (
             <div key={`author-${i}`} className="flex items-center gap-2 mb-2">
-              <span className="badge badge-primary badge-sm">author</span>
+              <span className="badge badge-primary badge-md">author</span>
               <a
                 href={`https://njump.me/${nprofileEncode(author)}`}
                 target="_blank"
@@ -152,7 +155,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
           .filter((attr) => attr.role === "editor")
           .map((editor, i) => (
             <div key={`editor-${i}`} className="flex items-center gap-2 mb-2">
-              <span className="badge badge-secondary badge-sm">editor</span>
+              <span className="badge badge-secondary badge-md">editor</span>
               <a
                 href={`https://njump.me/${nprofileEncode(editor)}`}
                 target="_blank"
@@ -167,7 +170,7 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
           .filter((attr) => attr.role !== "author" && attr.role !== "editor")
           .map((other, i) => (
             <div key={`other-${i}`} className="flex items-center gap-2 mb-2">
-              <span className="badge badge-sm">{other.role || "mention"}</span>
+              <span className="badge badge-md">{other.role || "mention"}</span>
               <a
                 href={`https://njump.me/${nprofileEncode(other)}`}
                 target="_blank"
@@ -184,24 +187,12 @@ function HighlightCard({ highlight }: { highlight: NostrEvent }) {
 }
 
 export default function HighlightTimeline() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
-  // Create a timeline observable for highlight events (kind 9802)
-  const highlights = use$(
-    () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [kinds.Highlights] })
-        .pipe(
-          // deduplicate events using the event store
-          mapEventsToStore(eventStore),
-          // collect all events into a timeline
-          mapEventsToTimeline(),
-          // Duplicate the timeline array to make react happy
-          map((t) => [...t]),
-        ),
-    [relay],
-  );
+  // Highlight metadata has no built-in cast; its dedicated helpers describe this event kind.
+  const feed = use$(() => relayTimeline(eventStore, pool, [relay], { kinds: [kinds.Highlights] }), [relay]);
+  const highlights = feed?.events;
 
   return (
     <div className="container mx-auto my-8 px-4">
@@ -210,7 +201,13 @@ export default function HighlightTimeline() {
         <p className="opacity-60">NIP-84 highlight events from Nostr relays</p>
       </div>
 
-      <RelayPicker value={relay} onChange={setRelay} />
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="text-error">
+          {error}
+        </p>
+      ))}
+      {feed?.status === "loading" && <p>Loading highlights…</p>}
+      <RelayPicker value={relay} onChange={(value: typeof relay$.value) => relay$.next(value)} />
 
       <div className="flex flex-col gap-6 py-4">
         {highlights?.length === 0 ? (

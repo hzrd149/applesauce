@@ -3,7 +3,9 @@
  * @tags nip-65, nip-66, relay-discovery, mailbox, map
  * @related relay-discovery/monitors-map, relay-discovery/contacts-relays
  */
-import { RelayMonitor } from "applesauce-common/casts";
+import { BehaviorSubject, combineLatest, map } from "rxjs";
+
+import { RelayMonitor, castUser } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
@@ -12,10 +14,10 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { decode } from "ngeohash";
-import { addEvents, openDB } from "nostr-idb";
-import { useMemo, useState } from "react";
+import { addEvents, openDB, getEventsForFilters } from "nostr-idb";
+import { useMemo } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import { combineLatest, map } from "rxjs";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
 
@@ -25,26 +27,26 @@ import "leaflet/dist/leaflet.css";
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-// Create unified event loader for the store
+const cache = await openDB();
+// Connect both reads and writes to the shared event cache.
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
+  cacheRequest: (filters) => getEventsForFilters(cache, filters),
 });
-
-const cache = await openDB();
 persistEventsToCache(eventStore, (events) => addEvents(cache, events));
 
 // Fix Leaflet default marker icons
 import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
 import { lookupRelays$ } from "../../settings";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  shadowUrl: undefined,
 });
 
 // Helper function to decode geohash to lat/lng
@@ -89,18 +91,18 @@ function RelayPopup({ relay }: { relay: RelayWithLocation }) {
   return (
     <div className="max-w-sm">
       <h4 className="font-bold text-lg mb-2">{relay.type === "inbox" ? "Inbox" : "Outbox"} Relay</h4>
-      <div className="text-xs text-gray-600 mb-1">
+      <div className="text-sm text-gray-600 mb-1">
         <strong>Relay URL:</strong>
         <input
           type="text"
           readOnly
           value={relay.url}
-          className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 font-mono text-xs cursor-text"
+          className="w-full mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded border border-gray-300 dark:border-gray-700 font-mono text-sm cursor-text"
           onFocus={(e) => e.target.select()}
           onClick={(e) => (e.target as HTMLInputElement).select()}
         />
       </div>
-      <div className="text-xs text-gray-600 mb-1">
+      <div className="text-sm text-gray-600 mb-1">
         <strong>Location:</strong> {relay.position[0].toFixed(4)}, {relay.position[1].toFixed(4)}
       </div>
     </div>
@@ -122,7 +124,7 @@ function RelayMarker({ relay }: { relay: RelayWithLocation }) {
           height: 40px;
           border-radius: 50%;
           border: 3px solid ${borderColor};
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+
           overflow: hidden;
           background: white;
         ">
@@ -186,9 +188,14 @@ function MonitorPicker({
 }
 
 export default function OutboxMap() {
-  const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
-  const [selectedMonitor, setSelectedMonitor] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
-  const [selectedPubkey, setSelectedPubkey] = useState<string>("");
+  const relay$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_RELAY), []);
+  const relay = use$(relay$);
+
+  const selectedMonitor$ = useMemo(() => new BehaviorSubject<string>(DEFAULT_DISCOVERY_MONITOR), []);
+  const selectedMonitor = use$(selectedMonitor$);
+
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
 
   // Get the monitor's announcement event
   const monitors = use$(
@@ -208,7 +215,13 @@ export default function OutboxMap() {
 
   // Get user's mailboxes
   const mailboxes = use$(
-    () => (selectedPubkey ? eventStore.mailboxes({ pubkey: selectedPubkey }) : undefined),
+    () =>
+      selectedPubkey
+        ? combineLatest({
+            inboxes: castUser(selectedPubkey, eventStore).inboxes$,
+            outboxes: castUser(selectedPubkey, eventStore).outboxes$,
+          }).pipe(map(({ inboxes, outboxes }) => ({ inboxes: inboxes ?? [], outboxes: outboxes ?? [] })))
+        : undefined,
     [selectedPubkey],
   );
 
@@ -227,7 +240,7 @@ export default function OutboxMap() {
             ),
           )
         : undefined,
-    [monitor?.uid, mailboxes?.inboxes.join(",")],
+    [monitor, mailboxes?.inboxes.join(",")],
   );
 
   // Get relay discovery for each outbox relay using monitor.relayStatus()
@@ -245,7 +258,7 @@ export default function OutboxMap() {
             ),
           )
         : undefined,
-    [monitor?.uid, mailboxes?.outboxes.join(",")],
+    [monitor, mailboxes?.outboxes.join(",")],
   );
 
   // Extract inbox and outbox relays
@@ -342,7 +355,7 @@ export default function OutboxMap() {
   return (
     <div className="space-y-2 h-full overflow-hidden flex flex-col">
       <div className="p-4 flex flex-col gap-2">
-        <h2 className="card-title">User Mailbox Relays Map</h2>
+        <h2 className="font-semibold">User Mailbox Relays Map</h2>
         <p className="text-sm text-base-content/70">
           Select a monitor, then a user to view their inbox and outbox relays (NIP-65) displayed on a map. Relays with
           geohash data from relay discovery events will appear as markers. Inbox relays have green borders, outbox
@@ -350,11 +363,20 @@ export default function OutboxMap() {
         </p>
 
         <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={setRelay} />
-          {monitors && <MonitorPicker monitors={monitors} onChange={setSelectedMonitor} value={selectedMonitor} />}
+          <RelayPicker value={relay} onChange={(next: typeof relay$.value) => relay$.next(next)} />
+          {monitors && (
+            <MonitorPicker
+              monitors={monitors}
+              onChange={(next: typeof selectedMonitor$.value) => selectedMonitor$.next(next)}
+              value={selectedMonitor}
+            />
+          )}
         </div>
 
-        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+        <PubkeyPicker
+          value={selectedPubkey}
+          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
+        />
 
         {!monitor && <div className="text-sm text-base-content/70">Select a monitor to view relay discovery data</div>}
 

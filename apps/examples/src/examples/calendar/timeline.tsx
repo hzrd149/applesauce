@@ -3,6 +3,10 @@
  * @tags nip-52, calendar, timeline, events
  * @related calendar/map
  */
+import NoteContent from "../../components/note-content";
+
+import { castUser } from "applesauce-common/casts";
+
 import {
   CALENDAR_EVENT_RSVP_KIND,
   COMMENT_KIND,
@@ -18,7 +22,7 @@ import {
   getCalendarEventTitle,
   TIME_BASED_CALENDAR_EVENT_KIND,
 } from "applesauce-common/helpers";
-import { CalendarEventRSVPsModel, MailboxesModel } from "applesauce-common/models";
+import { CalendarEventRSVPsModel } from "applesauce-common/models";
 import { EventStore } from "applesauce-core";
 import {
   Filter,
@@ -135,7 +139,7 @@ function timeLabel(entry: CalendarEntry) {
 
 function AuthorName({ event }: { event: NostrEvent }) {
   const profile = use$(
-    () => eventStore.profile({ pubkey: event.pubkey, relays: [...(getSeenRelays(event) ?? [])] }),
+    () => castUser({ pubkey: event.pubkey, relays: [...(getSeenRelays(event) ?? [])] }, eventStore).profile$,
     [event.id],
   );
   return <span>{getDisplayName(profile, event.pubkey.slice(0, 12))}</span>;
@@ -163,7 +167,7 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
     [original.id, relay],
   );
   const mailboxes = use$(
-    () => eventStore.model(MailboxesModel, { pubkey: original.pubkey, relays: hints }),
+    () => castUser({ pubkey: original.pubkey, relays: hints }, eventStore).mailboxes$,
     [original.id, hints.join("|")],
   );
   const relays = relaySet(hints, mailboxes?.outboxes).filter(isSafeRelayURL);
@@ -196,12 +200,13 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
       ? combineLatest(relays.map((url) => relayStatus(url, filters))).pipe(
           map((states) => ({
             pending: relays.filter((_, i) => states[i].status === "loading"),
+            live: states.some((state) => state.status === "live"),
             failures: states.flatMap((state, i) => (state.error ? [`${relays[i]}: ${state.error}`] : [])),
           })),
         )
-      : of({ pending: [], failures: [] });
+      : of({ pending: [], failures: [], live: false });
   }, [relays.join("|"), event.id, address, identifier]);
-  const { pending, failures } = loading ?? { pending: relays, failures: [] };
+  const { pending, failures, live } = loading ?? { pending: relays, failures: [], live: false };
 
   const participants = getCalendarEventParticipants(event);
   const image = getCalendarEventImage(event);
@@ -296,9 +301,9 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
                 </span>
               </div>
               {getTagValue(response, "e") && getTagValue(response, "e") !== event.id && (
-                <p className="text-xs text-warning">Response to an earlier event revision</p>
+                <p className="text-sm text-warning">Response to an earlier event revision</p>
               )}
-              {response.content && <p className="whitespace-pre-wrap mt-1">{response.content}</p>}
+              {response.content && <NoteContent event={response} className="mt-1" />}
             </div>
           ))}
         </section>
@@ -313,21 +318,23 @@ function EventDetails({ entry, relay, onClose }: { entry: CalendarEntry; relay: 
             <article key={comment.id} className="border-l-2 border-base-300 pl-3">
               <div className="text-sm flex flex-wrap justify-between gap-2">
                 <AuthorName event={comment} />
-                <time className="text-xs text-base-content/50">
+                <time className="text-sm text-base-content/50">
                   {new Date(comment.created_at * 1000).toLocaleString()}
                 </time>
               </div>
-              <p className="whitespace-pre-wrap break-words mt-1">{comment.content}</p>
+              <NoteContent event={comment} className="mt-1" />
             </article>
           ))}
         </section>
-        <p role="status" className="text-xs text-base-content/50">
+        <p role="status" className="text-sm text-base-content/50">
           {pending.length
             ? `Loading from ${pending.length} relays…`
-            : "Related events are live while this window is open."}
+            : live
+              ? "Related events are live while this window is open."
+              : "Related event subscriptions are closed."}
         </p>
         {failures.map((failure, i) => (
-          <p key={i} className="text-xs text-warning break-all">
+          <p key={i} className="text-sm text-warning break-all">
             {failure}
           </p>
         ))}
@@ -411,7 +418,7 @@ function TimeCalendar({
           ))}
         </div>
         <div className="grid border-b border-base-300" style={{ gridTemplateColumns: columns }}>
-          <span className="text-xs text-base-content/50 p-2">All day</span>
+          <span className="text-sm text-base-content/50 p-2">All day</span>
           {days.map((day) => (
             <div key={dayKey(day)} className="border-l border-base-300 p-1 space-y-1 min-h-12">
               {entries
@@ -419,7 +426,7 @@ function TimeCalendar({
                 .map((entry) => (
                   <button
                     key={entry.event.id}
-                    className="block w-full rounded bg-primary/15 text-primary p-1 text-xs text-left truncate"
+                    className="block w-full rounded bg-primary/15 text-primary p-1 text-sm text-left truncate"
                     onClick={() => onSelect(getReplaceableAddress(entry.event)!)}
                   >
                     {getCalendarEventTitle(entry.event) || "Untitled event"}
@@ -432,7 +439,7 @@ function TimeCalendar({
           <div className="grid" style={{ gridTemplateColumns: columns }}>
             <div>
               {Array.from({ length: 24 }, (_, hour) => (
-                <div key={hour} className="h-12 pr-2 text-right text-xs text-base-content/50 border-t border-base-300">
+                <div key={hour} className="h-12 pr-2 text-right text-sm text-base-content/50 border-t border-base-300">
                   {String(hour).padStart(2, "0")}:00
                 </div>
               ))}
@@ -447,7 +454,7 @@ function TimeCalendar({
                   {positioned.map(({ entry, start, end, lane, columns }) => (
                     <button
                       key={entry.event.id}
-                      className={`absolute overflow-hidden rounded border-l-2 border-primary p-1 text-left text-xs hover:bg-primary/30 ${selectedAddress === getReplaceableAddress(entry.event) ? "bg-primary/30" : "bg-base-200"}`}
+                      className={`absolute overflow-hidden rounded border-l-2 border-primary p-1 text-left text-sm hover:bg-primary/30 ${selectedAddress === getReplaceableAddress(entry.event) ? "bg-primary/30" : "bg-base-200"}`}
                       style={{
                         top: start * 0.8,
                         height: (end - start) * 0.8,
@@ -652,7 +659,7 @@ export default function CalendarTimeline() {
                   <span className="sr-only">Select week</span>
                   <span aria-hidden="true" />
                   {weekdays.map((day) => (
-                    <div key={day} className="py-3 text-center text-xs font-medium text-base-content/60">
+                    <div key={day} className="py-3 text-center text-sm font-medium text-base-content/60">
                       {day}
                     </div>
                   ))}
@@ -665,7 +672,7 @@ export default function CalendarTimeline() {
                       className="grid flex-1 grid-cols-[2rem_repeat(7,minmax(0,1fr))] border-b last:border-b-0 border-base-300"
                     >
                       <button
-                        className={`border-r border-base-300 text-xs hover:bg-base-200 text-base-content/40`}
+                        className={`border-r border-base-300 text-sm hover:bg-base-200 text-base-content/40`}
                         aria-label={`Select week of ${week[0].toLocaleDateString()}`}
                         onClick={() => selectDate(week[0], "week")}
                       >
@@ -696,7 +703,7 @@ export default function CalendarTimeline() {
                               {dayEvents.slice(0, 3).map((entry) => (
                                 <button
                                   key={entry.event.id}
-                                  className={`block w-full truncate rounded px-1.5 py-1 text-left text-xs hover:bg-primary/20 ${entry.allDay ? "bg-primary/15 text-primary" : "bg-base-200"}`}
+                                  className={`block w-full truncate rounded px-1.5 py-1 text-left text-sm hover:bg-primary/20 ${entry.allDay ? "bg-primary/15 text-primary" : "bg-base-200"}`}
                                   title={`${timeLabel(entry)} · ${getCalendarEventTitle(entry.event) || "Untitled event"}`}
                                   onClick={() => selectDate(date, selection, getReplaceableAddress(entry.event)!)}
                                 >
@@ -705,7 +712,7 @@ export default function CalendarTimeline() {
                                 </button>
                               ))}
                               {dayEvents.length > 3 && (
-                                <button className="text-xs text-primary px-1" onClick={() => selectDate(date, "day")}>
+                                <button className="text-sm text-primary px-1" onClick={() => selectDate(date, "day")}>
                                   +{dayEvents.length - 3} more
                                 </button>
                               )}
@@ -739,7 +746,7 @@ export default function CalendarTimeline() {
               return (
                 <section key={dayKey(date)}>
                   {agendaDays.length > 1 && (
-                    <h3 className="text-xs font-semibold text-base-content/60 mb-2">
+                    <h3 className="text-sm font-semibold text-base-content/60 mb-2">
                       {date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
                     </h3>
                   )}
@@ -756,7 +763,7 @@ export default function CalendarTimeline() {
                             aria-pressed={selectedAddress === getReplaceableAddress(entry.event)}
                             onClick={() => setSelectedAddress(getReplaceableAddress(entry.event)!)}
                           >
-                            <span className="block text-xs text-base-content/60">
+                            <span className="block text-sm text-base-content/60">
                               {timeLabel(entry)}
                               {!entry.allDay && entry.start < date && " · Continued"}
                             </span>
@@ -764,7 +771,7 @@ export default function CalendarTimeline() {
                               {getCalendarEventTitle(entry.event) || "Untitled event"}
                             </span>
                             {getCalendarEventLocations(entry.event)[0] && (
-                              <span className="block text-xs text-base-content/50 truncate mt-1">
+                              <span className="block text-sm text-base-content/50 truncate mt-1">
                                 {getCalendarEventLocations(entry.event)[0]}
                               </span>
                             )}

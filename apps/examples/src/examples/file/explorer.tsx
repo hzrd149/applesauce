@@ -3,14 +3,19 @@
  * @tags nip-94, files, feed, filtering, relay
  * @related feed/relay-timeline, hashtags/explore, torrent/feed
  */
-import { FileMetadata } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore } from "applesauce-core";
+
+import { relayTimeline } from "../../extra/relay-timeline";
+import { useMemo } from "react";
+
+import { FileMetadata } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, kinds } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { BehaviorSubject, combineLatest, EMPTY, map, shareReplay, switchMap } from "rxjs";
+import { BehaviorSubject, combineLatest, map, shareReplay, switchMap, distinctUntilChanged, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -28,59 +33,7 @@ const CURATED_MIME_TYPES = [
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-const relay$ = new BehaviorSubject<string>(DEFAULT_RELAY);
-const search$ = new BehaviorSubject<string>("");
-const mimeTypes$ = new BehaviorSubject<string[]>([]);
-const selectedFile$ = new BehaviorSubject<FileMetadata | null>(null);
-
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: lookupRelays$,
-  extraRelays: relay$.pipe(map((relay) => (relay ? [relay] : []))),
-});
-
-const fileFilter$ = mimeTypes$.pipe(
-  map((mimeTypes) => ({
-    kinds: [kinds.FileMetadata],
-    limit: 500,
-    ...(mimeTypes.length > 0 ? { "#m": mimeTypes } : undefined),
-  })),
-  shareReplay(1),
-);
-
-const allFiles$ = eventStore
-  .timeline({ kinds: [1063], limit: 500 })
-  .pipe(castTimelineStream(FileMetadata, eventStore), shareReplay(1));
-
-const files$ = fileFilter$.pipe(
-  switchMap((filter) => eventStore.timeline(filter).pipe(castTimelineStream(FileMetadata, eventStore))),
-  shareReplay(1),
-);
-
-const availableMimeTypes$ = allFiles$.pipe(
-  map((files: FileMetadata[]) => {
-    const discovered = files.map((file) => file.type).filter((type): type is string => !!type);
-    return Array.from(new Set([...CURATED_MIME_TYPES, ...discovered])).sort();
-  }),
-);
-
-const filteredFiles$ = combineLatest([files$, search$, mimeTypes$]).pipe(
-  map(([files, search, mimeTypes]: [FileMetadata[], string, string[]]) => {
-    const normalizedSearch = search.trim().toLowerCase();
-
-    return files.filter((file: FileMetadata) => {
-      if (mimeTypes.length > 0 && (!file.type || !mimeTypes.includes(file.type))) return false;
-
-      if (!normalizedSearch) return true;
-
-      const haystack = [file.url, file.type, file.summary, file.alt, file.author.pubkey, file.sha256]
-        .filter((value): value is string => !!value)
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(normalizedSearch);
-    });
-  }),
-);
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: [DEFAULT_RELAY] });
 
 function formatBytes(size?: number) {
   if (size === undefined || Number.isNaN(size)) return "Unknown size";
@@ -130,14 +83,19 @@ function FilePreview({ file }: { file: FileMetadata }) {
   );
 }
 
-function MimeTypeFilter() {
-  const availableMimeTypes = use$(availableMimeTypes$) ?? CURATED_MIME_TYPES;
-  const selectedMimeTypes = use$(mimeTypes$) ?? [];
-
+function MimeTypeFilter({
+  availableMimeTypes,
+  selectedMimeTypes,
+  onChange,
+}: {
+  availableMimeTypes: string[];
+  selectedMimeTypes: string[];
+  onChange: (types: string[]) => void;
+}) {
   const toggleMimeType = (type: string, checked: boolean) => {
-    const current = mimeTypes$.value;
+    const current = selectedMimeTypes;
     const next = checked ? Array.from(new Set([...current, type])) : current.filter((value) => value !== type);
-    mimeTypes$.next(next);
+    onChange(next);
   };
 
   return (
@@ -145,9 +103,9 @@ function MimeTypeFilter() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">MIME Types</div>
-          <div className="text-xs text-base-content/60">Select one or more types to narrow the feed.</div>
+          <div className="text-sm text-base-content/60">Select one or more types to narrow the feed.</div>
         </div>
-        <button className="btn btn-xs" onClick={() => mimeTypes$.next([])} disabled={selectedMimeTypes.length === 0}>
+        <button className="btn btn-sm" onClick={() => onChange([])} disabled={selectedMimeTypes.length === 0}>
           Clear
         </button>
       </div>
@@ -169,7 +127,7 @@ function MimeTypeFilter() {
                 checked={checked}
                 onChange={(event) => toggleMimeType(type, event.target.checked)}
               />
-              <span className="min-w-0 truncate font-mono text-xs">{type}</span>
+              <span className="min-w-0 truncate font-mono text-sm">{type}</span>
             </label>
           );
         })}
@@ -189,8 +147,7 @@ function FileMetaRow({ label, value }: { label: string; value?: string | number 
   );
 }
 
-function FileMetadataDialog() {
-  const file = use$(selectedFile$);
+function FileMetadataDialog({ file, onClose }: { file: FileMetadata | null; onClose: () => void }) {
   const profile = use$(() => file?.author.profile$, [file?.author.pubkey]);
 
   if (!file) return null;
@@ -202,10 +159,7 @@ function FileMetadataDialog() {
     <dialog className="modal modal-open">
       <div className="modal-box max-w-3xl border border-base-300 p-0">
         <div className="border-b border-base-300 p-5">
-          <button
-            className="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"
-            onClick={() => selectedFile$.next(null)}
-          >
+          <button className="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" onClick={onClose}>
             ✕
           </button>
 
@@ -218,7 +172,7 @@ function FileMetadataDialog() {
             <div className="min-w-0 flex-1">
               <div className="text-lg font-semibold">{file.summary || file.alt || file.type || "File metadata"}</div>
               <div className="mt-1 text-sm text-base-content/70">Shared by {displayName}</div>
-              <div className="mt-1 text-xs text-base-content/60">{file.createdAt.toLocaleString()}</div>
+              <div className="mt-1 text-sm text-base-content/60">{file.createdAt.toLocaleString()}</div>
             </div>
           </div>
         </div>
@@ -255,13 +209,13 @@ function FileMetadataDialog() {
         </div>
       </div>
       <form method="dialog" className="modal-backdrop">
-        <button onClick={() => selectedFile$.next(null)}>close</button>
+        <button onClick={onClose}>close</button>
       </form>
     </dialog>
   );
 }
 
-function FileCard({ file }: { file: FileMetadata }) {
+function FileCard({ file, onSelect }: { file: FileMetadata; onSelect: () => void }) {
   const profile = use$(() => file.author.profile$, [file.author.pubkey]);
   const displayName = getDisplayName(profile, file.author.pubkey.slice(0, 8) + "...");
   const avatar = getProfilePicture(profile, `https://robohash.org/${file.author.pubkey}.png`);
@@ -274,12 +228,12 @@ function FileCard({ file }: { file: FileMetadata }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="truncate font-semibold">{displayName}</div>
-            <div className="text-xs text-base-content/60">{file.createdAt.toLocaleString()}</div>
+            <div className="text-sm text-base-content/60">{file.createdAt.toLocaleString()}</div>
           </div>
-          <div className="truncate text-xs text-base-content/60">{file.author.pubkey}</div>
+          <div className="truncate text-sm text-base-content/60">{file.author.pubkey}</div>
         </div>
         {file.type && (
-          <div className="rounded-full border border-base-300 px-2 py-1 text-xs font-mono">{file.type}</div>
+          <div className="rounded-full border border-base-300 px-2 py-1 text-sm font-mono">{file.type}</div>
         )}
       </div>
 
@@ -300,7 +254,7 @@ function FileCard({ file }: { file: FileMetadata }) {
             {file.url}
           </a>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-xs text-base-content/70">
+          <div className="mt-4 flex flex-wrap gap-2 text-sm text-base-content/70">
             <div className="rounded-full border border-base-300 px-2 py-1">{formatBytes(file.size)}</div>
             {file.dimensions && <div className="rounded-full border border-base-300 px-2 py-1">{file.dimensions}</div>}
             {file.blurhash && <div className="rounded-full border border-base-300 px-2 py-1">blurhash</div>}
@@ -320,7 +274,7 @@ function FileCard({ file }: { file: FileMetadata }) {
             <a href={file.url} target="_blank" rel="noreferrer" className="btn btn-sm btn-primary">
               Open File
             </a>
-            <button className="btn btn-sm" onClick={() => selectedFile$.next(file)}>
+            <button className="btn btn-sm" onClick={onSelect}>
               View Metadata
             </button>
           </div>
@@ -331,21 +285,66 @@ function FileCard({ file }: { file: FileMetadata }) {
 }
 
 export default function FileExplorerExample() {
-  const relay = use$(relay$) ?? DEFAULT_RELAY;
-  const search = use$(search$) ?? "";
-  const selectedMimeTypes = use$(mimeTypes$) ?? [];
-  const files = use$(filteredFiles$) ?? [];
-
-  use$(
+  const state$ = useMemo(
     () =>
-      combineLatest([relay$, fileFilter$]).pipe(
-        switchMap(([relay, filter]) => {
-          if (!relay) return EMPTY;
-          return pool.relay(relay).subscription(filter).pipe(mapEventsToStore(eventStore));
-        }),
-      ),
+      new BehaviorSubject({
+        relay: DEFAULT_RELAY,
+        search: "",
+        mimeTypes: [] as string[],
+        selected: null as FileMetadata | null,
+      }),
     [],
   );
+  const { relay, search, mimeTypes: selectedMimeTypes, selected } = use$(state$);
+  const update = (value: Partial<typeof state$.value>) => state$.next({ ...state$.value, ...value });
+  const feed$ = useMemo(
+    () =>
+      state$.pipe(
+        map(({ relay, mimeTypes }) => ({
+          relay,
+          filter: { kinds: [kinds.FileMetadata], limit: 500, ...(mimeTypes.length ? { "#m": mimeTypes } : {}) },
+        })),
+        distinctUntilChanged((a, b) => a.relay === b.relay && JSON.stringify(a.filter) === JSON.stringify(b.filter)),
+        switchMap(({ relay, filter }) =>
+          relayTimeline(eventStore, pool, relay ? [relay] : [], filter).pipe(
+            switchMap((result) =>
+              of(result.events).pipe(
+                castTimelineStream(FileMetadata, eventStore),
+                map((events) => ({ ...result, events })),
+              ),
+            ),
+          ),
+        ),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      ),
+    [state$],
+  );
+  const result = use$(
+    () =>
+      combineLatest([feed$, state$]).pipe(
+        map(([feed, state]) => {
+          const allFiles = feed.events;
+          const query = state.search.trim().toLowerCase();
+          return {
+            ...feed,
+            files: allFiles.filter(
+              (file) =>
+                !query ||
+                [file.url, file.type, file.summary, file.alt, file.author.pubkey, file.sha256]
+                  .filter(Boolean)
+                  .join(" ")
+                  .toLowerCase()
+                  .includes(query),
+            ),
+            availableMimeTypes: [
+              ...new Set([...CURATED_MIME_TYPES, ...allFiles.flatMap((file) => (file.type ? [file.type] : []))]),
+            ].sort(),
+          };
+        }),
+      ),
+    [feed$, state$],
+  );
+  const files = result?.files ?? [];
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4">
@@ -354,7 +353,7 @@ export default function FileExplorerExample() {
           <div>
             <div className="text-sm font-semibold">Relay</div>
             <div className="mt-2">
-              <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+              <RelayPicker value={relay} onChange={(relay) => update({ relay, selected: null })} />
             </div>
           </div>
 
@@ -363,11 +362,11 @@ export default function FileExplorerExample() {
             <input
               type="text"
               value={search}
-              onChange={(event) => search$.next(event.target.value)}
+              onChange={(event) => update({ search: event.target.value })}
               placeholder="Search by URL, summary, alt text, hash, or author"
               className="input input-bordered mt-2 w-full"
             />
-            <div className="mt-2 text-xs text-base-content/60">
+            <div className="mt-2 text-sm text-base-content/60">
               {selectedMimeTypes.length > 0
                 ? `Filtering ${selectedMimeTypes.length} MIME type${selectedMimeTypes.length === 1 ? "" : "s"}`
                 : "Showing every MIME type from the current relay feed."}
@@ -376,19 +375,32 @@ export default function FileExplorerExample() {
         </div>
       </section>
 
-      <MimeTypeFilter />
+      <MimeTypeFilter
+        availableMimeTypes={result?.availableMimeTypes ?? CURATED_MIME_TYPES}
+        selectedMimeTypes={selectedMimeTypes}
+        onChange={(mimeTypes) => update({ mimeTypes })}
+      />
 
       <section className="space-y-4">
-        {files.length === 0 ? (
+        {result?.errors.map((error) => (
+          <p role="alert" className="text-error" key={error}>
+            {error}
+          </p>
+        ))}
+        {result?.status === "loading" ? (
+          <p role="status">Loading files…</p>
+        ) : files.length === 0 ? (
           <div className="rounded-2xl border border-base-300 bg-base-100 p-8 text-center text-sm text-base-content/60">
             No file events match the current relay and filters.
           </div>
         ) : (
-          files.map((file: FileMetadata) => <FileCard key={file.uid} file={file} />)
+          files.map((file: FileMetadata) => (
+            <FileCard key={file.uid} file={file} onSelect={() => update({ selected: file })} />
+          ))
         )}
       </section>
 
-      <FileMetadataDialog />
+      <FileMetadataDialog file={selected} onClose={() => update({ selected: null })} />
     </div>
   );
 }

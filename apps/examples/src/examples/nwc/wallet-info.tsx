@@ -3,6 +3,10 @@
  * @tags nip-47, nwc, wallet, info
  * @related nwc/simple-wallet, nwc/transactions
  */
+import { publishEvent } from "../../extra/publish";
+
+import { BehaviorSubject, Subject, switchMap, defer, map, startWith, catchError, of } from "rxjs";
+
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -13,7 +17,7 @@ import {
   supportsMethod,
   WalletInfo,
 } from "applesauce-wallet-connect/helpers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -25,9 +29,9 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Basic Info */}
-        <div className="card card-border bg-base-200">
-          <div className="card-body">
-            <h3 className="card-title">Basic Information</h3>
+        <div className="border border-base-300  bg-base-200">
+          <div className="p-4">
+            <h3 className="font-semibold">Basic Information</h3>
             <div className="space-y-2">
               <div>
                 <span className="font-medium">Alias:</span>
@@ -59,13 +63,13 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
         </div>
 
         {/* Node Info */}
-        <div className="card card-border bg-base-200">
-          <div className="card-body">
-            <h3 className="card-title">Node Information</h3>
+        <div className="border border-base-300  bg-base-200">
+          <div className="p-4">
+            <h3 className="font-semibold">Node Information</h3>
             <div className="space-y-2">
               <div>
                 <span className="font-medium">Public Key:</span>
-                <code className="ml-2 text-xs break-all">{walletInfo.pubkey}</code>
+                <code className="ml-2 text-sm break-all">{walletInfo.pubkey}</code>
               </div>
               <div>
                 <span className="font-medium">Block Height:</span>
@@ -73,7 +77,7 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
               </div>
               <div>
                 <span className="font-medium">Block Hash:</span>
-                <code className="ml-2 text-xs break-all">{walletInfo.block_hash}</code>
+                <code className="ml-2 text-sm break-all">{walletInfo.block_hash}</code>
               </div>
             </div>
           </div>
@@ -81,9 +85,9 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
       </div>
 
       {/* Supported Methods */}
-      <div className="card card-border bg-base-200">
-        <div className="card-body">
-          <h3 className="card-title">Supported Methods</h3>
+      <div className="border border-base-300  bg-base-200">
+        <div className="p-4">
+          <h3 className="font-semibold">Supported Methods</h3>
           <div className="flex flex-wrap gap-2 mt-2">
             {walletInfo.methods.map((method) => (
               <span key={method} className="badge badge-primary">
@@ -96,9 +100,9 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
 
       {/* Notifications */}
       {walletInfo.notifications && walletInfo.notifications.length > 0 && (
-        <div className="card card-border bg-base-200">
-          <div className="card-body">
-            <h3 className="card-title">Supported Notifications</h3>
+        <div className="border border-base-300  bg-base-200">
+          <div className="p-4">
+            <h3 className="font-semibold">Supported Notifications</h3>
             <div className="flex flex-wrap gap-2 mt-2">
               {walletInfo.notifications.map((notification) => (
                 <span key={notification} className="badge badge-secondary">
@@ -111,9 +115,9 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
       )}
 
       {/* Raw wallet info */}
-      <div className="card card-border bg-base-200">
-        <div className="card-body">
-          <h3 className="card-title">Raw Wallet Info</h3>
+      <div className="border border-base-300  bg-base-200">
+        <div className="p-4">
+          <h3 className="font-semibold">Raw Wallet Info</h3>
           <pre className="text-sm">{JSON.stringify(walletInfo, null, 2)}</pre>
         </div>
       </div>
@@ -122,32 +126,19 @@ function WalletInfoDisplay({ walletInfo }: { walletInfo: WalletInfo }) {
 }
 
 export default function WalletInfoExample() {
-  const [uri, setUri] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [parsed, setParsed] = useState<ReturnType<typeof parseWalletConnectURI> | null>(null);
-  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [methodError, setMethodError] = useState<string | null>(null);
+  const uri$ = useMemo(() => new BehaviorSubject(""), []);
+  const uri = use$(uri$);
 
-  // Handle URI input and parsing
-  const handleUriChange = (value: string) => {
-    setUri(value);
-    setError(null);
-    setParsed(null);
-    setWalletInfo(null);
-    setMethodError(null);
-
-    if (!value.trim()) return;
-
+  const parseResult = useMemo(() => {
+    if (!uri.trim()) return { parsed: null, error: null };
     try {
-      const parsed = parseWalletConnectURI(value);
-      setParsed(parsed);
-    } catch (err) {
-      console.error("Failed to parse URI:", err);
-      setError(err instanceof Error ? err.message : "Failed to parse URI");
+      return { parsed: parseWalletConnectURI(uri), error: null };
+    } catch (error) {
+      return { parsed: null, error: String(error) };
     }
-  };
-
+  }, [uri]);
+  const parsed = parseResult.parsed;
+  const handleUriChange = (value: string) => uri$.next(value);
   // Create WalletConnect instance
   const wallet = useMemo(() => {
     if (!parsed) return undefined;
@@ -158,7 +149,7 @@ export default function WalletInfoExample() {
         ...parsed,
         secret,
         subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: pool.publish.bind(pool),
+        publishMethod: (relays, event) => publishEvent(pool, relays, event),
       });
 
       return walletConnect;
@@ -171,30 +162,27 @@ export default function WalletInfoExample() {
   // Get wallet capabilities to check if get_info is supported
   const support = use$(() => wallet?.support$, [wallet]);
 
-  // Fetch wallet info
-  const fetchWalletInfo = async () => {
-    if (!wallet) return;
-
-    // Check if get_info method is supported
-    if (support && !supportsMethod(support, "get_info")) {
-      setMethodError("The connected wallet does not support the 'get_info' method.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setMethodError(null);
-
-    try {
-      const info = await wallet.getInfo();
-      setWalletInfo(info);
-    } catch (err) {
-      console.error("Failed to fetch wallet info:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch wallet info");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetch$ = useMemo(() => new Subject<void>(), []);
+  const result = use$(
+    () =>
+      fetch$.pipe(
+        switchMap(() => {
+          if (!wallet || !support || !supportsMethod(support, "get_info"))
+            return of({ info: null, loading: false, error: "get_info is unavailable" });
+          return defer(() => wallet.getInfo()).pipe(
+            map((info) => ({ info, loading: false, error: null as string | null })),
+            startWith({ info: null, loading: true, error: null }),
+            catchError((error) => of({ info: null, loading: false, error: String(error) })),
+          );
+        }),
+      ),
+    [wallet, support, fetch$],
+  );
+  const walletInfo = result?.info;
+  const loading = result?.loading ?? false;
+  const error = parseResult.error || result?.error;
+  const methodError = support && !supportsMethod(support, "get_info") ? "get_info is unsupported" : null;
+  const fetchWalletInfo = () => fetch$.next();
 
   return (
     <div className="container mx-auto my-8 px-4">
@@ -222,9 +210,9 @@ export default function WalletInfoExample() {
         {/* Connection Status and Actions */}
         {parsed && (
           <div className="mb-8">
-            <div className="card card-border bg-base-200">
-              <div className="card-body">
-                <h3 className="card-title">Connection Details</h3>
+            <div className="border border-base-300  bg-base-200">
+              <div className="p-4">
+                <h3 className="font-semibold">Connection Details</h3>
                 <div className="space-y-2">
                   <div>
                     <span className="font-medium">Service:</span>
@@ -298,7 +286,7 @@ export default function WalletInfoExample() {
               </svg>
               <div>
                 <h3 className="font-bold">Method Not Supported</h3>
-                <div className="text-xs">{methodError}</div>
+                <div className="text-sm">{methodError}</div>
               </div>
             </div>
           </div>

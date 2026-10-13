@@ -3,10 +3,12 @@
  * @tags nip-51, nip-34, git, repositories, feed
  * @related casting/custom, bookmarks/manager
  */
-import { FavoriteGitRepos, GitRepository } from "applesauce-common/casts";
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { FavoriteGitRepos, GitRepository, castUser } from "applesauce-common/casts";
 import { FAVORITE_GIT_REPOS_KIND } from "applesauce-common/helpers";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
-import { catchErrorInline, EventStore, mapEventsToStore } from "applesauce-core";
+import { EventStore } from "applesauce-core";
 import {
   AddressPointer,
   getDisplayName,
@@ -16,8 +18,8 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useState } from "react";
-import { map } from "rxjs";
+import { useMemo } from "react";
+import { map, BehaviorSubject, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -54,9 +56,9 @@ function Favoriter({ list }: { list: FavoriteGitRepos }) {
 function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
   const repo = use$(
     () => eventStore.replaceable(favorite.pointer).pipe(castEventStream(GitRepository, eventStore)),
-    [favorite.address],
+    [favorite.pointer],
   );
-  const ownerProfile = use$(() => eventStore.profile(favorite.pointer.pubkey), [favorite.pointer.pubkey]);
+  const ownerProfile = use$(() => castUser(favorite.pointer.pubkey, eventStore).profile$, [favorite.pointer.pubkey]);
   const ownerName = getDisplayName(ownerProfile, favorite.pointer.pubkey.slice(0, 8) + "...");
   const ownerPicture = getProfilePicture(ownerProfile, `https://robohash.org/${favorite.pointer.pubkey}.png`);
 
@@ -86,7 +88,7 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-bold leading-tight truncate">{repo.name ?? favorite.pointer.identifier}</h2>
-              <p className="text-xs text-base-content/60 truncate">
+              <p className="text-sm text-base-content/60 truncate">
                 {ownerName} / <code>{favorite.pointer.identifier}</code>
               </p>
             </div>
@@ -97,7 +99,7 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
           {repo.hashtags.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
               {repo.hashtags.slice(0, 8).map((tag) => (
-                <span key={tag} className="badge badge-outline badge-sm">
+                <span key={tag} className="badge badge-outline badge-md">
                   {tag}
                 </span>
               ))}
@@ -108,8 +110,8 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
             {repo.cloneUrls[0] && (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base-content/60">Clone</span>
-                <code className="bg-base-200 px-2 py-1 text-xs break-all">{repo.cloneUrls[0]}</code>
-                <button className="btn btn-xs" onClick={() => navigator.clipboard.writeText(repo.cloneUrls[0] ?? "")}>
+                <code className="bg-base-200 px-2 py-1 text-sm break-all">{repo.cloneUrls[0]}</code>
+                <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(repo.cloneUrls[0] ?? "")}>
                   Copy
                 </button>
               </div>
@@ -124,7 +126,7 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
         </div>
 
         <div className="md:w-56 md:border-l md:border-base-300 md:pl-4">
-          <div className="text-xs uppercase tracking-wide text-base-content/60 mb-2">
+          <div className="text-sm uppercase tracking-wide text-base-content/60 mb-2">
             Favorited by {favorite.favoritedBy.length}
           </div>
           <div className="flex flex-wrap gap-0.5 mb-3 overflow-hidden">
@@ -132,7 +134,7 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
               <Favoriter key={list.event.id} list={list} />
             ))}
           </div>
-          <div className="text-xs text-base-content/60">
+          <div className="text-sm text-base-content/60">
             Latest list:{" "}
             {new Date(Math.max(...favorite.favoritedBy.map((list) => list.event.created_at)) * 1000).toLocaleString()}
           </div>
@@ -143,20 +145,16 @@ function RepositoryRow({ favorite }: { favorite: RepositoryFavorite }) {
 }
 
 export default function FavoriteRepositoriesFeed() {
-  const [relay, setRelay] = useState("wss://relay.ngit.dev/");
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.ngit.dev/"), []);
+  const relay = use$(relay$);
 
-  use$(
-    () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [FAVORITE_GIT_REPOS_KIND], limit: 100 })
-        .pipe(mapEventsToStore(eventStore), catchErrorInline()),
+  const feed = use$(
+    () => relayTimeline(eventStore, pool, [relay], { kinds: [FAVORITE_GIT_REPOS_KIND], limit: 100 }),
     [relay],
   );
-
   const favorites = use$(
     () =>
-      eventStore.timeline({ kinds: [FAVORITE_GIT_REPOS_KIND] }).pipe(
+      of(feed?.events ?? []).pipe(
         castTimelineStream(FavoriteGitRepos, eventStore),
         map((lists) => {
           const favoritesByAddress = new Map<string, RepositoryFavorite>();
@@ -174,7 +172,7 @@ export default function FavoriteRepositoriesFeed() {
           return [...favoritesByAddress.values()].sort((a, b) => b.favoritedBy.length - a.favoritedBy.length);
         }),
       ),
-    [],
+    [feed],
   );
 
   const favoriteRows = favorites ?? [];
@@ -185,7 +183,11 @@ export default function FavoriteRepositoriesFeed() {
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8">
       <div className="mb-5 flex gap-4 justify-between items-center">
-        <RelayPicker value={relay} onChange={setRelay} common={["wss://relay.ngit.dev/", "wss://gitnostr.com/"]} />
+        <RelayPicker
+          value={relay}
+          onChange={(value: typeof relay$.value) => relay$.next(value)}
+          common={["wss://relay.ngit.dev/", "wss://gitnostr.com/"]}
+        />
 
         <div className="stats stats-vertical sm:stats-horizontal border border-base-300 mt-5">
           <div className="stat py-3">
@@ -203,7 +205,12 @@ export default function FavoriteRepositoriesFeed() {
         </div>
       </div>
 
-      {!favorites ? (
+      {feed?.errors.map((error) => (
+        <p key={error} className="text-error" role="alert">
+          {error}
+        </p>
+      ))}
+      {!feed || feed.status === "loading" ? (
         <div className="border border-base-300 p-6 text-center">
           <span className="loading loading-spinner" />
           <p className="mt-3 text-base-content/70">Listening for public Git repository lists...</p>

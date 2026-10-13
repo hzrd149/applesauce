@@ -8,8 +8,8 @@ import { getPublicKey, NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { useEffect, useState } from "react";
-import { BehaviorSubject, catchError, EMPTY, filter, map, merge, of, scan, startWith, Subject, tap } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, filter, map, merge, of, scan, startWith, Subject, tap, materialize } from "rxjs";
 
 // Relays that support multiple authenticated users on one connection and NIP-77 negentropy sync.
 // They gate a kind 1059 sync until every #p pubkey is authenticated, the same way they gate a REQ.
@@ -28,15 +28,11 @@ function createUser(index: number): User {
 }
 
 // Keep the users at module level so their keys are stable, any number of signers can be added
-const users$ = new BehaviorSubject<User[]>([createUser(0), createUser(1)]);
-const addUser = () => users$.next([...users$.value, createUser(users$.value.length)]);
 
 type LogEntry = { time: string; message: string };
 const now = () => new Date().toLocaleTimeString();
 
 // Log lines from user actions (publish, authenticate, sync) merged into the protocol log below
-const actions$ = new Subject<string>();
-const logAction = (message: string) => actions$.next(message);
 
 /** Convert a NIP-01 / NIP-77 relay message into a human readable log line */
 function messageToLogLine(m: any): string | null {
@@ -68,9 +64,21 @@ function AuthStateBadge({ state }: { state?: { response: { ok: boolean; message?
 }
 
 export default function MultiUserSyncAuthExample() {
-  const [url, setUrl] = useState(RELAYS[0]);
-  const [published, setPublished] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  const state$ = useMemo(
+    () => new BehaviorSubject({ url: RELAYS[0], published: null as string | null, requested: false }),
+    [],
+  );
+  const state = use$(state$);
+  const url = state.url;
+  const published = state.published;
+  const requested = state.requested;
+  const setUrl = (url: string) => state$.next({ url, published: null, requested: false });
+  const setPublished = (published: string | null) => state$.next({ ...state$.value, published });
+  const setSyncing = (requested: boolean) => state$.next({ ...state$.value, requested });
+  const users$ = useMemo(() => new BehaviorSubject<User[]>([createUser(0), createUser(1)]), []);
+  const addUser = () => users$.next([...users$.value, createUser(users$.value.length)]);
+  const actions$ = useMemo(() => new Subject<string>(), []);
+  const logAction = (message: string) => actions$.next(message);
 
   const relay = pool.relay(url);
 
@@ -106,8 +114,8 @@ export default function MultiUserSyncAuthExample() {
   // Syncing gift wraps is restricted: the relay rejects the NIP-77 negotiation with auth-required
   // until every #p pubkey is authenticated. waitForAuth holds the sync until all of them are, then
   // reconciles and downloads the gift wraps the relay has. Unlike a subscription, a sync completes.
-  const synced = use$(() => {
-    if (!syncing) return of([] as NostrEvent[]);
+  const operation = use$(() => {
+    if (!requested) return of({ events: [] as NostrEvent[], status: "idle", error: "" });
 
     return pool.sync([url], [], { kinds: [1059], "#p": pubkeys }, SyncDirection.RECEIVE, { waitForAuth: pubkeys }).pipe(
       filter((message) => message.type === "received"),
@@ -116,25 +124,27 @@ export default function MultiUserSyncAuthExample() {
         next: (event) => logAction(`Synced gift wrap ${event.id.slice(0, 8)}`),
         complete: () => {
           logAction("Sync complete");
-          setSyncing(false);
         },
       }),
       mapEventsToTimeline(),
-      startWith([] as NostrEvent[]),
-      catchError((error) => {
-        logAction(`Sync error: ${error instanceof Error ? error.message : String(error)}`);
-        setSyncing(false);
-        return EMPTY;
-      }),
+      materialize(),
+      scan(
+        (state, notification) =>
+          notification.kind === "N"
+            ? { events: notification.value, status: "running", error: "" }
+            : {
+                ...state,
+                status: notification.kind === "E" ? "error" : "complete",
+                error: notification.kind === "E" ? String(notification.error) : "",
+              },
+        { events: [] as NostrEvent[], status: "running", error: "" },
+      ),
+      startWith({ events: [] as NostrEvent[], status: "running", error: "" }),
     );
-  }, [url, syncing, users]);
+  }, [url, requested, users]);
 
-  // Reset the demo state when the relay changes
-  useEffect(() => {
-    setPublished(null);
-    setSyncing(false);
-  }, [relay]);
-
+  const synced = operation?.events ?? [];
+  const syncing = operation?.status === "running";
   // Publishing a gift wrap does NOT require authentication (the sender is an ephemeral key)
   const publish = async () => {
     const gift = await createGiftWrap(pubkeys);
@@ -198,6 +208,11 @@ export default function MultiUserSyncAuthExample() {
         </span>
       </div>
 
+      {operation?.error && (
+        <p className="text-error" role="alert">
+          {operation.error}
+        </p>
+      )}
       <p className="text-sm opacity-70">
         Publishing a kind 1059 gift wrap works without authentication (the sender is an ephemeral key), but{" "}
         <b>syncing gift wraps requires every #p user to be authenticated</b> on the connection. Publish a gift wrap,
@@ -259,7 +274,7 @@ export default function MultiUserSyncAuthExample() {
                 <div key={pubkey} className="flex items-center gap-2 border-b border-base-300 pb-2 last:border-b-0">
                   <div className="flex-1">
                     <div className="font-mono text-sm">{name}</div>
-                    <div className="font-mono text-xs opacity-60">{pubkey.slice(0, 16)}…</div>
+                    <div className="font-mono text-sm opacity-60">{pubkey.slice(0, 16)}…</div>
                   </div>
                   <AuthStateBadge state={status?.authentications[pubkey]} />
                   <button
@@ -291,7 +306,7 @@ export default function MultiUserSyncAuthExample() {
         {/* Protocol log */}
         <div className="border border-base-300 rounded-box p-4">
           <h2 className="font-bold mb-2">Log</h2>
-          <div className="font-mono text-xs flex flex-col gap-1 max-h-96 overflow-y-auto">
+          <div className="font-mono text-sm flex flex-col gap-1 max-h-96 overflow-y-auto">
             {log && log.length === 0 && <span className="opacity-50">Publish a gift wrap to get started…</span>}
             {log &&
               log.map((entry, i) => (

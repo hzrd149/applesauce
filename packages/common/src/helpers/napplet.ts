@@ -35,6 +35,15 @@ export type NappletIconType = (typeof NAPPLET_ICON_TYPES)[number];
 /** A validated NIP-5D napplet manifest event */
 export type NappletEvent = KnownEvent<NappletKind>;
 
+/** A NIP-5D napplet snapshot event (kind 5129) */
+export type NappletSnapshotEvent = KnownEvent<typeof NAPPLET_SNAPSHOT_KIND>;
+
+/** A NIP-5D root napplet event (kind 15129) */
+export type RootNappletEvent = KnownEvent<typeof NAPPLET_ROOT_KIND>;
+
+/** A NIP-5D named napplet event (kind 35129) */
+export type NamedNappletEvent = KnownEvent<typeof NAPPLET_KIND>;
+
 /** An intent accepted by a napplet and its advertised parameter names */
 export type NappletIntent = { intent: string; params: string[] };
 
@@ -76,18 +85,33 @@ export function isValidNapplet(event?: NostrEvent): event is NappletEvent {
 }
 
 /** Checks if an event is a napplet snapshot (kind 5129) */
-export function isNappletSnapshot(event?: NostrEvent): event is KnownEvent<typeof NAPPLET_SNAPSHOT_KIND> {
+export function isNappletSnapshot(event?: NostrEvent): event is NappletSnapshotEvent {
   return event?.kind === NAPPLET_SNAPSHOT_KIND;
 }
 
 /** Checks if an event is a root napplet (kind 15129) */
-export function isRootNapplet(event?: NostrEvent): event is KnownEvent<typeof NAPPLET_ROOT_KIND> {
+export function isRootNapplet(event?: NostrEvent): event is RootNappletEvent {
   return event?.kind === NAPPLET_ROOT_KIND;
 }
 
 /** Checks if an event is a named napplet (kind 35129) */
-export function isNamedNapplet(event?: NostrEvent): event is KnownEvent<typeof NAPPLET_KIND> {
+export function isNamedNapplet(event?: NostrEvent): event is NamedNappletEvent {
   return event?.kind === NAPPLET_KIND;
+}
+
+/** Checks if an event is a valid napplet snapshot manifest */
+export function isValidNappletSnapshot(event?: NostrEvent): event is NappletSnapshotEvent {
+  return isNappletSnapshot(event) && isValidNapplet(event);
+}
+
+/** Checks if an event is a valid root napplet manifest */
+export function isValidRootNapplet(event?: NostrEvent): event is RootNappletEvent {
+  return isRootNapplet(event) && isValidNapplet(event);
+}
+
+/** Checks if an event is a valid named napplet manifest */
+export function isValidNamedNapplet(event?: NostrEvent): event is NamedNappletEvent {
+  return isNamedNapplet(event) && isValidNapplet(event);
 }
 
 /** Returns the identifier from the `d` tag of a named napplet */

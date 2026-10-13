@@ -1,60 +1,76 @@
+import { use$ } from "applesauce-react/hooks";
 import localforage from "localforage";
-import { useState } from "react";
+import { useMemo } from "react";
+import { BehaviorSubject, Subject, catchError, defer, exhaustMap, map, of, startWith, tap } from "rxjs";
 import SecureStorage from "../extra/encrypted-storage";
 
 /** A view that lets the user enter a pin to unlock the encrypted storage */
 export default function UnlockView({ onUnlock }: { onUnlock: (storage: SecureStorage, pubkey?: string) => void }) {
-  const [pin, setPin] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleUnlock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const storage = new SecureStorage(localforage);
-      const isValid = await storage.unlock(pin);
-
-      if (!isValid) return setError("Invalid PIN");
-
-      const pubkey = (await storage.getItem("pubkey")) ?? undefined;
-      onUnlock(storage, pubkey);
-    } catch (err) {
-      setError("Failed to unlock storage");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClear = () => localforage.clear();
+  const pin$ = useMemo(() => new BehaviorSubject(""), []);
+  const unlock$ = useMemo(() => new Subject<{ type: "unlock"; pin: string } | { type: "clear" }>(), []);
+  const pin = use$(pin$);
+  const operation = use$(
+    () =>
+      unlock$.pipe(
+        exhaustMap((value) =>
+          defer(async () => {
+            if (value.type === "clear") {
+              await localforage.clear();
+              pin$.next("");
+              return undefined;
+            }
+            const storage = new SecureStorage(localforage);
+            if (!(await storage.unlock(value.pin))) throw new Error("Invalid PIN");
+            return { storage, pubkey: (await storage.getItem("pubkey")) ?? undefined };
+          }).pipe(
+            tap((result) => {
+              if (result) onUnlock(result.storage, result.pubkey);
+            }),
+            map(() => ({ loading: false, error: "" })),
+            catchError((error) =>
+              of({ loading: false, error: error instanceof Error ? error.message : "Failed to unlock storage" }),
+            ),
+            startWith({ loading: true, error: "" }),
+          ),
+        ),
+      ),
+    [unlock$, pin$, onUnlock],
+  );
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-base-200">
-      <form onSubmit={handleUnlock} className="card w-96 bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title">Unlock Storage</h2>
-          <div className="form-control">
-            <input
-              type="password"
-              placeholder="Enter PIN"
-              className="input input-bordered"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              disabled={loading}
-            />
+    <div className="flex items-center justify-center py-8">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          unlock$.next({ type: "unlock", pin });
+        }}
+        className="w-96 border border-base-300 p-6 space-y-4"
+      >
+        <h2 className="text-lg font-semibold">Unlock Storage</h2>
+        <input
+          type="password"
+          placeholder="Enter PIN"
+          className="input input-bordered w-full"
+          value={pin}
+          onChange={(event) => pin$.next(event.target.value)}
+          disabled={operation?.loading}
+        />
+        {operation?.error && (
+          <div className="text-error text-sm" role="alert">
+            {operation.error}
           </div>
-          {error && <div className="text-error text-sm">{error}</div>}
-          <div className="card-actions justify-between">
-            <button type="button" className="btn btn-primary" onClick={handleClear} tabIndex={1}>
-              Clear
-            </button>
-            <button type="submit" className="btn btn-primary" disabled={loading || !pin}>
-              {loading ? <span className="loading loading-spinner" /> : "Unlock"}
-            </button>
-          </div>
-        </div>
+        )}
+        <button type="submit" className="btn btn-primary w-full" disabled={operation?.loading || !pin}>
+          {operation?.loading ? <span className="loading loading-spinner" /> : "Unlock"}
+        </button>
+        <button
+          type="button"
+          className="btn btn-outline w-full"
+          disabled={operation?.loading}
+          onClick={() => unlock$.next({ type: "clear" })}
+        >
+          Clear storage
+        </button>
       </form>
     </div>
   );

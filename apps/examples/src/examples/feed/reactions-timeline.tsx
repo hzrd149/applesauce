@@ -3,16 +3,22 @@
  * @tags nip-25, feed, timeline, reactions, cache
  * @related feed/loading-reactions, feed/relay-timeline
  */
-import { castUser, Reaction, User } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+
+import NoteContent from "../../components/note-content";
+import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, map, switchMap, of } from "rxjs";
+
+import { castUser, Reaction, User } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
 import { encodePointer, persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -80,28 +86,28 @@ function ReactionEvent({ reaction }: { reaction: Reaction }) {
       </div>
 
       {reactedTo ? (
-        <div className="card bg-base-100 shadow-md">
-          <div className="card-body">
+        <div className="border border-base-300 bg-base-100 ">
+          <div className="p-4 space-y-3">
             {reactedToUser && (
               <div className="flex items-center gap-4">
                 <Avatar user={reactedToUser} />
-                <h2 className="card-title">
+                <h2 className="font-semibold">
                   <Username user={reactedToUser} />
                 </h2>
               </div>
             )}
-            <p>{reactedTo.content}</p>
+            <NoteContent event={reactedTo} />
           </div>
         </div>
       ) : pointer ? (
-        <div className="card bg-base-200 shadow-md opacity-50">
-          <div className="card-body overflow-hidden">
+        <div className="border border-base-300 bg-base-200  opacity-50">
+          <div className="p-4 space-y-3 overflow-hidden">
             <div className="flex items-center gap-4">
               <span className="loading loading-dots loading-lg" />
               <div className="flex flex-col gap-1">
                 <p className="text-sm font-mono">{encodePointer(pointer)}</p>
                 {pointer.relays && pointer.relays.length > 0 && (
-                  <p className="text-xs text-gray-500">Checking relays: {pointer.relays.join(", ")}</p>
+                  <p className="text-sm text-gray-500">Checking relays: {pointer.relays.join(", ")}</p>
                 )}
               </div>
             </div>
@@ -113,28 +119,34 @@ function ReactionEvent({ reaction }: { reaction: Reaction }) {
 }
 
 export default function ReactionsTimeline() {
-  const [relay, setRelay] = useState<string>("wss://relay.primal.net/");
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.primal.net/"), []);
+  const relay = use$(relay$);
 
-  const reactions = use$(
+  const feed = use$(
     () =>
-      pool
-        .relay(relay)
-        .subscription({ kinds: [kinds.Reaction], limit: 20 })
-        .pipe(
-          // Add all events to the store
-          mapEventsToStore(eventStore),
-          // Gather events into a timeline
-          mapEventsToTimeline(),
-          // Create reaction classes for events
-          castTimelineStream(Reaction),
+      relayTimeline(eventStore, pool, [relay], { kinds: [kinds.Reaction], limit: 20 }).pipe(
+        switchMap((result) =>
+          of(result.events).pipe(
+            castTimelineStream(Reaction, eventStore),
+            map((events) => ({ ...result, events })),
+          ),
         ),
+      ),
     [relay],
   );
+  const reactions = feed?.events;
 
   return (
     <div className="max-w-4xl mx-auto my-8">
       <div className="flex gap-2 mb-4">
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        {feed?.status === "loading" && <p role="status">Loading events…</p>}
+        {feed?.errors.map((error) => (
+          <p role="alert" className="text-error" key={error}>
+            {error}
+          </p>
+        ))}
+        {feed?.status !== "loading" && reactions?.length === 0 && <p>No events found.</p>}
       </div>
 
       <div className="flex flex-col gap-4">

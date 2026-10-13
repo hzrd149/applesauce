@@ -3,6 +3,8 @@
  * @tags cache, window.nostrdb, storage, window.nostrdb.js
  * @related cache/nostr-idb, feed/relay-timeline
  */
+import NoteContent from "../../components/note-content";
+
 import { Note } from "applesauce-common/casts";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
@@ -10,8 +12,21 @@ import { Filter, isFromCache, persistEventsToCache, unixNow } from "applesauce-c
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, combineLatest, debounceTime, interval, switchMap } from "rxjs";
+import { useMemo } from "react";
+import {
+  BehaviorSubject,
+  combineLatest,
+  debounceTime,
+  interval,
+  switchMap,
+  Subject,
+  exhaustMap,
+  ignoreElements,
+  endWith,
+  catchError,
+  of,
+  startWith,
+} from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 
 // Import window.nostrdb.js to polyfill window.nostrdb
@@ -36,14 +51,26 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 const saved = new BehaviorSubject<string[]>([]);
+const cacheError$ = new BehaviorSubject<string | undefined>(undefined);
 
 // Save all new events to the cache
-persistEventsToCache(eventStore, (events) =>
-  Promise.allSettled(events.map((event) => window.nostrdb.add(event))).then(() => {
-    // Add the event ids to the saved list
-    saved.next([...saved.value, ...events.map((event) => event.id)]);
+const stopPersistence = persistEventsToCache(eventStore, (events) =>
+  Promise.allSettled(events.map((event) => window.nostrdb.add(event))).then((results) => {
+    cacheError$.next(
+      results.some((result) => result.status === "rejected")
+        ? "Some events could not be saved to the cache"
+        : undefined,
+    );
+    const successful = events.filter((_, index) => results[index].status === "fulfilled");
+    saved.next([...saved.value, ...successful.map((event) => event.id)]);
   }),
 );
+
+// The browser owns window.nostrdb; this module owns its persistence subscription.
+import.meta.hot?.dispose(() => {
+  stopPersistence();
+  pool.close();
+});
 
 function ReplyLine({ reply }: { reply: Note }) {
   const profile = use$(reply.author.profile$);
@@ -60,7 +87,7 @@ function ReplyLine({ reply }: { reply: Note }) {
   );
 }
 
-// Note card component for kind 1 notes
+// Note row component for kind 1 notes
 function NoteCard({ note }: { note: Note }) {
   const profile = use$(note.author.profile$);
   const fromCache = isFromCache(note.event);
@@ -68,8 +95,8 @@ function NoteCard({ note }: { note: Note }) {
   const reply = use$(() => note.replyingTo$.pipe(castEventStream(Note, note.store)), [note.id]);
 
   return (
-    <div className="card bg-base-100 shadow-md">
-      <div className="card-body">
+    <div className="border border-base-300 bg-base-100 ">
+      <div className="p-4 space-y-3">
         {reply && <ReplyLine reply={reply} />}
 
         {/* Author info */}
@@ -88,7 +115,7 @@ function NoteCard({ note }: { note: Note }) {
         </div>
 
         {/* Note content */}
-        <div className="whitespace-pre-wrap wrap-break-word">{note.event.content}</div>
+        <NoteContent event={note.event} />
       </div>
     </div>
   );
@@ -98,6 +125,7 @@ function CacheStats() {
   const { notes, profiles } = use$(
     () =>
       interval(5000).pipe(
+        startWith(0),
         switchMap(() =>
           combineLatest({
             notes: window.nostrdb.count([{ kinds: [1] }]),
@@ -109,7 +137,7 @@ function CacheStats() {
   ) || { notes: 0, profiles: 0 };
 
   return (
-    <div className="stats shadow">
+    <div className="stats ">
       <div className="stat">
         <div className="stat-title">Notes in Cache</div>
         <div className="stat-value">{notes || 0}</div>
@@ -126,8 +154,12 @@ function CacheStats() {
 }
 
 export default function WindowNostrDBExample() {
-  const [live, setLive] = useState(true);
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
+  const cacheError = use$(cacheError$);
+  const live$ = useMemo(() => new BehaviorSubject(true), []);
+  const live = use$(live$);
+
+  const relay$ = useMemo(() => new BehaviorSubject("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
 
   // Create a timeline loader that loads from the cache and the relay
   const loader = useMemo(
@@ -144,13 +176,25 @@ export default function WindowNostrDBExample() {
             .subscription({ kinds: [1], since: unixNow() })
             .pipe(mapEventsToStore(eventStore))
         : undefined,
-    [relay],
+    [relay, live],
   );
 
-  // load initial page of events
-  useEffect(() => {
-    loader().subscribe();
-  }, []);
+  const page$ = useMemo(() => new Subject<void>(), []);
+  const page = use$(
+    () =>
+      page$.pipe(
+        startWith(undefined),
+        exhaustMap(() =>
+          loader().pipe(
+            ignoreElements(),
+            endWith({ loading: false, error: undefined as string | undefined }),
+            catchError((error) => of({ loading: false, error: String(error.message ?? error) })),
+            startWith({ loading: true, error: undefined as string | undefined }),
+          ),
+        ),
+      ),
+    [loader],
+  );
 
   // Get a timeline of notes from the store
   const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(debounceTime(500), castTimelineStream(Note)), []);
@@ -162,21 +206,33 @@ export default function WindowNostrDBExample() {
       </div>
 
       <CacheStats />
+      {cacheError && (
+        <p role="alert" className="text-error">
+          {cacheError}
+        </p>
+      )}
 
       <div className="flex gap-2 mt-2">
-        <RelayPicker value={relay} onChange={setRelay} />
-        <button className="btn btn-primary" onClick={() => setLive(!live)}>
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
+        <button className="btn btn-primary" onClick={() => live$.next(!live)}>
           {live ? "Stop Live" : "Start Live"}
         </button>
       </div>
 
+      <p className="text-sm opacity-70">The timeline includes cached notes from previously selected relays.</p>
+      {page?.error && (
+        <p role="alert" className="text-error">
+          {page.error}
+        </p>
+      )}
+      {page?.loading && <p role="status">Loading notes…</p>}
       {/* Results */}
       <div className="flex gap-2 flex-col">
         {notes?.map((note) => (
           <NoteCard key={note.id} note={note} />
         ))}
 
-        <button className="btn btn-primary mx-auto mt-10" onClick={() => loader().subscribe()}>
+        <button className="btn btn-primary mx-auto mt-10" onClick={() => page$.next()} disabled={page?.loading}>
           Load More
         </button>
       </div>

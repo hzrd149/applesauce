@@ -3,17 +3,19 @@
  * @tags nip-44, nip-59, gift-wrap, timeline, encryption
  * @related gift-wrap/dashboard, gift-wrap/generator
  */
+import { paginatedTimeline } from "../../extra/pagination";
+
 import { persistEncryptedContent } from "applesauce-common/helpers/encrypted-content-cache";
 import { isGiftWrapUnlocked, unlockGiftWrap } from "applesauce-common/helpers/gift-wrap";
 import { GiftWrapRumorModel, GiftWrapsModel } from "applesauce-common/models/gift-wrap";
 import { defined, EventStore } from "applesauce-core";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { useObservableEagerMemo, use$ } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, Subject } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
@@ -29,8 +31,12 @@ const pool = new RelayPool();
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }) {
-  const [unlocking, setUnlocking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const unlocking$ = useMemo(() => new BehaviorSubject(false), []);
+  const unlocking = use$(unlocking$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
   const unlocked = isGiftWrapUnlocked(event);
 
   // Subscribe to when the rumor is unlocked
@@ -38,15 +44,15 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }
 
   const handleUnlock = async () => {
     try {
-      setUnlocking(true);
-      setError(null);
+      unlocking$.next(true);
+      error$.next(null);
       await unlockGiftWrap(event, signer);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to unlock gift wrap";
-      setError(errorMessage);
+      error$.next(errorMessage);
       console.error("Failed to unlock gift wrap:", err);
     } finally {
-      setUnlocking(false);
+      unlocking$.next(false);
     }
   };
 
@@ -71,11 +77,14 @@ function GiftWrapEvent({ event, signer }: { event: NostrEvent; signer: ISigner }
 
 type FilterType = "all" | "locked" | "unlocked";
 function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
-  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [filter, setFilter] = useState<FilterType>("all");
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
+
+  const filter$ = useMemo(() => new BehaviorSubject<FilterType>("all"), []);
+  const filter = use$(filter$);
 
   // Subscribe to model based on filter type
-  const events = useObservableEagerMemo(() => {
+  const events = use$(() => {
     switch (filter) {
       case "locked":
         return eventStore.model(GiftWrapsModel, pubkey, false);
@@ -92,18 +101,21 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
     [relay, pubkey],
   );
 
-  useEffect(() => {
-    loader$().subscribe();
-  }, [loader$]);
+  const pages$ = useMemo(() => new Subject<void>(), []);
+  const page = use$(
+    () => paginatedTimeline(eventStore, loader$, pages$, { kinds: [kinds.GiftWrap], "#p": [pubkey] }),
+    [loader$],
+  );
+  const visible = (events ?? []).filter((event) => page?.events.some((loaded) => loaded.id === event.id));
 
   return (
     <div className="container mx-auto max-w-6xl p-4">
       <div className="flex gap-4 mb-4">
-        <RelayPicker value={relay} onChange={setRelay} />
+        <RelayPicker value={relay} onChange={(value) => relay$.next(value)} />
         <select
           className="select select-bordered"
           value={filter}
-          onChange={(e) => setFilter(e.target.value as FilterType)}
+          onChange={(e) => filter$.next(e.target.value as FilterType)}
         >
           <option value="all">All Events</option>
           <option value="locked">Locked</option>
@@ -111,7 +123,16 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
         </select>
       </div>
 
-      {events.map((event) => (
+      <button className="btn" disabled={page?.loading} onClick={() => pages$.next()}>
+        Load more
+      </button>
+      {page?.error && (
+        <p role="alert" className="text-error">
+          {page.error}
+        </p>
+      )}
+      {page?.loading && <p role="status">Loading events…</p>}
+      {visible.map((event) => (
         <GiftWrapEvent key={event.id} event={event} signer={signer} />
       ))}
     </div>

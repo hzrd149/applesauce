@@ -3,14 +3,29 @@
  * @tags nip-77, negentrapy, relay, comparison
  * @related negentrapy/mentions
  */
-import { defined, EventStore } from "applesauce-core";
+import { castUser } from "applesauce-common/casts";
+
+import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { useObservableEagerState, use$ } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds } from "applesauce-core/helpers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, lastValueFrom, of, startWith, switchMap, tap } from "rxjs";
+import { Filter } from "applesauce-core/helpers";
+import { useMemo } from "react";
+import {
+  BehaviorSubject,
+  lastValueFrom,
+  of,
+  startWith,
+  switchMap,
+  tap,
+  combineLatest,
+  defer,
+  from,
+  map,
+  catchError,
+  finalize,
+} from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
@@ -31,8 +46,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 
 // Mailboxes of user to fetch sync data for
 const mailboxes$ = pubkey$.pipe(
-  defined(),
-  switchMap((pubkey) => eventStore.mailboxes(pubkey)),
+  switchMap((pubkey) => (pubkey ? castUser(pubkey, eventStore).mailboxes$.pipe(startWith(undefined)) : of(undefined))),
   startWith(undefined),
 );
 
@@ -77,7 +91,7 @@ function RelayBadge({ relay }: { relay: string }) {
 
   return (
     <div
-      className={`badge badge-sm ${
+      className={`badge badge-md ${
         supported === undefined ? "badge-neutral animate-pulse" : supportsNIP77 ? "badge-success" : "badge-error"
       }`}
       title={
@@ -129,7 +143,7 @@ function SyncResultsTable({ results, pubkey }: { results: SyncResult[]; pubkey: 
   }, [allEventIds, validResults]);
 
   // Get profile for the user
-  const profile = use$(() => (pubkey ? eventStore.profile({ pubkey }) : of(null)), [pubkey]);
+  const profile = use$(() => (pubkey ? castUser({ pubkey }, eventStore).profile$ : undefined), [pubkey]);
 
   if (validResults.length === 0) {
     return (
@@ -161,7 +175,7 @@ function SyncResultsTable({ results, pubkey }: { results: SyncResult[]; pubkey: 
             </div>
             <div>
               <p className="font-semibold">{getDisplayName(profile || undefined, pubkey.slice(0, 8) + "...")}</p>
-              <p className="text-xs text-base-content/60">Comparing outbox relays for this user</p>
+              <p className="text-sm text-base-content/60">Comparing outbox relays for this user</p>
             </div>
           </div>
         </div>
@@ -182,7 +196,7 @@ function SyncResultsTable({ results, pubkey }: { results: SyncResult[]; pubkey: 
           <tbody>
             {eventsWithDifferences.map((eventId) => (
               <tr key={eventId}>
-                <td className="font-mono text-xs">{eventId.slice(0, 8)}</td>
+                <td className="font-mono text-sm">{eventId.slice(0, 8)}</td>
                 {validResults.map((result) => (
                   <td key={result.relay} className="text-center text-lg">
                     {result.loading ? (
@@ -211,7 +225,7 @@ function SyncResultsTable({ results, pubkey }: { results: SyncResult[]; pubkey: 
 
           return (
             <div key={result.relay} className="stat bg-base-200 overflow-hidden p-2 rounded-md">
-              <div className="stat-title text-xs">{new URL(result.relay).hostname}</div>
+              <div className="stat-title text-sm">{new URL(result.relay).hostname}</div>
               <div className="stat-value text-lg overflow-hidden">
                 {result.loading ? (
                   <span className="loading loading-spinner loading-sm" />
@@ -245,60 +259,30 @@ export default function RelayDifferenceExample() {
     { label: "Last month", hours: 720 },
   ];
 
-  const pubkey = useObservableEagerState(pubkey$);
+  const pubkey = use$(pubkey$);
   const mailboxes = use$(mailboxes$);
-  const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[1]); // Default to "Last day"
-  const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
-
+  const timeFilter$ = useMemo(() => new BehaviorSubject(TIME_FILTERS[1]), []);
+  const timeFilter = use$(timeFilter$);
+  // Default to "Last day"
   const since = useMemo(() => unixNow() - timeFilter.hours * 60 * 60, [timeFilter]);
-
-  // Auto-start the sync when conditions are met
-  useEffect(() => {
-    if (!pubkey || !mailboxes?.outboxes || mailboxes.outboxes.length === 0) {
-      setSyncResults([]);
-      return;
-    }
-
-    // Create a new abort controller for canceling the sync
-    const controller = new AbortController();
-
-    const filter: Filter = {
-      kinds: [kinds.ShortTextNote],
-      authors: [pubkey],
-      since,
-    };
-
-    // Initialize results with loading state
-    const initialResults: SyncResult[] = mailboxes.outboxes.map((relay) => ({
-      relay,
-      eventIds: [],
-      loading: true,
-    }));
-    setSyncResults(initialResults);
-
-    // Start syncing each relay individually
-    const syncPromises = mailboxes.outboxes.map(async (relay, index) => {
-      try {
-        const eventIds = await syncIdsFromRelay(relay, filter, controller.signal);
-        setSyncResults((prev) =>
-          prev.map((result, i) => (i === index ? { ...result, eventIds, loading: false } : result)),
-        );
-      } catch (error) {
-        setSyncResults((prev) =>
-          prev.map((result, i) =>
-            i === index
-              ? { ...result, error: error instanceof Error ? error.message : "Unknown error", loading: false }
-              : result,
-          ),
-        );
-      }
-    });
-
-    // Execute all sync promises
-    Promise.allSettled(syncPromises);
-
-    return () => controller.abort();
-  }, [pubkey, mailboxes, since]);
+  const syncResults =
+    use$(() => {
+      if (!pubkey || !mailboxes?.outboxes.length) return of([] as SyncResult[]);
+      const filter: Filter = { kinds: [1], authors: [pubkey], since };
+      return combineLatest(
+        mailboxes.outboxes.map((relay) =>
+          defer(() => {
+            const controller = new AbortController();
+            return from(syncIdsFromRelay(relay, filter, controller.signal)).pipe(
+              map((eventIds): SyncResult => ({ relay, eventIds, loading: false })),
+              catchError((error) => of<SyncResult>({ relay, eventIds: [], loading: false, error: String(error) })),
+              startWith<SyncResult>({ relay, eventIds: [], loading: true }),
+              finalize(() => controller.abort()),
+            );
+          }),
+        ),
+      );
+    }, [pubkey, mailboxes, since]) ?? [];
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6 w-full">
@@ -311,7 +295,7 @@ export default function RelayDifferenceExample() {
           placeholder="Enter your pubkey or nostr identifier..."
         />
 
-        <div className="form-control w-full max-w-xs">
+        <div className="flex flex-col gap-2 w-full max-w-xs">
           <label className="label">
             <span className="label-text">Time range to compare</span>
           </label>
@@ -320,7 +304,7 @@ export default function RelayDifferenceExample() {
             value={timeFilter.hours}
             onChange={(e) => {
               const selectedFilter = TIME_FILTERS.find((f) => f.hours === parseInt(e.target.value));
-              if (selectedFilter) setTimeFilter(selectedFilter);
+              if (selectedFilter) timeFilter$.next(selectedFilter);
             }}
           >
             {TIME_FILTERS.map((filter) => (
@@ -348,7 +332,7 @@ export default function RelayDifferenceExample() {
             <h3 className="font-bold text-error mb-2">No Outbox Relays Found</h3>
             <div className="text-sm">
               <p className="mb-2">This user hasn't published a NIP-65 relay list or has no outbox relays configured.</p>
-              <p className="text-xs text-base-content/60">
+              <p className="text-sm text-base-content/60">
                 Without outbox relays, we can't compare relay differences. They need to publish their relay preferences
                 using a NIP-65 compatible client.
               </p>
@@ -373,7 +357,7 @@ export default function RelayDifferenceExample() {
               <p className="mb-1">
                 <strong>Time range:</strong> {timeFilter.label}
               </p>
-              <p className="text-xs text-base-content/60 mt-2">
+              <p className="text-sm text-base-content/60 mt-2">
                 Using Negentropy (NIP-77) to compare event IDs across your outbox relays without transferring the actual
                 events.
               </p>

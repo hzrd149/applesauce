@@ -3,7 +3,10 @@
  * @tags gift-wrap, dashboard, encryption, nip-59
  * @related gift-wrap/generator, gift-wrap/timeline
  */
-import { EventStore, mapEventsToStore } from "applesauce-core";
+import { castUser } from "applesauce-common/casts";
+import { relayTimeline } from "../../extra/relay-timeline";
+
+import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
   getProfilePicture,
@@ -13,12 +16,12 @@ import {
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$, useObservableEagerMemo } from "applesauce-react/hooks";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useState } from "react";
-import { catchError, EMPTY } from "rxjs";
+import { useCallback, useMemo } from "react";
+import { BehaviorSubject } from "rxjs";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -39,7 +42,7 @@ type RecipientStats = {
 
 /** Hook to load a user's profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
 }
 
 /** Component for rendering user avatars */
@@ -67,13 +70,16 @@ function Username({ pubkey, relays }: { pubkey: string; relays?: string[] }) {
 }
 
 export default function GiftWrapDashboard() {
-  const [relay, setRelay] = useState<string>("wss://relay.damus.io/");
-  const [pubkey, setPubkey] = useState<string | null>(null);
+  const relay$ = useMemo(() => new BehaviorSubject<string>("wss://relay.damus.io/"), []);
+  const relay = use$(relay$);
+
+  const pubkey$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const pubkey = use$(pubkey$);
 
   // Subscribe to authentication state
-  const challenge = useObservableEagerMemo(() => pool.relay(relay).challenge$, [relay]);
-  const authenticated = useObservableEagerMemo(() => pool.relay(relay).authenticated$, [relay]);
-  const notices = useObservableEagerMemo(() => pool.relay(relay).notices$, [relay]);
+  const challenge = use$(() => pool.relay(relay).challenge$, [relay]);
+  const authenticated = use$(() => pool.relay(relay).authenticated$, [relay]);
+  const notices = use$(() => pool.relay(relay).notices$, [relay]);
 
   // Get the latest notice (last item in the array)
   const latestNotice = useMemo(() => {
@@ -91,7 +97,7 @@ export default function GiftWrapDashboard() {
       const signer = new ExtensionSigner();
 
       // get the users pubkey
-      setPubkey(await signer.getPublicKey());
+      pubkey$.next(await signer.getPublicKey());
 
       // Authenticate with the relay
       await pool
@@ -104,22 +110,8 @@ export default function GiftWrapDashboard() {
     }
   }, [relay, needsAuth, authenticated]);
 
-  // Query all gift wrap events from the selected relay
-  use$(
-    () =>
-      pool.subscription([relay], { kinds: [kinds.GiftWrap] }).pipe(
-        // Deduplicate events with the store
-        mapEventsToStore(eventStore),
-        catchError((err) => {
-          console.error("Error subscribing to gift wrap events:", err);
-          return EMPTY;
-        }),
-      ),
-    [relay],
-  );
-
-  // Subscribe to a timeline of gift wrap events
-  const giftWrapEvents = use$(() => eventStore.timeline({ kinds: [kinds.GiftWrap] }), []);
+  const feed = use$(() => relayTimeline(eventStore, pool, [relay], { kinds: [kinds.GiftWrap] }), [relay]);
+  const giftWrapEvents = feed?.events;
 
   // Process events to group by recipient and count
   const recipientStats = useMemo(() => {
@@ -151,9 +143,9 @@ export default function GiftWrapDashboard() {
 
   return (
     <div className="container mx-auto max-w-6xl p-4">
-      <div className="card bg-base-100">
-        <div className="card-body">
-          <h2 className="card-title text-2xl mb-4">Gift Wrap Dashboard</h2>
+      <div className="border border-base-300 bg-base-100">
+        <div className="p-4 space-y-3">
+          <h2 className="font-semibold text-2xl mb-4">Gift Wrap Dashboard</h2>
           <p className="text-sm text-base-content/70 mb-4">
             View all gift wrap events on a relay, grouped by recipient. The table is sorted by the number of gift wrap
             events sent to each recipient.
@@ -166,7 +158,7 @@ export default function GiftWrapDashboard() {
             <div className="flex items-center gap-2">
               <RelayPicker
                 value={relay}
-                onChange={setRelay}
+                onChange={(value) => relay$.next(value)}
                 common={["wss://auth.nostr1.com/", "wss://nip17.com/", "wss://inbox.relays.land/", ...COMMON_RELAYS]}
               />
               {needsAuth && (
@@ -214,7 +206,13 @@ export default function GiftWrapDashboard() {
             )}
           </div>
 
-          {giftWrapEvents && giftWrapEvents.length === 0 && (
+          {feed?.status === "loading" && <p role="status">Loading gift wraps…</p>}
+          {feed?.errors.map((error) => (
+            <p role="alert" className="text-error" key={error}>
+              {error}
+            </p>
+          ))}
+          {feed?.status !== "loading" && giftWrapEvents && giftWrapEvents.length === 0 && (
             <div className="alert alert-info">
               <span>No gift wrap events found on this relay.</span>
             </div>
@@ -239,7 +237,7 @@ export default function GiftWrapDashboard() {
                           <Avatar pubkey={stat.pubkey} relays={profileRelays} />
                           <div className="flex flex-col">
                             <Username pubkey={stat.pubkey} relays={profileRelays} />
-                            <code className="text-xs font-mono text-base-content/60 break-all">{stat.pubkey}</code>
+                            <code className="text-sm font-mono text-base-content/60 break-all">{stat.pubkey}</code>
                           </div>
                         </div>
                       </td>

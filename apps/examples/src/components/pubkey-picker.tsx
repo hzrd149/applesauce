@@ -1,4 +1,5 @@
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { castUser } from "applesauce-common/casts";
+import { EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getDisplayName,
   getProfilePicture,
@@ -18,9 +19,9 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { lastValueFrom } from "rxjs";
+import { BehaviorSubject, Subject, catchError, defer, map, of, startWith, switchMap, toArray, finalize } from "rxjs";
 import RelayPicker from "./relay-picker";
 import { lookupRelays$ } from "../settings";
 
@@ -52,7 +53,7 @@ interface ProfileSearchResult {
 
 /** Create a hook for loading a users profile */
 function useProfile(user: ProfilePointer): ProfileContent | undefined {
-  return use$(() => eventStore.profile(user), [user.pubkey, user.relays?.join("|")]);
+  return use$(() => castUser(user, eventStore).profile$, [user.pubkey, user.relays?.join("|")]);
 }
 
 function ProfileSearchModal({
@@ -64,212 +65,113 @@ function ProfileSearchModal({
   onClose: () => void;
   onSelect: (pubkey: string) => void;
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchMethod, setSearchMethod] = useState<SearchMethod>("primal");
-  const [selectedRelay, setSelectedRelay] = useState(SEARCH_RELAYS[0]);
-  const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const [customRelayUrl, setCustomRelayUrl] = useState("");
-  const [extensionAvailable, setExtensionAvailable] = useState(false);
-  const [openRankingProvider, setOpenRankingProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
-  const [openRankingAlgorithm, setOpenRankingAlgorithm] = useState("");
-  const [openRankingAlgorithms, setOpenRankingAlgorithms] = useState<OpenRankingAlgorithm[]>([]);
+  const state$ = useMemo(
+    () =>
+      new BehaviorSubject({
+        query: "",
+        method: "primal" as SearchMethod,
+        relay: SEARCH_RELAYS[0],
+        customRelay: "",
+        provider: DEFAULT_OPEN_RANKING_PROVIDER,
+        algorithm: "",
+      }),
+    [],
+  );
+  const state = use$(state$);
+  const update = (patch: Partial<typeof state>) => state$.next({ ...state$.value, ...patch });
+  const searchQuery = state.query;
+  const searchMethod = state.method;
+  const selectedRelay = state.relay;
+  const customRelayUrl = state.customRelay;
+  const openRankingProvider = state.provider;
+  const extensionAvailable = typeof window !== "undefined" && !!window.nostr;
 
-  // Check if extension is available
-  useEffect(() => {
-    setExtensionAvailable(typeof window !== "undefined" && !!window.nostr);
-  }, []);
-
-  // Create PrimalCache instance
-  const primal = useMemo(() => {
-    return new PrimalCache();
-  }, []);
-
-  // Create Vertex instance when extension is available
-  const vertex = useMemo(() => {
-    if (extensionAvailable) {
-      try {
-        const signer = new ExtensionSigner();
-        return new Vertex(signer);
-      } catch (error) {
-        console.error("Failed to create Vertex instance:", error);
-        return null;
-      }
-    }
-    return null;
-  }, [extensionAvailable]);
-
-  // Create an Open Ranking client for the selected provider, passing a signer for Nostr Web Token auth when an extension is available
-  const openRanking = useMemo(() => {
-    const signer = extensionAvailable ? new ExtensionSigner() : undefined;
-    return new OpenRanking(openRankingProvider, { signer });
-  }, [openRankingProvider, extensionAvailable]);
-
-  // Discover the algorithms the selected provider supports for profile search (ORE-01)
-  useEffect(() => {
-    if (searchMethod !== "open-ranking") return;
-
-    let active = true;
-    openRanking
-      .discover()
-      .then((capabilities) => {
-        if (!active) return;
-        const algorithms = capabilities["/search/pubkeys"] ?? [];
-        setOpenRankingAlgorithms(algorithms);
-        // Default to the first (default) algorithm when the current selection is unavailable
-        setOpenRankingAlgorithm((current) =>
-          algorithms.some((a) => a.id === current) ? current : (algorithms[0]?.id ?? ""),
+  const discovery = use$(
+    () =>
+      searchMethod === "open-ranking"
+        ? defer(() => new OpenRanking(openRankingProvider).discover()).pipe(
+            map((capabilities) => ({ algorithms: capabilities["/search/pubkeys"] ?? [], loading: false, error: "" })),
+            catchError((error) =>
+              of({ algorithms: [] as OpenRankingAlgorithm[], loading: false, error: String(error) }),
+            ),
+            startWith({ algorithms: [] as OpenRankingAlgorithm[], loading: true, error: "" }),
+          )
+        : of({ algorithms: [] as OpenRankingAlgorithm[], loading: false, error: "" }),
+    [searchMethod, openRankingProvider],
+  );
+  const openRankingAlgorithms = discovery?.algorithms ?? [];
+  const openRankingAlgorithm = openRankingAlgorithms.some((algorithm) => algorithm.id === state.algorithm)
+    ? state.algorithm
+    : (openRankingAlgorithms[0]?.id ?? "");
+  const search$ = useMemo(() => new Subject<typeof state & { algorithm: string }>(), []);
+  const results = use$(
+    () =>
+      defer(() => {
+        const primal = new PrimalCache();
+        return search$.pipe(
+          switchMap((input) => {
+            const query = input.query.trim();
+            if (!query) return of({ profiles: [] as ProfileSearchResult[], loading: false, error: "" });
+            const pointers$ =
+              input.method === "nip50"
+                ? defer(() => {
+                    if (!input.relay) throw new Error("Please select a search relay");
+                    return pool
+                      .relay(input.relay)
+                      .request({ kinds: [0], search: query, limit: 20 })
+                      .pipe(
+                        mapEventsToStore(eventStore),
+                        toArray(),
+                        map((events) => events.map((event) => ({ pubkey: event.pubkey, relays: [input.relay] }))),
+                      );
+                  })
+                : defer(async (): Promise<ProfileSearchResult[]> => {
+                    if (input.method === "primal") {
+                      const events = await primal.userSearch(query, 20);
+                      for (const event of events) eventStore.add(event);
+                      return events.map((event) => ({ pubkey: event.pubkey }));
+                    }
+                    if (input.method === "vertex") {
+                      if (!window.nostr) throw new Error("Nostr extension required for Vertex search");
+                      return new Vertex(new ExtensionSigner()).userSearch(query, "globalPagerank", 20);
+                    }
+                    const algorithm = openRankingAlgorithms.find((algorithm) => algorithm.id === input.algorithm);
+                    // Authentication is requested only by this intentional Search command, never by discovery/render.
+                    const signer = window.nostr ? new ExtensionSigner() : undefined;
+                    if (algorithm?.pov && !signer) throw new Error("Nostr extension required for personalized search");
+                    const pov = algorithm?.pov ? await signer!.getPublicKey() : undefined;
+                    return new OpenRanking(input.provider, { signer }).userSearch(query, 20, {
+                      algorithm: input.algorithm || undefined,
+                      pov,
+                    });
+                  });
+            return pointers$.pipe(
+              map((profiles) => ({
+                profiles: [...new Map(profiles.map((profile) => [profile.pubkey, profile])).values()],
+                loading: false,
+                error: "",
+              })),
+              catchError((error) =>
+                of({ profiles: [] as ProfileSearchResult[], loading: false, error: String(error) }),
+              ),
+              startWith({ profiles: [] as ProfileSearchResult[], loading: true, error: "" }),
+            );
+          }),
+          finalize(() => primal.close()),
         );
-      })
-      .catch((error) => {
-        if (!active) return;
-        console.error("Failed to discover Open Ranking capabilities:", error);
-        setOpenRankingAlgorithms([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [openRanking, searchMethod]);
-
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-
-    // Validate search method requirements
-    if (searchMethod === "vertex" && !extensionAvailable) {
-      setSearchError(
-        "Nostr extension required for Vertex search. Please install a browser extension like nos2x or Alby.",
-      );
-      return;
-    }
-
-    if (searchMethod === "nip50" && !selectedRelay) {
-      setSearchError("Please select a relay for NIP-50 search.");
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchResults([]);
-    setSearchError(null);
-
-    try {
-      if (searchMethod === "primal") {
-        // Primal search
-        const events = await primal.userSearch(searchQuery.trim(), 20);
-        // Add events to store
-        for (const event of events) {
-          eventStore.add(event);
-        }
-        // Convert to search results
-        const seenPubkeys = new Set<string>();
-        const results: ProfileSearchResult[] = [];
-        for (const event of events) {
-          if (seenPubkeys.has(event.pubkey)) continue;
-          seenPubkeys.add(event.pubkey);
-          results.push({ pubkey: event.pubkey });
-        }
-        setSearchResults(results);
-      } else if (searchMethod === "vertex") {
-        // Vertex search
-        if (!vertex) {
-          throw new Error("Vertex instance not available. Extension may be missing.");
-        }
-        const pointers = await vertex.userSearch(searchQuery.trim(), "globalPagerank", 20);
-        // Convert pointers to search results
-        const seenPubkeys = new Set<string>();
-        const results: ProfileSearchResult[] = [];
-        for (const pointer of pointers) {
-          if (seenPubkeys.has(pointer.pubkey)) continue;
-          seenPubkeys.add(pointer.pubkey);
-          results.push({ pubkey: pointer.pubkey, relays: pointer.relays });
-        }
-        setSearchResults(results);
-      } else if (searchMethod === "open-ranking") {
-        // Open Ranking search (ranked by the provider's web of trust)
-        const algorithm = openRankingAlgorithms.find((a) => a.id === openRankingAlgorithm);
-        // Personalized algorithms require a point-of-view pubkey from the signer
-        const pov = algorithm?.pov ? await new ExtensionSigner().getPublicKey() : undefined;
-        const pointers = await openRanking.userSearch(searchQuery.trim(), 20, {
-          algorithm: openRankingAlgorithm || undefined,
-          pov,
-        });
-        // Convert to search results
-        const seenPubkeys = new Set<string>();
-        const results: ProfileSearchResult[] = [];
-        for (const pointer of pointers) {
-          if (seenPubkeys.has(pointer.pubkey)) continue;
-          seenPubkeys.add(pointer.pubkey);
-          results.push({ pubkey: pointer.pubkey });
-        }
-        setSearchResults(results);
-      } else {
-        // NIP-50 relay search
-        const relay = pool.relay(selectedRelay);
-
-        const events = await lastValueFrom(
-          relay
-            .request(
-              {
-                kinds: [0],
-                search: searchQuery.trim(),
-                limit: 20,
-              },
-              { id: `search-${Date.now()}` },
-            )
-            .pipe(mapEventsToStore(eventStore), mapEventsToTimeline()),
-        );
-
-        // Convert to search results
-        const seenPubkeys = new Set<string>();
-        const results: ProfileSearchResult[] = [];
-        for (const event of events) {
-          if (seenPubkeys.has(event.pubkey)) continue;
-          seenPubkeys.add(event.pubkey);
-          results.push({ pubkey: event.pubkey });
-        }
-        setSearchResults(results);
-      }
-
-      setIsSearching(false);
-    } catch (error) {
-      console.error("Search failed:");
-      console.log(error);
-      const errorMessage = error instanceof Error ? error.message : "Search failed. Please try again.";
-      setSearchError(errorMessage);
-      setIsSearching(false);
-    }
-  }, [
-    searchQuery,
-    searchMethod,
-    selectedRelay,
-    primal,
-    vertex,
-    openRanking,
-    openRankingAlgorithm,
-    openRankingAlgorithms,
-    extensionAvailable,
-  ]);
-
-  const handleCustomRelaySubmit = () => {
-    if (customRelayUrl) {
-      setSelectedRelay(customRelayUrl);
-      setCustomRelayUrl("");
-    }
-  };
-
+      }),
+    [search$, searchMethod, selectedRelay, openRankingProvider, openRankingAlgorithm],
+  );
+  const searchResults = results?.profiles ?? [];
+  const isSearching = results?.loading ?? false;
+  const searchError = results?.error;
+  const handleSearch = () => search$.next({ ...state$.value, algorithm: openRankingAlgorithm });
+  const handleCustomRelaySubmit = () => update({ relay: customRelayUrl, customRelay: "" });
   const handleSelectProfile = (pubkey: string) => {
     onSelect(pubkey);
     onClose();
   };
-
-  const handleClose = () => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setIsSearching(false);
-    setSearchError(null);
-    onClose();
-  };
+  const handleClose = () => onClose();
 
   const modal = (
     <dialog className={`modal ${isOpen ? "modal-open" : ""}`}>
@@ -277,7 +179,7 @@ function ProfileSearchModal({
         <h3 className="font-bold text-lg mb-4">Search Profiles</h3>
 
         {/* Search method selector */}
-        <div className="form-control mb-4">
+        <div className="flex flex-col gap-2 mb-4">
           <label className="label">
             <span className="label-text">Search Method</span>
           </label>
@@ -285,14 +187,14 @@ function ProfileSearchModal({
             <button
               type="button"
               className={`btn btn-sm ${searchMethod === "primal" ? "btn-primary" : "btn-outline"}`}
-              onClick={() => setSearchMethod("primal")}
+              onClick={() => update({ method: "primal" })}
             >
               Primal
             </button>
             <button
               type="button"
               className={`btn btn-sm ${searchMethod === "vertex" ? "btn-primary" : "btn-outline"}`}
-              onClick={() => setSearchMethod("vertex")}
+              onClick={() => update({ method: "vertex" })}
               disabled={!extensionAvailable}
               title={!extensionAvailable ? "Nostr extension required" : ""}
             >
@@ -301,14 +203,14 @@ function ProfileSearchModal({
             <button
               type="button"
               className={`btn btn-sm ${searchMethod === "nip50" ? "btn-primary" : "btn-outline"}`}
-              onClick={() => setSearchMethod("nip50")}
+              onClick={() => update({ method: "nip50" })}
             >
               NIP-50 Relay
             </button>
             <button
               type="button"
               className={`btn btn-sm ${searchMethod === "open-ranking" ? "btn-primary" : "btn-outline"}`}
-              onClick={() => setSearchMethod("open-ranking")}
+              onClick={() => update({ method: "open-ranking" })}
             >
               Open Ranking
             </button>
@@ -330,7 +232,7 @@ function ProfileSearchModal({
               placeholder="Search for profiles..."
               className="input input-bordered join-item flex-1"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => update({ query: e.target.value })}
               onKeyPress={(e) => e.key === "Enter" && handleSearch()}
             />
             <button
@@ -345,7 +247,7 @@ function ProfileSearchModal({
 
           {/* Search relay selection - only show for NIP-50 */}
           {searchMethod === "nip50" && (
-            <RelayPicker value={selectedRelay} onChange={setSelectedRelay} common={SEARCH_RELAYS} />
+            <RelayPicker value={selectedRelay} onChange={(relay) => update({ relay })} common={SEARCH_RELAYS} />
           )}
 
           {/* Provider + algorithm selection - only show for Open Ranking */}
@@ -357,7 +259,7 @@ function ProfileSearchModal({
                 placeholder="https://provider.example.com"
                 className="input input-bordered join-item"
                 value={openRankingProvider}
-                onChange={(e) => setOpenRankingProvider(e.target.value)}
+                onChange={(e) => update({ provider: e.target.value, algorithm: "" })}
               />
               <datalist id="open-ranking-providers">
                 {OPEN_RANKING_PROVIDERS.map((provider) => (
@@ -367,10 +269,12 @@ function ProfileSearchModal({
               <select
                 className="select select-bordered join-item"
                 value={openRankingAlgorithm}
-                onChange={(e) => setOpenRankingAlgorithm(e.target.value)}
+                onChange={(e) => update({ algorithm: e.target.value })}
                 disabled={openRankingAlgorithms.length === 0}
               >
-                {openRankingAlgorithms.length === 0 && <option value="">Loading…</option>}
+                {openRankingAlgorithms.length === 0 && (
+                  <option value="">{discovery?.loading ? "Loading…" : "No algorithms available"}</option>
+                )}
                 {openRankingAlgorithms.map((algorithm) => (
                   <option
                     key={algorithm.id}
@@ -387,6 +291,11 @@ function ProfileSearchModal({
           )}
         </div>
 
+        {discovery?.error && (
+          <p role="alert" className="text-error">
+            {discovery.error}
+          </p>
+        )}
         {/* Search error display */}
         {searchError && (
           <div className="alert alert-error mt-4">
@@ -416,7 +325,7 @@ function ProfileSearchModal({
             </div>
           )}
 
-          {!isSearching && searchResults.length === 0 && searchQuery && (
+          {results && !searchError && !isSearching && searchResults.length === 0 && searchQuery && (
             <div className="text-center py-8 text-base-content/60">No profiles found for "{searchQuery}"</div>
           )}
         </div>
@@ -425,7 +334,7 @@ function ProfileSearchModal({
         <dialog id="custom-relay-modal" className="modal">
           <div className="modal-box">
             <h3 className="font-bold text-lg mb-4">Custom Search Relay</h3>
-            <div className="form-control">
+            <div className="flex flex-col gap-2">
               <label className="label">
                 <span className="label-text">Relay URL (must support NIP-50)</span>
               </label>
@@ -435,7 +344,7 @@ function ProfileSearchModal({
                   placeholder="wss://your-search-relay.com"
                   className="input input-bordered join-item flex-1"
                   value={customRelayUrl}
-                  onChange={(e) => setCustomRelayUrl(e.target.value)}
+                  onChange={(e) => update({ customRelay: e.target.value })}
                 />
                 <button
                   type="button"
@@ -511,42 +420,36 @@ function ProfileSearchResultItem({
   );
 }
 
-export default function PubkeyPicker({
-  value,
-  onChange,
-  className,
-  placeholder = "Enter pubkey or nostr identifier...",
-}: {
+type PubkeyPickerProps = {
   value: string;
   onChange: (pubkey: string) => void;
   className?: string;
   placeholder?: string;
-}) {
-  const [inputValue, setInputValue] = useState(value);
-  const [isValidPubkey, setIsValidPubkey] = useState(false);
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-
-  const changeRef = useRef(onChange);
-  changeRef.current = onChange;
-
-  // Automatically validate and set pubkey when input changes
-  useEffect(() => {
-    if (!inputValue.trim()) return setIsValidPubkey(false);
-
-    const normalizedPubkey = normalizeToPubkey(inputValue.trim());
-
-    if (normalizedPubkey) {
-      setIsValidPubkey(true);
-      changeRef.current(normalizedPubkey);
-    } else {
-      setIsValidPubkey(false);
-    }
-  }, [inputValue]);
-
-  // Update input value when external value changes
-  useEffect(() => {
-    setInputValue(value);
-  }, [value]);
+};
+export default function PubkeyPicker(props: PubkeyPickerProps) {
+  return <PubkeyPickerInput key={props.value} {...props} />;
+}
+function PubkeyPickerInput({
+  value,
+  onChange,
+  className,
+  placeholder = "Enter pubkey or nostr identifier...",
+}: PubkeyPickerProps) {
+  const input$ = useMemo(() => new BehaviorSubject(value), []);
+  const inputValue = use$(input$);
+  const modal$ = useMemo(() => new BehaviorSubject(false), []);
+  const isSearchModalOpen = use$(modal$);
+  const normalized = normalizeToPubkey(inputValue.trim());
+  const isValidPubkey = !!normalized;
+  const change = useCallback(
+    (input: string) => {
+      input$.next(input);
+      const pubkey = normalizeToPubkey(input.trim());
+      if (pubkey) onChange(pubkey);
+      else if (!input.trim()) onChange("");
+    },
+    [input$, onChange],
+  );
 
   // Get pubkey from extension
   const handleGetFromExtension = useCallback(async () => {
@@ -554,7 +457,7 @@ export default function PubkeyPicker({
       if (typeof window !== "undefined" && window.nostr) {
         const signer = new ExtensionSigner();
         const extensionPubkey = await signer.getPublicKey();
-        setInputValue(extensionPubkey);
+        change(extensionPubkey);
       } else {
         alert("Nostr extension not found. Please install a browser extension like nos2x or Alby.");
       }
@@ -562,11 +465,11 @@ export default function PubkeyPicker({
       console.error("Failed to get pubkey from extension:", error);
       alert("Failed to get pubkey from extension. Please check your extension settings.");
     }
-  }, []);
+  }, [change]);
 
   const handleSearchSelect = (pubkey: string) => {
-    setInputValue(pubkey);
-    setIsSearchModalOpen(false);
+    change(pubkey);
+    modal$.next(false);
   };
 
   return (
@@ -576,17 +479,12 @@ export default function PubkeyPicker({
           type="text"
           placeholder={placeholder}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => change(e.target.value)}
           className={`input input-bordered join-item flex-1 ${
             inputValue.trim() && !isValidPubkey ? "input-error" : isValidPubkey ? "input-success" : ""
           }`}
         />
-        <button
-          type="button"
-          className="btn join-item"
-          onClick={() => setIsSearchModalOpen(true)}
-          title="Search profiles"
-        >
+        <button type="button" className="btn join-item" onClick={() => modal$.next(true)} title="Search profiles">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="h-4 w-4"
@@ -614,11 +512,13 @@ export default function PubkeyPicker({
         </label>
       )}
 
-      <ProfileSearchModal
-        isOpen={isSearchModalOpen}
-        onClose={() => setIsSearchModalOpen(false)}
-        onSelect={handleSearchSelect}
-      />
+      {isSearchModalOpen && (
+        <ProfileSearchModal
+          isOpen={isSearchModalOpen}
+          onClose={() => modal$.next(false)}
+          onSelect={handleSearchSelect}
+        />
+      )}
     </div>
   );
 }

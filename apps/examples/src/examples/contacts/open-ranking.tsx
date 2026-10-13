@@ -11,8 +11,8 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { useMemo } from "react";
+import { BehaviorSubject, map, defer, from, mergeMap, scan, startWith, catchError, of } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -55,15 +55,6 @@ const SORT_OPTIONS: { id: SortField; label: string }[] = [
   { id: "pagerank", label: "PageRank" },
 ];
 
-/** Runs `worker` over every item with a bounded number of concurrent requests */
-async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
-  let index = 0;
-  const run = async () => {
-    while (index < items.length) await worker(items[index++]);
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
-}
-
 /** Formats a rank, which may be fractional (e.g. GrapeRank influence ×100) */
 function formatRank(rank: number): string {
   return rank.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -83,11 +74,11 @@ function ContactRow({ user, entry }: { user: User; entry?: StatsEntry }) {
       </div>
       <div className="min-w-0">
         <div className="truncate">{displayName}</div>
-        <div className="text-xs font-mono opacity-60 truncate">{user.pubkey.slice(0, 16)}…</div>
+        <div className="text-sm font-mono opacity-60 truncate">{user.pubkey.slice(0, 16)}…</div>
       </div>
 
       {/* The optional statistics returned alongside the rank by ORE-02 */}
-      <div className="list-col-wrap flex flex-wrap gap-3 text-xs opacity-70">
+      <div className="list-col-wrap flex flex-wrap gap-3 text-sm opacity-70">
         {stats?.followers !== undefined && <span>{stats.followers.toLocaleString()} followers</span>}
         {stats?.follows !== undefined && <span>{stats.follows.toLocaleString()} follows</span>}
         {stats?.muters !== undefined && <span>{stats.muters.toLocaleString()} muters</span>}
@@ -99,7 +90,7 @@ function ContactRow({ user, entry }: { user: User; entry?: StatsEntry }) {
         {entry?.loading ? (
           <span className="loading loading-spinner loading-sm" />
         ) : entry?.error ? (
-          <span className="badge badge-ghost badge-sm" title={entry.error}>
+          <span className="badge badge-ghost " title={entry.error}>
             error
           </span>
         ) : stats ? (
@@ -107,7 +98,7 @@ function ContactRow({ user, entry }: { user: User; entry?: StatsEntry }) {
             {formatRank(stats.rank)}
           </span>
         ) : (
-          <span className="text-xs opacity-40">—</span>
+          <span className="text-sm opacity-40">—</span>
         )}
       </div>
     </li>
@@ -119,83 +110,73 @@ function ContactScores({ user }: { user: User }) {
   const pubkey = use$(pubkey$);
   const contacts = use$(() => user.contacts$, [user.pubkey]);
 
-  const [provider, setProvider] = useState(DEFAULT_OPEN_RANKING_PROVIDER);
-  // undefined while discovering, [] when the provider does not support ORE-02
-  const [algorithms, setAlgorithms] = useState<OpenRankingAlgorithm[] | undefined>(undefined);
-  const [algorithm, setAlgorithm] = useState("");
-  const [discoverError, setDiscoverError] = useState<string | null>(null);
-  const [statsMap, setStatsMap] = useState<Record<string, StatsEntry>>({});
-  const [sortField, setSortField] = useState<SortField>("rank");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const provider$ = useMemo(() => new BehaviorSubject(DEFAULT_OPEN_RANKING_PROVIDER), []);
+  const provider = use$(provider$);
 
-  // Personalized algorithms need a point-of-view pubkey, which in turn requires a signer to authenticate
-  const requiresPov = useMemo(() => algorithms?.find((a) => a.id === algorithm)?.pov ?? false, [algorithms, algorithm]);
+  const algorithm$ = useMemo(() => new BehaviorSubject(""), []);
+  const requestedAlgorithm = use$(algorithm$);
+  const authorize$ = useMemo(() => new BehaviorSubject(false), []);
+  const authorized = use$(authorize$);
+  const setAlgorithm = (value: string) => {
+    algorithm$.next(value);
+    authorize$.next(false);
+  };
+  const sortField$ = useMemo(() => new BehaviorSubject<SortField>("rank"), []);
+  const sortField = use$(sortField$);
 
-  // Keep one client per provider. It MUST NOT depend on the algorithm/requiresPov: the discover effect below resets
-  // `algorithms`, which flips `requiresPov`; if that recreated the client, discovery would re-run in an infinite loop
-  // and every fresh client would prompt the signer for a new token — hundreds of times.
+  const sortDir$ = useMemo(() => new BehaviorSubject<"asc" | "desc">("desc"), []);
+  const sortDir = use$(sortDir$);
+
+  // Keep one client per provider; discovery never recreates it when algorithms change.
   const openRanking = useMemo(() => new OpenRanking(provider), [provider]);
-
-  // Authenticate only for point-of-view algorithms. Toggling the signer on the existing client never recreates it.
-  useEffect(() => {
-    openRanking.setSigner(requiresPov ? (signer ?? undefined) : undefined);
-  }, [openRanking, requiresPov, signer]);
-
-  // Discover whether the provider supports ORE-02 and which algorithms it offers (ORE-01)
-  useEffect(() => {
-    let active = true;
-    setAlgorithms(undefined);
-    setDiscoverError(null);
-
-    openRanking
-      .discover()
-      .then((capabilities) => {
-        if (!active) return;
-        const supported = capabilities[STATS_ENDPOINT] ?? [];
-        setAlgorithms(supported);
-        setAlgorithm((current) => (supported.some((a) => a.id === current) ? current : (supported[0]?.id ?? "")));
-      })
-      .catch((err) => {
-        if (!active) return;
-        setAlgorithms([]);
-        setDiscoverError(err instanceof Error ? err.message : "Failed to load provider capabilities");
+  const discovery = use$(
+    () =>
+      defer(() => openRanking.discover()).pipe(
+        map((capabilities) => ({
+          algorithms: capabilities[STATS_ENDPOINT] ?? [],
+          error: undefined as string | undefined,
+        })),
+        catchError((error) => of({ algorithms: [] as OpenRankingAlgorithm[], error: String(error.message ?? error) })),
+      ),
+    [openRanking],
+  );
+  const algorithms = discovery?.algorithms;
+  const discoverError = discovery?.error;
+  const selected = algorithms?.find((value) => value.id === requestedAlgorithm) ?? algorithms?.[0];
+  const algorithm = selected?.id ?? "";
+  const requiresPov = selected?.pov ?? false;
+  const statsMap =
+    use$(() => {
+      if (!selected || !contacts?.length || (selected.pov && (!pubkey || !signer || !authorized)))
+        return of({} as Record<string, StatsEntry>);
+      const initial = Object.fromEntries(contacts.map((contact) => [contact.pubkey, { loading: true }])) as Record<
+        string,
+        StatsEntry
+      >;
+      return defer(() => {
+        // A personalized request is authorized by the explicit Load Scores button.
+        openRanking.setSigner(selected.pov ? (signer ?? undefined) : undefined);
+        return from(contacts).pipe(
+          mergeMap(
+            (contact) =>
+              defer(() =>
+                openRanking.stats(contact.pubkey, {
+                  algorithm: selected.id,
+                  pov: selected.pov ? (pubkey ?? undefined) : undefined,
+                }),
+              ).pipe(
+                map((stats) => ({ pubkey: contact.pubkey, entry: { stats } as StatsEntry })),
+                catchError((error) =>
+                  of({ pubkey: contact.pubkey, entry: { error: String(error.message ?? error) } as StatsEntry }),
+                ),
+              ),
+            8,
+          ),
+          scan((entries, result) => ({ ...entries, [result.pubkey]: result.entry }), initial),
+          startWith(initial),
+        );
       });
-
-    return () => {
-      active = false;
-    };
-  }, [openRanking]);
-
-  // Fetch the stats for every contact whenever the contact list or algorithm changes
-  const contactKey = contacts?.map((c) => c.pubkey).join(",");
-  useEffect(() => {
-    if (!contacts?.length) return;
-    // Wait until discovery has loaded the algorithms and resolved the current selection — this avoids firing
-    // `pov`-less requests for a personalized algorithm (which the provider rejects with a 422) while it reloads.
-    const selected = algorithms?.find((a) => a.id === algorithm);
-    if (!selected) return;
-    // Personalized algorithms can't run until we have a point-of-view pubkey
-    const pov = selected.pov ? (pubkey ?? undefined) : undefined;
-    if (selected.pov && !pov) return;
-
-    let active = true;
-    const pubkeys = contacts.map((c) => c.pubkey);
-    setStatsMap(Object.fromEntries(pubkeys.map((p) => [p, { loading: true }])));
-
-    runPool(pubkeys, 8, async (pk) => {
-      try {
-        const stats = await openRanking.stats(pk, { algorithm, pov });
-        if (active) setStatsMap((m) => ({ ...m, [pk]: { stats } }));
-      } catch (err) {
-        if (active) setStatsMap((m) => ({ ...m, [pk]: { error: err instanceof Error ? err.message : "Failed" } }));
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactKey, openRanking, algorithm, algorithms, pubkey]);
+    }, [contacts, selected, openRanking, pubkey, signer, authorized]) ?? {};
 
   // Sort by the selected stats field, always sinking contacts without a value to the bottom
   const sorted = useMemo(() => {
@@ -238,7 +219,7 @@ function ContactScores({ user }: { user: User }) {
             placeholder="https://provider.example.com"
             className="input input-bordered w-full"
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            onChange={(e) => provider$.next(e.target.value)}
           />
           <datalist id="open-ranking-providers">
             {COMMON_PROVIDERS.map((p) => (
@@ -280,6 +261,11 @@ function ContactScores({ user }: { user: User }) {
         </div>
       )}
 
+      {requiresPov && (
+        <button className="btn btn-primary mb-4" disabled={!signer} onClick={() => authorize$.next(true)}>
+          Load personalized scores
+        </button>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <h2 className="text-xl font-semibold">Contacts {contacts ? `(${contacts.length})` : ""}</h2>
 
@@ -289,7 +275,7 @@ function ContactScores({ user }: { user: User }) {
             <select
               className="select select-bordered select-sm join-item"
               value={sortField}
-              onChange={(e) => setSortField(e.target.value as SortField)}
+              onChange={(e) => sortField$.next(e.target.value as SortField)}
             >
               {SORT_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -299,7 +285,7 @@ function ContactScores({ user }: { user: User }) {
             </select>
             <button
               className="btn btn-sm join-item"
-              onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+              onClick={() => sortDir$.next(sortDir$.value === "desc" ? "asc" : "desc")}
               title={sortDir === "desc" ? "Descending (highest first)" : "Ascending (lowest first)"}
             >
               {sortDir === "desc" ? "↓" : "↑"}

@@ -3,32 +3,35 @@
  * @tags nip-02, nip-65, nip-66, contacts, outbox, relay-discovery, rx-views
  * @related rx-views/mailbox-statuses, rx-views/friends-of-friends, relay-discovery/contacts-relays
  */
-import { castUser, RelayDiscovery, RelayMonitor, User } from "applesauce-common/casts";
-import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
-import { castTimelineStream } from "applesauce-common/observable";
-import { combineLatestByValue, defined, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import type { NostrEvent } from "applesauce-core/helpers/event";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
-import { RelayPool } from "applesauce-relay";
-import { kinds } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
+import { default as NoteContent } from "../../components/note-content";
 import {
+  BehaviorSubject,
   catchError,
   combineLatest,
-  EMPTY,
-  filter,
-  ignoreElements,
   isObservable,
   map,
-  mergeWith,
   MonoTypeOperatorFunction,
   Observable,
   of,
   startWith,
   switchMap,
   timeout,
+  shareReplay,
+  materialize,
+  scan,
 } from "rxjs";
+
+import { castUser, RelayDiscovery, RelayMonitor, User, Note } from "applesauce-common/casts";
+import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
+import { castTimelineStream } from "applesauce-common/observable";
+import { combineLatestByValue, defined, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+
+import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { use$ } from "applesauce-react/hooks";
+import { RelayPool } from "applesauce-relay";
+import { kinds } from "applesauce-core/helpers";
+import { useMemo } from "react";
+
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -75,13 +78,9 @@ function sortRelaysByMonitor(
               catchError(() => of(Infinity)),
             ),
           ),
-          // Wait for at least three relays with RTT
-          filter((map) => Array.from(map.values()).filter((rtt) => rtt !== Infinity).length >= 3),
           // Sort relays by RTT
           map((map) =>
             Array.from(map.entries())
-              // Ignore relays with Infinite RTT
-              .filter(([_, rtt]) => rtt !== Infinity)
               // Sort by fastest
               .sort((a, b) => a[1] - b[1])
               // Map list to relay url
@@ -96,7 +95,7 @@ function sortRelaysByMonitor(
 function contactsFastestOutboxesView(
   user: User | Observable<User>,
   monitor: undefined | RelayMonitor | Observable<RelayMonitor | undefined>,
-): Observable<null | Map<User, { last: NostrEvent | undefined; relays: string[] }>> {
+) {
   const user$ = isObservable(user) ? user : of(user);
   const monitor$ = isObservable(monitor) ? monitor : of(monitor);
 
@@ -111,34 +110,41 @@ function contactsFastestOutboxesView(
       const onlineOutboxes$ = contact.outboxes$.pipe(
         // Wait for outboxes to load
         defined(),
+        map((outboxes) => (outboxes.length ? outboxes : lookupRelays$.value)),
         // Sort relays by RTT from monitor
         sortRelaysByMonitor(monitor$),
         // Take only the 3 fastest relays
         map((outboxes) => outboxes.slice(0, 3)),
+        shareReplay({ bufferSize: 1, refCount: true }),
       );
 
-      // Request the latest note from each outbox relay
-      const request$ = pool
-        .request(onlineOutboxes$, {
-          kinds: [kinds.ShortTextNote],
-          authors: [contact.pubkey],
-          limit: 2,
-        })
-        .pipe(
-          mapEventsToStore(eventStore),
-          catchError(() => EMPTY),
-        );
+      const request$ = onlineOutboxes$.pipe(
+        switchMap((relays) =>
+          pool.request(relays, { kinds: [kinds.ShortTextNote], authors: [contact.pubkey], limit: 2 }).pipe(
+            mapEventsToStore(eventStore),
+            materialize(),
+            scan(
+              (status, notification) =>
+                notification.kind === "N"
+                  ? status
+                  : { loading: false, error: notification.kind === "E" ? String(notification.error) : "" },
+              { loading: true, error: "" },
+            ),
+            startWith({ loading: true, error: "" }),
+          ),
+        ),
+        startWith({ loading: true, error: "" }),
+      );
 
       // Subscribe to all users events from event store
       const last = eventStore.timeline({ kinds: [kinds.ShortTextNote], authors: [contact.pubkey] }).pipe(
-        // Merge with request so it starts
-        mergeWith(request$.pipe(ignoreElements())),
+        castTimelineStream(Note, eventStore),
         // Pick latest event from event store
         map((events) => events.slice(0, 1)?.[0] ?? undefined),
       );
 
       // Return the last event and the relays
-      return combineLatest({ last, relays: onlineOutboxes$.pipe(startWith([])) });
+      return combineLatest({ last, relays: onlineOutboxes$.pipe(startWith([])), load: request$ });
     }),
   );
 }
@@ -171,10 +177,12 @@ function ContactLatestRow({
   contact,
   note,
   relays,
+  load,
 }: {
   contact: User;
-  note: NostrEvent | undefined;
+  note: Note | undefined;
   relays: string[];
+  load: { loading: boolean; error: string };
 }) {
   const profile = use$(() => contact.profile$, [contact.pubkey]);
   const name = profile?.displayName ?? contact.pubkey.slice(0, 8) + "…";
@@ -190,19 +198,21 @@ function ContactLatestRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm">{name}</span>
-          {note && <span className="text-xs text-base-content/50 font-medium">{timeAgo(note.created_at)}</span>}
+          {note && <span className="text-sm text-base-content/50 font-medium">{timeAgo(note.event.created_at)}</span>}
         </div>
         {relays.length > 0 && (
-          <p className="text-xs text-base-content/40 mt-0.5 font-mono truncate" title={relays.join(", ")}>
+          <p className="text-sm text-base-content/40 mt-0.5 font-mono truncate" title={relays.join(", ")}>
             {relays.join(", ")}
           </p>
         )}
         {note ? (
           <div className="mt-2 p-2 rounded border border-base-300 bg-base-200/60">
-            <p className="text-base text-base-content whitespace-pre-wrap wrap-break-word">{note.content}</p>
+            <NoteContent event={note.event} />
           </div>
         ) : (
-          <p className="text-sm text-base-content/40 italic mt-1">Loading latest note…</p>
+          <p className="text-sm text-base-content/40 italic mt-1">
+            {load.error || (load.loading ? "Loading latest note…" : "No note found.")}
+          </p>
         )}
       </div>
     </div>
@@ -210,9 +220,14 @@ function ContactLatestRow({
 }
 
 export default function ContactsLatestPosts() {
-  const [discoveryRelay, setDiscoveryRelay] = useState(DEFAULT_DISCOVERY_RELAY);
-  const [selectedMonitorPubkey, setSelectedMonitorPubkey] = useState(DEFAULT_DISCOVERY_MONITOR);
-  const [selectedPubkey, setSelectedPubkey] = useState("");
+  const discoveryRelay$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_RELAY), []);
+  const discoveryRelay = use$(discoveryRelay$);
+
+  const selectedMonitorPubkey$ = useMemo(() => new BehaviorSubject(DEFAULT_DISCOVERY_MONITOR), []);
+  const selectedMonitorPubkey = use$(selectedMonitorPubkey$);
+
+  const selectedPubkey$ = useMemo(() => new BehaviorSubject(""), []);
+  const selectedPubkey = use$(selectedPubkey$);
 
   const monitors = use$(
     () =>
@@ -233,14 +248,14 @@ export default function ContactsLatestPosts() {
 
   const contactToLatestNote = use$(
     () => (user ? contactsFastestOutboxesView(user, monitor) : undefined),
-    [user?.pubkey, monitor?.uid],
+    [user?.pubkey, monitor],
   );
 
   const entriesSortedByRecent =
     contactToLatestNote != null
       ? Array.from(contactToLatestNote.entries()).sort(([, a], [, b]) => {
-          const ta = a.last?.created_at ?? 0;
-          const tb = b.last?.created_at ?? 0;
+          const ta = a.last?.event.created_at ?? 0;
+          const tb = b.last?.event.created_at ?? 0;
           return tb - ta;
         })
       : [];
@@ -256,14 +271,17 @@ export default function ContactsLatestPosts() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <RelayPicker value={discoveryRelay} onChange={setDiscoveryRelay} />
+        <RelayPicker
+          value={discoveryRelay}
+          onChange={(next: typeof discoveryRelay$.value) => discoveryRelay$.next(next)}
+        />
         {monitors && monitors.length > 0 && (
           <>
-            <label className="text-xs font-medium text-base-content/60">Monitor (single, for RTT)</label>
+            <label className="text-sm font-medium text-base-content/60">Monitor (single, for RTT)</label>
             <select
               className="select select-bordered select-sm w-full"
               value={selectedMonitorPubkey}
-              onChange={(e) => setSelectedMonitorPubkey(e.target.value)}
+              onChange={(e) => selectedMonitorPubkey$.next(e.target.value)}
             >
               {monitors.map((m) => (
                 <MonitorOption key={m.uid} monitor={m} />
@@ -271,7 +289,10 @@ export default function ContactsLatestPosts() {
             </select>
           </>
         )}
-        <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+        <PubkeyPicker
+          value={selectedPubkey}
+          onChange={(next: typeof selectedPubkey$.value) => selectedPubkey$.next(next)}
+        />
       </div>
 
       {!selectedPubkey && (
@@ -286,7 +307,7 @@ export default function ContactsLatestPosts() {
         <>
           {contactToLatestNote === undefined && (
             <div className="flex items-center gap-2 text-sm text-base-content/50">
-              <span className="loading loading-spinner loading-xs" />
+              <span className="loading loading-spinner loading-sm" />
               Loading contacts and latest notes…
             </div>
           )}
@@ -302,8 +323,8 @@ export default function ContactsLatestPosts() {
                 <span className="font-normal text-base-content/40">({entriesSortedByRecent.length})</span>
               </p>
               <div className="flex flex-col gap-2">
-                {entriesSortedByRecent.map(([contact, { last, relays }]) => (
-                  <ContactLatestRow key={contact.pubkey} contact={contact} note={last} relays={relays} />
+                {entriesSortedByRecent.map(([contact, { last, relays, load }]) => (
+                  <ContactLatestRow key={contact.pubkey} contact={contact} note={last} relays={relays} load={load} />
                 ))}
               </div>
             </div>

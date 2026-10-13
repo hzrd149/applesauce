@@ -3,10 +3,13 @@
  * @tags nip-46, signers, bunker, nostr-connect
  * @related cli/bunker-login, signers/bunker-provider
  */
+import { use$ } from "applesauce-react/hooks";
+import { BehaviorSubject, Observable } from "rxjs";
+
 import { NoteFactory } from "applesauce-common/factories";
 import { RelayPool } from "applesauce-relay";
 import { NostrConnectSigner } from "applesauce-signers";
-import { useState } from "react";
+import { useMemo } from "react";
 import JsonBlock from "../../components/json-block";
 import QRCode from "../../components/qr-code";
 
@@ -24,16 +27,21 @@ const SignerQRCode = ({ data }: { data: string }) => (
 );
 
 const BunkerUrlLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConnectSigner) => void }) => {
-  const [bunkerUrl, setBunkerUrl] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const bunkerUrl$ = useMemo(() => new BehaviorSubject(""), []);
+  const bunkerUrl = use$(bunkerUrl$);
+
+  const isConnecting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isConnecting = use$(isConnecting$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
 
   const handleConnect = async () => {
     if (!bunkerUrl) return;
 
     try {
-      setIsConnecting(true);
-      setError(null);
+      isConnecting$.next(true);
+      error$.next(null);
 
       // Create signer from bunker URL
       const newSigner = await NostrConnectSigner.fromBunkerURI(bunkerUrl);
@@ -41,23 +49,23 @@ const BunkerUrlLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrCo
       onSignerCreated(newSigner);
     } catch (err) {
       console.error("Connection error:", err);
-      setError(err instanceof Error ? err.message : "Failed to connect");
+      error$.next(err instanceof Error ? err.message : "Failed to connect");
     } finally {
-      setIsConnecting(false);
+      isConnecting$.next(false);
     }
   };
 
   return (
-    <div className="card bg-base-200 shadow-md mb-6">
-      <div className="card-body">
-        <h2 className="card-title mb-4">Login with Bunker URL</h2>
-        <div className="form-control mb-4">
+    <div className="border border-base-300 bg-base-200  mb-6">
+      <div className="p-4">
+        <h2 className="font-semibold mb-4">Login with Bunker URL</h2>
+        <div className="flex flex-col gap-2 mb-4">
           <input
             type="text"
             placeholder="Enter bunker:// URL"
             className="input input-bordered w-full"
             value={bunkerUrl}
-            onChange={(e) => setBunkerUrl(e.target.value)}
+            onChange={(e) => bunkerUrl$.next(e.target.value)}
           />
         </div>
         <button className={`btn btn-primary w-full`} onClick={handleConnect} disabled={!bunkerUrl || isConnecting}>
@@ -75,14 +83,42 @@ const BunkerUrlLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrCo
 };
 
 const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConnectSigner) => void }) => {
-  const [nostrConnectUri, setNostrConnectUri] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const nostrConnectUri$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const nostrConnectUri = use$(nostrConnectUri$);
+
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const isConnecting$ = useMemo(() => new BehaviorSubject(false), []);
+  const isConnecting = use$(isConnecting$);
+
+  const pending$ = useMemo(
+    () =>
+      new BehaviorSubject<{
+        signer: NostrConnectSigner;
+        controller: AbortController;
+        timeout: ReturnType<typeof setTimeout>;
+        handedOff: boolean;
+      } | null>(null),
+    [],
+  );
+  const pending = use$(pending$);
+  use$(
+    () =>
+      new Observable<void>(() => () => {
+        if (pending && !pending.handedOff) {
+          pending.controller.abort();
+          clearTimeout(pending.timeout);
+          void pending.signer.close();
+        }
+      }),
+    [pending],
+  );
 
   const handleQrCodeLogin = async () => {
     try {
-      setError(null);
-      setIsConnecting(true);
+      error$.next(null);
+      isConnecting$.next(true);
 
       // Create a new signer for QR code login
       const newSigner = new NostrConnectSigner({
@@ -94,46 +130,57 @@ const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConne
         name: "Applesauce Example",
       });
 
-      setNostrConnectUri(uri);
+      nostrConnectUri$.next(uri);
 
       // Create abort controller for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 1 minute timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const operation = { signer: newSigner, controller, timeout: timeoutId, handedOff: false };
+      pending$.next(operation);
 
       try {
         // Wait for signer to connect
         await newSigner.waitForSigner(controller.signal);
         clearTimeout(timeoutId);
 
+        operation.handedOff = true;
+        pending$.next(null);
         onSignerCreated(newSigner);
-        setNostrConnectUri(null);
+        nostrConnectUri$.next(null);
       } catch (err) {
         console.error("Wait for signer error:", err);
         if (err instanceof Error && err.message === "Aborted") {
-          setError("Connection timeout. Please try again.");
+          error$.next("Connection timeout. Please try again.");
         } else {
-          setError(err instanceof Error ? err.message : "Failed to connect");
+          error$.next(err instanceof Error ? err.message : "Failed to connect");
         }
-        setNostrConnectUri(null);
+        nostrConnectUri$.next(null);
       }
     } catch (err) {
       console.error("QR code login error:", err);
-      setError(err instanceof Error ? err.message : "QR code login failed");
-      setNostrConnectUri(null);
+      error$.next(err instanceof Error ? err.message : "QR code login failed");
+      nostrConnectUri$.next(null);
     } finally {
-      setIsConnecting(false);
+      isConnecting$.next(false);
     }
   };
 
   if (nostrConnectUri) {
     return (
-      <div className="card bg-base-200 shadow-md">
-        <div className="card-body items-center text-center">
+      <div className="border border-base-300 bg-base-200 ">
+        <div className="p-4 items-center text-center">
           <p className="mb-4">Scan this QR code with your Nostr mobile signer</p>
           <a target="_parent" href={nostrConnectUri}>
             <SignerQRCode data={nostrConnectUri} />
           </a>
-          <button className="btn btn-outline mt-4" onClick={() => setNostrConnectUri(null)}>
+          <button
+            className="btn btn-outline mt-4"
+            onClick={() => {
+              pending$.next(null);
+              nostrConnectUri$.next(null);
+              isConnecting$.next(false);
+            }}
+          >
             Cancel
           </button>
 
@@ -148,9 +195,9 @@ const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConne
   }
 
   return (
-    <div className="card bg-base-200 shadow-md">
-      <div className="card-body">
-        <h2 className="card-title mb-4">Login with QR Code</h2>
+    <div className="border border-base-300 bg-base-200 ">
+      <div className="p-4">
+        <h2 className="font-semibold mb-4">Login with QR Code</h2>
         <button className="btn btn-accent w-full" onClick={handleQrCodeLogin} disabled={isConnecting}>
           {isConnecting ? "Connecting..." : "Login with QR Code"}
         </button>
@@ -166,29 +213,41 @@ const QRCodeLogin = ({ onSignerCreated }: { onSignerCreated: (signer: NostrConne
 };
 
 const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onDisconnect: () => void }) => {
-  const [error, setError] = useState<string | null>(null);
-  const [userPubkey, setUserPubkey] = useState<string | null>(null);
-  const [isLoadingPubkey, setIsLoadingPubkey] = useState(false);
+  const error$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const error = use$(error$);
+
+  const userPubkey$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const userPubkey = use$(userPubkey$);
+
+  const isLoadingPubkey$ = useMemo(() => new BehaviorSubject(false), []);
+  const isLoadingPubkey = use$(isLoadingPubkey$);
 
   // State for the text note component
-  const [noteText, setNoteText] = useState<string>("");
-  const [signedEvent, setSignedEvent] = useState<any>(null);
-  const [isSigningNote, setIsSigningNote] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const noteText$ = useMemo(() => new BehaviorSubject<string>(""), []);
+  const noteText = use$(noteText$);
+
+  const signedEvent$ = useMemo(() => new BehaviorSubject<any>(null), []);
+  const signedEvent = use$(signedEvent$);
+
+  const isSigningNote$ = useMemo(() => new BehaviorSubject(false), []);
+  const isSigningNote = use$(isSigningNote$);
+
+  const isLoggingOut$ = useMemo(() => new BehaviorSubject(false), []);
+  const isLoggingOut = use$(isLoggingOut$);
 
   const handleGetPubkey = async () => {
     try {
-      setIsLoadingPubkey(true);
-      setError(null);
+      isLoadingPubkey$.next(true);
+      error$.next(null);
       const pubkey = await signer.getPublicKey();
-      setUserPubkey(pubkey);
+      userPubkey$.next(pubkey);
     } catch (err) {
       // The request was cancelled by disconnecting
       if (err instanceof Error && err.message === "Closed") return;
       console.error("Failed to get pubkey:", err);
-      setError(err instanceof Error ? err.message : "Failed to get pubkey");
+      error$.next(err instanceof Error ? err.message : "Failed to get pubkey");
     } finally {
-      setIsLoadingPubkey(false);
+      isLoadingPubkey$.next(false);
     }
   };
 
@@ -196,20 +255,20 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
     if (!noteText.trim()) return;
 
     try {
-      setIsSigningNote(true);
-      setError(null);
+      isSigningNote$.next(true);
+      error$.next(null);
 
       // Create and sign a simple text note
       const signedNote = await NoteFactory.create(noteText).sign(signer);
 
       // Set the signed event to display
-      setSignedEvent(signedNote);
+      signedEvent$.next(signedNote);
     } catch (err) {
       if (err instanceof Error && err.message === "Closed") return;
       console.error("Failed to sign note:", err);
-      setError(err instanceof Error ? err.message : "Failed to sign note");
+      error$.next(err instanceof Error ? err.message : "Failed to sign note");
     } finally {
-      setIsSigningNote(false);
+      isSigningNote$.next(false);
     }
   };
 
@@ -222,15 +281,15 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
   // Notify the remote signer to end the session, then close the local connection
   const handleLogout = async () => {
     try {
-      setIsLoggingOut(true);
-      setError(null);
+      isLoggingOut$.next(true);
+      error$.next(null);
       // Wait up to 5 seconds for the remote signer to acknowledge
       await signer.logout({ timeout: 5_000 });
     } catch (err) {
       console.error("Failed to logout:", err);
-      setError(err instanceof Error ? err.message : "Failed to logout");
+      error$.next(err instanceof Error ? err.message : "Failed to logout");
     } finally {
-      setIsLoggingOut(false);
+      isLoggingOut$.next(false);
       onDisconnect();
     }
   };
@@ -239,10 +298,10 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
     <div>
       <h1 className="text-2xl font-bold mb-6 text-center">Account Information</h1>
 
-      <div className="card bg-base-200 shadow-md mb-6">
-        <div className="card-body">
-          <h2 className="card-title mb-4">Public Key</h2>
-          <div className="form-control mb-4">
+      <div className="border border-base-300 bg-base-200  mb-6">
+        <div className="p-4">
+          <h2 className="font-semibold mb-4">Public Key</h2>
+          <div className="flex flex-col gap-2 mb-4">
             <input
               type="text"
               className="input input-bordered w-full font-mono text-sm"
@@ -260,15 +319,15 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
         </div>
       </div>
 
-      <div className="card bg-base-200 shadow-md mb-6">
-        <div className="card-body">
-          <h2 className="card-title mb-4">Create and Sign a Note</h2>
-          <div className="form-control mb-4">
+      <div className="border border-base-300 bg-base-200  mb-6">
+        <div className="p-4">
+          <h2 className="font-semibold mb-4">Create and Sign a Note</h2>
+          <div className="flex flex-col gap-2 mb-4">
             <textarea
               className="textarea textarea-bordered w-full h-32"
               placeholder="Type your note here..."
               value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
+              onChange={(e) => noteText$.next(e.target.value)}
             />
           </div>
           <button
@@ -314,17 +373,26 @@ const AccountCard = ({ signer, onDisconnect }: { signer: NostrConnectSigner; onD
 };
 
 export default function BunkerLogin() {
-  const [signer, setSigner] = useState<NostrConnectSigner | null>(null);
+  const signer$ = useMemo(() => new BehaviorSubject<NostrConnectSigner | null>(null), []);
+  const signer = use$(signer$);
+
+  use$(
+    () =>
+      new Observable<void>(() => () => {
+        void signer?.close();
+      }),
+    [signer],
+  );
 
   // Handle signer creation
   const handleSignerCreated = (newSigner: NostrConnectSigner) => {
-    setSigner(newSigner);
+    signer$.next(newSigner);
   };
 
   // Handle disconnect
   const handleDisconnect = () => {
     signer?.close();
-    setSigner(null);
+    signer$.next(null);
   };
 
   if (!signer) {

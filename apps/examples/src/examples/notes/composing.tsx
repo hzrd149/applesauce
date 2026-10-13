@@ -3,13 +3,15 @@
  * @tags nip-01, nip-65, compose, editor, nostr-editor, blossom, file-upload
  * @related notes/rendering, simple/profile-editor, blossom/server-manager
  */
+import { publishEvent } from "../../extra/publish";
+
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { castUser, User } from "applesauce-common/casts";
 import { NoteFactory, type NoteTemplate } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
-import { EventFactory } from "applesauce-core/factories";
+
 import { relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -20,7 +22,7 @@ import { createUploadAuth } from "blossom-client-sdk/auth";
 import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
 import { NostrExtension } from "nostr-editor";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { BehaviorSubject, map } from "rxjs";
 
 import LoginView from "../../components/login-view";
@@ -83,13 +85,15 @@ function createBlossomUploader(signer: ISigner, blossomServers: URL[] | undefine
 
 /** Favicon avatar for a blossom server */
 function ServerFavicon({ server }: { server: URL }) {
-  const [error, setError] = useState(false);
+  const error$ = useMemo(() => new BehaviorSubject(false), []);
+  const error = use$(error$);
+
   const faviconUrl = new URL("/favicon.ico", server).href;
 
   if (error) {
     return (
       <div
-        className="w-6 h-6 rounded-full bg-base-200 flex items-center justify-center text-[10px] font-bold"
+        className="w-6 h-6 rounded-full bg-base-200 flex items-center justify-center text-sm font-bold"
         title={server.hostname}
       >
         {server.hostname[0].toUpperCase()}
@@ -103,7 +107,7 @@ function ServerFavicon({ server }: { server: URL }) {
       alt={server.hostname}
       title={server.hostname}
       className="w-6 h-6 rounded-full bg-base-200"
-      onError={() => setError(true)}
+      onError={() => error$.next(true)}
     />
   );
 }
@@ -138,8 +142,12 @@ async function noteTemplateFromEditor(editor: Editor): Promise<NoteTemplate> {
 }
 
 function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigner; onContinue: () => void }) {
-  const [buildError, setBuildError] = useState<string | null>(null);
-  const [mediaOptimization, setMediaOptimization] = useState(true);
+  const buildError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const buildError = use$(buildError$);
+
+  const mediaOptimization$ = useMemo(() => new BehaviorSubject(true), []);
+  const mediaOptimization = use$(mediaOptimization$);
+
   const blossomServers = use$(() => user.blossomServers$, [user.pubkey]);
 
   // Keep refs so the editor upload closure always sees the latest values
@@ -188,13 +196,13 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
 
   const handleContinue = useCallback(async () => {
     if (!editor) return;
-    setBuildError(null);
+    buildError$.next(null);
     try {
       const template = await noteTemplateFromEditor(editor);
       draftNote$.next(template);
       onContinue();
     } catch (e) {
-      setBuildError(e instanceof Error ? e.message : "Could not build note");
+      buildError$.next(e instanceof Error ? e.message : "Could not build note");
     }
   }, [editor, onContinue]);
 
@@ -214,7 +222,7 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
           type="checkbox"
           className="toggle toggle-sm"
           checked={mediaOptimization}
-          onChange={() => setMediaOptimization((v) => !v)}
+          onChange={() => mediaOptimization$.next(!mediaOptimization$.value)}
         />
         <span>
           Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
@@ -239,7 +247,7 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
             </button>
             <div className="ml-auto flex items-center gap-2">
               <ServerAvatarStack servers={blossomServers?.length ? blossomServers : DEFAULT_BLOSSOM_SERVERS} />
-              {!blossomServers?.length && <span className="text-xs text-base-content/50">(default)</span>}
+              {!blossomServers?.length && <span className="text-sm text-base-content/50">(default)</span>}
             </div>
           </div>
         )}
@@ -270,31 +278,39 @@ function PublishBody({
     [mailboxes],
   );
 
-  const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [lastResults, setLastResults] = useState<{ relay: string; ok: boolean; message?: string }[] | null>(null);
+  const publishing$ = useMemo(() => new BehaviorSubject(false), []);
+  const publishing = use$(publishing$);
+
+  const publishError$ = useMemo(() => new BehaviorSubject<string | null>(null), []);
+  const publishError = use$(publishError$);
+
+  const lastResults$ = useMemo(
+    () => new BehaviorSubject<{ relay: string; ok: boolean; message?: string }[] | null>(null),
+    [],
+  );
+  const lastResults = use$(lastResults$);
 
   const handleBack = useCallback(() => {
-    setLastResults(null);
-    setPublishError(null);
+    lastResults$.next(null);
+    publishError$.next(null);
     draftNote$.next(null);
     onBack();
   }, [onBack]);
 
   const handlePublish = useCallback(async () => {
-    setPublishing(true);
-    setPublishError(null);
-    setLastResults(null);
+    publishing$.next(true);
+    publishError$.next(null);
+    lastResults$.next(null);
     try {
       const toSign = { ...draft, created_at: Math.floor(Date.now() / 1000) };
-      const signed = await new EventFactory((res) => res(toSign)).sign(signer);
-      const responses = await pool.publish(publishRelays, signed);
+      const signed = await new NoteFactory((resolve) => resolve(toSign)).sign(signer);
+      const responses = await publishEvent(pool, publishRelays, signed);
       eventStore.add(signed);
-      setLastResults(responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })));
+      lastResults$.next(responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })));
     } catch (e) {
-      setPublishError(e instanceof Error ? e.message : "Publish failed");
+      publishError$.next(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      setPublishing(false);
+      publishing$.next(false);
     }
   }, [draft, publishRelays, signer]);
 
@@ -307,7 +323,7 @@ function PublishBody({
         </button>
       </div>
       <p className="text-base-content/70 text-sm">
-        This is the unsigned kind 1 draft from <code className="text-xs bg-base-200 px-1 rounded">NoteFactory</code>.
+        This is the unsigned kind 1 draft from <code className="text-sm bg-base-200 px-1 rounded">NoteFactory</code>.
         Signing uses your extension; events are sent to your NIP-65 outbox relays when available.
       </p>
       <section className="border border-base-300 rounded-lg p-4 space-y-2">
@@ -316,7 +332,7 @@ function PublishBody({
       </section>
       <section className="border border-base-300 rounded-lg p-4 space-y-2">
         <h2 className="font-semibold text-sm text-base-content/60">Tags ({draft.tags.length})</h2>
-        <ul className="text-xs font-mono space-y-1 max-h-40 overflow-y-auto">
+        <ul className="text-sm font-mono space-y-1 max-h-40 overflow-y-auto">
           {draft.tags.map((t, i) => (
             <li key={i} className="text-base-content/80">
               [{t.map((c) => JSON.stringify(c)).join(", ")}]
@@ -328,20 +344,20 @@ function PublishBody({
         <h2 className="font-semibold text-sm text-base-content/60">Relays</h2>
         <ul className="flex flex-wrap gap-2">
           {publishRelays.map((r) => (
-            <li key={r} className="badge badge-outline badge-sm font-mono">
+            <li key={r} className="badge badge-outline badge-md font-mono">
               {r.replace(/^wss:\/\//, "")}
             </li>
           ))}
         </ul>
         {!mailboxes?.outboxes?.length && (
-          <p className="text-xs text-base-content/50">No outbox list loaded yet — using default relays.</p>
+          <p className="text-sm text-base-content/50">No outbox list loaded yet — using default relays.</p>
         )}
       </section>
       {publishError && <div className="text-error text-sm">{publishError}</div>}
       {lastResults && (
         <div className="border border-base-300 rounded-lg p-4 space-y-2">
           <h2 className="font-semibold text-sm text-base-content/60">Relay responses</h2>
-          <ul className="space-y-1 text-xs font-mono">
+          <ul className="space-y-1 text-sm font-mono">
             {lastResults.map((r) => (
               <li key={r.relay} className="flex gap-2 items-center">
                 <span className={r.ok ? "text-success" : "text-error"}>{r.ok ? "ok" : "fail"}</span>
@@ -371,14 +387,9 @@ function PublishBody({
 
 function SignedInFlow({ user, signer }: { user: User; signer: ISigner }) {
   const draft = use$(draftNote$);
-  const [screen, setScreen] = useState<"compose" | "publish">("compose");
-
-  const goPublish = useCallback(() => setScreen("publish"), []);
-  const goCompose = useCallback(() => setScreen("compose"), []);
-
-  useEffect(() => {
-    if (screen === "publish" && !draft) setScreen("compose");
-  }, [draft, screen]);
+  const screen = draft ? "publish" : "compose";
+  const goPublish = () => {};
+  const goCompose = () => draftNote$.next(null);
 
   return (
     <>

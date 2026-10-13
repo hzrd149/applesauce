@@ -1,7 +1,22 @@
-import { IAsyncEventStore, IEventStore } from "applesauce-core";
-import { isEvent } from "applesauce-core/helpers";
-import { NostrEvent } from "applesauce-core/helpers";
-import { ChangeEvent, useRef, useState } from "react";
+import type { IAsyncEventStore, IEventStore } from "applesauce-core";
+import { isEvent, type NostrEvent } from "applesauce-core/helpers";
+import { use$ } from "applesauce-react/hooks";
+import { useMemo, useRef, type ChangeEvent } from "react";
+import {
+  EMPTY,
+  Subject,
+  catchError,
+  concatMap,
+  defer,
+  endWith,
+  exhaustMap,
+  finalize,
+  from,
+  map,
+  of,
+  startWith,
+  tap,
+} from "rxjs";
 
 interface ImportEventsButtonProps {
   eventStore: IEventStore | IAsyncEventStore;
@@ -9,17 +24,16 @@ interface ImportEventsButtonProps {
   className?: string;
   disabled?: boolean;
 }
-
 interface ImportStats {
   total: number;
   added: number;
   failed: number;
 }
-
 interface ImportProgress extends ImportStats {
   isImporting: boolean;
   currentFile?: string;
   cancelled?: boolean;
+  error?: string;
 }
 
 export default function ImportEventsButton({
@@ -28,282 +42,83 @@ export default function ImportEventsButton({
   className = "",
   disabled = false,
 }: ImportEventsButtonProps) {
-  const [progress, setProgress] = useState<ImportProgress>({
-    total: 0,
-    added: 0,
-    failed: 0,
-    isImporting: false,
-  });
-
+  const files$ = useMemo(() => new Subject<File>(), []);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cancelRef = useRef<boolean>(false);
-
-  const addEventToStore = async (event: NostrEvent): Promise<boolean> => {
-    try {
-      const inserted = await eventStore.add(event);
-      if (inserted === null) false;
-      return true;
-    } catch (error) {
-      console.error("Failed to add event:", error);
-      return false;
-    }
-  };
-
-  const processBatchOfEvents = async (events: NostrEvent[]): Promise<{ added: number; failed: number }> => {
-    let added = 0;
-    let failed = 0;
-
-    await Promise.all(
-      events.map(async (event) => {
-        const success = await addEventToStore(event);
-        if (success) added++;
-        else failed++;
-      }),
-    );
-
-    return { added, failed };
-  };
-
-  const processJsonArrayFile = async (file: File) => {
-    const stats: ImportStats = { total: 0, added: 0, failed: 0 };
-    cancelRef.current = false;
-
-    setProgress({
-      ...stats,
-      isImporting: true,
-      currentFile: file.name,
-      cancelled: false,
-    });
-
-    try {
-      const text = await file.text();
-
-      // Parse the entire JSON array
-      let eventsArray: any[];
-      try {
-        eventsArray = JSON.parse(text);
-      } catch (parseError) {
-        console.error("Failed to parse JSON array:", parseError);
-        setProgress({
-          ...stats,
-          isImporting: false,
-        });
-        return;
-      }
-
-      if (!Array.isArray(eventsArray)) {
-        console.error("File content is not a JSON array");
-        setProgress({
-          ...stats,
-          isImporting: false,
-        });
-        return;
-      }
-
-      stats.total = eventsArray.length;
-
-      // Validate all events first, collecting valid ones
-      const validEvents: NostrEvent[] = [];
-      let parseFailures = 0;
-
-      for (let i = 0; i < eventsArray.length; i++) {
-        const event = eventsArray[i];
-
-        if (!isEvent(event)) {
-          console.warn(`Invalid event at index ${i}:`, event);
-          parseFailures++;
-          continue;
-        }
-
-        validEvents.push(event);
-      }
-
-      stats.failed = parseFailures;
-
-      // Process events in batches of 100
-      const batchSize = 100;
-      for (let batchStart = 0; batchStart < validEvents.length; batchStart += batchSize) {
-        // Check for cancellation
-        if (cancelRef.current) {
-          setProgress({
-            ...stats,
-            isImporting: false,
-            cancelled: true,
-          });
-          return;
-        }
-
-        const batchEnd = Math.min(batchStart + batchSize, validEvents.length);
-        const batch = validEvents.slice(batchStart, batchEnd);
-
-        const { added: batchAdded, failed: batchFailed } = await processBatchOfEvents(batch);
-        stats.added += batchAdded;
-        stats.failed += batchFailed;
-
-        // Update progress after each batch
-        setProgress({
-          ...stats,
-          isImporting: true,
-          currentFile: file.name,
-          cancelled: false,
-        });
-
-        // Allow UI to update
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    } catch (error) {
-      console.error("Failed to process file:", error);
-      setProgress({
-        ...stats,
-        isImporting: false,
-      });
-      return;
-    }
-
-    setProgress({
-      ...stats,
-      isImporting: false,
-    });
-
-    onImportComplete?.(stats);
-  };
-
-  const processJsonlFile = async (file: File) => {
-    const stats: ImportStats = { total: 0, added: 0, failed: 0 };
-    cancelRef.current = false;
-
-    setProgress({
-      ...stats,
-      isImporting: true,
-      currentFile: file.name,
-      cancelled: false,
-    });
-
-    try {
-      const text = await file.text();
-      const lines = text.split("\n").filter((line) => line.trim());
-      stats.total = lines.length;
-
-      // Parse all events first, collecting valid ones
-      const validEvents: NostrEvent[] = [];
-      let parseFailures = 0;
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
-        try {
-          const event = JSON.parse(line);
-
-          if (!isEvent(event)) {
-            console.warn(`Invalid event at line ${i + 1}:`, event);
-            parseFailures++;
-            continue;
-          }
-
-          validEvents.push(event);
-        } catch (parseError) {
-          console.error(`Failed to parse JSON at line ${i + 1}:`, parseError);
-          parseFailures++;
-        }
-      }
-
-      stats.failed = parseFailures;
-
-      // Process events in batches of 100
-      const batchSize = 100;
-      for (let batchStart = 0; batchStart < validEvents.length; batchStart += batchSize) {
-        // Check for cancellation
-        if (cancelRef.current) {
-          setProgress({
-            ...stats,
-            isImporting: false,
-            cancelled: true,
-          });
-          return;
-        }
-
-        const batchEnd = Math.min(batchStart + batchSize, validEvents.length);
-        const batch = validEvents.slice(batchStart, batchEnd);
-
-        const { added: batchAdded, failed: batchFailed } = await processBatchOfEvents(batch);
-        stats.added += batchAdded;
-        stats.failed += batchFailed;
-
-        // Update progress after each batch
-        setProgress({
-          ...stats,
-          isImporting: true,
-          currentFile: file.name,
-          cancelled: false,
-        });
-
-        // Allow UI to update
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    } catch (error) {
-      console.error("Failed to process file:", error);
-      setProgress({
-        ...stats,
-        isImporting: false,
-      });
-      return;
-    }
-
-    setProgress({
-      ...stats,
-      isImporting: false,
-    });
-
-    onImportComplete?.(stats);
-  };
-
-  const processFile = async (file: File) => {
-    try {
-      const text = await file.text();
-      const firstChar = text.trim().charAt(0);
-
-      if (firstChar === "[") {
-        // JSON array format
-        processJsonArrayFile(file);
-      } else {
-        // JSONL format (each line is a JSON object)
-        processJsonlFile(file);
-      }
-    } catch (error) {
-      console.error("Failed to read file:", error);
-      alert("Failed to read the selected file");
-    }
-  };
+  const cancelRef = useRef(false);
+  const onCompleteRef = useRef(onImportComplete);
+  onCompleteRef.current = onImportComplete;
+  const empty: ImportProgress = { total: 0, added: 0, failed: 0, isImporting: false };
+  const progress: ImportProgress =
+    use$(
+      () =>
+        files$.pipe(
+          exhaustMap((file) =>
+            defer(() => {
+              cancelRef.current = false;
+              let stats: ImportStats = { total: 0, added: 0, failed: 0 };
+              return defer(() => file.text()).pipe(
+                concatMap((text) => {
+                  const array = text.trim().startsWith("[");
+                  const records: unknown[] = array ? JSON.parse(text) : text.split("\n").filter((line) => line.trim());
+                  const events: NostrEvent[] = [];
+                  stats = { total: records.length, added: 0, failed: 0 };
+                  for (const record of records) {
+                    try {
+                      const event: unknown = array ? record : JSON.parse(record as string);
+                      if (isEvent(event)) events.push(event);
+                      else stats.failed++;
+                    } catch {
+                      stats.failed++;
+                    }
+                  }
+                  const batches = Array.from({ length: Math.ceil(events.length / 100) }, (_, index) =>
+                    events.slice(index * 100, (index + 1) * 100),
+                  );
+                  return from(batches).pipe(
+                    // Finish an already-started database batch, then stop before the next one.
+                    concatMap((batch) =>
+                      defer(() =>
+                        cancelRef.current
+                          ? EMPTY
+                          : Promise.allSettled(
+                              batch.map((event) => Promise.resolve().then(() => eventStore.add(event))),
+                            ),
+                      ).pipe(
+                        tap((results) => {
+                          for (const result of results) {
+                            if (result.status === "fulfilled" && result.value !== null) stats.added++;
+                            else stats.failed++;
+                          }
+                        }),
+                        map((): ImportProgress => ({ ...stats, isImporting: true, currentFile: file.name })),
+                      ),
+                    ),
+                  );
+                }),
+                endWith(undefined),
+                map((batch): ImportProgress => batch ?? { ...stats, isImporting: false, cancelled: cancelRef.current }),
+                tap((state) => {
+                  if (!state.isImporting && !state.cancelled) onCompleteRef.current?.(stats);
+                }),
+                catchError((error) =>
+                  of({ ...stats, isImporting: false, error: error instanceof Error ? error.message : "Import failed" }),
+                ),
+                startWith({ ...stats, isImporting: true, currentFile: file.name }),
+              );
+            }),
+          ),
+          finalize(() => {
+            cancelRef.current = true;
+          }),
+        ),
+      [files$, eventStore],
+    ) ?? empty;
 
   const handleFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith(".json") && !file.name.endsWith(".jsonl")) {
-      alert("Please select a .json or .jsonl file");
-      return;
-    }
-
-    processFile(file);
-
-    // Reset file input so the same file can be selected again
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (file) files$.next(file);
+    event.target.value = "";
   };
-
-  const handleButtonClick = () => {
-    if (progress.isImporting) {
-      // Cancel the import
-      cancelRef.current = true;
-    } else {
-      // Start new import
-      fileInputRef.current?.click();
-    }
-  };
-
-  const formatNumber = (num: number) => num.toLocaleString();
 
   return (
     <>
@@ -315,36 +130,32 @@ export default function ImportEventsButton({
         className="hidden"
         disabled={disabled || progress.isImporting}
       />
-
       <button
-        onClick={handleButtonClick}
+        onClick={() => {
+          if (progress.isImporting) cancelRef.current = true;
+          else fileInputRef.current?.click();
+        }}
         disabled={disabled}
         className={`btn btn-soft ${progress.isImporting ? "btn-warning" : "btn-primary"} ${className}`}
       >
         {progress.isImporting ? (
-          <div className="flex items-center gap-2">
-            <span className="loading loading-spinner loading-sm"></span>
+          <>
+            <span className="loading loading-spinner loading-sm" />
             <span className="font-mono text-sm">
-              {progress.total > 0 ? (
-                <span className="flex items-center gap-1">
-                  <span className="text-success">{formatNumber(progress.added)}</span>
-                  <span>/</span>
-                  <span className="text-error">{formatNumber(progress.failed)}</span>
-                  <span>/</span>
-                  <span>{formatNumber(progress.total)}</span>
-                  <span className="ml-1">
-                    ({Math.round(((progress.added + progress.failed) / progress.total) * 100)}%)
-                  </span>
-                </span>
-              ) : (
-                "Starting..."
-              )}
+              {progress.added.toLocaleString()} added / {progress.failed.toLocaleString()} failed /{" "}
+              {progress.total.toLocaleString()} total — Cancel
             </span>
-          </div>
+          </>
         ) : (
           "Import Events"
         )}
       </button>
+      {progress.error && (
+        <span role="alert" className="text-error">
+          {progress.error}
+        </span>
+      )}
+      {progress.cancelled && <span role="status">Import cancelled</span>}
     </>
   );
 }
