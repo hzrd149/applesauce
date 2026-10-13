@@ -452,6 +452,7 @@ None yet.
 | 260805-ds0 | Clamp setTimeout delays to the 32-bit max in ExpirationManager and WalletConnect.waitForPaid (resolves backlog 999.10) | 2026-08-05 | 187930b9, 3f6f4bd3, 1b6b2976, 594bf1de | [260805-ds0-clamp-expirationmanager-settimeout-delay](./quick/260805-ds0-clamp-expirationmanager-settimeout-delay/) |
 | 260907-g46 | Remove deprecated RelayPool.ignoreOffline flag | 2026-09-07 | 6131d0f0, 43a02481 | [260907-g46-remove-deprecated-relaypool-ignoreofflin](./quick/260907-g46-remove-deprecated-relaypool-ignoreofflin/) |
 | 261009-kku | Fix useObservableState treating function values as setState updaters | 2026-10-09 | 866d9701, 7fffaa3b, 6fc1f873 | [261009-kku-fix-useobservablestate-treating-function](./quick/261009-kku-fix-useobservablestate-treating-function/) |
+| 261013-i0r | Add NIP-5D napplet helpers, cast, operations, factory, User getters and example | 2026-10-13 | 79834f71, 860b0f6b, a125312e, 6c287da4, 32debe66, 816d2bd3, 217f5597 | [261013-i0r-add-nip-5d-napplet-helpers-cast-operatio](./quick/261013-i0r-add-nip-5d-napplet-helpers-cast-operatio/) |
 
 ### Roadmap Evolution
 
