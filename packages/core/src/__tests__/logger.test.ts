@@ -70,6 +70,28 @@ describe("logger", () => {
     expect(calls[1]).toContain(" extra 7");
   });
 
+  it("formats errors without reading or appending their stacks", () => {
+    const calls: string[] = [];
+    const error = new TypeError("Relay does not support NIP-77");
+    const stack = vi.fn(() => "sync@http://localhost/group.js:435:39\nnext@http://localhost/rxjs.js:16:11");
+    Object.defineProperty(error, "stack", { get: stack });
+    setLoggerSink((message) => calls.push(message));
+    enableLoggerNamespaces("applesauce");
+
+    logger(error);
+    logger("Dropped relay", error);
+    logger("Failure: %o", error);
+    logger({ error });
+
+    expect(calls).toEqual([
+      "applesauce TypeError: Relay does not support NIP-77",
+      "applesauce Dropped relay TypeError: Relay does not support NIP-77",
+      "applesauce Failure: TypeError: Relay does not support NIP-77",
+      "applesauce { error: TypeError: Relay does not support NIP-77 }",
+    ]);
+    expect(stack).not.toHaveBeenCalled();
+  });
+
   it("does not throw while formatting hostile values", () => {
     const calls: string[] = [];
     const getter = Object.defineProperty({}, "value", {

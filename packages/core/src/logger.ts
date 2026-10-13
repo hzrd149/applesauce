@@ -273,7 +273,7 @@ function safeString(value: unknown, fallback = "[Unformattable]"): string {
 
 function inspect(value: unknown, seen = new Set<unknown>()): string {
   try {
-    if (value instanceof Error) return value.stack ?? safeString(value);
+    if (value instanceof Error) return safeString(value);
     if (typeof value === "string") return `'${value}'`;
     if (typeof value === "bigint") return `${value}n`;
     if (typeof value === "symbol" || typeof value === "function") return safeString(value);
