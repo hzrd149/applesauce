@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY, Observable, Subject } from "rxjs";
 
-import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
+import { decodeVarInt, encodeVarInt, Negentropy, NegentropyStorageVector, WrappedBuffer } from "../lib/negentropy.js";
 import { buildStorageVector, NegentropyError, negentropySync } from "../negentropy.js";
 
 const item = (n: number) => ({ id: n.toString(16).padStart(64, "0"), created_at: n });
@@ -136,5 +136,17 @@ describe("negentropySync", () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(socket.sent.filter((message) => message[0] === "NEG-CLOSE")).toEqual([["NEG-CLOSE", "abort"]]);
+  });
+});
+
+describe("varint", () => {
+  it("round-trips values past 32 bits", () => {
+    for (const n of [0, 127, 128, 2 ** 31, 2 ** 32, 2 ** 40, Number.MAX_SAFE_INTEGER]) {
+      expect(decodeVarInt(encodeVarInt(n))).toBe(n);
+    }
+  });
+
+  it("throws on varints larger than MAX_SAFE_INTEGER", () => {
+    expect(() => decodeVarInt(new WrappedBuffer([...Array(9).fill(0xff), 0x7f]))).toThrow("varint too large");
   });
 });

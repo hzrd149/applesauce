@@ -69,7 +69,9 @@ function decodeVarInt(buf: WrappedBuffer) {
   while (1) {
     if (buf.length === 0) throw Error("parse ends prematurely");
     let byte = buf.shift();
-    res = (res << 7) | (byte & 127);
+    // Arithmetic instead of `<<` so values past 2^31 don't wrap through 32-bit ints
+    res = res * 128 + (byte & 127);
+    if (res > Number.MAX_SAFE_INTEGER) throw Error("varint too large");
     if ((byte & 128) === 0) break;
   }
 
@@ -82,8 +84,8 @@ function encodeVarInt(n: number) {
   let o = [];
 
   while (n !== 0) {
-    o.push(n & 127);
-    n >>>= 7;
+    o.push(n % 128);
+    n = Math.floor(n / 128);
   }
 
   o.reverse();
@@ -619,4 +621,4 @@ function itemCompare(a: Item, b: Item) {
   return a.timestamp - b.timestamp;
 }
 
-export { Negentropy, NegentropyStorageVector };
+export { Negentropy, NegentropyStorageVector, WrappedBuffer, decodeVarInt, encodeVarInt };
