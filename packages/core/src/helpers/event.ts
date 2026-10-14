@@ -164,8 +164,16 @@ export type VerifyEventMethod = (event: NostrEvent) => event is VerifiedEvent;
 // Internal method for verifying events (used by zaps, gift-wraps, etc)
 let verifyWrappedEventMethod: VerifyEventMethod = verifyEvent;
 
-/** Sets the internal method used to verify events in helpers (zaps, gift-wraps, etc) */
+/**
+ * Sets the internal method used to verify events in helpers (zaps, gift-wraps, etc)
+ * @deprecated Swapping the verifier silently disables signature checks for every seal, gift
+ * wrap, and zap in the process — a compromised or buggy replacement undermines the whole
+ * authentication layer. This hook will be removed in a future major version.
+ */
 export function setVerifyWrappedEventMethod(method: VerifyEventMethod): void {
+  console.warn(
+    "setVerifyWrappedEventMethod() replaces signature verification for ALL seals, gift wraps, and zaps. It is deprecated and will be removed in a future major version.",
+  );
   verifyWrappedEventMethod = method;
 }
 
@@ -174,7 +182,12 @@ export function verifyWrappedEvent(event: NostrEvent): event is VerifiedEvent {
   return verifyWrappedEventMethod(event);
 }
 
-/** Sets events verified flag without checking anything */
+/**
+ * Sets events verified flag without checking anything
+ * @deprecated Marking unverified events as verified defeats every downstream signature check.
+ * If an event genuinely came from a trusted verification path, let the normal verification
+ * memo do its job instead. This escape hatch will be removed in a future major version.
+ */
 export function fakeVerifyEvent(event: NostrEvent): event is VerifiedEvent {
   setCachedValue(event, verifiedSymbol, true);
   return true;
