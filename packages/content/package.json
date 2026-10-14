@@ -75,11 +75,11 @@
     "unist-util-visit-parents": "^6.0.1"
   },
   "devDependencies": {
-    "@cashu/cashu-ts": "^4.5.1",
+    "@cashu/cashu-ts": "^4.11.0",
     "applesauce-signers": "^6.2.0",
-    "rimraf": "^6.0.1",
+    "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "peerDependencies": {
     "@cashu/cashu-ts": "^4.5.1"

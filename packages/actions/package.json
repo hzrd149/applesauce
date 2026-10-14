@@ -46,10 +46,10 @@
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "applesauce-signers": "^6.2.0",
-    "nanoid": "^5.1.5",
-    "rimraf": "^6.0.1",
+    "nanoid": "^5.1.16",
+    "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "funding": {
     "type": "lightning",

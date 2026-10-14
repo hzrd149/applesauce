@@ -75,17 +75,17 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.19",
-    "@tailwindcss/vite": "^4.1.18",
-    "@types/create-torrent": "^6.1.0",
-    "@types/leaflet": "^1.9.21",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/create-torrent": "^6.1.1",
+    "@types/leaflet": "^1.9.22",
     "@types/ngeohash": "^0.6.8",
-    "@types/node": "^22.19.3",
-    "@types/parse-torrent": "^5.8.8",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@types/node": "^22.20.5",
+    "@types/parse-torrent": "^5.8.9",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "typescript": "^7.0.2",
-    "vite": "^8.0.16"
+    "vite": "^8.3.4"
   }
 }
