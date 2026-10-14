@@ -13,7 +13,7 @@ import {
 async function fetchMintPubkey(mintUrl: string): Promise<string> {
   // Fetch mint info directly from the /v1/info endpoint
   const infoUrl = new URL("/v1/info", mintUrl).toString();
-  const response = await fetch(infoUrl);
+  const response = await fetch(infoUrl, { signal: AbortSignal.timeout(10_000) });
   if (!response.ok) {
     throw new Error(`Failed to fetch mint info from ${mintUrl}: ${response.statusText}`);
   }
