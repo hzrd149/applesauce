@@ -31,7 +31,7 @@ export class DnsIdentityLoader {
     const checked = unixNow();
 
     try {
-      const res = await fetch(`https://${domain}/.well-known/nostr.json?name=${name}`, { redirect: "manual" });
+      const res = await fetch(`https://${domain}/.well-known/nostr.json?name=${encodeURIComponent(name)}`, { redirect: "manual" });
       if (res.status !== 200) throw Error("Wrong response code");
 
       const json = await (res.json() as Promise<DomainIdentityJson>).then(normalizeIdentityJson);

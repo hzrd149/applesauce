@@ -25,6 +25,15 @@ describe("fetch", () => {
     await loader.fetchIdentity("_", "hzrd149.com");
     expect(that).not.toBe(loader);
   });
+
+  it("should url encode the name", async () => {
+    loader.fetch = vi.fn().mockRejectedValue(new Error("error"));
+    await loader.fetchIdentity("alice&evil=true", "example.com");
+    expect(loader.fetch).toHaveBeenCalledWith(
+      "https://example.com/.well-known/nostr.json?name=alice%26evil%3Dtrue",
+      expect.anything(),
+    );
+  });
 });
 
 describe("requestIdentity", () => {
