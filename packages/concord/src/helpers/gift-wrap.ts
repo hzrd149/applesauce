@@ -14,7 +14,7 @@
 // decoded under its plane's one convKey, so caching the result there is safe.
 
 import { safeParse, setCachedValue } from "applesauce-core/helpers";
-import { kinds, type NostrEvent, verifyWrappedEvent } from "applesauce-core/helpers/event";
+import { kinds, type NostrEvent, verifyRumor, verifyWrappedEvent } from "applesauce-core/helpers/event";
 import { nip44 } from "applesauce-core/helpers/encryption";
 import { rumorMs } from "./stream.js";
 import type { DecodedEvent, RawEvent, Rumor } from "../types.js";
@@ -73,6 +73,10 @@ export function getSealRumor(seal: NostrEvent, convKey: Uint8Array): Rumor | nul
     const json = seal.kind === PLAINTEXT_SEAL_KIND ? seal.content : nip44.decrypt(seal.content, convKey);
     const rumor = safeParse<Rumor>(json);
     if (!rumor) return null;
+    // The rumor is unsigned (NIP-59), so its `id` is only trustworthy if it hashes the contents
+    // it arrived with. It is treated as an identity downstream (dedupe, references, deletion),
+    // so a sealed payload must not be able to claim another rumor's id.
+    if (!verifyRumor(rumor)) return null;
     // Author binding: the rumor must be authored by the same key that sealed it.
     if (rumor.pubkey !== seal.pubkey) return null;
     return rumor;

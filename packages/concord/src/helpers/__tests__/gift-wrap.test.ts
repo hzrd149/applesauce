@@ -4,12 +4,20 @@
 // still short-circuit a repeated decode attempt on the same wrap instance.
 
 import { describe, expect, it } from "vitest";
-import { generateSecretKey } from "applesauce-core/helpers/keys";
+import { nip44 } from "applesauce-core/helpers/encryption";
+import { generateSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
+import { finalizeEvent, getEventHash, type NostrEvent } from "applesauce-core/helpers/event";
 import { PrivateKeySigner } from "applesauce-signers";
-import type { NostrEvent } from "applesauce-core/helpers/event";
 
 import { giftWrap } from "../../operations/gift-wrap.js";
-import { decodeWrapCached, getDecodedWrap } from "../gift-wrap.js";
+import {
+  decodeWrap,
+  decodeWrapCached,
+  getDecodedWrap,
+  getWrapSeal,
+  ENCRYPTED_SEAL_KIND,
+  EPHEMERAL_GIFT_WRAP_KIND,
+} from "../gift-wrap.js";
 
 // DecodedWrapSymbol is not exported from gift-wrap.ts, but it's registered via
 // Symbol.for, so the same symbol is retrievable from the global registry.
@@ -74,5 +82,62 @@ describe("decodeWrapCached", () => {
     // attempted, by decoding a fresh (never-decoded) instance of the same wrap shape.
     const freshWrap = await buildWrap(convKey);
     expect(decodeWrapCached(freshWrap, convKey)).not.toBeNull();
+  });
+});
+
+describe("rumor id integrity", () => {
+  // decodeWrap treats the rumor's `id` as its identity (dedupe, references, deletion), and the
+  // rumor is unsigned, so the only thing binding that id to the payload is a hash recomputation.
+  function makeRumor(streamSk: Uint8Array, content: string) {
+    const base = {
+      pubkey: getPublicKey(streamSk),
+      created_at: 1700000000,
+      kind: 3313,
+      tags: [] as string[][],
+      content,
+    };
+    return { ...base, id: getEventHash(base) };
+  }
+
+  // Builds a wrap by hand (bypassing the giftWrap operation) so the seal's plaintext payload
+  // can carry an arbitrary rumor shape.
+  function handBuiltWrap(convKey: Uint8Array, streamSk: Uint8Array, rumor: Record<string, unknown>): NostrEvent {
+    const seal = finalizeEvent(
+      {
+        kind: ENCRYPTED_SEAL_KIND,
+        created_at: 1700000000,
+        tags: [],
+        content: nip44.v2.encrypt(JSON.stringify(rumor), convKey),
+      },
+      streamSk,
+    );
+    return finalizeEvent(
+      {
+        kind: EPHEMERAL_GIFT_WRAP_KIND,
+        created_at: 1700000000,
+        tags: [["p", getPublicKey(generateSecretKey())]],
+        content: nip44.v2.encrypt(JSON.stringify(seal), convKey),
+      },
+      streamSk,
+    );
+  }
+
+  it("decodes a hand-built wrap whose rumor id hashes its contents (control)", () => {
+    const convKey = generateSecretKey();
+    const streamSk = generateSecretKey();
+    const wrap = handBuiltWrap(convKey, streamSk, makeRumor(streamSk, "hello"));
+
+    expect(decodeWrap(wrap, convKey)?.rumor.content).toBe("hello");
+  });
+
+  it("rejects a sealed rumor whose id does not hash its contents", () => {
+    const convKey = generateSecretKey();
+    const streamSk = generateSecretKey();
+    const forged = { ...makeRumor(streamSk, "real contents"), id: "a".repeat(64) };
+    const wrap = handBuiltWrap(convKey, streamSk, forged);
+
+    // The seal layer verifies fine — it is the rumor layer that rejects
+    expect(getWrapSeal(wrap, convKey)).not.toBeNull();
+    expect(decodeWrap(wrap, convKey)).toBeNull();
   });
 });

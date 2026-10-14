@@ -1,5 +1,5 @@
 import { setEncryptedContentCache, unlockEncryptedContent } from "applesauce-core/helpers/encrypted-content";
-import { finalizeEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { finalizeEvent, getEventHash, kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
@@ -32,6 +32,21 @@ beforeEach(() => {
   bob = new FakeUser();
   charlie = new FakeUser();
 });
+
+/** Builds an unsigned rumor whose `id` hashes its own contents (what seal helpers verify) */
+function makeRumor(
+  author: FakeUser,
+  draft: { kind?: number; tags?: string[][]; content: string; created_at?: number },
+): Rumor {
+  const base = {
+    pubkey: author.pubkey,
+    created_at: draft.created_at ?? 1700000000,
+    kind: draft.kind ?? kinds.PrivateDirectMessage,
+    tags: draft.tags ?? [],
+    content: draft.content,
+  };
+  return { ...base, id: getEventHash(base) };
+}
 
 describe("isRumor", () => {
   it("should return true for valid rumor", () => {
@@ -472,14 +487,7 @@ describe("setCachedValue migration — non-enumerable accumulated-state writes",
     await expect(unlockSeal(seal, alice)).rejects.toThrow();
 
     // And the rejection is not sticky: once the content parses, the seal resolves normally.
-    const rumor = {
-      id: "f".repeat(64),
-      pubkey: alice.pubkey,
-      created_at: 1700000000,
-      kind: kinds.PrivateDirectMessage,
-      tags: [],
-      content: "now parseable",
-    };
+    const rumor = makeRumor(alice, { content: "now parseable" });
     setEncryptedContentCache(seal, JSON.stringify(rumor));
     expect(getSealRumor(seal)?.content).toBe("now parseable");
   });
@@ -635,36 +643,24 @@ describe("seal signature verification", () => {
     // Discriminating control: the untouched seal yields its rumor, so the rejection above is
     // caused by the failed verification and not by the fixture shape.
     const honest: NostrEvent = { ...genuine };
-    const honestRumor = {
-      id: "e".repeat(64),
-      pubkey: alice.pubkey,
-      created_at: 1700000000,
-      kind: kinds.PrivateDirectMessage,
-      tags: [],
-      content: "attributed to alice",
-    };
+    const honestRumor = makeRumor(alice, { content: "attributed to alice" });
     setEncryptedContentCache(honest, JSON.stringify(honestRumor));
     expect(getSealRumor(honest)?.content).toBe("attributed to alice");
   });
 });
 
 describe("seal/rumor author mismatch", () => {
-  // Build a seal alice really signed, whose rumor claims charlie as author.
+  // Build a seal alice really signed, whose rumor claims charlie as author. The forged rumor
+  // carries a real computed id so the rejection below is exercised by the author binding and
+  // not by an id/contents mismatch.
+  let forgedRumorId = "";
   const mismatchedSeal = (): NostrEvent => {
+    const forgedRumor = makeRumor(charlie, { content: "forged authorship" });
+    forgedRumorId = forgedRumor.id;
     const seal: NostrEvent = JSON.parse(
       JSON.stringify(finalizeEvent({ kind: kinds.Seal, created_at: 1700000000, tags: [], content: "x" }, alice.key)),
     );
-    setEncryptedContentCache(
-      seal,
-      JSON.stringify({
-        id: "9".repeat(64),
-        pubkey: charlie.pubkey,
-        created_at: 1700000000,
-        kind: kinds.PrivateDirectMessage,
-        tags: [],
-        content: "forged authorship",
-      }),
-    );
+    setEncryptedContentCache(seal, JSON.stringify(forgedRumor));
     return seal;
   };
 
@@ -686,7 +682,7 @@ describe("seal/rumor author mismatch", () => {
 
     // The rejected rumor must not be retained — it was previously added to the set BEFORE the
     // author check ran, so a rumor the helper refuses to return still ended up stored.
-    expect(internalGiftWrapEvents.getEvent("9".repeat(64))).toBeUndefined();
+    expect(internalGiftWrapEvents.getEvent(forgedRumorId)).toBeUndefined();
   });
 
   it("one bad wrap does not stop the rest of a timeline from resolving", async () => {
@@ -708,13 +704,14 @@ describe("seal/rumor author mismatch", () => {
     // author. The forged payload has to be planted at the seal's plaintext layer: wrapEvent
     // cannot produce this, because nip59's createRumor hardcodes `pubkey: getPublicKey(key)`,
     // and routing a seal through JSON.stringify would drop its content cache so the wrap would
-    // fail earlier at the `!content` guard — either shortcut makes this test vacuous.
+    // fail earlier at the `!content` guard — either shortcut makes this test vacuous. The
+    // payload's id is real, so the author binding is what rejects it.
     const badWrap = wrapEvent(good, alice.key, bob.pubkey);
     await unlockEncryptedContent(badWrap, badWrap.pubkey, bob);
     const badSeal = getGiftWrapSeal(badWrap)!;
     setEncryptedContentCache(
       badSeal,
-      JSON.stringify({ ...good, id: "7".repeat(64), pubkey: charlie.pubkey, content: "forged authorship" }),
+      JSON.stringify(makeRumor(charlie, { content: "forged authorship", tags: good.tags })),
     );
 
     const timeline = [badWrap, goodWrap];
@@ -727,5 +724,44 @@ describe("seal/rumor author mismatch", () => {
     const resolved = rumors.filter((r) => !!r);
     expect(resolved).toHaveLength(1);
     expect(resolved[0]!.content).toBe("legitimate message");
+  });
+});
+
+describe("rumor id integrity", () => {
+  // The rumor is unsigned, so its `id` is only as good as a hash recomputation. These pin the
+  // check that keeps a sealed payload from claiming an id that does not hash its contents.
+  it("rejects a sealed rumor whose id does not hash its contents", () => {
+    const seal: NostrEvent = JSON.parse(
+      JSON.stringify(finalizeEvent({ kind: kinds.Seal, created_at: 1700000000, tags: [], content: "x" }, alice.key)),
+    );
+    const forged = { ...makeRumor(alice, { content: "real contents" }), id: "a".repeat(64) };
+    setEncryptedContentCache(seal, JSON.stringify(forged));
+
+    expect(getSealRumor(seal)).toBeUndefined();
+
+    // Nothing cached: not the rumor on the seal, not the claimed id in the internal set
+    expect(Reflect.has(seal, RumorSymbol)).toBe(false);
+    expect(internalGiftWrapEvents.getEvent("a".repeat(64))).toBeUndefined();
+  });
+
+  it("rejects a sealed rumor that claims another stored rumor's id", async () => {
+    // The dedupe lookup is keyed on the sender-controlled id, so a payload wearing another
+    // rumor's id must be rejected before it can attach itself to the stored instance.
+    const genuine = makeRumor(alice, { content: "genuine message", tags: [["p", bob.pubkey]] });
+    const genuineWrap = wrapEvent(genuine, alice.key, bob.pubkey);
+    await unlockGiftWrap(genuineWrap, bob);
+
+    const attackSeal: NostrEvent = JSON.parse(
+      JSON.stringify(finalizeEvent({ kind: kinds.Seal, created_at: 1700000000, tags: [], content: "x" }, alice.key)),
+    );
+    setEncryptedContentCache(attackSeal, JSON.stringify({ ...genuine, content: "payload swapped, id kept" }));
+
+    expect(getSealRumor(attackSeal)).toBeUndefined();
+
+    // The stored instance is untouched: same contents, and only the original seal attached
+    const stored = internalGiftWrapEvents.getEvent(genuine.id) as Rumor;
+    expect(stored).toBeDefined();
+    expect(stored.content).toBe("genuine message");
+    expect(getRumorSeals(stored)).toHaveLength(1);
   });
 });
