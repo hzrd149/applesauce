@@ -1,6 +1,6 @@
 /**
  * Discover relays from user contact lists and recommendations
- * @tags nip-02, nip-65, nip-66, relay-discovery, contacts, relays
+ * @tags nip-65, nip-66, relay-discovery, contacts, relays
  * @related relay-discovery/attributes, relay-discovery/monitor-feed
  */
 import { timer, of, combineLatest, map } from "rxjs";

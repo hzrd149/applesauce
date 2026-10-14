@@ -1,6 +1,6 @@
 /**
  * Score contacts using assertions from trusted NIP-85 providers.
- * @tags nip-02, nip-85, contacts, web-of-trust, trusted-assertions
+ * @tags nip-85, contacts, web-of-trust, trusted-assertions
  * @related contacts/open-ranking, contacts/manager
  */
 import { AssertionProvider, castUser, User, UserAssertion } from "applesauce-common/casts";

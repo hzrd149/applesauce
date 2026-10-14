@@ -1,6 +1,6 @@
 /**
  * Manage your contact list (follows) with the ability to add and remove contacts
- * @tags nip-02, nip-65, casting, contacts, follows
+ * @tags nip-65, casting, contacts, follows
  * @related casting/mutes, casting/thread
  */
 import { publishEvent } from "../../extra/publish";

@@ -1,6 +1,6 @@
 /**
  * Latest kind 1 post from each contact, fetched from the 3 fastest outbox relays (by RTT from a single monitor)
- * @tags nip-02, nip-65, nip-66, contacts, outbox, relay-discovery, rx-views
+ * @tags nip-65, nip-66, contacts, outbox, relay-discovery, rx-views
  * @related rx-views/mailbox-statuses, rx-views/friends-of-friends, relay-discovery/contacts-relays
  */
 import { default as NoteContent } from "../../components/note-content";

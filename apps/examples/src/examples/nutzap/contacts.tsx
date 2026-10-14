@@ -1,6 +1,6 @@
 /**
  * Send nutzaps (Lightning payments via Cashu) to contacts with mint quotes
- * @tags nip-02, nip-61, nutzap, contacts, lightning, cashu
+ * @tags nip-61, nutzap, contacts, lightning, cashu
  * @related nutzap/zap-feed, nutzap/zap-profile
  */
 import UnlockView from "../../components/unlock-view";

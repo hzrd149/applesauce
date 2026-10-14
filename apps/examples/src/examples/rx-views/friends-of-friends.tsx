@@ -1,6 +1,6 @@
 /**
  * Browse a user's contact network — click any contact to navigate their connections
- * @tags nip-02, contacts, social-graph, rx-views
+ * @tags contacts, social-graph, rx-views
  */
 import { castUser, User } from "applesauce-common/casts";
 import { combineLatestByValue, EventStore } from "applesauce-core";
