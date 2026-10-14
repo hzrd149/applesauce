@@ -223,10 +223,7 @@ export class NostrConnectSigner implements ISigner {
       const response = JSON.parse(responseStr) as NostrConnectResponse<any>;
 
       // handle remote signer connection
-      if (
-        !this.remote &&
-        (response.result === "ack" || (this.connectSecret && response.result === this.connectSecret))
-      ) {
+      if (!this.remote && !response.error && this.connectSecret && response.result === this.connectSecret) {
         this.log("Got ack response from", event.pubkey, response.result);
         this.isConnected = true;
         this.remote = event.pubkey;
