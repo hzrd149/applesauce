@@ -71,6 +71,14 @@ describe("matchMutes", () => {
     // Should match if the muted word
     expect(matchMutes(mutes, nonMutedUser.note("Hello GM world"))).toBe(true);
   });
+
+  it("should match words added to the set after a previous match", () => {
+    const words = { ...mutes, words: new Set(["gm"]) };
+    expect(matchMutes(words, nonMutedUser.note("gn"))).toBe(false);
+
+    words.words.add("gn");
+    expect(matchMutes(words, nonMutedUser.note("gn"))).toBe(true);
+  });
 });
 
 // CR-02 regression: isHiddenMutesUnlocked used to be `MuteHiddenSymbol in mute ||

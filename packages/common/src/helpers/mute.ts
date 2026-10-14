@@ -117,6 +117,9 @@ export function createMutedWordsRegExp(mutedWords: string[]): RegExp {
   return new RegExp(`\\b(${escapedWords.join("|")})\\b`, "gi");
 }
 
+// Compiled muted word RegExps, keyed by the words set so matchMutes doesn't rebuild one per event
+const mutedWordsRegExpCache = new WeakMap<Set<string>, { size: number; regExp: RegExp }>();
+
 /** Returns true if the event matches the mutes */
 export function matchMutes(mutes: MutedThings, event: NostrEvent): boolean {
   // Filter on muted pubkeys
@@ -140,8 +143,16 @@ export function matchMutes(mutes: MutedThings, event: NostrEvent): boolean {
 
   // Filter on muted words
   if (mutes.words.size > 0) {
-    const regExp = createMutedWordsRegExp(Array.from(mutes.words));
-    if (regExp.test(event.content)) return true;
+    let cached = mutedWordsRegExpCache.get(mutes.words);
+    // Rebuild if the set was mutated after the RegExp was compiled
+    if (!cached || cached.size !== mutes.words.size) {
+      cached = { size: mutes.words.size, regExp: createMutedWordsRegExp(Array.from(mutes.words)) };
+      mutedWordsRegExpCache.set(mutes.words, cached);
+    }
+
+    // The RegExp is global, so reset its position before reusing it
+    cached.regExp.lastIndex = 0;
+    if (cached.regExp.test(event.content)) return true;
   }
 
   // Event does not match any mutes
