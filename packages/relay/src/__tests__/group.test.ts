@@ -24,7 +24,7 @@ beforeEach(async () => {
   mockRelay2 = new WS("wss://relay2.test", { jsonProtocol: true });
 
   // Mock empty information document
-  vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() => of(null));
+  vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(null);
 
   // Create relays
   relay1 = new Relay("wss://relay1.test");

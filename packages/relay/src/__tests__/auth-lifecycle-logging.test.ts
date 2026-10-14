@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers";
-import { firstValueFrom, of } from "rxjs";
+import { firstValueFrom } from "rxjs";
 import { filter, take } from "rxjs/operators";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
@@ -28,7 +28,7 @@ let relay: Relay;
 
 beforeEach(async () => {
   // Mock empty information document
-  vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() => of(null));
+  vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(null);
 
   // Create mock relay
   server = new WS("wss://test", { jsonProtocol: true });

@@ -8,6 +8,7 @@ describe("exports", () => {
         "AuthHandlerError",
         "AuthRequiredError",
         "AuthTimeoutError",
+        "DEFAULT_INFORMATION_CACHE_MS",
         "Relay",
         "RelayAuthChallengeChangedError",
         "RelayAuthChallengeTimeoutError",

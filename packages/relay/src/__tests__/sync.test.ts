@@ -21,7 +21,7 @@ describe("sync scheduler", () => {
   let relay: Relay;
 
   beforeEach(() => {
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(of(null));
+    vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(null);
     server = new WS("wss://sync-test", { jsonProtocol: true });
     relay = new Relay("wss://sync-test");
     relay.keepAlive = 0;

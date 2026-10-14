@@ -3,7 +3,7 @@ import { addSeenRelay } from "applesauce-core/helpers/relays";
 import { kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { ensureHttpURL, normalizeURL } from "applesauce-core/helpers/url";
-import { mapEventsToStore, simpleTimeout } from "applesauce-core/observable";
+import { mapEventsToStore } from "applesauce-core/observable";
 import { nanoid } from "nanoid";
 import { makeAuthEvent } from "nostr-tools/nip42";
 import {
@@ -284,6 +284,10 @@ const PING_FILTER: Filter = {
 };
 
 export type RelayOptions = {
+  /** Optional Keyv-compatible cache for NIP-11 information documents */
+  informationCache?: RelayInformationCache;
+  /** Lifetime of cached NIP-11 documents in milliseconds (default: 24 hours) */
+  informationCacheMs?: number;
   /** Custom WebSocket implementation */
   WebSocket?: WebSocketSubjectConfig<any>["WebSocketCtor"];
   /** How long to wait for an OK message from the relay (default 10s) */
@@ -314,6 +318,17 @@ export type RelayOptions = {
   /** Default retry config for publish() method */
   publishRetry?: RetryConfig;
 };
+
+/** A Keyv-compatible cache for NIP-11 information documents */
+export interface RelayInformationCache {
+  /** Gets a cached document by normalized relay URL */
+  get(key: string): Promise<RelayInformation | undefined>;
+  /** Stores a document with a relative lifetime in milliseconds */
+  set(key: string, value: RelayInformation, ttl: number): Promise<unknown>;
+}
+
+/** Default lifetime for cached NIP-11 documents (24 hours) */
+export const DEFAULT_INFORMATION_CACHE_MS = 86_400_000;
 
 export class Relay {
   protected log: typeof logger = logger.extend("Relay");
@@ -618,9 +633,30 @@ export class Relay {
     });
 
     // Create an observable to fetch the NIP-11 information document
-    this.information$ = defer(() => {
+    this.information$ = defer(async () => {
       this.log("Fetching NIP-11 information document");
-      return Relay.fetchInformationDocument(this.url);
+      const cache = opts?.informationCache;
+      const cacheMs = opts?.informationCacheMs ?? DEFAULT_INFORMATION_CACHE_MS;
+      const key = normalizeURL(this.url);
+
+      if (cache && cacheMs > 0) {
+        try {
+          const cached = await cache.get(key);
+          if (cached) return cached;
+        } catch {
+          // Continue with a network request when the cache is unavailable.
+        }
+      }
+
+      const info = await Relay.fetchInformationDocument(this.url);
+      if (info && cache && cacheMs > 0) {
+        try {
+          await cache.set(key, info, cacheMs);
+        } catch {
+          // Return the fetched document even when the cache cannot write it.
+        }
+      }
+      return info;
     }).pipe(
       // if the fetch fails, return null
       catchError(() => of(null)),
@@ -1791,16 +1827,17 @@ export class Relay {
     return firstValueFrom(this.supported$);
   }
 
-  /** Static method to fetch the NIP-11 information document for a relay */
-  static fetchInformationDocument(url: string): Observable<RelayInformation | null> {
-    return from(
-      fetch(ensureHttpURL(url), { headers: { Accept: "application/nostr+json" } }).then((res) => res.json()),
-    ).pipe(
-      // if the fetch fails, return null
-      catchError(() => of(null)),
-      // timeout after 10s
-      simpleTimeout(10_000),
-    );
+  /** Fetches the NIP-11 information document for a relay */
+  static async fetchInformationDocument(url: string): Promise<RelayInformation | null> {
+    try {
+      const response = await fetch(ensureHttpURL(url), {
+        headers: { Accept: "application/nostr+json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      return await response.json();
+    } catch {
+      return null;
+    }
   }
 
   /** Static method to create a reconnection method for each relay */

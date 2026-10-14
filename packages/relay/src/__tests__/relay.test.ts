@@ -1,4 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
+import Keyv from "keyv";
 import { enableLoggerNamespaces, getLoggerNamespaces, getLoggerSink, setLoggerSink } from "applesauce-core";
 import { Filter, getSeenRelays, NostrEvent } from "applesauce-core/helpers";
 import { defer, finalize, firstValueFrom, mergeMap, NEVER, of, Subject, throwError, timer } from "rxjs";
@@ -7,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
 import { Negentropy, NegentropyStorageVector } from "../lib/negentropy.js";
+import { RelayPool } from "../pool.js";
 import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import {
   AuthHandlerError,
+  DEFAULT_INFORMATION_CACHE_MS,
   AuthRequiredError,
   AuthTimeoutError,
   Relay,
@@ -40,7 +43,7 @@ let relay: Relay;
 
 beforeEach(async () => {
   // Mock empty information document
-  vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() => of(null));
+  vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(null);
 
   // Create mock relay
   server = new WS("wss://test", { jsonProtocol: true });
@@ -55,6 +58,7 @@ afterEach(async () => {
   await WS.clean();
   if (vi.isFakeTimers()) vi.clearAllTimers();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -885,7 +889,7 @@ describe("information$", () => {
   it("should fetch information document when information$ is subscribed to", async () => {
     // Mock the fetchInformationDocument method
     const mockInfo: RelayInformation = { ...defaultMockInfo, limitation: { auth_required: false } };
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(of(mockInfo));
+    vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(mockInfo);
 
     // Subscribe to information$
     const sub = subscribeSpyTo(relay.information$);
@@ -894,12 +898,12 @@ describe("information$", () => {
     expect(Relay.fetchInformationDocument).toHaveBeenCalledWith(relay.url);
 
     // Verify the information was emitted
-    expect(sub.getLastValue()).toEqual(mockInfo);
+    await vi.waitFor(() => expect(sub.getLastValue()).toEqual(mockInfo));
   });
 
   it("should return null when fetchInformationDocument fails", async () => {
     // Mock the fetchInformationDocument method to throw an error
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(throwError(() => new Error("Failed to fetch")));
+    vi.spyOn(Relay, "fetchInformationDocument").mockRejectedValue(new Error("Failed to fetch"));
 
     // Subscribe to information$
     const sub = subscribeSpyTo(relay.information$);
@@ -908,13 +912,13 @@ describe("information$", () => {
     expect(Relay.fetchInformationDocument).toHaveBeenCalled();
 
     // Verify null was emitted
-    expect(sub.getLastValue()).toBeNull();
+    await vi.waitFor(() => expect(sub.getLastValue()).toBeNull());
   });
 
   it("should cache the information document", async () => {
     // Mock the fetchInformationDocument method
     const mockInfo: RelayInformation = { ...defaultMockInfo, limitation: { auth_required: true } };
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(of(mockInfo));
+    vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(mockInfo);
 
     // Subscribe to information$ multiple times
     const sub1 = subscribeSpyTo(relay.information$);
@@ -924,7 +928,7 @@ describe("information$", () => {
     expect(Relay.fetchInformationDocument).toHaveBeenCalledTimes(1);
 
     // Verify both subscriptions received the same information
-    expect(sub1.getLastValue()).toEqual(mockInfo);
+    await vi.waitFor(() => expect(sub1.getLastValue()).toEqual(mockInfo));
     expect(sub2.getLastValue()).toEqual(mockInfo);
 
     // Verify the internal state was updated
@@ -934,25 +938,25 @@ describe("information$", () => {
 
 describe("name$", () => {
   it("should emit the URL first and then the NIP-11 name", async () => {
-    const info$ = new Subject<RelayInformation>();
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(info$);
+    let resolveInfo!: (info: RelayInformation) => void;
+    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(new Promise((resolve) => (resolveInfo = resolve)));
 
     const sub = subscribeSpyTo(relay.name$);
     expect(sub.getValues()).toEqual(["test"]);
 
-    info$.next({ ...defaultMockInfo, name: "Test Relay" });
-    expect(sub.getValues()).toEqual(["test", "Test Relay"]);
+    resolveInfo({ ...defaultMockInfo, name: "Test Relay" });
+    await vi.waitFor(() => expect(sub.getValues()).toEqual(["test", "Test Relay"]));
   });
 
   it("should keep the URL name when the fetch fails", async () => {
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(throwError(() => new Error("Failed to fetch")));
+    vi.spyOn(Relay, "fetchInformationDocument").mockRejectedValue(new Error("Failed to fetch"));
 
     const sub = subscribeSpyTo(relay.name$);
     expect(sub.getValues()).toEqual(["test"]);
   });
 
   it("should keep the URL name when the NIP-11 name is blank", async () => {
-    vi.spyOn(Relay, "fetchInformationDocument").mockReturnValue(of({ ...defaultMockInfo, name: "  " }));
+    vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue({ ...defaultMockInfo, name: "  " });
 
     const sub = subscribeSpyTo(relay.name$);
     expect(sub.getValues()).toEqual(["test"]);
@@ -3910,5 +3914,77 @@ describe(":auth sub-namespace (14-04)", () => {
     });
 
     spy.unsubscribe();
+  });
+});
+
+const document: RelayInformation = { name: "Example Relay" };
+
+describe("fetchInformationDocument", () => {
+  beforeEach(() => vi.mocked(Relay.fetchInformationDocument).mockRestore());
+
+  it("fetches NIP-11 JSON over HTTP with a ten-second timeout", async () => {
+    const fetch = vi.fn().mockResolvedValue({ json: async () => document });
+    vi.stubGlobal("fetch", fetch);
+
+    expect(await Relay.fetchInformationDocument("wss://relay.example.com")).toEqual(document);
+    expect(fetch).toHaveBeenCalledWith(
+      "https://relay.example.com/",
+      expect.objectContaining({ headers: { Accept: "application/nostr+json" }, signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("returns null when fetching fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    expect(await Relay.fetchInformationDocument("wss://relay.example.com")).toBeNull();
+  });
+});
+
+describe("NIP-11 information cache", () => {
+  it("uses the default 24-hour TTL and shares documents between pools", async () => {
+    const cache = new Keyv<RelayInformation>();
+    const set = vi.spyOn(cache, "set");
+    const fetch = vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(document);
+    const first = new RelayPool({ informationCache: cache });
+    const second = new RelayPool({ informationCache: cache });
+
+    expect(await first.relay("wss://relay.example.com").getInformation()).toEqual(document);
+    expect(await second.relay("wss://relay.example.com/").getInformation()).toEqual(document);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith("wss://relay.example.com/", document, DEFAULT_INFORMATION_CACHE_MS);
+  });
+
+  it("refetches after the configured TTL expires", async () => {
+    let now = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const cache = new Keyv<RelayInformation>();
+    const fetch = vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(document);
+    const options = { informationCache: cache, informationCacheMs: 100 };
+
+    await new RelayPool(options).relay("wss://relay.example.com").getInformation();
+    now += 101;
+    await new RelayPool(options).relay("wss://relay.example.com").getInformation();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache failed fetches", async () => {
+    const cache = new Keyv<RelayInformation>();
+    const fetch = vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValueOnce(null).mockResolvedValue(document);
+    const options = { informationCache: cache };
+
+    expect(await new RelayPool(options).relay("wss://relay.example.com").getInformation()).toBeNull();
+    expect(await new RelayPool(options).relay("wss://relay.example.com").getInformation()).toEqual(document);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("fetches when cache reads or writes fail", async () => {
+    const cache = {
+      get: vi.fn().mockRejectedValue(new Error("read failed")),
+      set: vi.fn().mockRejectedValue(new Error("write failed")),
+    };
+    vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(document);
+
+    expect(await new Relay("wss://relay.example.com", { informationCache: cache }).getInformation()).toEqual(document);
+    expect(cache.set).toHaveBeenCalledWith("wss://relay.example.com/", document, DEFAULT_INFORMATION_CACHE_MS);
   });
 });

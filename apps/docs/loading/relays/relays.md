@@ -404,6 +404,20 @@ Use `SyncDirection.RECEIVE` or `SyncDirection.SEND` to restrict transfer directi
 
 The `Relay` class keeps track of the relay information and emits it as an observable from the `information$` property.
 
+### Cache information documents
+
+Pass a `RelayInformationCache` to `Relay` or `RelayPool` to reuse NIP-11 documents across relay instances and pools. Use persistent storage in the cache to keep documents across app restarts. The interface has `get(key)` and `set(key, document, ttl)` methods; `ttl` is a relative lifetime in milliseconds. The default lifetime is 24 hours, and `informationCacheMs` overrides it.
+
+```typescript
+import { RelayPool } from "applesauce-relay";
+
+const pool = new RelayPool({ informationCache, informationCacheMs: 60 * 60 * 1000 });
+```
+
+Use the same cache instance with multiple pools to share documents between them. Cache keys are normalized relay URLs. Failed fetches are not stored; cache read or write failures fall back to the fetched document. An existing `Relay` replays its first result, so expiry is checked when a new relay instance requests the document.
+
+`RelayInformationCache` is also compatible with a Keyv instance.
+
 ```typescript
 // Get relay information
 relay.information$.subscribe((info) => {

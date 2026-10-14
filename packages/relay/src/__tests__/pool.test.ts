@@ -17,7 +17,7 @@ let mockEvent: NostrEvent;
 
 beforeEach(async () => {
   // Mock empty information document
-  vi.spyOn(Relay, "fetchInformationDocument").mockImplementation(() => of(null));
+  vi.spyOn(Relay, "fetchInformationDocument").mockResolvedValue(null);
 
   // Create mock WebSocket servers
   mockServer1 = new WS("wss://relay1.example.com");
