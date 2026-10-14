@@ -30,7 +30,7 @@ export function parseLNURLOrAddress(addressOrLNURL: string): URL | undefined {
 
 /** Requests a bolt11 invoice from a LNURLp callback URL */
 export async function getInvoice(callback: URL): Promise<string> {
-  const { pr: payRequest } = await fetch(callback).then((res) => res.json());
+  const { pr: payRequest } = await fetch(callback, { signal: AbortSignal.timeout(10_000) }).then((res) => res.json());
 
   const amount = callback.searchParams.get("amount");
   if (!amount) throw new Error("Missing amount");
