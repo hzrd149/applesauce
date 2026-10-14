@@ -1,6 +1,6 @@
 import { setEncryptedContentCache, unlockEncryptedContent } from "applesauce-core/helpers/encrypted-content";
 import { finalizeEvent, kinds, NostrEvent } from "applesauce-core/helpers/event";
-import { wrapEvent } from "nostr-tools/nip59";
+import { createSeal, createWrap, wrapEvent } from "nostr-tools/nip59";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {
@@ -57,6 +57,28 @@ describe("isRumor", () => {
     expect(isRumor(undefined)).toBe(false);
     expect(isRumor({})).toBe(false);
     expect(isRumor({ id: "invalid" })).toBe(false);
+  });
+});
+
+describe("rumor id integrity", () => {
+  it("rejects a gift wrap whose rumor content does not match its id", async () => {
+    const original = alice.rumor({ kind: kinds.PrivateDirectMessage, content: "original", tags: [["p", bob.pubkey]] });
+    const tampered = { ...original, content: "tampered" };
+    const giftWrap = createWrap(createSeal(tampered, alice.key, bob.pubkey), bob.pubkey);
+
+    await expect(unlockGiftWrap(giftWrap, bob)).rejects.toThrow("Failed to read rumor in gift wrap");
+    expect(internalGiftWrapEvents.getEvent(original.id)).toBeUndefined();
+  });
+
+  it("rejects a mismatched rumor even when its id is already cached", async () => {
+    const original = alice.rumor({ kind: kinds.PrivateDirectMessage, content: "original" });
+    await unlockGiftWrap(createWrap(createSeal(original, alice.key, bob.pubkey), bob.pubkey), bob);
+
+    const tampered = { ...original, content: "tampered" };
+    const giftWrap = createWrap(createSeal(tampered, alice.key, bob.pubkey), bob.pubkey);
+
+    await expect(unlockGiftWrap(giftWrap, bob)).rejects.toThrow("Failed to read rumor in gift wrap");
+    expect(internalGiftWrapEvents.getEvent(original.id)?.content).toBe("original");
   });
 });
 
@@ -472,14 +494,12 @@ describe("setCachedValue migration — non-enumerable accumulated-state writes",
     await expect(unlockSeal(seal, alice)).rejects.toThrow();
 
     // And the rejection is not sticky: once the content parses, the seal resolves normally.
-    const rumor = {
-      id: "f".repeat(64),
-      pubkey: alice.pubkey,
+    const rumor = alice.rumor({
       created_at: 1700000000,
       kind: kinds.PrivateDirectMessage,
       tags: [],
       content: "now parseable",
-    };
+    });
     setEncryptedContentCache(seal, JSON.stringify(rumor));
     expect(getSealRumor(seal)?.content).toBe("now parseable");
   });
@@ -637,14 +657,12 @@ describe("seal signature verification", () => {
     // Discriminating control: the untouched seal yields its rumor, so the rejection above is
     // caused by the failed verification and not by the fixture shape.
     const honest: NostrEvent = { ...genuine };
-    const honestRumor = {
-      id: "e".repeat(64),
-      pubkey: alice.pubkey,
+    const honestRumor = alice.rumor({
       created_at: 1700000000,
       kind: kinds.PrivateDirectMessage,
       tags: [],
       content: "attributed to alice",
-    };
+    });
     setEncryptedContentCache(honest, JSON.stringify(honestRumor));
     expect(getSealRumor(honest)?.content).toBe("attributed to alice");
   });

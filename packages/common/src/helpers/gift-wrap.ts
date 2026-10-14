@@ -15,6 +15,7 @@ import {
   NostrEvent,
   notifyEventUpdate,
   Rumor,
+  verifyRumor,
   verifyWrappedEvent,
 } from "applesauce-core/helpers/event";
 // GiftWrapSymbol/SealSymbol/RumorSymbol are owned by applesauce-core (members of
@@ -155,8 +156,8 @@ export function isGiftWrapUnlocked(gift: NostrEvent): gift is UnlockedGiftWrapEv
  * Gets the rumor from a seal event
  *
  * Returns undefined for any seal that does not yield a usable rumor — an invalid seal signature,
- * unparseable content, or a rumor whose author does not match its seal. All three are things a
- * stranger can put in your inbox, so none of them throw.
+ * unparseable content, an invalid rumor id, or a rumor whose author does not match its seal.
+ * These are things a stranger can put in your inbox, so none of them throw.
  */
 export function getSealRumor(seal: UnlockedSeal): Rumor;
 export function getSealRumor(seal: NostrEvent): Rumor | undefined;
@@ -193,6 +194,12 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   // A negative memo would also be permanent: the seal could never be re-read even once its
   // content became parseable.
   if (!rumor) return undefined;
+
+  // Reject mismatched ids before they can select or populate a cached rumor.
+  if (!verifyRumor(rumor)) {
+    log("Dropping rumor %s: id does not match its contents", rumor.id);
+    return undefined;
+  }
 
   // Check if the rumor event already exists in the internal event set. Resolve the instance
   // first but do NOT record it yet — the author check below has to run against whatever we are
