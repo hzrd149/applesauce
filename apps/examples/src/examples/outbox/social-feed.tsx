@@ -44,8 +44,10 @@ import {
   catchError,
   combineLatest,
   debounceTime,
+  defer,
   distinctUntilChanged,
   filter,
+  finalize,
   ignoreElements,
   map,
   of,
@@ -135,24 +137,30 @@ const selection$ = contactsWithOutboxes$.pipe(
 // Create an observable that converts selection to an outbox map
 const outboxMap$ = selection$.pipe(map(createOutboxMap));
 
-// Hard code start time for live so it does not change and cause filters to change (resubscribe to relays)
-const aMinuteAgo = unixNow() - 60;
+// Whether to keep a live subscription open to the selected relays
+const live$ = new BehaviorSubject(true);
+
+// When live was last turned off, so turning it back on fills the gap
+let liveSince = unixNow() - 60;
 
 // Create a live subscription for users feeds that emits an error if every selected relay fails
-const liveError$ = pool
-  .outboxSubscription(
-    outboxMap$,
-    // Subscribe to notes from the last minute
-    { kinds: [1], since: aMinuteAgo },
-  )
-  .pipe(
-    // Add events to the event store
-    mapEventsToStore(eventStore),
-    // Events are rendered from the store, so only keep the failure
-    ignoreElements(),
-    // Report the failure instead of throwing it into render
-    catchError((error: Error) => of(error)),
-  );
+const liveError$ = live$.pipe(
+  // Turning live off unsubscribes, which closes the REQs and lets idle relays disconnect after their keepAlive
+  switchMap((live) =>
+    live
+      ? defer(() => pool.outboxSubscription(outboxMap$, { kinds: [1], since: liveSince })).pipe(
+          // Add events to the event store
+          mapEventsToStore(eventStore),
+          // Events are rendered from the store, so only keep the failure
+          ignoreElements(),
+          // Report the failure instead of throwing it into render
+          catchError((error: Error) => of(error)),
+          // Remember where to resume from
+          finalize(() => (liveSince = unixNow())),
+        )
+      : of(undefined),
+  ),
+);
 
 // The timestamp of the bottom-most note on screen
 // Initialize with -Infinity to force loading the first block of events
@@ -836,6 +844,7 @@ export default function SocialFeedExample() {
   const pubkey = use$(pubkey$);
   const maxConnections = use$(maxConnections$);
   const maxRelaysPerUser = use$(maxRelaysPerUser$);
+  const live = use$(live$);
 
   // Start live and timeline subscriptions on mount (and stop them on unmount)
   const liveError = use$(liveError$);
@@ -964,6 +973,17 @@ export default function SocialFeedExample() {
           <h3 className="text-lg font-semibold mb-4">Relay Settings</h3>
 
           <div className="space-y-4">
+            {/* Live subscription */}
+            <label className="label cursor-pointer justify-between w-full">
+              <span className="label-text">Live updates</span>
+              <input
+                type="checkbox"
+                className="toggle toggle-primary"
+                checked={live}
+                onChange={(e) => live$.next(e.target.checked)}
+              />
+            </label>
+
             {/* Max Connections */}
             <div>
               <label className="label">
