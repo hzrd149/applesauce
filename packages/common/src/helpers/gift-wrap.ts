@@ -15,6 +15,7 @@ import {
   NostrEvent,
   notifyEventUpdate,
   Rumor,
+  verifyRumor,
   verifyWrappedEvent,
 } from "applesauce-core/helpers/event";
 // GiftWrapSymbol/SealSymbol/RumorSymbol are owned by applesauce-core (members of
@@ -193,6 +194,13 @@ export function getSealRumor(seal: NostrEvent): Rumor | undefined {
   // A negative memo would also be permanent: the seal could never be re-read even once its
   // content became parseable.
   if (!rumor) return undefined;
+
+  // A rumor's `id` is its identity: it is the lookup key into internalGiftWrapEvents below, and
+  // every consumer that references, dedupes, or deletes messages trusts it. The rumor is
+  // unsigned by definition (NIP-59), so recomputing the hash from the contents is the only
+  // integrity check the innermost layer has — without it a stranger could seal a payload that
+  // claims another rumor's id.
+  if (!verifyRumor(rumor)) return undefined;
 
   // Check if the rumor event already exists in the internal event set. Resolve the instance
   // first but do NOT record it yet — the author check below has to run against whatever we are
