@@ -12,6 +12,8 @@ import { Filter, isTTag } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { useMemo, useState } from "react";
 import { of, BehaviorSubject, map, debounceTime, startWith } from "rxjs";
 
@@ -19,7 +21,9 @@ import RelayPicker from "../../components/relay-picker";
 
 // Create stores and relay pool
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 /** Create a component for rendering media links */
 function LinkRenderer({ node: link }: { node: Link }) {

@@ -10,6 +10,8 @@ import { getDisplayName, getProfilePicture, groupPubkeysByRelay, selectOptimalRe
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import localforage from "localforage";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import pastellifyModule from "pastellify";
@@ -27,7 +29,9 @@ const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ??
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
 // Create an event store and event pool
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 const eventStore = new EventStore();
 
 // Create some loaders using the cache method and the event store

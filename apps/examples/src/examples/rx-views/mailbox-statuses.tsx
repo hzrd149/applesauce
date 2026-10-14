@@ -12,6 +12,8 @@ import { combineLatestByValue, defined, EventStore, mapEventsToStore, mapEventsT
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -19,7 +21,9 @@ import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,

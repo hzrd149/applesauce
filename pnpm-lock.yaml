@@ -364,6 +364,12 @@ importers:
       hls.js:
         specifier: ^1.6.16
         version: 1.6.16
+      keyv:
+        specifier: ^6.1.0
+        version: 6.1.0
+      keyv-browser:
+        specifier: ^0.1.1
+        version: 0.1.1
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
@@ -4047,6 +4053,9 @@ packages:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
 
+  idb-keyval@6.3.0:
+    resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
+
   idb@8.0.3:
     resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
 
@@ -4260,6 +4269,9 @@ packages:
   kapsule@1.16.3:
     resolution: {integrity: sha512-4+5mNNf4vZDSwPhKprKwz3330iisPrb08JyMgbsdFrimBCKNHecua/WBwvVg3n7vwx0C1ARjfhwIpbrbd9n5wg==}
     engines: {node: '>=12'}
+
+  keyv-browser@0.1.1:
+    resolution: {integrity: sha512-Th2fI30SQhQW48CA8E9T8KMHPTmi/vjjKZA1l9PFG9OaKXekhKkBKfxm8zXkxS2zl+ITPfocHDKHKHXOPQocIw==}
 
   keyv@6.1.0:
     resolution: {integrity: sha512-0OO64DxKOITdyQljNCcO+vc+iyaPmm3OV5eKOWRxWCp3V0QnXenpqcKfjGjycNILUJNV+erm1ose6Hsgr1fNFA==}
@@ -9350,6 +9362,8 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  idb-keyval@6.3.0: {}
+
   idb@8.0.3: {}
 
   ieee754@1.2.1: {}
@@ -9535,6 +9549,11 @@ snapshots:
   kapsule@1.16.3:
     dependencies:
       lodash-es: 4.18.1
+
+  keyv-browser@0.1.1:
+    dependencies:
+      idb-keyval: 6.3.0
+      tslib: 2.8.1
 
   keyv@6.1.0:
     dependencies:

@@ -12,6 +12,8 @@ import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-co
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -20,7 +22,9 @@ import { lookupRelays$ } from "../../settings";
 
 // Create stores and relay pool
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {

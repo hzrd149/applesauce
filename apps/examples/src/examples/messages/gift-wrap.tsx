@@ -25,6 +25,8 @@ import { persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
@@ -56,7 +58,9 @@ const user$ = new BehaviorSubject<User | undefined>(undefined);
 
 // Setup event store and relay connection pool
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Setup loaders for event store to load profiles
 createEventLoaderForStore(eventStore, pool, {

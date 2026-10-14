@@ -29,6 +29,8 @@ import {
 import { createEventLoaderForStore, loadBlocksFromOutboxMap, TimelineWindow } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { ignoreUnhealthyRelaysOnPointers, Relay, RelayHealthState, RelayLiveness, RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import localforage from "localforage";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
@@ -62,7 +64,9 @@ const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ??
 
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 const eventStore = new EventStore();
 
 // Setup a local event cache

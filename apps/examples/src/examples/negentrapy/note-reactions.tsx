@@ -9,6 +9,8 @@ import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { kinds, NostrEvent } from "applesauce-core/helpers";
 import { decodePointer, EventPointer } from "applesauce-core/helpers/pointers";
 import { useMemo } from "react";
@@ -19,7 +21,9 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { lookupRelays$ } from "../../settings";
 
 // Create a relay pool for connections
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Create an event store for keeping local events
 const eventStore = new EventStore();

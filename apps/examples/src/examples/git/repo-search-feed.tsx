@@ -22,6 +22,8 @@ import { processTags } from "applesauce-core/helpers/tags";
 import { createEventLoaderForStore, createReactionsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { useCallback, useMemo, useState } from "react";
 import {
   catchError,
@@ -46,7 +48,9 @@ import { lookupRelays$ } from "../../settings";
 const DEFAULT_INDEX_RELAY = "wss://index.ngit.dev/";
 
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,

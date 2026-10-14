@@ -7,6 +7,8 @@ import { mapEventsToTimeline } from "applesauce-core";
 import { getPublicKey, NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { PrivateKeySigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
 import { filter, map, merge, of, scan, startWith, Subject, tap, materialize } from "rxjs";
@@ -15,7 +17,9 @@ import { filter, map, merge, of, scan, startWith, Subject, tap, materialize } fr
 // They gate a kind 1059 sync until every #p pubkey is authenticated, the same way they gate a REQ.
 const RELAYS = ["wss://relay.ditto.pub/", "wss://relay.dreamith.to/"];
 
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 type User = { name: string; signer: PrivateKeySigner; pubkey: string };
 

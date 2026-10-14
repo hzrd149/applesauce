@@ -25,6 +25,8 @@ import {
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import type { ISigner } from "applesauce-signers";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, catchError, map, Observable, of, scan, startWith, switchMap } from "rxjs";
@@ -34,7 +36,9 @@ import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Load profiles for message authors on demand
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });

@@ -10,6 +10,8 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { Relay, RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 
@@ -32,7 +34,9 @@ const METADATA_KINDS: Record<string, number> = {
 const KIND_LABELS = Object.keys(METADATA_KINDS);
 
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,

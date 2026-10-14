@@ -10,6 +10,8 @@ import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/help
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { Filter } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import {
@@ -30,7 +32,9 @@ import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
 // Create relay pool for connections
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Create event store for keeping local events
 const eventStore = new EventStore();

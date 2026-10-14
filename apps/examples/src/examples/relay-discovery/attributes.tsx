@@ -12,6 +12,8 @@ import { EventStore } from "applesauce-core";
 import { Filter } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { CategoryScale, Chart as ChartJS, LinearScale, Title, Tooltip } from "chart.js";
 import { WordCloudController, WordElement } from "chartjs-chart-wordcloud";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +27,9 @@ ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, T
 
 // Create stores and relay pool
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 const EMPTY_ATTRIBUTES: string[] = [];
 
 interface AttributeData {

@@ -27,6 +27,8 @@ import { mapEventsToTimeline } from "applesauce-core";
 import { getTagValue, NostrEvent, relaySet, Filter } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayGroup, RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { completeWhen } from "applesauce-relay/operators/complete-when";
 import { GroupReqMessage } from "applesauce-relay/types";
 import { useCallback, useMemo, useState } from "react";
@@ -34,7 +36,9 @@ import { useCallback, useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 
 // Create a relay pool instance
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Types for tracking completion conditions
 type TimelineMessage = GroupReqMessage & {

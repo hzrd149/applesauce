@@ -11,6 +11,8 @@ import { EventStore } from "applesauce-core";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import type { ISigner } from "applesauce-signers";
 import { useCallback, useMemo, useState } from "react";
 import { BehaviorSubject, map } from "rxjs";
@@ -22,7 +24,9 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,

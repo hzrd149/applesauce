@@ -13,6 +13,8 @@ import { persistEventsToCache } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { decode } from "ngeohash";
 import { addEvents, openDB, getEventsForFilters } from "nostr-idb";
 import { useMemo, useState } from "react";
@@ -25,7 +27,9 @@ import "leaflet/dist/leaflet.css";
 
 // Create stores and relay pool
 const eventStore = new EventStore();
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 const cache = await openDB();
 // Connect both reads and writes to the shared event cache.

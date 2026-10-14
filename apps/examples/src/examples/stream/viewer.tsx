@@ -17,6 +17,8 @@ import { buildCommonEventRelationFilters, relaySet, kinds } from "applesauce-cor
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
 import { ExtensionSigner } from "applesauce-signers";
 
 import { memo, useMemo, useState } from "react";
@@ -34,7 +36,9 @@ const eventStore = new EventStore();
 const signer = new ExtensionSigner();
 
 // Create a relay pool to make relay connections
-const pool = new RelayPool();
+const pool = new RelayPool({
+  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
+});
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, pool, {
