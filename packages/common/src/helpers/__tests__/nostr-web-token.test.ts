@@ -28,7 +28,8 @@ function token(tags: string[][] = []): NostrEvent {
     kind: NOSTR_WEB_TOKEN_KIND,
     tags,
     content: "authorize upload",
-    sig: "not-a-real-signature",
+    // Well-formed but bogus: the helpers under test validate structure, not signatures
+    sig: HEX("0").repeat(2),
   };
 }
 

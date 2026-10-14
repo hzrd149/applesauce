@@ -7,6 +7,8 @@ import {
   FromCacheSymbol,
   getEventUID,
   getReplaceableAddress,
+  isEvent,
+  isRumor,
   markFromCache,
   verifiedSymbol,
 } from "../event.js";
@@ -81,5 +83,46 @@ describe("markFromCache", () => {
 
     const copy = { ...event };
     expect(Object.prototype.hasOwnProperty.call(copy, FromCacheSymbol)).toBe(false);
+  });
+});
+
+describe("isEvent / isRumor field validation", () => {
+  // A malformed event can never hash or verify correctly, so the guards reject it on shape
+  // instead of leaving every consumer to do its own ad-hoc validation (upstream issue #60)
+  const validEvent = user.note("Hello world");
+
+  const baseRumor = {
+    id: "a".repeat(64),
+    pubkey: user.pubkey,
+    created_at: 1700000000,
+    kind: kinds.ShortTextNote,
+    tags: [] as string[][],
+    content: "Hello world",
+  };
+
+  it("accepts well-formed events and rumors", () => {
+    expect(isEvent(validEvent)).toBe(true);
+    expect(isRumor(baseRumor)).toBe(true);
+  });
+
+  it.each([
+    ["non-hex id", { ...baseRumor, id: "z".repeat(64) }],
+    ["short id", { ...baseRumor, id: "a".repeat(63) }],
+    ["uppercase id", { ...baseRumor, id: "A".repeat(64) }],
+    ["non-hex pubkey", { ...baseRumor, pubkey: "g".repeat(64) }],
+    ["uppercase pubkey", { ...baseRumor, pubkey: user.pubkey.toUpperCase() }],
+  ])("rejects a rumor with a %s", (_name, rumor) => {
+    expect(isRumor(rumor)).toBe(false);
+  });
+
+  it.each([
+    ["non-hex id", { ...validEvent, id: "z".repeat(64) }],
+    ["uppercase id", { ...validEvent, id: validEvent.id.toUpperCase() }],
+    ["non-hex pubkey", { ...validEvent, pubkey: "g".repeat(64) }],
+    ["short signature", { ...validEvent, sig: "0".repeat(127) }],
+    ["non-hex signature", { ...validEvent, sig: "h".repeat(128) }],
+    ["missing signature", { ...validEvent, sig: undefined }],
+  ])("rejects an event with a %s", (_name, event) => {
+    expect(isEvent(event)).toBe(false);
   });
 });

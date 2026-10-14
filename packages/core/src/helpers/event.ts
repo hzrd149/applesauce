@@ -78,13 +78,19 @@ export const ReplaceableAddressSymbol = Symbol.for("replaceable-address");
 export const FromCacheSymbol = Symbol.for("from-cache");
 export const ReplaceableIdentifierSymbol = Symbol.for("replaceable-identifier");
 
+/** 64-char lowercase hex — event ids and pubkeys */
+const hex64 = /^[0-9a-f]{64}$/;
+/** 128-char lowercase hex — schnorr signatures */
+const hex128 = /^[0-9a-f]{128}$/;
+
 /** Checks if an object is a Rumor ( unsigned event with a known id ) */
 export function isRumor(event: any): event is Rumor {
   return (
-    event.id?.length === 64 &&
+    typeof event?.id === "string" &&
+    hex64.test(event.id) &&
     event.sig === undefined && // Missing signature ( unsigned )
     typeof event.pubkey === "string" &&
-    event.pubkey.length === 64 &&
+    hex64.test(event.pubkey) &&
     typeof event.content === "string" &&
     Array.isArray(event.tags) &&
     typeof event.created_at === "number" &&
@@ -94,16 +100,20 @@ export function isRumor(event: any): event is Rumor {
 
 /**
  * Checks if an object is a nostr event
- * NOTE: does not validate the signature on the event
+ * NOTE: does not validate the signature on the event, but the id, pubkey, and sig fields must be
+ * well-formed (lowercase hex of the canonical lengths) — an event that could never hash or
+ * verify correctly is rejected here rather than by every consumer downstream
  */
 export function isEvent(event: any): event is NostrEvent {
   if (event === undefined || event === null) return false;
 
   return (
-    event.id?.length === 64 &&
+    typeof event.id === "string" &&
+    hex64.test(event.id) &&
     typeof event.sig === "string" &&
+    hex128.test(event.sig) &&
     typeof event.pubkey === "string" &&
-    event.pubkey.length === 64 &&
+    hex64.test(event.pubkey) &&
     typeof event.content === "string" &&
     Array.isArray(event.tags) &&
     typeof event.created_at === "number" &&
