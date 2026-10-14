@@ -65,11 +65,16 @@ class WrappedBuffer {
 
 function decodeVarInt(buf: WrappedBuffer) {
   let res = 0;
+  let length = 0;
 
   while (1) {
     if (buf.length === 0) throw Error("parse ends prematurely");
     let byte = buf.shift();
-    res = (res << 7) | (byte & 127);
+    // Multiply instead of shifting: `<<` is a 32-bit op, so a varint longer than four bytes —
+    // trivial to craft in a relay response — silently wrapped into a small (or negative) value
+    res = res * 128 + (byte & 127);
+    if (res > Number.MAX_SAFE_INTEGER) throw Error("varint too large");
+    if (++length > 8) throw Error("varint too long");
     if ((byte & 128) === 0) break;
   }
 
@@ -78,12 +83,15 @@ function decodeVarInt(buf: WrappedBuffer) {
 
 function encodeVarInt(n: number) {
   if (n === 0) return new WrappedBuffer([0]);
+  if (!Number.isSafeInteger(n) || n < 0) throw Error("varint out of range");
 
   let o = [];
 
+  // Divide instead of shifting: `>>>=` is a 32-bit op and would drop the high bits of safe
+  // integers above 2^31
   while (n !== 0) {
-    o.push(n & 127);
-    n >>>= 7;
+    o.push(n % 128);
+    n = Math.floor(n / 128);
   }
 
   o.reverse();
@@ -619,4 +627,5 @@ function itemCompare(a: Item, b: Item) {
   return a.timestamp - b.timestamp;
 }
 
-export { Negentropy, NegentropyStorageVector };
+// decodeVarInt/encodeVarInt are exported for direct unit tests of the varint bounds
+export { Negentropy, NegentropyStorageVector, decodeVarInt, encodeVarInt };
