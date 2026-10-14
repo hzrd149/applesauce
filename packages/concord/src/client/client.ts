@@ -346,6 +346,13 @@ export class ConcordClient {
     this.storage = options.storage ?? defaultStorage();
     this.uploader = options.uploader;
     this.defaultRelays = options.relays?.length ? options.relays : STOCK_RELAYS;
+    if (!options.relays?.length) {
+      // Privacy-sensitive default: without this, an app that forgets `relays` silently routes
+      // all community traffic (and any NIP-42 auth events) to hardcoded third-party relays
+      console.warn(
+        "Concord: no relays configured — falling back to the built-in stock relays. Pass explicit `relays` to keep community traffic on infrastructure you control.",
+      );
+    }
     this.extraRelaysOption = options.extraRelays;
     this.extras = new ExtraRelays(options.extraRelays);
     this.log("extras configured=%s", options.extraRelays !== undefined);
