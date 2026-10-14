@@ -1,7 +1,7 @@
 import { unlockHiddenTags } from "applesauce-core/helpers/hidden-tags";
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { getHiddenMutedThings, isHiddenMutesUnlocked, MuteHiddenSymbol, Mutes, matchMutes } from "../mute.js";
+import { createMutedWordsRegExp, getHiddenMutedThings, isHiddenMutesUnlocked, MuteHiddenSymbol, Mutes, matchMutes } from "../mute.js";
 
 const mutedUser = new FakeUser();
 const nonMutedUser = new FakeUser();
@@ -142,5 +142,45 @@ describe("getHiddenMutedThings non-enumerability (05.1-09)", () => {
     // Dropped by a plain spread
     const spread = { ...mute };
     expect(Reflect.has(spread, MuteHiddenSymbol)).toBe(false);
+  });
+});
+
+describe("createMutedWordsRegExp", () => {
+  it("caches the compiled regex for an unchanged word list", () => {
+    const words = ["spam", "scam"];
+    const first = createMutedWordsRegExp(words);
+    const second = createMutedWordsRegExp([...words]);
+
+    expect(second).toBe(first);
+  });
+
+  it("rebuilds when the word list changes", () => {
+    const first = createMutedWordsRegExp(["spam"]);
+    const second = createMutedWordsRegExp(["spam", "scam"]);
+
+    expect(second).not.toBe(first);
+    expect(second.test("what a scam")).toBe(true);
+  });
+
+  it("resets lastIndex between matches on the shared instance", () => {
+    const words = ["spam"];
+
+    // The `g` flag advances lastIndex between .test() calls on one instance; every
+    // re-acquisition from the factory must start matching from the beginning again
+    const first = createMutedWordsRegExp(words);
+    expect(first.test("buy spam now")).toBe(true);
+    expect(first.lastIndex).toBeGreaterThan(0);
+
+    const second = createMutedWordsRegExp(words);
+    expect(second).toBe(first);
+    expect(second.lastIndex).toBe(0);
+    expect(second.test("more spam here")).toBe(true);
+  });
+
+  it("still matches case-insensitively with word boundaries", () => {
+    const regExp = createMutedWordsRegExp(["gm"]);
+
+    expect(regExp.test("GM everyone")).toBe(true);
+    expect(regExp.test("gaming")).toBe(false);
   });
 });

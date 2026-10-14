@@ -108,13 +108,33 @@ export async function unlockHiddenMutes(mute: NostrEvent, signer: HiddenContentS
   return mutes;
 }
 
+// Mute lists change rarely but matchMutes tests every timeline event, so the compiled regex is
+// cached for the last word list instead of being recompiled per event. Single-entry: swapping
+// the list simply rebuilds.
+let cachedWords: string[] | null = null;
+let cachedRegExp: RegExp | null = null;
+
 /** Creates a RegExp for matching muted words */
 export function createMutedWordsRegExp(mutedWords: string[]): RegExp {
+  if (
+    cachedRegExp &&
+    cachedWords &&
+    cachedWords.length === mutedWords.length &&
+    cachedWords.every((word, i) => word === mutedWords[i])
+  ) {
+    // The shared instance carries `g`, and `.test()`/`.exec()` advance its lastIndex between
+    // calls — reset it so every caller starts matching from the beginning of its haystack.
+    cachedRegExp.lastIndex = 0;
+    return cachedRegExp;
+  }
+
   // Escape special characters and join with |
   const escapedWords = mutedWords.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
   // Create the RegExp with word boundaries and case insensitive flag
-  return new RegExp(`\\b(${escapedWords.join("|")})\\b`, "gi");
+  cachedWords = [...mutedWords];
+  cachedRegExp = new RegExp(`\\b(${escapedWords.join("|")})\\b`, "gi");
+  return cachedRegExp;
 }
 
 /** Returns true if the event matches the mutes */
