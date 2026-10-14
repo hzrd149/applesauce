@@ -45,7 +45,7 @@ import { lookupRelays$ } from "../settings";
 const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]);
 
 // Common Open Ranking providers
-const OPEN_RANKING_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
+const OPEN_RANKING_PROVIDERS = ["https://ranking.vertexlab.io", DEFAULT_OPEN_RANKING_PROVIDER];
 
 // Create an event store for all events
 const eventStore = new EventStore();
