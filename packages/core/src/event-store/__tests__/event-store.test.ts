@@ -41,6 +41,15 @@ describe("add", () => {
     expect(spy.getValues()).toEqual([a]);
   });
 
+  it("should not emit insert$ when the same instance is added twice", () => {
+    const spy = subscribeSpyTo(eventStore.insert$);
+    const a = { ...note };
+
+    expect(eventStore.add(a)).toBe(a);
+    expect(eventStore.add(a)).toBe(a);
+    expect(spy.getValues()).toEqual([a]);
+  });
+
   it("should merge seen relays on duplicate events", () => {
     const a = { ...profile };
     addSeenRelay(a, "wss://relay.a.com");

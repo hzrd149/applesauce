@@ -243,16 +243,18 @@ export class AsyncEventStore<E extends StoreEvent = NostrEvent> extends EventMod
     // Verify event before inserting into the database
     if (this.verifyEvent && this.verifyEvent(event) === false) return null;
 
-    // Always add event to memory
-    const existing = this.memory.add(event);
-
-    // If the memory returned a different instance, this is a duplicate event
-    if (existing && existing !== event) {
-      // Copy cached symbols and return existing event
-      if (EventStore.copySymbolsToDuplicateEvent(event, existing)) await this.update(existing);
+    // Return the stored instance if the event is already in memory. Checked by id before adding so re-adding the
+    // same instance (e.g. by a negentropy sync and its caller) is not mistaken for a new event
+    const existing = this.memory.getEvent(event.id);
+    if (existing) {
+      // Copy cached symbols from a duplicate instance
+      if (existing !== event && EventStore.copySymbolsToDuplicateEvent(event, existing)) await this.update(existing);
 
       return existing;
     }
+
+    // Always add event to memory
+    this.memory.add(event);
 
     // Insert event into database
     const inserted = this.mapToMemory(await this.database.add(event));

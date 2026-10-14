@@ -33,6 +33,17 @@ describe("AsyncEventStore.add", () => {
     // write must not ride along a spread of the stored event.
     expect(EventStoreSymbol in { ...added }).toBe(false);
   });
+
+  it("should not emit insert$ when the same instance is added twice", async () => {
+    const store = new AsyncEventStore({ database: fakeDatabase() });
+    const inserted: NostrEvent[] = [];
+    store.insert$.subscribe((event) => inserted.push(event));
+    const note = user.note("added twice");
+
+    expect(await store.add(note)).toBe(note);
+    expect(await store.add(note)).toBe(note);
+    expect(inserted).toEqual([note]);
+  });
 });
 
 describe("AsyncEventStore.dispose", () => {
