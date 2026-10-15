@@ -28,10 +28,10 @@ import {
   combineLatest,
   defer,
   EMPTY,
+  exhaustMap,
   finalize,
   ignoreElements,
   map,
-  merge,
   of,
   startWith,
   Subject,
@@ -667,7 +667,7 @@ function DetailsDialog({ pointer, relay, close }: { pointer: Pointer; relay: str
   );
 }
 
-// Keep one subscription to the stateful loader while scroll triggers advance its window.
+// Load a page from the relay for each scroll trigger, tracking page state from the loader's requests.
 function pagedFeed(relay: string, more$: Subject<void>) {
   return defer(() => {
     const filter = { kinds: [NSITE_ROOT_KIND, NSITE_KIND] };
@@ -704,13 +704,13 @@ function pagedFeed(relay: string, more$: Subject<void>) {
       filter,
       { limit: 50 },
     );
-    const loading$ = merge(
-      loader({}), // Anchor the shared loader so later triggers preserve its cursor.
-      more$.pipe(
-        startWith(undefined),
-        switchMap(() => loader()),
-      ),
-    ).pipe(ignoreElements(), startWith(null));
+    const loading$ = more$.pipe(
+      startWith(undefined),
+      // Ignore scroll triggers until the current page completes
+      exhaustMap(() => loader()),
+      ignoreElements(),
+      startWith(null),
+    );
     return combineLatest([
       relayTimeline(eventStore, pool, [relay], { ...filter, since: unixNow(), limit: 50 }),
       eventStore.timeline(filter),
