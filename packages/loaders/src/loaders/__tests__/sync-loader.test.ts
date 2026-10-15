@@ -2,7 +2,7 @@ import { EventStore, type Debugger } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { getSeenRelays } from "applesauce-core/helpers/relays";
-import { asyncScheduler, lastValueFrom, NEVER, Observable, of, scheduled, Subject, toArray } from "rxjs";
+import { asyncScheduler, EMPTY, lastValueFrom, NEVER, Observable, of, scheduled, Subject, toArray } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { RelayAuthChallengeChangedError, RelayAuthChallengeTimeoutError } from "../../../../relay/src/relay.js";
 
@@ -605,6 +605,161 @@ describe("createSyncLoader", () => {
 
     expect(getSupported).toHaveBeenCalledTimes(2);
     sub.unsubscribe();
+  });
+
+  it("loads relays from an observable as they are discovered without restarting running relays", async () => {
+    const eventStore = new EventStore();
+    const a = user.note("a");
+    const b = user.note("b");
+
+    const relays$ = new Subject<string[]>();
+    const getSupported = vi.fn().mockResolvedValue([1]);
+    const request = vi.fn().mockReturnValueOnce(asyncOf(a)).mockReturnValueOnce(asyncOf(b));
+
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const { status$, events$ } = loader({ relays: relays$, filter });
+
+    const statuses: SyncLoaderStatus[] = [];
+    status$.subscribe((status) => statuses.push(status));
+    const events = collect(events$);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Not done before the first relay list arrives
+    expect(statuses.at(-1)?.done).toBe(false);
+
+    relays$.next(["wss://one/"]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(statuses.at(-1)?.done).toBe(true);
+
+    // A repeated relay is ignored and only the new relay starts loading
+    relays$.next(["wss://one/", "wss://two/"]);
+    relays$.complete();
+
+    expect((await events).map((e) => e.content)).toEqual(["a", "b"]);
+    expect(getSupported).toHaveBeenCalledTimes(2);
+    expect(Object.keys(statuses.at(-1)!.relays)).toEqual(["wss://one/", "wss://two/"]);
+    expect(statuses.at(-1)?.done).toBe(true);
+  });
+
+  it("applies the concurrency cap to relays from an observable", async () => {
+    const eventStore = new EventStore();
+
+    const gate = new Subject<number[]>();
+    const getSupported = vi
+      .fn()
+      .mockReturnValueOnce(gate)
+      .mockReturnValueOnce(of([1]));
+    const request = vi.fn().mockReturnValue(of());
+
+    const relays$ = new Subject<string[]>();
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const sub = loader({ relays: relays$, filter, concurrency: 1 }).events$.subscribe();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Each emission is the full relay list
+    relays$.next(["wss://one/"]);
+    relays$.next(["wss://one/", "wss://two/"]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSupported).toHaveBeenCalledTimes(1);
+
+    gate.next([1]);
+    gate.complete();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getSupported).toHaveBeenCalledTimes(2);
+    sub.unsubscribe();
+  });
+
+  it("stops a relay that is removed from an observable relay list", async () => {
+    const eventStore = new EventStore();
+    const teardown = vi.fn();
+    const getSupported = vi.fn().mockResolvedValue([1]);
+    // The first relay never finishes, the second completes immediately
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(new Observable(() => teardown))
+      .mockReturnValue(of());
+
+    const relays$ = new Subject<string[]>();
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const { status$, events$ } = loader({ relays: relays$, filter });
+
+    const statuses: SyncLoaderStatus[] = [];
+    status$.subscribe((status) => statuses.push(status));
+    const sub = events$.subscribe();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    relays$.next(["wss://one/", "wss://two/"]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(statuses.at(-1)?.done).toBe(false);
+
+    relays$.next(["wss://two/"]);
+    expect(teardown).toHaveBeenCalledTimes(1);
+    expect(Object.keys(statuses.at(-1)!.relays)).toEqual(["wss://two/"]);
+    expect(statuses.at(-1)?.done).toBe(true);
+    sub.unsubscribe();
+  });
+
+  it("skips a queued relay that is removed before it starts", async () => {
+    const eventStore = new EventStore();
+    const gate = new Subject<number[]>();
+    const getSupported = vi.fn().mockReturnValueOnce(gate).mockReturnValue(of([1]));
+    const request = vi.fn().mockReturnValue(of());
+
+    const relays$ = new Subject<string[]>();
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const sub = loader({ relays: relays$, filter, concurrency: 1 }).events$.subscribe();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    relays$.next(["wss://one/", "wss://two/"]);
+    relays$.next(["wss://one/"]);
+    gate.next([1]);
+    gate.complete();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(getSupported.mock.calls.map((call) => call[0])).toEqual(["wss://one/"]);
+    sub.unsubscribe();
+  });
+
+  it("starts a fresh load for a relay that is removed and added again", async () => {
+    const eventStore = new EventStore();
+    const getSupported = vi.fn().mockResolvedValue([1]);
+    const request = vi.fn().mockReturnValueOnce(NEVER).mockReturnValue(of());
+
+    const relays$ = new Subject<string[]>();
+    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const { status$ } = loader({ relays: relays$, filter });
+
+    const statuses: SyncLoaderStatus[] = [];
+    const sub = status$.subscribe((status) => statuses.push(status));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    relays$.next(["wss://one/"]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    relays$.next([]);
+    relays$.next(["wss://one/"]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(getSupported).toHaveBeenCalledTimes(2);
+    expect(statuses.at(-1)?.relays["wss://one/"].state).toBe("complete");
+    sub.unsubscribe();
+  });
+
+  it("completes when an observable relay list completes without relays", async () => {
+    const eventStore = new EventStore();
+    const loader = createSyncLoader({ eventStore, request: vi.fn(), getSupported: vi.fn(), sync: vi.fn() });
+    const { status$ } = loader({ relays: of([]), filter });
+
+    const statuses = await collect(status$);
+    expect(statuses.at(-1)?.done).toBe(true);
+  });
+
+  it("marks an observable relay list that completes without emitting as done", async () => {
+    const eventStore = new EventStore();
+    const loader = createSyncLoader({ eventStore, request: vi.fn(), getSupported: vi.fn(), sync: vi.fn() });
+    const { status$ } = loader({ relays: EMPTY, filter });
+
+    const statuses = await collect(status$);
+    expect(statuses.map((status) => status.done)).toEqual([false, true]);
   });
 
   it("replays the latest status to a status$ subscriber that joins after the run started", async () => {

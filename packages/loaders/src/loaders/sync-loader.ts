@@ -8,6 +8,8 @@ import {
   asapScheduler,
   catchError,
   concat,
+  concatMap,
+  connect,
   defer,
   EMPTY,
   filter as rxFilter,
@@ -28,6 +30,7 @@ import {
   subscribeOn,
   switchMap,
   take,
+  takeUntil,
   timeout as rxTimeout,
 } from "rxjs";
 
@@ -123,7 +126,7 @@ export type SyncLoaderStatus = {
   relays: Record<string, SyncRelayStatus>;
   /** The number of unique events loaded so far across all relays (after store deduplication) */
   loaded: number;
-  /** Whether every relay has finished (completed or errored) */
+  /** Whether every relay has finished (completed or errored), returns to false when a dynamic relay list adds relays */
   done: boolean;
 };
 
@@ -194,8 +197,11 @@ export type SyncLoaderOptions = {
 
 /** A request to load a set of events from a set of relays */
 export type SyncLoadRequest = {
-  /** The relays to load from */
-  relays: string[];
+  /**
+   * The relays to load from, or an observable of relay lists that starts added relays and stops removed ones
+   * @note an observable keeps the load open until it completes
+   */
+  relays: string[] | Observable<string[]>;
   /** The filter describing the set of events to load (NIP-77 reconciles a single filter) */
   filter: Filter;
   /** The page size for paginated REQ loading on relays without NIP-77 (default 500) */
@@ -335,7 +341,8 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
  * - runs a paginated REQ that pages backward in time until the relay is exhausted (Part 1).
  *
  * Calling the loader returns a `status$` observable (a full status snapshot on every change) and an `events$`
- * observable (the deduplicated events). Both complete when every relay has finished. Subscribing to either
+ * observable (the deduplicated events). Both complete when every relay has finished and an observable relay list has
+ * completed. Subscribing to either
  * observable starts a single shared run that writes received events to the store (deduplicated like the other
  * loaders). A `status$` subscriber that joins after the run started replays the latest status snapshot.
  *
@@ -344,6 +351,9 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
  * const { status$, events$ } = loader({ relays, filter: { kinds: [1], authors: [pubkey] } });
  * events$.subscribe((event) => console.log(event));
  * status$.subscribe((status) => console.log(status));
+ *
+ * // Relays from an observable start loading as they are discovered
+ * loader({ relays: user.outboxes$.pipe(defined()), filter });
  */
 export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
   const { request, getSupported, sync } = resolveMethods(options);
@@ -369,9 +379,6 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     // makes RAUTH-08's "identically" requirement structural rather than a coincidence.
     const methodOptions: SyncMethodOptions = { waitForAuth, onAuthRequired, authTimeout, authRetries };
 
-    // Normalize, de-duplicate, and drop invalid relay urls
-    const urls = relaySet(relays);
-
     // Bound how long a relay may stall (time to first event and between events) so an offline or
     // unresponsive relay can never block the merge from completing. 0/false disables it. D-16: each
     // relay builds its own auth-aware version of this below (`buildRelayStream`'s `withTimeout`) rather
@@ -384,7 +391,24 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     const work$ = defer<Observable<Msg>>(() => {
       // Mutable per-relay state, reset on each (re)subscription
       const state: Record<string, SyncRelayStatus> = {};
-      for (const url of urls) state[url] = { relay: url, state: "pending", count: 0 };
+      // The current relays, in the order they were added
+      let urls: string[] = [];
+      // Whether a relay list has been received, so a dynamic load is not done before it knows its relays
+      let listed = false;
+
+      // Diffs a relay list against the current relays, adding new relays as pending and dropping removed ones.
+      // Each added relay gets a new state object, which doubles as the token for its load
+      const update = (list: string[]) => {
+        const first = !listed;
+        listed = true;
+        const next = relaySet(list);
+        const removed = urls.filter((url) => !next.includes(url));
+        const added = next.filter((url) => !state[url]);
+        for (const url of removed) delete state[url];
+        for (const url of added) state[url] = { relay: url, state: "pending", count: 0 };
+        urls = [...urls.filter((url) => state[url]), ...added];
+        return { first, added, removed };
+      };
 
       // The unique event ids surfaced across all relays (after store dedupe), drives the global `loaded` count
       const seen = new Set<string>();
@@ -393,7 +417,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       const snapshot = (): SyncLoaderStatus => ({
         relays: Object.fromEntries(urls.map((url) => [url, { ...state[url] }])),
         loaded: seen.size,
-        done: urls.every((url) => state[url].state === "complete" || state[url].state === "error"),
+        done: listed && urls.every((url) => state[url].state === "complete" || state[url].state === "error"),
       });
 
       // Mutates the state then emits a full status snapshot
@@ -402,9 +426,6 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           mutate?.();
           return of<Msg>({ status: snapshot() });
         });
-
-      // No relays to load from, emit a single (done) status
-      if (urls.length === 0) return status();
 
       const buildRelayStream = (url: string): Observable<Msg> => {
         // D-18: derived once per relay, here at buildRelayStream's own top level — this function runs
@@ -707,9 +728,58 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
         );
       };
 
-      // Emit an initial status, then run the relays with a concurrency cap so a large relay set does not
-      // open every connection at once
-      return merge(status(), from(urls).pipe(mergeMap((url) => buildRelayStream(url), Math.max(1, concurrency))));
+      // A static list is a single emission, so both inputs share the same pipeline
+      const lists$ = isObservable(relays)
+        ? relays.pipe(
+            catchError((error) => {
+              log("Relay list failed: %s", error?.message ?? error);
+              return EMPTY;
+            }),
+          )
+        : of(relays);
+
+      const load$ = lists$.pipe(
+        map(update),
+        connect((changes$) =>
+          merge(
+            // Surface a status when the relays change, or when the first list makes the load known
+            changes$.pipe(
+              rxFilter((c) => c.first || c.added.length > 0 || c.removed.length > 0),
+              concatMap(() => status()),
+            ),
+            // Run new relays with a concurrency cap so a large relay set does not open every connection at once,
+            // and stop a relay when it is removed from the list
+            changes$.pipe(
+              mergeMap((c) => c.added.map((url) => [url, state[url]] as const)),
+              mergeMap(
+                ([url, entry]) =>
+                  // Skip a relay that was removed (or replaced) while it waited for a free slot
+                  defer(() => (state[url] === entry ? buildRelayStream(url) : EMPTY)).pipe(
+                    takeUntil(changes$.pipe(rxFilter((c) => c.removed.includes(url)))),
+                  ),
+                Math.max(1, concurrency),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // A dynamic load emits an initial status before it knows its relays
+      return isObservable(relays)
+        ? merge(
+            status(),
+            concat(
+              load$,
+              defer(() =>
+                listed
+                  ? EMPTY
+                  : status(() => {
+                      listed = true;
+                    }),
+              ),
+            ),
+          )
+        : load$;
     }).pipe(
       // Delay the run until after same-tick subscriptions to status$ and events$ have attached
       subscribeOn(asapScheduler),
