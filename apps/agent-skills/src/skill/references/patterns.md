@@ -157,8 +157,8 @@ import { firstValueFrom, lastValueFrom, toArray } from "rxjs";
 // First emission (one-shot fetches)
 const event = await firstValueFrom(loader({ id, relays }));
 
-// Every emission (after the stream completes — e.g. one page from a timeline loader)
-const page = await lastValueFrom(timelineLoader().pipe(toArray()));
+// Every emission after a finite timeline window settles; inspect status$ for coverage
+const events = await lastValueFrom(timelineLoader({ since, until }).pipe(toArray()));
 ```
 
 `firstValueFrom` subscribes, waits for the first `next`, then unsubscribes. `lastValueFrom` waits for `complete`. If the stream never completes (a live relay subscription), `lastValueFrom` hangs — pair with `takeUntil(timer(ms))` or `take(n)`.

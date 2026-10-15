@@ -1,144 +1,76 @@
 /**
- * Load timeline events with pagination support for efficient data loading
- * @tags loader, timeline, pagination
+ * Follow a scrolling time window across relays with automatic coverage and prefetch
+ * @tags loader, timeline, infinite-scroll
  * @related loader/timeline-scrubber, feed/relay-timeline
  */
-import { use$ } from "applesauce-react/hooks";
-import {
-  Subject,
-  defer,
-  exhaustMap,
-  tap,
-  ignoreElements,
-  endWith,
-  startWith,
-  catchError,
-  of,
-  switchMap,
-  map,
-} from "rxjs";
-
 import { EventStore } from "applesauce-core";
-import { getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-import { createTimelineLoader } from "applesauce-loaders/loaders";
+import { unixNow } from "applesauce-core/helpers";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
+import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import { useState } from "react";
+import { BehaviorSubject, EMPTY, filter, fromEvent, ignoreElements, tap, throttleTime } from "rxjs";
+import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
-const relays = mergeRelaySets(["wss://relay.damus.io", "wss://nos.lol", "wss://nostr.land"]);
+const relays = ["wss://relay.damus.io", "wss://nos.lol", "wss://nostr.land"];
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
+const until = unixNow();
+const windows$ = new BehaviorSubject({ since: until - 3600, until });
+const older = () => windows$.next({ ...windows$.value, since: Math.max(0, windows$.value.since - 3600) });
 
-import { NostrEvent } from "applesauce-core/helpers";
+export default function WindowedTimelineExample() {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const window = use$(windows$);
+  use$(() => loader(windows$), []);
+  const statuses = use$(loader.status$) ?? [];
+  const loading = statuses.length === 0 || statuses.some((status) => status.state === "loading");
+  const events = use$(() => eventStore.timeline({ kinds: [1], ...window }), [window.since, window.until]) ?? [];
 
-import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useMemo, useState } from "react";
-
-function EventRow({ event, relays }: { event: NostrEvent; relays: string[] }) {
-  const seen = getSeenRelays(event);
-  const truncatedId = event.id.slice(0, 4);
-
-  const npub = useMemo(() => {
-    try {
-      return npubEncode(event.pubkey);
-    } catch (e) {
-      return event.pubkey;
-    }
-  }, [event.pubkey]);
-
-  const truncatedNpub = npub.slice(0, 8);
-  const truncatedContent = event.content.length > 50 ? `${event.content.slice(0, 50)}...` : event.content;
-
-  return (
-    <tr>
-      <td>{truncatedId}</td>
-      <td>{truncatedNpub}</td>
-      <td className="truncate">{truncatedContent}</td>
-      {relays.map((relay) => (
-        <td key={relay} title={relay}>
-          {seen?.has(relay) ? "✅" : "❌"}
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-export default function PaginatedTimelineExample() {
-  const [limit, setLimit] = useState(20);
-
-  const loader = useMemo(() => {
-    return createTimelineLoader(pool, relays, [{ kinds: [1] }], { limit, eventStore });
-  }, [relays, limit]);
-
-  const pages$ = useMemo(() => new Subject<void>(), [loader]);
-  const [reset, setReset] = useState(0);
-  const request = use$(
+  use$(
     () =>
-      defer(() => {
-        const matched = new Set<string>();
-        return pages$.pipe(
-          exhaustMap(() =>
-            loader().pipe(
-              tap((event) => matched.add(event.id)),
-              ignoreElements(),
-              endWith({ loading: false, error: null as string | null }),
-              startWith({ loading: true, error: null as string | null }),
-              catchError((error) => of({ loading: false, error: String(error) })),
-            ),
-          ),
-          startWith({ loading: false, error: null as string | null }),
-          switchMap((status) =>
-            eventStore
-              .timeline({ kinds: [1] })
-              .pipe(map((events) => ({ ...status, events: events.filter((event) => matched.has(event.id)) }))),
-          ),
-        );
-      }),
-    [loader, pages$, reset],
+      viewport
+        ? fromEvent(viewport, "scroll").pipe(
+            throttleTime(250),
+            filter(() => viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 300),
+            filter(() => !statuses.some((status) => status.state === "loading")),
+            tap(older),
+            ignoreElements(),
+          )
+        : EMPTY,
+    [viewport, statuses],
   );
-  const events = request?.events ?? [];
-  const loading = request?.loading ?? false;
-  const next = () => pages$.next();
 
   return (
-    <div className="container mx-auto my-8">
-      <div className="flex gap-2">
-        <input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
-
-        <button className="btn" onClick={() => setReset((n) => n + 1)}>
-          Clear
-        </button>
+    <div className="flex min-h-0 grow flex-col gap-3">
+      <p>Scroll down to extend the history window. Each relay fills missing time ranges independently.</p>
+      <div className="flex flex-wrap gap-4 border-y border-base-300 py-2">
+        <span>{events.length} notes</span>
+        <span>
+          {new Date(window.since * 1000).toLocaleString()} – {new Date(window.until * 1000).toLocaleString()}
+        </span>
+        <span>{loading ? "Loading visible range" : "Visible requests settled"}</span>
       </div>
-
-      {request?.error && (
-        <p role="alert" className="text-error">
-          {request.error}
-        </p>
-      )}
-      <table className="table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Pubkey</th>
-            <th>Content</th>
-            {relays.map((r) => (
-              <th key={r} />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((event) => (
-            <EventRow key={event.id} event={event} relays={relays} />
-          ))}
-        </tbody>
-      </table>
-
-      <div className="flex justify-center my-4">
-        {loading ? (
-          <span className="loading loading-dots loading-xl"></span>
-        ) : (
-          <button className="btn btn-primary block" onClick={next}>
-            Load more
-          </button>
-        )}
+      {statuses
+        .filter((status) => status.state === "incomplete")
+        .map((status) => (
+          <p key={status.source} className="text-warning">
+            {status.source}: {String(status.error ?? "Incomplete coverage")}
+          </p>
+        ))}
+      <div ref={setViewport} className="min-h-0 flex-1 overflow-y-auto">
+        {events.map((event) => (
+          <article key={event.id} className="border-b border-base-300 py-3">
+            <time className="text-sm">{new Date(event.created_at * 1000).toLocaleString()}</time>
+            <p className="whitespace-pre-wrap break-words">{event.content}</p>
+          </article>
+        ))}
+        {!events.length && !loading && <p>No notes in this time range.</p>}
+        <button className="btn my-3" disabled={loading || window.since === 0} onClick={older}>
+          Load an earlier hour
+        </button>
       </div>
     </div>
   );

@@ -3,6 +3,10 @@
  * @tags nip-5a, nsite, casts, blossom, comments, reactions
  * @related napplet/store, notes/rendering
  */
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { loadHistory } from "../../extra/history-window";
+
 import { AppHandler, castEvent, Comment, NamedNsite, Nsite, RootNsite, User } from "applesauce-common/casts";
 import { APP_HANDLER_KIND, COMMENT_KIND, NSITE_KIND, NSITE_KINDS, NSITE_ROOT_KIND } from "applesauce-common/helpers";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
@@ -19,30 +23,14 @@ import {
   kinds,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import {
-  BehaviorSubject,
-  catchError,
-  combineLatest,
-  defer,
-  EMPTY,
-  exhaustMap,
-  finalize,
-  ignoreElements,
-  map,
-  of,
-  startWith,
-  Subject,
-  switchMap,
-  tap,
-} from "rxjs";
+import { BehaviorSubject, combineLatest, defer, map, of, Subject, switchMap } from "rxjs";
 import JsonBlock from "../../components/json-block";
 import NoteContent from "../../components/note-content";
 import RelayPicker from "../../components/relay-picker";
 import { relayTimeline } from "../../extra/relay-timeline";
-import { lookupRelays$ } from "../../settings";
 
 const DEFAULT_RELAY = "wss://relay.nsite.lol/";
 const NSITE_RELAYS = [DEFAULT_RELAY];
@@ -667,55 +655,19 @@ function DetailsDialog({ pointer, relay, close }: { pointer: Pointer; relay: str
   );
 }
 
-// Load a page from the relay for each scroll trigger, tracking page state from the loader's requests.
+// Expand the requested history window as the user scrolls.
 function pagedFeed(relay: string, more$: Subject<void>) {
   return defer(() => {
     const filter = { kinds: [NSITE_ROOT_KIND, NSITE_KIND] };
     const seen = new Set<string>();
-    const page$ = new BehaviorSubject({ loading: true, done: false, error: "" });
-    const loader = createTimelineLoader(
-      (relays, filters) =>
-        defer(() => {
-          let count = 0;
-          let oldest = Infinity;
-          page$.next({ loading: true, done: false, error: "" });
-          return pool.request(relays, filters).pipe(
-            tap((event) => {
-              count++;
-              oldest = Math.min(oldest, event.created_at);
-              seen.add(getEventUID(event));
-              eventStore.add(event);
-            }),
-            catchError((error) => {
-              page$.next({ loading: false, done: false, error: String(error.message ?? error) });
-              return EMPTY;
-            }),
-            finalize(() => {
-              const until = filters[0]?.until;
-              page$.next({
-                ...page$.value,
-                loading: false,
-                done: !page$.value.error && (count === 0 || (until !== undefined && oldest - 1 >= until)),
-              });
-            }),
-          );
-        }),
-      [relay],
-      filter,
-      { limit: 50 },
-    );
-    const loading$ = more$.pipe(
-      startWith(undefined),
-      // Ignore scroll triggers until the current page completes
-      exhaustMap(() => loader()),
-      ignoreElements(),
-      startWith(null),
+    const loader = createTimelineLoader(pool, [relay], filter, { limit: 100, eventStore });
+    const page$ = loadHistory(loader, more$, (event) => seen.add(getEventUID(event))).pipe(
+      map((status) => ({ ...status, done: false })),
     );
     return combineLatest([
       relayTimeline(eventStore, pool, [relay], { ...filter, since: unixNow(), limit: 50 }),
       eventStore.timeline(filter),
       page$,
-      loading$,
     ]).pipe(
       map(([live, events, page]) => {
         const liveSeen = new Set(live.events.map(getEventUID));

@@ -369,22 +369,21 @@ function LiveFeed({ relay }) {
 }
 ```
 
-### 10. Memoize Loaders
+### 10. Keep Timeline Sessions Subscribed
 
-Always memoize timeline loaders to prevent recreation:
+Create shared infrastructure outside React, and let `use$` own the window stream subscription:
 
 ```tsx
-function Timeline({ relays }) {
-  const loader = useMemo(() => createTimelineLoader(pool, relays, { kinds: [1] }, { limit: 50 }), [relays]);
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
 
-  useEffect(() => {
-    loader().subscribe();
-  }, [loader]);
-
+function Timeline({ windows$ }) {
+  use$(() => loader(windows$), [windows$]);
   const events = use$(() => eventStore.timeline({ kinds: [1] }), []);
   return <div>{events?.map(renderEvent)}</div>;
 }
 ```
+
+Each window supplies finite `since` and `until` bounds. See [Timeline Loader](/loading/loaders/timeline-loader) for buffering and coverage status.
 
 ## How It Works
 

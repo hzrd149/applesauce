@@ -163,8 +163,8 @@ const liveError$ = live$.pipe(
 );
 
 // The timestamp of the bottom-most note on screen
-// Initialize with -Infinity to force loading the first block of events
-const cursor$ = new BehaviorSubject(-Infinity);
+// Start with an explicit day of history
+const cursor$ = new BehaviorSubject(unixNow() - 86400);
 
 // Elements with a `data-created-at` timestamp that are currently on screen
 const visible = new Set<HTMLElement>();
@@ -193,8 +193,8 @@ function trackScroll(el: HTMLElement | null) {
 const timeline$ = cursor$.pipe(
   // Throttle how fast the cursor changes while scrolling
   throttleTime(1000, undefined, { leading: true, trailing: true }),
-  // Relays whose loaded range ends after the cursor load their next block
-  map((since): TimelineWindow => ({ since })),
+  // Fill the finite range between the oldest visible event and now
+  map((since): TimelineWindow => ({ since, until: unixNow() })),
   // When the timeline window changes, load missing events
   loadBlocksFromOutboxMap(
     pool,

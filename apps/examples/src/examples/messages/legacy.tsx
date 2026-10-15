@@ -3,6 +3,10 @@
  * @tags messages, legacy, nip-04, dm
  * @related messages/gift-wrap
  */
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { historyWindows } from "../../extra/history-window";
+
 import { castUser } from "applesauce-common/casts";
 
 import { publishEvent } from "../../extra/publish";
@@ -21,7 +25,7 @@ import {
 } from "applesauce-core/helpers";
 import { CacheRequest } from "applesauce-loaders";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import localforage from "localforage";
@@ -29,7 +33,7 @@ import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useState } from "react";
-import { BehaviorSubject, concatMap, exhaustMap } from "rxjs";
+import { BehaviorSubject, Subject, concatMap } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -39,7 +43,6 @@ import UnlockView from "../../components/unlock-view";
 import { persistEncryptedContent, unlockLegacyMessage } from "applesauce-common/helpers";
 import { EncryptedContentModel } from "applesauce-core/models";
 import SecureStorage from "../../extra/encrypted-storage";
-import { lookupRelays$ } from "../../settings";
 
 const EXPIRATIONS: Record<string, number> = {
   "30m": 60 * 30,
@@ -226,8 +229,8 @@ function DirectMessageView({
     () => createTimelineLoader(pool, [relay], filters, { eventStore, cache: cacheRequest }),
     [relay, correspondent, pubkey],
   );
-  const page$ = useMemo(() => new BehaviorSubject(0), [loader$]);
-  use$(() => page$.pipe(exhaustMap(() => loader$())), [page$, loader$]);
+  const page$ = useMemo(() => new Subject<void>(), [loader$]);
+  use$(() => loader$(historyWindows(page$)), [page$, loader$]);
 
   // Create subscription for new events
   use$(
@@ -240,7 +243,7 @@ function DirectMessageView({
   );
 
   const loadMore = useCallback(() => {
-    page$.next(page$.value + 1);
+    page$.next();
   }, [page$]);
 
   const messages = use$(() => eventStore.timeline(filters), [filters]) ?? [];
@@ -291,11 +294,11 @@ function HomeView({ pubkey, signer }: { pubkey: string; signer: ISigner }) {
 
   // Create a loader and start it
   const timeline = useMemo(() => createTimelineLoader(pool, [relay], filters, { eventStore }), [relay, filters]);
-  const page$ = useMemo(() => new BehaviorSubject(0), [timeline]);
-  use$(() => page$.pipe(exhaustMap(() => timeline())), [page$, timeline]);
+  const page$ = useMemo(() => new Subject<void>(), [timeline]);
+  use$(() => timeline(historyWindows(page$)), [page$, timeline]);
 
   const loadMore = useCallback(() => {
-    page$.next(page$.value + 1);
+    page$.next();
   }, [page$]);
 
   // Get all events from the event store

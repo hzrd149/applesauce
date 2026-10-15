@@ -5,19 +5,23 @@ import { unixNow } from "applesauce-core/helpers/time";
 import { Filter, isFilterEqual, matchFilter, mergeFilters } from "applesauce-core/helpers/filter";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
-import { filterDuplicateEvents, mapEventsToStore } from "applesauce-core/observable";
-import { nanoid } from "nanoid";
+import { mapEventsToStore } from "applesauce-core/observable";
 import {
+  asapScheduler,
+  auditTime,
   BehaviorSubject,
   catchError,
-  concat,
+  combineLatest,
   connect,
   defer,
-  distinctUntilChanged,
+  distinct,
   EMPTY,
+  endWith,
+  exhaustMap,
   filter,
   finalize,
-  identity,
+  from,
+  groupBy,
   ignoreElements,
   isObservable,
   map,
@@ -26,719 +30,583 @@ import {
   Observable,
   of,
   OperatorFunction,
+  repeat,
+  ReplaySubject,
+  scan,
   share,
-  Subject,
-  Subscription,
+  startWith,
   switchMap,
   takeUntil,
+  takeWhile,
   tap,
+  timer,
 } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, TimelessFilter, UpstreamPool } from "../types.js";
 
-/** A loader that optionally takes a timestamp to load till and returns a stream of events */
-export type TimelineLoader = (since?: number | TimelineWindow) => Observable<NostrEvent>;
+/** A finite inclusive time range to load */
+export interface TimelineWindow {
+  /** The oldest inclusive Unix timestamp */
+  since: number;
+  /** The newest inclusive Unix timestamp */
+  until: number;
+}
 
-/**
- * The current `since` value of the timeline loader
- * `undefined` is used to initialize the loader to "now"
- * -Infinity (for since) and Infinity (for until) should be used to force loading the next block of events
- */
-export type TimelineWindow = { since?: number; until?: number };
+/** The coverage state of one source and filter for the latest visible window */
+export interface TimelineStatus {
+  /** The relay URL or cache identifier */
+  source: string;
+  /** The timeless filter being loaded */
+  filter: TimelessFilter;
+  /** The current visible range */
+  window: TimelineWindow;
+  /** The visible coverage or background loading state */
+  state: "loading" | "covered" | "prefetching" | "incomplete" | "removed";
+  /** The reason visible coverage is incomplete */
+  reason?: "request" | "boundary";
+  /** The failure or unpageable timestamp that prevented complete coverage */
+  error?: unknown;
+}
 
-/** Common options for timeline loaders */
-export type CommonTimelineLoaderOptions = Partial<{
-  limit: number;
+/** A loader that follows explicit windows until its subscriber disconnects */
+export interface TimelineLoader {
+  /** Loads a finite range or follows a stream of changing ranges */
+  (windows: TimelineWindow | Observable<TimelineWindow>): Observable<NostrEvent>;
+  /** The latest coverage status for each source and filter */
+  status$: Observable<TimelineStatus[]>;
+}
 
-  /** Logger to extend */
+/** Options for loading and buffering timeline windows */
+export interface CommonTimelineLoaderOptions {
+  /** The maximum events requested per filter in one network batch, default 100 */
+  limit?: number;
+  /** The window duration to prefetch on each side, default 0.5; zero disables prefetch */
+  prefetch?: number;
+  /** The minimum prefetch duration in seconds, default 60 */
+  minPrefetch?: number;
+  /** The logger to extend */
   logger?: Debugger;
-}>;
-
-const TIMELINE_CALL = Symbol("timeline-call");
-
-/** Tracks the blocks a single loader call is waiting on, so the call can complete when they settle */
-class TimelineCall {
-  private pending = 0;
-  settled = false;
-  readonly done$ = new Subject<void>();
-
-  join() {
-    if (!this.settled) this.pending++;
-  }
-  leave() {
-    if (this.settled) return;
-    this.pending--;
-    this.check();
-  }
-  /** Settles on a microtask so a block re-joined in the same tick (like a resubscribed relay) keeps the call open */
-  check() {
-    if (this.pending > 0) return;
-    queueMicrotask(() => {
-      if (this.pending > 0 || this.settled) return;
-      this.settled = true;
-      this.done$.next();
-      this.done$.complete();
-    });
-  }
+  /** A callback receiving coverage changes for each source and filter */
+  onStatus?: (status: TimelineStatus) => void;
 }
 
-/** Gets the loader call that emitted a window */
-function getTimelineCall(window: TimelineWindow): TimelineCall | undefined {
-  return (window as { [TIMELINE_CALL]?: TimelineCall })[TIMELINE_CALL];
+/** Options for timeline loaders with a store and optional cache */
+export interface TimelineLoaderOptions extends CommonTimelineLoaderOptions {
+  /** A method used to load timeline events from a cache */
+  cache?: CacheRequest;
+  /** The event store receiving all incoming events */
+  eventStore?: Parameters<typeof mapEventsToStore>[0];
 }
 
-/** Collects the loader calls waiting on the current block of an operator */
-function createBlockCalls() {
-  let calls = new Set<TimelineCall>();
-
-  return {
-    join(window: TimelineWindow) {
-      const call = getTimelineCall(window);
-      if (!call || calls.has(call)) return;
-      calls.add(call);
-      call.join();
-    },
-    /** Releases the calls waiting on the current block */
-    release() {
-      const released = calls;
-      calls = new Set();
-      for (const call of released) call.leave();
-    },
-  };
-}
-
-/** Holds loader calls open until `ready$` emits, so calls made before the relays are known don't complete empty */
-function holdCallsUntilReady<T>(
-  source: Observable<TimelineWindow>,
-  ready$: Observable<T>,
-): [Observable<never>, Observable<T>] {
-  let ready = false;
-  const held = createBlockCalls();
-  const release$ = new Subject<void>();
-
-  // Stop watching windows once ready so the hold doesn't keep the operator from completing
-  const hold$ = defer(() => (ready ? EMPTY : source.pipe(takeUntil(release$), tap(held.join), ignoreElements())));
-  const released$ = ready$.pipe(
-    // Released calls settle on a microtask, after the new sources have subscribed and joined the replayed window
-    tap(() => {
-      if (ready) return;
-      ready = true;
-      release$.next();
-      held.release();
-    }),
-  );
-
-  return [hold$, released$];
-}
-
-/** The next inclusive `until` of a paged request and the ids already loaded at that second */
-type PageCursor = { until: number; boundary: Set<string> };
-
-/** Tracks the events of one page requested newest-first and picks the cursor for the next page */
-function createPage(since: number | undefined, until: number | undefined, boundary: Set<string>) {
-  let count = 0;
-  let fresh = 0;
-  let oldest: number | undefined;
-  let oldestIds = new Set<string>();
-
-  return {
-    get count() {
-      return count;
-    },
-    get fresh() {
-      return fresh;
-    },
-    add(event: NostrEvent) {
-      // Ignore events from relays that do not respect the bounds
-      if (until !== undefined && event.created_at > until) return;
-      if (since !== undefined && event.created_at < since) return;
-
-      count++;
-      if (!boundary.has(event.id)) fresh++;
-
-      if (oldest === undefined || event.created_at < oldest) {
-        oldest = event.created_at;
-        oldestIds = new Set([event.id]);
-      } else if (event.created_at === oldest) oldestIds.add(event.id);
-    },
-    /** Returns the cursor for the next page, or undefined when the range has nothing older */
-    next(): PageCursor | undefined {
-      // Only an empty page proves there is nothing older
-      if (count === 0 || oldest === undefined) return undefined;
-
-      let cursor: PageCursor;
-      if (fresh === 0 && until !== undefined) {
-        // Every event was already loaded, so more events share the cursor second than the relay returns
-        // in one page. They can't be paged by time, so step past the second
-        cursor = { until: until - 1, boundary: new Set() };
-      } else {
-        // NIP-01 defines `until` as inclusive. Request the oldest second again so events cut off at the
-        // end of this page are not skipped
-        if (oldest === until) for (const id of boundary) oldestIds.add(id);
-        cursor = { until: oldest, boundary: oldestIds };
-      }
-
-      return since !== undefined && cursor.until < since ? undefined : cursor;
-    },
-  };
-}
-
-/** A method that requests one block of events for a list of filters */
+type Range = TimelineWindow;
 type FiltersRequest = (filters: Filter[]) => Observable<NostrEvent>;
 
-/** Adds the bounds and limit of a block to a filter, keeping every other field */
-function withBounds(filter: Filter, since?: number, until?: number, limit?: number): Filter {
-  const result: Filter = { ...filter };
-  if (since !== undefined) result.since = since;
-  if (until !== undefined) result.until = until;
-  if (limit) result.limit = limit;
-  return result;
+type FilterState = {
+  filter: TimelessFilter;
+  // Sorted, non-overlapping intervals established by completed requests.
+  covered: Range[];
+  boundaries: Map<number, Set<string>>;
+  blocked: Set<number>;
+  failures: { range: Range; error: unknown }[];
+};
+
+type FilterChange = { relay: string; filters?: TimelessFilter | TimelessFilter[] };
+
+type ActiveRequest = { range: Range; prefetch: boolean; cancel$: ReplaySubject<void> };
+
+function overlaps(a: Range, b: Range) {
+  return a.since <= b.until && a.until >= b.since;
 }
 
-/** Adds an event to the page of every filter it matches. A lone filter takes every event the relay returns */
-function addToPages(event: NostrEvent, filters: Filter[], pages: ReturnType<typeof createPage>[]) {
-  if (filters.length === 1) return pages[0].add(event);
-  for (let i = 0; i < filters.length; i++) if (matchFilter(filters[i], event)) pages[i].add(event);
+function options(opts?: CommonTimelineLoaderOptions) {
+  const limit = opts?.limit ?? 100;
+  const prefetch = opts?.prefetch ?? 0.5;
+  const minPrefetch = opts?.minPrefetch ?? 60;
+  if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Timeline limit must be a positive integer");
+  if (!Number.isFinite(prefetch) || prefetch < 0 || !Number.isFinite(minPrefetch) || minPrefetch < 0)
+    throw new Error("Timeline prefetch options must be finite and non-negative");
+  return { limit, prefetch, minPrefetch };
 }
 
-/**
- * Loads blocks of events going backward with a separate cursor for each filter, since NIP-01 applies `limit` to
- * each filter and a sparse filter would otherwise move the cursor past a dense one
- */
-function loadBackwardFilterBlocks(
-  filters: Filter[],
+function normalize(window: TimelineWindow): Range {
+  if (
+    !window ||
+    !Number.isSafeInteger(window.since) ||
+    window.since < 0 ||
+    !Number.isSafeInteger(window.until) ||
+    window.since > window.until
+  )
+    throw new Error("Timeline windows require finite integer since <= until bounds");
+  return { since: window.since, until: Math.min(window.until, unixNow()) };
+}
+
+function missing(range: Range, covered: Range[]): Range[] {
+  let since = range.since;
+  const gaps: Range[] = [];
+  for (const part of covered) {
+    if (part.until < since) continue;
+    if (part.since > range.until) break;
+    if (part.since > since) gaps.push({ since, until: part.since - 1 });
+    since = Math.max(since, part.until + 1);
+  }
+  if (since <= range.until) gaps.push({ since, until: range.until });
+  return gaps;
+}
+
+function cover(ranges: Range[], range: Range) {
+  if (range.since > range.until) return;
+  ranges.push(range);
+  ranges.sort((a, b) => a.since - b.since);
+  for (let i = 1; i < ranges.length;) {
+    if (ranges[i].since <= ranges[i - 1].until + 1) {
+      ranges[i - 1].until = Math.max(ranges[i - 1].until, ranges[i].until);
+      ranges.splice(i, 1);
+    } else i++;
+  }
+}
+
+function loadWindows(
   request: FiltersRequest,
+  filters: TimelessFilter[],
+  sourceName: string,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) => {
-    const log = opts?.logger?.extend("backward").extend(nanoid(8));
+  const config = options(opts);
+  return (source) =>
+    defer(() => {
+      // Coverage belongs to this subscription, never to a detached loader or another consumer.
+      const states: FilterState[] = filters.map((filter) => ({
+        filter,
+        covered: [],
+        boundaries: new Map<number, Set<string>>(),
+        blocked: new Set<number>(),
+        failures: [],
+      }));
+      let visible: Range | undefined;
+      let target: Range | undefined;
+      let padding = 0;
+      let active: ActiveRequest | undefined;
 
-    // The next inclusive `until` for each filter, plus the ids already loaded at that second
-    const cursors = filters.map((filter) => ({
-      filter,
-      until: undefined as number | undefined,
-      boundary: new Set<string>(),
-      complete: false,
-    }));
-    let loading = false;
-    const calls = createBlockCalls();
+      const report = () => {
+        const window = visible;
+        if (!window) return;
 
-    // Filters that still have events to load above `since`. The cursor is the next inclusive `until`,
-    // so everything newer than the cursor has already been loaded
-    const pending = (since: number) =>
-      cursors.filter(
-        (cursor) =>
-          !cursor.complete && (cursor.until === undefined || !Number.isFinite(since) || since <= cursor.until),
-      );
+        for (const state of states) {
+          const blocked = [...state.blocked].some((t) => t >= window.since && t <= window.until);
+          const failure = state.failures.find(({ range }) => overlaps(range, window));
+          const gaps = missing(window, state.covered);
+          const status: TimelineStatus = {
+            source: sourceName,
+            filter: state.filter,
+            window: { ...window },
+            state: "covered",
+          };
 
-    return source.pipe(
-      filter((window) => {
-        const { since, until } = window;
+          if (failure) {
+            status.state = "incomplete";
+            status.reason = "request";
+            status.error = failure.error;
+          } else if (gaps.length > 0) {
+            status.state = "loading";
+          } else if (blocked) {
+            status.state = "incomplete";
+            status.reason = "boundary";
+            status.error = new Error("Events at a boundary second cannot be fully paged");
+          } else if (active?.prefetch) {
+            status.state = "prefetching";
+          }
 
-        // Ignore windows replayed from calls that already finished
-        if (getTimelineCall(window)?.settled) return false;
-
-        // If the cursor is unset, initialize to until
-        if (until !== undefined && Number.isFinite(until))
-          for (const cursor of cursors) if (cursor.until === undefined) cursor.until = until;
-
-        // Skip loads if since is unset or still in range
-        if (since === undefined || pending(since).length === 0) return false;
-
-        // Don't load blocks in parallel, wait for the current block instead
-        calls.join(window);
-        if (loading) return false;
-
-        return true;
-      }),
-      // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(({ since }) => {
-        // Set loading lock
-        loading = true;
-
-        const active = pending(since!);
-        const pages = active.map((cursor) => createPage(undefined, cursor.until, cursor.boundary));
-
-        log?.(`Loading block until:${active.map((cursor) => cursor.until).join(",")}`);
-
-        // Request the next block of events
-        return request(active.map((cursor) => withBounds(cursor.filter, undefined, cursor.until, opts?.limit))).pipe(
-          tap((event) =>
-            addToPages(
-              event,
-              active.map((cursor) => cursor.filter),
-              pages,
-            ),
-          ),
-          // Only commit the cursors when the block finishes, a cancelled block proves nothing about the source
-          tap({
-            complete: () => {
-              active.forEach((cursor, i) => {
-                const page = pages[i];
-                log?.(`Found ${page.count} events (${page.fresh} new)`);
-
-                const next = page.next();
-                if (!next) cursor.complete = true;
-                else {
-                  if (page.fresh === 0) log?.(`Skipping saturated second ${cursor.until}`);
-                  cursor.until = next.until;
-                  cursor.boundary = next.boundary;
-                }
-              });
-
-              if (cursors.every((cursor) => cursor.complete)) log?.("Complete");
-            },
-          }),
-          // A failed block leaves the cursors where they were so the next window retries it
-          catchError((error) => {
-            log?.("Failed to load block", error);
-            return EMPTY;
-          }),
-          finalize(() => {
-            loading = false;
-            calls.release();
-          }),
-        );
-      }),
-    );
-  };
-}
-
-/** Loads the events between the newest loaded time and the window `until`, paging each filter separately */
-function loadForwardFilterBlocks(
-  filters: Filter[],
-  request: FiltersRequest,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) => {
-    const log = opts?.logger?.extend("forward").extend(nanoid(8));
-
-    // Everything up to the edge has been loaded, it starts where the backward loading starts
-    let edge: number | undefined = undefined;
-    let loading = false;
-    const calls = createBlockCalls();
-
-    return source.pipe(
-      filter((window) => {
-        const { until } = window;
-
-        // Ignore windows replayed from calls that already finished
-        if (getTimelineCall(window)?.settled) return false;
-
-        if (edge === undefined) {
-          // Wait for a real window, the empty window seeded by the loaders would start the timeline at now
-          if (window.since === undefined && until === undefined) return false;
-          edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
+          opts?.onStatus?.(status);
         }
+      };
 
-        // Skip until the window extends past the edge, capped at now so repeated "newer" calls in the same second are free
-        if (until === undefined || Math.min(until, unixNow()) <= edge) return false;
+      const pending = (range: Range) =>
+        states.flatMap((state) => {
+          let gaps = missing(range, state.covered);
 
-        // Don't load blocks in parallel, wait for the current block instead
-        calls.join(window);
-        if (loading) return false;
+          // Leave failed ranges for the next window emission, but keep loading unrelated gaps.
+          for (const failure of state.failures) {
+            gaps = gaps.flatMap((gap) => missing(gap, [failure.range]));
+          }
 
-        return true;
-      }),
-      // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(({ until }) => {
-        // Set loading lock
-        loading = true;
+          return gaps.map((range) => ({ state, range }));
+        });
 
-        const since = edge!;
-        const target = Math.min(until!, unixNow());
+      const loadNext = () =>
+        defer(() => {
+          if (active || !visible || !target) return of(null);
+          const window = visible;
 
-        // Relays return the newest events first, so page backward through the gap until every filter has drained it
-        const loadPage = (active: { filter: Filter; cursor: PageCursor }[]): Observable<NostrEvent> => {
-          const pages = active.map(({ cursor }) => createPage(since, cursor.until, cursor.boundary));
+          // Keep adjoining buffer and visible gaps together, prioritizing gaps that intersect the viewport.
+          const gaps = pending(target);
+          const visibleGaps = gaps.filter(({ range }) => overlaps(range, window));
+          const speculative = visibleGaps.length === 0;
+          const work = speculative
+            ? gaps.filter(({ state }) => missing(window, state.covered).length === 0)
+            : visibleGaps;
 
-          log?.(`Loading block since:${since} until:${active.map(({ cursor }) => cursor.until).join(",")}`);
+          const next = work[work.length - 1];
+          if (!next) {
+            report();
+            return of(null);
+          }
 
-          return concat(
-            request(active.map(({ filter, cursor }) => withBounds(filter, since, cursor.until, opts?.limit))).pipe(
-              tap((event) =>
-                addToPages(
-                  event,
-                  active.map(({ filter }) => filter),
-                  pages,
-                ),
-              ),
+          const { range } = next;
+          const pages = work
+            .filter((item) => item.range.since === range.since && item.range.until === range.until)
+            .map(({ state }) => {
+              // NIP-01 returns newest-first. Let older loads fill a whole batch, stopping at known coverage.
+              const previous = [...state.covered].reverse().find((part) => part.until < range.since);
+              const query = { since: previous ? previous.until + 1 : 0, until: range.until };
+              return {
+                state,
+                query,
+                boundary: state.boundaries.get(range.until) ?? new Set<string>(),
+                oldest: undefined as number | undefined,
+                ids: new Set<string>(),
+                fresh: false,
+              };
+            });
+
+          // A replayed cancellation also covers reentrant window changes from onStatus callbacks.
+          const job: ActiveRequest = { range, prefetch: speculative, cancel$: new ReplaySubject<void>(1) };
+          active = job;
+          report();
+
+          return defer(() =>
+            request(
+              pages.map(({ state, query }) => ({
+                ...state.filter,
+                ...(query.since === 0 ? { until: query.until } : query),
+                limit: config.limit,
+              })),
             ),
-            defer(() => {
-              const next = active.flatMap(({ filter }, i) => {
-                const cursor = pages[i].next();
-                return cursor ? [{ filter, cursor }] : [];
-              });
-
-              return next.length > 0 ? loadPage(next) : EMPTY;
+          ).pipe(
+            filter((event) => {
+              let matches = false;
+              for (const page of pages) {
+                if (!matchFilter({ ...page.state.filter, ...page.query }, event)) continue;
+                matches = true;
+                if (!page.boundary.has(event.id)) page.fresh = true;
+                if (page.oldest === undefined || event.created_at < page.oldest) {
+                  page.oldest = event.created_at;
+                  page.ids.clear();
+                }
+                if (event.created_at === page.oldest) page.ids.add(event.id);
+              }
+              return matches;
+            }),
+            tap({
+              complete: () => {
+                if (active !== job) return;
+                // Commit only completed pages. Keep the inclusive oldest second for the next request.
+                for (const { state, query, oldest, fresh, ids, boundary } of pages) {
+                  state.boundaries.delete(range.until);
+                  if (oldest === undefined) cover(state.covered, query);
+                  else if (!fresh) {
+                    // A relay can cap below our limit; repeated boundary-only pages cannot prove that second complete.
+                    state.blocked.add(range.until);
+                    cover(state.covered, { since: range.until, until: range.until });
+                  } else {
+                    cover(state.covered, { since: oldest + 1, until: range.until });
+                    if (oldest === range.until) for (const id of boundary) ids.add(id);
+                    state.boundaries.set(oldest, ids);
+                  }
+                }
+              },
+            }),
+            catchError((error) => {
+              for (const { state } of pages) state.failures.push({ range: { ...range }, error });
+              opts?.logger?.("Timeline request failed", error);
+              return EMPTY;
+            }),
+            // Keep this after the completion tap: cancellation must not commit coverage.
+            takeUntil(job.cancel$),
+            finalize(() => {
+              if (active === job) active = undefined;
+              job.cancel$.complete();
+              report();
             }),
           );
-        };
+        });
 
-        return loadPage(
-          filters.map((filter) => ({ filter, cursor: { until: target, boundary: new Set<string>() } })),
-        ).pipe(
-          // Only move the edge once the whole gap has loaded, a cancelled block proves nothing about the source
-          tap({
-            complete: () => {
-              edge = target;
-              log?.(`Loaded up to ${target}`);
-            },
-          }),
-          // A failed gap leaves the edge where it was so the next window retries it
-          catchError((error) => {
-            log?.("Failed to load block", error);
-            return EMPTY;
-          }),
-          finalize(() => {
-            loading = false;
-            calls.release();
-          }),
-        );
-      }),
-    );
-  };
-}
+      return source.pipe(
+        map(normalize),
+        tap({
+          next: (window) => {
+            visible = window;
 
-/** Loads blocks of events going backward and forward with a separate cursor for each filter */
-function loadBlocksForFilters(
-  filters: Filter[],
-  request: FiltersRequest,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) =>
-    merge(
-      source.pipe(loadBackwardFilterBlocks(filters, request, opts)),
-      source.pipe(loadForwardFilterBlocks(filters, request, opts)),
-    );
+            for (const state of states) state.failures = [];
+            if (visible.since > visible.until) {
+              target = { ...visible };
+              active?.cancel$.next();
+              report();
+              return;
+            }
+            const nextPadding =
+              config.prefetch === 0
+                ? 0
+                : Math.min(
+                    Number.MAX_SAFE_INTEGER,
+                    Math.ceil(Math.max(config.minPrefetch, (visible.until - visible.since) * config.prefetch)),
+                  );
+            // Anchor the buffer until half of it is consumed; its edge must not follow every pixel of scrolling.
+            if (
+              !target ||
+              (target.since > 0 && visible.since < target.since + padding / 2) ||
+              (target.until < unixNow() && visible.until > target.until - padding / 2) ||
+              (nextPadding !== padding && (nextPadding >= padding * 2 || nextPadding <= padding / 2))
+            ) {
+              padding = nextPadding;
+              target = {
+                since: Math.max(0, visible.since - padding),
+                until: Math.min(unixNow(), visible.until + padding),
+              };
+            }
+            const current = active;
+            if (current) {
+              const outsideTarget = !overlaps(current.range, target);
+              const visibleWorkElsewhere =
+                current.prefetch &&
+                states.some((state) => missing(window, state.covered).some((gap) => !overlaps(gap, current.range)));
+
+              if (outsideTarget || visibleWorkElsewhere) {
+                current.cancel$.next();
+              }
+            }
+            report();
+          },
+        }),
+        // Coalesce viewport updates, retaining the latest target while a batch is loading.
+        auditTime(0, asapScheduler),
+        exhaustMap(() =>
+          loadNext().pipe(
+            // Yield between batches, including synchronous cache responses, and recheck the latest target.
+            repeat({ delay: () => timer(0, asapScheduler) }),
+            // No pending range ends this drain; exhaustMap then waits for another viewport update.
+            takeWhile((event): event is NostrEvent => event !== null),
+          ),
+        ),
+      );
+    });
 }
 
 /**
- * Watches for changes in the window and loads blocks of events going backward
- * NOTE: this operator is stateful
+ * Loads finite timeline windows from a cache
+ * @throws if batch or prefetch options are invalid
  */
-export function loadBackwardBlocks(
-  request: (until?: number) => Observable<NostrEvent>,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return loadBackwardFilterBlocks([{}], (filters) => request(filters[0].until), { logger: opts?.logger });
-}
-
-/**
- * Watches for changes in the window and loads the events between the newest loaded time and the window `until`
- * NOTE: this operator is stateful
- */
-export function loadForwardBlocks(
-  request: (since?: number, until?: number) => Observable<NostrEvent>,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return loadForwardFilterBlocks([{}], (filters) => request(filters[0].since, filters[0].until), {
-    logger: opts?.logger,
-  });
-}
-
-/** A loader that loads blocks of events until none are returned or the since timestamp is reached */
-export function loadBlocksForTimelineWindow(
-  request: (base: Filter) => Observable<NostrEvent>,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) =>
-    merge(
-      source.pipe(loadBackwardBlocks((until) => request({ until }), opts)),
-      source.pipe(loadForwardBlocks((since, until) => request({ since, until }), opts)),
-    );
-}
-
-/** Loads timeline blocs from cache using a cache request */
 export function loadBlocksFromCache(
   request: CacheRequest,
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  if (!Array.isArray(filters)) filters = [filters];
-
-  const logger = opts?.logger?.extend("cache");
-  return loadBlocksForFilters(filters, (filters) => makeCacheRequest(request, filters), { ...opts, logger });
+  return loadWindows(
+    (filters) => makeCacheRequest(request, filters),
+    Array.isArray(filters) ? filters : [filters],
+    "cache",
+    opts,
+  );
 }
 
-/** Loads timeline blocs from relays using a pool or request method */
-export function loadBlocksFromRelays(
-  pool: UpstreamPool,
-  relays: string[],
-  filters: TimelessFilter[] | TimelessFilter,
-  opts?: CommonTimelineLoaderOptions,
-): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) => {
-    // Create the relay loaders once so their cursors survive resubscribing, reading windows from the current connection
-    let windows$: Observable<TimelineWindow> = EMPTY;
-    const proxy$ = defer(() => windows$);
-    const loaders = relays.map((relay) => proxy$.pipe(loadBlocksFromRelay(pool, relay, filters, opts)));
-
-    return source.pipe(
-      // Connect after every relay is listening so cold sources deliver each window to all relays.
-      connect((windows) => {
-        windows$ = windows;
-        return merge(...loaders);
-      }),
-    );
-  };
-}
-
-/** Loads timeline blocs from relay set using a pool or request method */
+/**
+ * Loads finite timeline windows from one relay
+ * @throws if batch or prefetch options are invalid
+ */
 export function loadBlocksFromRelay(
   pool: UpstreamPool,
   relay: string,
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  if (!Array.isArray(filters)) filters = [filters];
-
-  const logger = opts?.logger?.extend(relay);
   const request = wrapUpstreamPool(pool);
-  return loadBlocksForFilters(filters, (filters) => request([relay], filters), { ...opts, logger });
+  return loadWindows((filters) => request([relay], filters), Array.isArray(filters) ? filters : [filters], relay, opts);
 }
 
-/** Loads timeline blocks from a map of relays and filters */
+/** Loads finite timeline windows independently from multiple relays */
+export function loadBlocksFromRelays(
+  pool: UpstreamPool,
+  relays: string[],
+  filters: TimelessFilter[] | TimelessFilter,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return (source) =>
+    source.pipe(
+      connect((windows) =>
+        merge(...relays.map((relay) => windows.pipe(loadBlocksFromRelay(pool, relay, filters, opts)))),
+      ),
+    );
+}
+
+/** Loads finite timeline windows while reconciling changing relay filters */
 export function loadBlocksFromFilterMap(
   pool: UpstreamPool,
   relayMap: FilterMap | Observable<FilterMap>,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) => {
-    const map$ = isObservable(relayMap) ? relayMap : of(relayMap);
-    const cache = new Map<string, { filters: TimelessFilter[] | TimelessFilter; loader: Observable<NostrEvent> }>();
-
-    const [hold$, ready$] = holdCallsUntilReady(source, map$);
-
-    // Gets the cached loader for a relay, or creates one when the relay is new or its filters changed
-    const getLoader = (relay: string, filters: TimelessFilter[] | TimelessFilter) => {
-      const existing = cache.get(relay);
-      if (existing && isFilterEqual(existing.filters, filters)) return existing.loader;
-
-      const loader = source.pipe(
-        loadBlocksFromRelay(pool, relay, filters, opts),
-        // Drop a failed relay so it does not terminate the loaders for the other relays
-        catchError((error) => {
-          opts?.logger?.(`Failed to load blocks from ${relay}`, error);
-          return EMPTY;
-        }),
-      );
-      cache.set(relay, { filters, loader });
-      return loader;
-    };
-
-    // Reconcile relays on each map so unchanged relays keep their in-flight requests
-    const relays$ = new Observable<NostrEvent>((observer) => {
-      const active = new Map<string, { loader: Observable<NostrEvent>; sub: Subscription }>();
-      let mapComplete = false;
-      const checkComplete = () => {
-        if (mapComplete && active.size === 0) observer.complete();
-      };
-
-      const mapSub = ready$.subscribe({
-        next: (relayMap) => {
-          const loaders = new Map(
-            Object.entries(relayMap).map(([relay, filters]) => [relay, getLoader(relay, filters)]),
-          );
-
-          // Stop relays that were removed or whose filters changed
-          for (const [relay, entry] of active) {
-            if (loaders.get(relay) === entry.loader) continue;
-            active.delete(relay);
-            entry.sub.unsubscribe();
-          }
-
-          // Start relays that are new or changed. Subscribe synchronously so they join the replayed window
-          for (const [relay, loader] of loaders) {
-            if (active.has(relay)) continue;
-
-            const entry = { loader, sub: new Subscription() };
-            active.set(relay, entry);
-            entry.sub.add(
-              loader.subscribe({
-                next: (event) => observer.next(event),
-                error: (error) => observer.error(error),
-                complete: () => {
-                  if (active.get(relay) === entry) active.delete(relay);
-                  checkComplete();
-                },
-              }),
-            );
-          }
-        },
-        error: (error) => observer.error(error),
-        complete: () => {
-          mapComplete = true;
-          checkComplete();
-        },
-      });
-
-      return () => {
-        mapSub.unsubscribe();
-        for (const entry of active.values()) entry.sub.unsubscribe();
-        active.clear();
-      };
-    });
-
-    return merge(hold$, relays$);
-  };
+  return reconcileFilterMap(
+    relayMap,
+    (relay, filters, settings) => loadBlocksFromRelay(pool, relay, filters, settings),
+    opts,
+  );
 }
 
-/** Loads timeline blocks from an {@link OutboxMap} and {@link Filter} or a function that projects users to a filter */
+function reconcileFilterMap(
+  relayMap: FilterMap | Observable<FilterMap>,
+  makeLoader: (
+    source: string,
+    filters: TimelessFilter[] | TimelessFilter,
+    opts?: CommonTimelineLoaderOptions,
+  ) => OperatorFunction<TimelineWindow, NostrEvent>,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return (source) =>
+    source.pipe(
+      connect(
+        (windows) => {
+          const maps$ = isObservable(relayMap) ? relayMap : of(relayMap);
+          const ended$ = windows.pipe(ignoreElements(), endWith(true), startWith(false));
+
+          // Freeze the map when windows end, waiting for the first map if it arrives late.
+          return combineLatest([maps$, ended$]).pipe(
+            takeWhile(([, ended]) => !ended, true),
+            map(([filters]) => filters),
+            scan(
+              (previous, current) => {
+                const changes: FilterChange[] = [];
+                for (const relay of new Set([...Object.keys(previous.filters), ...Object.keys(current)])) {
+                  if (
+                    previous.filters[relay] &&
+                    current[relay] &&
+                    isFilterEqual(previous.filters[relay], current[relay])
+                  )
+                    continue;
+                  changes.push({ relay, filters: current[relay] });
+                }
+                return { filters: current, changes };
+              },
+              {
+                filters: {} as FilterMap,
+                changes: [] as FilterChange[],
+              },
+            ),
+            mergeMap(({ changes }) => from(changes)),
+            groupBy(({ relay }) => relay),
+            mergeMap((relay$) =>
+              defer(() => {
+                let statuses: TimelineStatus[] = [];
+                // Switch only the changed relay; unchanged keys retain their request and coverage.
+                return relay$.pipe(
+                  switchMap(({ relay, filters }) => {
+                    for (const status of statuses) opts?.onStatus?.({ ...status, state: "removed" });
+                    statuses = [];
+                    if (!filters) return EMPTY;
+
+                    return windows.pipe(
+                      makeLoader(relay, filters, {
+                        ...opts,
+                        onStatus: (status) => {
+                          const index = statuses.findIndex((old) => isFilterEqual(old.filter, status.filter));
+                          if (index < 0) statuses.push(status);
+                          else statuses[index] = status;
+                          opts?.onStatus?.(status);
+                        },
+                      }),
+                    );
+                  }),
+                );
+              }),
+            ),
+          );
+        },
+        { connector: () => new ReplaySubject<TimelineWindow>(1) },
+      ),
+    );
+}
+
+/** Loads finite timeline windows from each user's outbox relays */
 export function loadBlocksFromOutboxMap(
   pool: UpstreamPool,
   outboxes: OutboxMap | Observable<OutboxMap>,
   filter: TimelessFilter | ((users: ProfilePointer[]) => TimelessFilter | TimelessFilter[]),
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  const outboxes$ = isObservable(outboxes) ? outboxes : of(outboxes);
-
-  // Project outbox map to filter map
-  const filterMap$ = outboxes$.pipe(
-    map<OutboxMap, FilterMap>((outboxes) => {
-      // Filter is a dynamic method that returns a filter
-      if (typeof filter === "function")
-        return Object.fromEntries(Object.entries(outboxes).map(([relay, users]) => [relay, filter(users)]));
-
-      // Filter is just a filter
-      return createFilterMap(outboxes, filter);
-    }),
+  const maps = (isObservable(outboxes) ? outboxes : of(outboxes)).pipe(
+    map((outboxes) =>
+      typeof filter === "function"
+        ? Object.fromEntries(Object.entries(outboxes).map(([relay, users]) => [relay, filter(users)]))
+        : createFilterMap(outboxes, filter),
+    ),
   );
-
-  // Load blocks from the filter map
-  return loadBlocksFromFilterMap(pool, filterMap$, opts);
+  return loadBlocksFromFilterMap(pool, maps, opts);
 }
 
-/** Loads timeline blocks from a {@link CacheRequest} using a {@link OutboxMap} and filters */
+/** Loads finite timeline windows for outbox users from a cache */
 export function loadBlocksFromOutboxMapCache(
   cache: CacheRequest,
   outboxes: OutboxMap | Observable<OutboxMap>,
   filter: TimelessFilter | ((users: ProfilePointer[]) => TimelessFilter | TimelessFilter[]),
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  const outboxes$ = isObservable(outboxes) ? outboxes : of(outboxes);
-
-  // Project outboxes to filters
-  const filters$ = outboxes$.pipe(
-    map((outboxes) => {
-      // Get all pubkeys from all relays
-      const pubkeys = new Set<string>();
-      for (const users of Object.values(outboxes)) {
-        for (const user of users) {
-          pubkeys.add(user.pubkey);
-        }
-      }
-
-      // Create filters for all the pubkeys
-      if (typeof filter === "function") {
-        const users = Array.from(pubkeys).map((pubkey) => ({ pubkey }));
-        return filter(users);
-      } else {
-        return mergeFilters(filter, { authors: Array.from(pubkeys) });
-      }
+  const maps = (isObservable(outboxes) ? outboxes : of(outboxes)).pipe(
+    map((outboxes): FilterMap => {
+      const users = [
+        ...new Map(
+          Object.values(outboxes)
+            .flat()
+            .map((user) => [user.pubkey, user]),
+        ).values(),
+      ];
+      if (!users.length) return {};
+      return {
+        cache:
+          typeof filter === "function"
+            ? filter(users)
+            : mergeFilters(filter, { authors: users.map((user) => user.pubkey) }),
+      };
     }),
-    // Only create a new loader if the filters change
-    distinctUntilChanged((a, b) => isFilterEqual(a, b)),
   );
-
-  // Load blocks from the filter map
-  return (source) => {
-    const [hold$, ready$] = holdCallsUntilReady(source, filters$);
-
-    return merge(
-      hold$,
-      ready$.pipe(
-        // Every time the filters change, create a new cache loader instance
-        switchMap((filters) => source.pipe(loadBlocksFromCache(cache, filters, opts))),
-      ),
-    );
-  };
+  return reconcileFilterMap(maps, (_source, filters, settings) => loadBlocksFromCache(cache, filters, settings), opts);
 }
 
-/** Internal logic for function based timeline loaders */
-function wrapTimelineLoader(
-  window$: BehaviorSubject<TimelineWindow>,
-  loader$: Observable<NostrEvent>,
-  eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null,
+function createLoader(
+  build: (windows: Observable<TimelineWindow>, opts: TimelineLoaderOptions) => Observable<NostrEvent>,
+  opts?: TimelineLoaderOptions,
 ): TimelineLoader {
-  // Remember emitted ids across calls, since each call resubscribes and blocks overlap at the boundary second
-  const seen = new Set<string>();
+  options(opts);
+  const status = new BehaviorSubject<TimelineStatus[]>([]);
+  const loader = (input: TimelineWindow | Observable<TimelineWindow>) =>
+    defer(() => {
+      status.next([]);
+      const statuses: TimelineStatus[] = [];
+      const settings = {
+        ...opts,
+        onStatus: (next: TimelineStatus) => {
+          const index = statuses.findIndex(
+            (entry) => entry.source === next.source && isFilterEqual(entry.filter, next.filter),
+          );
+          if (next.state === "removed") {
+            if (index >= 0) statuses.splice(index, 1);
+          } else if (index < 0) statuses.push(next);
+          else statuses[index] = next;
+          status.next([...statuses]);
+          opts?.onStatus?.(next);
+        },
+      };
+      if (!isObservable(input)) normalize(input);
+      return build(isObservable(input) ? input : of(input), settings).pipe(
+        mapEventsToStore(opts?.eventStore ?? new EventMemory<NostrEvent>(), false),
+        // Store every arrival before deduplicating output, preserving relay metadata.
+        distinct((event) => event.id),
+      );
+    }).pipe(share());
 
-  const singleton$ = loader$.pipe(
-    // Pass all events through the store if provided
-    eventStore === null
-      ? identity
-      : (source: Observable<NostrEvent>) =>
-          source.pipe(
-            mapEventsToStore(eventStore || new EventMemory<NostrEvent>(), false),
-            filter((event) => !seen.has(event.id) && !!seen.add(event.id)),
-          ),
-    // Ensure a single subscription to the requests
-    share(),
-  );
-
-  return (since?: number | TimelineWindow) => {
-    // Return the loader so it can be subscribed to
-    return new Observable<NostrEvent>((observer) => {
-      const call = new TimelineCall();
-
-      // Complete once every block this call started or joined has settled
-      const sub = singleton$.pipe(takeUntil(call.done$)).subscribe(observer);
-
-      // Only update window when this request is subscribed to (prevents window getting lost before subscription)
-      const window: TimelineWindow =
-        typeof since === "object" && since !== undefined
-          ? { ...since }
-          : // Default to -Infinity to force loading the next block of events (legacy behavior)
-            { since: since ?? -Infinity };
-      Object.defineProperty(window, TIMELINE_CALL, { value: call });
-      window$.next(window);
-
-      // Complete right away if no source started or joined a block
-      call.check();
-
-      return () => sub.unsubscribe();
-    });
-  };
-}
-
-/** Options for the create timeline loader methods */
-export type TimelineLoaderOptions = Partial<{
-  /** A method used to load the timeline from the cache */
-  cache: CacheRequest;
-  /** An event store to pass all the events to */
-  eventStore?: Parameters<typeof mapEventsToStore>[0];
-}> &
-  CommonTimelineLoaderOptions;
-
-/** @deprecated Use the {@link loadBlocksFromCache} operator instead */
-export function cacheTimelineLoader(
-  request: CacheRequest,
-  filters: TimelessFilter[] | TimelessFilter,
-  opts?: CommonTimelineLoaderOptions,
-): TimelineLoader {
-  const window$ = new BehaviorSubject<TimelineWindow>({});
-  return wrapTimelineLoader(window$, window$.pipe(loadBlocksFromCache(request, filters, opts)));
-}
-
-/** @deprecated Use the {@link createTimelineLoader} operator instead */
-export function relaysTimelineLoader(
-  pool: UpstreamPool,
-  relays: string[],
-  filters: TimelessFilter[] | TimelessFilter,
-  opts?: CommonTimelineLoaderOptions,
-): TimelineLoader {
-  const window$ = new BehaviorSubject<TimelineWindow>({});
-  return wrapTimelineLoader(window$, window$.pipe(loadBlocksFromRelays(pool, relays, filters, opts)));
+  return Object.assign(loader, { status$: status.asObservable() });
 }
 
 /**
- * Creates a {@link TimelineLoader} that loads events from multiple relays and a cache
- * @param pool - The upstream pool to use
- * @param relays - The relays to load from
- * @param filters - The filters to use
- * @param opts - The options for the timeline loader
+ * Creates a reactive window loader for multiple relays and an optional cache
+ * @throws if batch or prefetch options are invalid
  */
 export function createTimelineLoader(
   pool: UpstreamPool,
@@ -746,27 +614,23 @@ export function createTimelineLoader(
   filters: TimelessFilter[] | TimelessFilter,
   opts?: TimelineLoaderOptions,
 ): TimelineLoader {
-  const logger = (opts?.logger ?? baseLogger).extend("timeline").extend(nanoid(4));
-  const window$ = new BehaviorSubject<TimelineWindow>({});
-
-  // Create cache and relays loaders
-  const cache$ = opts?.cache ? window$.pipe(loadBlocksFromCache(opts.cache, filters, { ...opts, logger })) : EMPTY;
-
-  // Load blocks from relays
-  const relays$ = window$.pipe(loadBlocksFromRelays(pool, relays, filters, { ...opts, logger }));
-
-  // Merge the cache and relays loaders
-  const loader$ = merge(cache$, relays$);
-
-  return wrapTimelineLoader(window$, loader$, opts?.eventStore);
+  return createLoader(
+    (windows, settings) =>
+      windows.pipe(
+        connect((source) =>
+          merge(
+            source.pipe(loadBlocksFromRelays(pool, relays, filters, settings)),
+            settings.cache ? source.pipe(loadBlocksFromCache(settings.cache, filters, settings)) : EMPTY,
+          ),
+        ),
+      ),
+    { logger: baseLogger.extend("timeline"), ...opts },
+  );
 }
 
 /**
- * Creates a {@link TimelineLoader} that loads events for a {@link OutboxMap} or an observable of {@link OutboxMap}
- * @param pool - The upstream pool to use
- * @param outboxMap - An {@link OutboxMap} or an observable of {@link OutboxMap}
- * @param filter - A function to create filters for a set of users
- * @param opts - The options for the timeline loader
+ * Creates a reactive window loader for changing outbox maps and an optional cache
+ * @throws if batch or prefetch options are invalid
  */
 export function createOutboxTimelineLoader(
   pool: UpstreamPool,
@@ -774,20 +638,18 @@ export function createOutboxTimelineLoader(
   filter: TimelessFilter | ((users: ProfilePointer[]) => TimelessFilter | TimelessFilter[]),
   opts?: TimelineLoaderOptions,
 ): TimelineLoader {
-  const logger = (opts?.logger ?? baseLogger).extend("outbox-timeline").extend(nanoid(4));
-  const window$ = new BehaviorSubject<TimelineWindow>({});
-
-  // An observable of a cache loader instance for all users
-  const cache$ = opts?.cache
-    ? window$.pipe(loadBlocksFromOutboxMapCache(opts?.cache, outboxes, filter, { ...opts, logger }))
-    : EMPTY;
-
-  // Load blocks from relays using outboxes
-  const relays$ = window$.pipe(loadBlocksFromOutboxMap(pool, outboxes, filter, { ...opts, logger }));
-
-  // Merge the cache and relays loaders
-  const loader$ = merge(cache$, relays$);
-
-  // Wrap the loader in a timeline loader function
-  return wrapTimelineLoader(window$, loader$, opts?.eventStore);
+  return createLoader(
+    (windows, settings) =>
+      windows.pipe(
+        connect((source) =>
+          merge(
+            source.pipe(loadBlocksFromOutboxMap(pool, outboxes, filter, settings)),
+            settings.cache
+              ? source.pipe(loadBlocksFromOutboxMapCache(settings.cache, outboxes, filter, settings))
+              : EMPTY,
+          ),
+        ),
+      ),
+    { logger: baseLogger.extend("outbox-timeline"), ...opts },
+  );
 }

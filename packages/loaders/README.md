@@ -141,37 +141,29 @@ The unified loader accepts all options from both `EventPointerLoaderOptions` and
 
 ## Timeline Loader
 
-The Timeline Loader is designed for infinite scrolling timelines. Each call loads the next page of older events from every relay and completes once the page has loaded, and the loader keeps a separate cursor for each relay and filter so no events are skipped.
+The Timeline Loader follows finite time windows, fills missing ranges independently across relays, and prefetches surrounding events for scrolling. A network batch is not an application page.
 
 ```ts
+import { BehaviorSubject } from "rxjs";
 import { createTimelineLoader } from "applesauce-loaders/loaders";
 
-// Create a timeline loader
-const timelineLoader = createTimelineLoader(
-  pool,
-  ["wss://relay.example.com"],
-  { kinds: [1] }, // Load text notes
-  { eventStore },
-);
+const until = Math.floor(Date.now() / 1000);
+const windows$ = new BehaviorSubject({ since: until - 3600, until });
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
+const sub = loader(windows$).subscribe();
 
-// Initial load - gets the most recent events
-timelineLoader().subscribe((event) => {
-  console.log("Loaded event:", event);
-});
-
-// Later, load older events by calling the loader again
-// Each call continues from where the previous one left off
-timelineLoader().subscribe((event) => {
-  console.log("Loaded older event:", event);
-});
-
-// Load the next page only if the timeline hasn't reached a week ago yet
-const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-timelineLoader(oneWeekAgo).subscribe();
-
-// Load every event published since the last load
-timelineLoader({ until: Infinity }).subscribe();
+windows$.next({ since: until - 7200, until: until - 3600 });
+loader.status$.subscribe((statuses) => console.log(statuses));
+sub.unsubscribe();
 ```
+
+Defaults are `limit: 100`, `prefetch: 0.5` window durations per side, and `minPrefetch: 60` seconds. Set `prefetch: 0` to disable buffering. Visible gaps and adjoining buffer ranges share requests. Older loads omit `since` when no older coverage provides a stopping point, so a full capped batch can also supply events beyond the buffer. Forward loads remain bounded, and jumps stop once their new target is covered.
+
+Keep the window stream subscribed to reuse coverage. A single finite `{ since, until }` is also accepted and completes when visible and buffer requests settle. Inspect `status$` to distinguish coverage from request failures or unpageable boundary seconds; completion alone does not guarantee coverage.
+
+`createOutboxTimelineLoader` follows the same contract for changing outbox maps. Cache and relay coverage stay independent. Events are stored before output deduplication, preserving relay metadata.
+
+Numeric arguments, omitted windows, infinite bounds, directional block operators, and deprecated timeline wrappers are no longer supported. See the [timeline documentation](https://applesauce.build/loading/loaders/timeline-loader) for status details, operators, and migration guidance.
 
 ## Loading from cache
 

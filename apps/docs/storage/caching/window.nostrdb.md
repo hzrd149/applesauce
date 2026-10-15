@@ -248,7 +248,7 @@ const loader = createTimelineLoader(
   { cache: cacheRequest, eventStore, limit: 50 },
 );
 
-loader().subscribe();
+loader({ since: yesterday, until: now }).subscribe();
 ```
 
 ## Direct API Usage

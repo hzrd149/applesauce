@@ -22,7 +22,9 @@ import {
   interval,
   map,
   merge,
-  mergeMap,
+  switchMap,
+  filter,
+  take,
   of,
   scan,
   startWith,
@@ -105,11 +107,33 @@ function scrub(pubkey: string, limit: number, throttle: number) {
 
     const loader = createOutboxTimelineLoader(request, outboxes$, { kinds: [1] }, { limit, eventStore });
 
-    return window$.pipe(
+    const windows = window$.pipe(
       throttle ? throttleTime(throttle, undefined, { leading: true, trailing: true }) : identity,
-      // Keep overlapping calls alive so each one has to complete on its own
-      mergeMap((window) => monitor.trackCall(window, loader(window))),
-      // Events are rendered from the store
+    );
+    return merge(
+      loader(windows),
+      windows.pipe(
+        switchMap((window) =>
+          monitor.trackCall(
+            window,
+            loader.status$.pipe(
+              filter(
+                (statuses) =>
+                  statuses.length > 0 &&
+                  statuses.every(
+                    (status) =>
+                      status.window.since === window.since &&
+                      status.window.until === Math.min(window.until, unixNow()) &&
+                      status.state !== "loading",
+                  ),
+              ),
+              take(1),
+              ignoreElements(),
+            ),
+          ),
+        ),
+      ),
+    ).pipe(
       ignoreElements(),
       catchError((error: Error) => of(error)),
     );

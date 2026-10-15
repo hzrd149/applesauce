@@ -3,20 +3,23 @@
  * @tags nip-57, zap, timeline, loading, loader
  * @related feed/loading-reactions, zap/timeline, zap/zap-modal
  */
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { loadHistory } from "../../extra/history-window";
+
 import { default as NoteContent } from "../../components/note-content";
-import { BehaviorSubject, exhaustMap, materialize, scan, startWith, of } from "rxjs";
+import { Subject, of } from "rxjs";
 
 import { Note, User, Zap } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { castUser, EventStore } from "applesauce-core";
 import { normalizeToPubkey } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader, createZapsLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
 
 import PubkeyPicker from "../../components/pubkey-picker";
-import { lookupRelays$ } from "../../settings";
 
 // Create an event store for all events
 const eventStore = new EventStore();
@@ -139,26 +142,9 @@ export default function LoadingZaps() {
     return createTimelineLoader(pool, relays, filter, { eventStore, limit: 50 });
   }, [filter, relays?.join("|")]);
 
-  const pages$ = useMemo(() => new BehaviorSubject(0), []);
+  const pages$ = useMemo(() => new Subject<void>(), []);
   const paging = use$(
-    () =>
-      timeline
-        ? pages$.pipe(
-            exhaustMap(() =>
-              timeline().pipe(
-                materialize(),
-                scan(
-                  (status, notification) =>
-                    notification.kind === "N"
-                      ? status
-                      : { loading: false, error: notification.kind === "E" ? String(notification.error) : "" },
-                  { loading: true, error: "" },
-                ),
-                startWith({ loading: true, error: "" }),
-              ),
-            ),
-          )
-        : of({ loading: true, error: "" }),
+    () => (timeline ? loadHistory(timeline, pages$) : of({ loading: false, error: "No relay list available" })),
     [timeline, pages$],
   );
 
@@ -182,7 +168,7 @@ export default function LoadingZaps() {
         <button
           className="btn btn-primary mx-auto"
           disabled={!timeline || paging?.loading}
-          onClick={() => pages$.next(pages$.value + 1)}
+          onClick={() => pages$.next()}
         >
           Load More
         </button>

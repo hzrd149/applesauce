@@ -3,6 +3,10 @@
  * @tags cache, worker, relay
  * @related database/worker-relay, cache/nostr-idb
  */
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { loadHistory } from "../../extra/history-window";
+
 import NoteContent from "../../components/note-content";
 
 import { WorkerRelayInterface } from "@snort/worker-relay";
@@ -11,7 +15,7 @@ import { castEventStream, castTimelineStream } from "applesauce-common/observabl
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, isFromCache, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
 import {
@@ -21,9 +25,6 @@ import {
   startWith,
   switchMap,
   Subject,
-  exhaustMap,
-  ignoreElements,
-  endWith,
   catchError,
   of,
   from,
@@ -33,7 +34,6 @@ import RelayPicker from "../../components/relay-picker";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
-import { lookupRelays$ } from "../../settings";
 
 // The prebuilt development worker is an asset; production bundles the source worker.
 const devWorkerUrl = new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url);
@@ -209,21 +209,7 @@ function WorkerRelayCacheExample() {
   );
 
   const page$ = useMemo(() => new Subject<void>(), []);
-  const page = use$(
-    () =>
-      page$.pipe(
-        startWith(undefined),
-        exhaustMap(() =>
-          loader().pipe(
-            ignoreElements(),
-            endWith({ loading: false, error: undefined as string | undefined }),
-            catchError((error) => of({ loading: false, error: String(error.message ?? error) })),
-            startWith({ loading: true, error: undefined as string | undefined }),
-          ),
-        ),
-      ),
-    [loader],
-  );
+  const page = use$(() => loadHistory(loader, page$), [loader]);
 
   // Get a timeline of notes from the store
   const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(debounceTime(500), castTimelineStream(Note)), []);

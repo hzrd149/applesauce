@@ -3,13 +3,17 @@
  * @tags nip-57, nip-65, zap, graph, lightning, outbox, cast, visualization, chart.js, react-chartjs-2
  * @related zap/timeline, zap/loading-zaps
  */
-import { BehaviorSubject, exhaustMap, materialize, scan, startWith, of, EMPTY } from "rxjs";
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { loadHistory } from "../../extra/history-window";
+
+import { Subject, of, EMPTY } from "rxjs";
 
 import { Zap } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { castUser, EventStore, mapEventsToStore } from "applesauce-core";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import {
   BarElement,
@@ -26,7 +30,6 @@ import { useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 
 import PubkeyPicker from "../../components/pubkey-picker";
-import { lookupRelays$ } from "../../settings";
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, BarElement, Title, Tooltip, Legend);
@@ -133,30 +136,13 @@ export default function ZapGraph() {
   // Cast the live timeline of zap events into Zap instances
   const zaps = use$(() => eventStore.timeline(filters).pipe(castTimelineStream(Zap, eventStore)), [filters]);
 
-  const pages$ = useMemo(() => new BehaviorSubject(0), []);
+  const pages$ = useMemo(() => new Subject<void>(), []);
   const paging = use$(
-    () =>
-      loader
-        ? pages$.pipe(
-            exhaustMap(() =>
-              loader().pipe(
-                materialize(),
-                scan(
-                  (status, notification) =>
-                    notification.kind === "N"
-                      ? status
-                      : { loading: false, error: notification.kind === "E" ? String(notification.error) : "" },
-                  { loading: true, error: "" },
-                ),
-                startWith({ loading: true, error: "" }),
-              ),
-            ),
-          )
-        : of({ loading: false, error: "No relay list available" }),
+    () => (loader ? loadHistory(loader, pages$) : of({ loading: false, error: "No relay list available" })),
     [loader, pages$],
   );
   const loading = paging?.loading ?? false;
-  const loadMore = () => pages$.next(pages$.value + 1);
+  const loadMore = () => pages$.next();
 
   const chartData = useMemo(() => {
     if (!pubkey || !zaps || zaps.length === 0) return null;

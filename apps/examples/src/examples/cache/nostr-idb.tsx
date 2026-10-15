@@ -3,6 +3,10 @@
  * @tags cache, indexeddb, offline
  * @related cache/window.nostrdb, feed/relay-timeline
  */
+import { lookupRelays$ } from "../../settings";
+import { use$ } from "applesauce-react/hooks";
+import { loadHistory } from "../../extra/history-window";
+
 import NoteContent from "../../components/note-content";
 
 import { Note } from "applesauce-common/casts";
@@ -10,26 +14,12 @@ import { castEventStream, castTimelineStream } from "applesauce-common/observabl
 import { EventStore, mapEventsToStore } from "applesauce-core";
 import { Filter, isFromCache, NostrEvent, persistEventsToCache, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+
 import { RelayPool } from "applesauce-relay";
 import { NostrIDB } from "nostr-idb";
 import { useMemo, useState } from "react";
-import {
-  BehaviorSubject,
-  combineLatest,
-  debounceTime,
-  interval,
-  startWith,
-  switchMap,
-  Subject,
-  exhaustMap,
-  ignoreElements,
-  endWith,
-  catchError,
-  of,
-} from "rxjs";
+import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, switchMap, Subject } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
-import { lookupRelays$ } from "../../settings";
 
 // Open the IndexedDB database
 const nostrIDB = new NostrIDB<NostrEvent>();
@@ -182,21 +172,7 @@ export default function NostrIDBExample() {
   );
 
   const page$ = useMemo(() => new Subject<void>(), []);
-  const page = use$(
-    () =>
-      page$.pipe(
-        startWith(undefined),
-        exhaustMap(() =>
-          loader().pipe(
-            ignoreElements(),
-            endWith({ loading: false, error: undefined as string | undefined }),
-            catchError((error) => of({ loading: false, error: String(error.message ?? error) })),
-            startWith({ loading: true, error: undefined as string | undefined }),
-          ),
-        ),
-      ),
-    [loader],
-  );
+  const page = use$(() => loadHistory(loader, page$), [loader]);
 
   // Get a timeline of notes from the store
   const notes = use$(() => eventStore.timeline({ kinds: [1] }).pipe(debounceTime(500), castTimelineStream(Note)), []);

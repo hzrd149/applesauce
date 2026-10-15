@@ -1,295 +1,149 @@
 ---
-description: Load timeline events from multiple relays with pagination, deduplication, and automatic relay selection
+description: Reactively load and prefetch time windows across multiple relays
 ---
 
 # Timeline Loader
 
-The Timeline Loader is designed for infinite scrolling timelines. It keeps its position between calls, so each call loads the next page of older events, and it can also fill in newer events since the last load.
+The Timeline Loader follows a finite time window and loads its missing ranges independently from each relay. It prioritizes gaps intersecting the visible window and includes adjoining buffer ranges in the same requests, so small scroll movements reuse loaded coverage.
 
-Each relay and each filter pages with its own cursor, so a relay with a lower `max_limit` or a filter with fewer events never causes events to be skipped. Events are deduplicated across relays and across calls.
+Network batches are internal. Relays returning different event counts or covering different time periods do not define application pages.
+
+## Usage
+
+Create one input stream for the viewport and keep its subscription alive while the timeline is displayed:
+
+```ts
+import { BehaviorSubject } from "rxjs";
+import { createTimelineLoader } from "applesauce-loaders/loaders";
+
+const until = Math.floor(Date.now() / 1000);
+const windows$ = new BehaviorSubject({ since: until - 3600, until });
+const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
+const sub = loader(windows$).subscribe();
+
+// Scrolling changes the desired range, without queuing independent jobs.
+windows$.next({ since: until - 7200, until: until - 3600 });
+
+// Stop requests when the timeline is no longer displayed.
+sub.unsubscribe();
+```
+
+Both bounds are inclusive integer Unix timestamps, with `0 <= since <= until`. Newer bounds are capped at now. The loader rejects missing bounds, numeric arguments, and infinite bounds.
+
+A single window is also accepted. Its observable completes after visible and buffered requests settle:
+
+```ts
+loader({ since: yesterday, until: today }).subscribe();
+```
+
+Coverage belongs to the loading subscription. Keep a stream of windows subscribed to reuse coverage across scrolling and jumps. Separate calls or subscriptions start separate sessions; reuse the returned observable to share a session between consumers.
+
+## Options
+
+| Option        | Default         | Purpose                                                 |
+| ------------- | --------------- | ------------------------------------------------------- |
+| `limit`       | `100`           | Maximum events requested per filter in a network batch  |
+| `prefetch`    | `0.5`           | Window duration to buffer on each side                  |
+| `minPrefetch` | `60`            | Minimum buffer duration in seconds                      |
+| `eventStore`  | Internal memory | Store receiving every incoming event                    |
+| `cache`       | None            | Cache request method loaded alongside relays            |
+| `onStatus`    | None            | Callback receiving per-source and filter status changes |
+| `logger`      | Timeline logger | Debug logger                                            |
+
+Setting `prefetch: 0` disables buffering, including `minPrefetch`. Otherwise, each side uses the greater of `minPrefetch` and the window duration multiplied by `prefetch`. The buffer is anchored until half of it is consumed, and never extends beyond now. It is a loading target rather than a strict response boundary: a full batch may include older events beyond the buffer, even with `prefetch: 0`.
+
+## Loading and coverage
+
+```ts
+const statusSub = loader.status$.subscribe((statuses) => {
+  const loading = statuses.some((status) => status.state === "loading");
+  const failures = statuses.filter((status) => status.state === "incomplete");
+});
+```
+
+Each status identifies a source, filter, and current visible window:
+
+- `loading`: visible ranges still need requests
+- `covered`: the visible range is covered and no background request is active
+- `prefetching`: the visible range is covered while the buffer loads
+- `incomplete`: a request failed or a timestamp boundary could not be fully paged; `reason` distinguishes `request` failures from `boundary` uncertainty, and `error` explains why
+- `removed`: an outbox source was removed or changed; emitted to `onStatus` and removed from `status$`
+
+Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the outbox map is still unknown or has no sources. Failures do not stop healthy relays, and a new window emission retries failed sources without discarding their completed coverage.
+
+The loader combines adjoining visible and buffered gaps instead of issuing separate requests at viewport edges. Requests use newest-first ordering and a batch limit:
+
+- Initial and backward requests omit `since` when no older covered interval provides a stopping point, allowing a full batch of useful older events.
+- When older coverage exists, `since` starts immediately after it; forward requests keep their upper bound at the buffer edge and page back toward that coverage.
+- A jump starts at the new target's upper edge and stops once the target is covered, without draining every event between the old and new windows.
+- An empty unbounded response establishes older exhaustion; a nonempty response only establishes coverage above its oldest boundary second.
+
+One request runs at a time per relay. Window updates reuse in-flight work that still serves the visible range, rather than cancelling it just because it started as prefetch. It retains inclusive boundary seconds to avoid skipping events cut off by a relay limit, and only commits coverage after a request completes. Short responses are not treated as exhaustion because relays may apply smaller limits.
 
 :::warning
-The observable returned by the Timeline Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
+Repeated boundary-only responses cannot prove that every event in that second was returned. This can happen even with an ordinary boundary event when a relay applies an unknown limit. The loader continues past the second but reports incomplete coverage for windows containing it, rather than claiming certainty or looping.
 :::
 
-## Basic Usage
+Large jumps query the new window directly. Previously covered intervals remain reusable; the loader does not crawl the time between disconnected windows. Coverage is a snapshot of completed requests, not a live guarantee about events subsequently published or backfilled into those ranges.
 
-```ts
-import { createTimelineLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { EventStore } from "applesauce-core";
+## Integration
 
-const pool = new RelayPool();
-const eventStore = new EventStore();
+### EventStore and React
 
-// Create a timeline loader
-const timelineLoader = createTimelineLoader(
-  pool,
-  ["wss://relay.damus.io", "wss://nos.lol"],
-  { kinds: [1] }, // Load text notes
-  { eventStore, limit: 50 },
-);
+Store incoming events before rendering a reactive, sorted timeline. Use `use$` to own the loading subscription:
 
-// Initial load - gets the most recent events
-timelineLoader().subscribe({
-  next: (event) => console.log("Loaded event:", event),
-  complete: () => console.log("Page loaded"),
-});
-
-// Later, load older events by calling the loader again
-// Each call continues from where the previous one left off
-timelineLoader().subscribe((event) => console.log("Loaded older event:", event));
-
-// Load the newer events published since the last load
-timelineLoader({ until: Infinity }).subscribe((event) => console.log("Loaded newer event:", event));
+```tsx
+use$(() => loader(windows$), [loader]);
+const statuses = use$(loader.status$);
+const events = use$(() => eventStore.timeline(filter), [filter]);
 ```
 
-Each call completes once every relay has finished its page, so `lastValueFrom`, `toArray` and `exhaustMap` work as expected. A call made while a page is still loading waits for that page instead of starting another.
-
-## Configuration Options
-
-### Timeline Window
-
-Each call takes an optional window with `since` and `until` timestamps:
-
-```ts
-// Load the next page of older events
-timelineLoader();
-
-// Load the next page of older events, but only if the timeline hasn't reached this timestamp yet
-timelineLoader(oneWeekAgo); // Same as { since: oneWeekAgo }
-
-// Start the timeline at a timestamp (only on the first call)
-timelineLoader({ since: -Infinity, until: startTimestamp });
-
-// Load every event newer than the last load, up to now
-timelineLoader({ until: Infinity });
-```
-
-- **`since`** - How far back to load. Each call loads one page of older events while the timeline is still newer than `since`, and `-Infinity` always loads the next page. Without `since`, no older events are loaded.
-- **`until`** - On the first call, the timestamp the timeline starts from (default: now). On later calls, an `until` newer than the last load fills in every newer event up to `until`, and `Infinity` means now.
-
-### Limit
-
-Control how many events to request per block:
-
-```ts
-const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { limit: 100 });
-```
-
-### Event Store
-
-Pass an `EventStore` to integrate with your app's event management:
-
-```ts
-const eventStore = new EventStore();
-const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore });
-```
-
-:::tip
-If you don't provide an `EventStore`, the loader uses an internal `EventMemory` for deduplication. Providing your own `EventStore` allows the loader to integrate with your app's state management and access events from other loaders.
-:::
+The loader deduplicates emitted events across relays after sending each arrival to the EventStore, preserving relay metadata. Without `eventStore`, it uses an internal EventMemory.
 
 ### Cache
 
-Load from local cache alongside relays:
+Cache coverage is independent of relay coverage. A successful cache query never suppresses a missing relay request:
 
 ```ts
-import { openDB, getEventsForFilters } from "nostr-idb";
-
-const cache = await openDB();
-const loader = createTimelineLoader(
-  pool,
-  relays,
-  { kinds: [1] },
-  {
-    eventStore,
-    cache: (filters) => getEventsForFilters(cache, filters),
-  },
-);
-```
-
-## Outbox Model
-
-Load events from each user's preferred relays:
-
-```ts
-import { createOutboxTimelineLoader } from "applesauce-loaders/loaders";
-import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
-
-const contacts = [...]; // Array of ProfilePointer with relays
-const outboxMap = createOutboxMap(contacts);
-
-const loader = createOutboxTimelineLoader(pool, outboxMap, { kinds: [1] }, { eventStore, limit: 100 });
-
-loader().subscribe((event) => console.log(event));
-```
-
-### Dynamic Outbox Maps
-
-Pass an Observable for reactive relay selection:
-
-```ts
-import { BehaviorSubject, map } from "rxjs";
-
-const contacts$ = new BehaviorSubject<ProfilePointer[]>([]);
-const outboxMap$ = contacts$.pipe(map(createOutboxMap));
-
-const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, limit: 100 });
-```
-
-## How Pagination Works
-
-Relays return the newest `limit` events that match a filter, and many relays cap `limit` with their own `max_limit`. A page therefore never proves how far back a relay's events go, so the loader:
-
-- Keeps a separate cursor for each relay and each filter, and only moves it past events that relay actually returned
-- Stops loading a relay or filter only when it returns an empty page
-- Loads newer events by paging backward from the target down to the last load, so a gap is filled completely rather than with only the newest page
-- Requests the oldest second of a page again, so events cut off at the end of a page aren't skipped
-
-A failed or cancelled request doesn't move the cursor, and the next call retries it.
-
-:::warning
-If more events share a single `created_at` second than a relay returns in one page, the rest of that second can't be paged by time. The loader skips past that second instead of looping.
-:::
-
-## Using Timeline Windows with RxJS Operators
-
-For more advanced use cases, you can use the RxJS operators with an observable window. The timeline window represents the range of timestamps currently visible on screen as an observable that emits `{ since?, until? }` objects:
-
-```ts
-import { BehaviorSubject } from "rxjs";
-import { TimelineWindow } from "applesauce-loaders/loaders";
-
-// Window starts undefined (no events on screen yet)
-const window$ = new BehaviorSubject<TimelineWindow>({});
-
-// As user scrolls, update the window with visible timestamp range
-window$.next({
-  since: oldestVisibleEvent.created_at,
-  until: newestVisibleEvent.created_at,
+const loader = createTimelineLoader(pool, relays, filter, {
+  eventStore,
+  cache: cacheRequest,
 });
 ```
 
-The timeline loader operators watch this window and load a page whenever the window extends past what has been loaded. This reactive approach means you just update the window observable to reflect what's on screen.
-
-## RxJS Operators
-
-For advanced use cases, use the stateful RxJS operators directly. These operators track what events have been loaded and automatically trigger new requests when the timeline window changes:
-
-### Load from Relays
+### Outbox maps
 
 ```ts
-import { BehaviorSubject } from "rxjs";
-import { loadBlocksFromRelays, TimelineWindow } from "applesauce-loaders/loaders";
+import { createOutboxTimelineLoader } from "applesauce-loaders/loaders";
 
-const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
-const events$ = window$.pipe(loadBlocksFromRelays(pool, relays, { kinds: [1] }, { limit: 50 }));
-
-events$.subscribe((event) => console.log(event));
-window$.next({ since: -Infinity }); // Triggers loading the next block
+const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore });
+const sub = loader(windows$).subscribe();
 ```
 
-### Load from Cache
+Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it.
+
+### Observable operators
+
+Use the operators directly when composing your own store and status handling:
 
 ```ts
-import { loadBlocksFromCache } from "applesauce-loaders/loaders";
-
-const events$ = window$.pipe(
-  loadBlocksFromCache((filters) => getEventsForFilters(cache, filters), { kinds: [1] }, { limit: 50 }),
-);
+windows$
+  .pipe(loadBlocksFromRelays(pool, relays, filter, { onStatus: updateStatus }), mapEventsToStore(eventStore))
+  .subscribe();
 ```
 
-### Load from Outbox Map
+`loadBlocksFromRelay`, `loadBlocksFromCache`, `loadBlocksFromFilterMap`, `loadBlocksFromOutboxMap`, and `loadBlocksFromOutboxMapCache` use the same window scheduler. Direct operators emit boundary and cross-relay duplicates; use an EventStore for rendering.
 
-```ts
-import { loadBlocksFromOutboxMap } from "applesauce-loaders/loaders";
+## Migrating page-based consumers
 
-const events$ = window$.pipe(loadBlocksFromOutboxMap(pool, outboxMap$, { kinds: [1] }, { limit: 100 }));
-```
+`loader()`, numeric timestamps, and infinite bounds are no longer supported. The directional block operators and deprecated `cacheTimelineLoader` / `relaysTimelineLoader` wrappers have been removed.
 
-### Combine Cache and Relays
-
-```ts
-import { merge } from "rxjs";
-import { mapEventsToStore } from "applesauce-core";
-
-const cache$ = window$.pipe(loadBlocksFromCache(cacheRequest, { kinds: [1] }, { limit: 50 }));
-const relays$ = window$.pipe(loadBlocksFromRelays(pool, relays, { kinds: [1] }, { limit: 50 }));
-const timeline$ = merge(cache$, relays$).pipe(mapEventsToStore(eventStore));
-
-timeline$.subscribe((event) => console.log(event));
-```
-
-## Examples
-
-### Paginated Feed (Simple)
-
-```ts
-const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 });
-
-// Load the next page of older events
-function loadMore() {
-  loader().subscribe({
-    next: (event) => events.push(event),
-    complete: () => console.log("Page loaded"),
-  });
-}
-```
-
-### Load More and Newer Events
-
-```ts
-const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 });
-const more$ = new Subject<void>();
-
-// exhaustMap ignores clicks until the current page completes
-more$.pipe(exhaustMap(() => loader())).subscribe();
-
-// Fill in events published since the last load, e.g. after the app was in the background
-loader({ until: Infinity }).subscribe();
-```
-
-### Social Feed with Outbox Model (Using RxJS Operators)
-
-```ts
-const contacts$ = new BehaviorSubject<ProfilePointer[]>([]);
-const outboxMap$ = contacts$.pipe(map(createOutboxMap));
-const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
-
-// Load blocks using outbox model
-const timeline$ = window$.pipe(
-  loadBlocksFromOutboxMap(pool, outboxMap$, { kinds: [1] }, { limit: 100 }),
-  mapEventsToStore(eventStore),
-);
-
-timeline$.subscribe((event) => console.log(event));
-
-// Load more by updating window
-function loadMore() {
-  window$.next({ since: -Infinity });
-}
-```
-
-### Social Feed with Outbox Model (Using Function Loader)
-
-```ts
-const contacts = [...]; // Array of ProfilePointer with relays
-const outboxMap = createOutboxMap(contacts);
-
-const loader = createOutboxTimelineLoader(pool, outboxMap, { kinds: [1] }, { eventStore, limit: 20 });
-
-// Load initial block of events
-loader().subscribe((event) => events.push(event));
-
-// Load the next page of older events
-function loadMore() {
-  loader().subscribe((event) => events.push(event));
-}
-```
+Applications own their requested time ranges. A “show older” control can extend `since`; a scrolling viewport can emit both bounds. Do not interpret a relay's batch limit as an application page size.
 
 ## Best Practices
 
-- **Use `exhaustMap` for "load more"** so repeated scroll or click triggers don't stack requests.
-- **Keep a live subscription separate.** The loader only loads history. Open your own subscription for live events, and call `loader({ until: Infinity })` to fill the gap after reconnecting.
-- **Reuse one loader per timeline.** The cursors live in the loader, so creating a new loader starts again from the newest events.
+- Keep one subscribed window stream per timeline session to retain coverage.
+- Render the visible range from the EventStore; prefetch may insert events outside it.
+- Check visible loading status instead of waiting for a long-lived stream to complete.
+- Keep live subscriptions separate; historical coverage is not automatically refreshed.
+- Use the default buffer first, then measure request counts and visible loading latency before tuning it.
