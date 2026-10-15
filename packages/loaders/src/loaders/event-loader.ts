@@ -5,7 +5,7 @@ import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
-import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader, loadUntilSettled, unwrap } from "../helpers/loaders.js";
 import { groupByRelay } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
@@ -30,7 +30,16 @@ export function cacheEventsLoader(request: CacheRequest): createEventLoader {
 
 /** Creates a loader that gets an array of events from a list of relays */
 export function relaysEventsLoader(request: NostrRequest, relays: string[] | Observable<string[]>): createEventLoader {
-  return (pointers) => unwrap(relays, (relays) => request(relays, [{ ids: pointers.map((p) => p.id) }]));
+  return (pointers) =>
+    unwrap(relays, (relays) =>
+      // Re-request ids a capped relay dropped
+      loadUntilSettled(
+        pointers,
+        (remaining) => request(relays, [{ ids: remaining.map((p) => p.id) }]),
+        (p) => p.id,
+        (e) => e.id,
+      ),
+    );
 }
 
 /** Creates a loader that gets an array of events from a single relay */

@@ -7,11 +7,12 @@ import {
   mergeRelaySets,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { bufferTime, catchError, EMPTY, identity, Observable } from "rxjs";
+import { bufferTime, catchError, EMPTY, identity, merge, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
-import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader, loadUntilSettled, unwrap } from "../helpers/loaders.js";
+import { groupByRelay } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -46,14 +47,34 @@ export function cacheAddressPointersLoader(request: CacheRequest): AddressPointe
   };
 }
 
+/** Requests address pointers from relays and re-requests the addresses a capped relay dropped */
+function requestAddressPointers(
+  request: NostrRequest,
+  relays: string[],
+  pointers: LoadableAddressPointer[],
+): Observable<NostrEvent> {
+  return loadUntilSettled(
+    pointers,
+    (remaining) => request(relays, createFiltersFromAddressPointers(remaining)),
+    (p) => createReplaceableAddress(p.kind, p.pubkey, p.identifier),
+    (e) => (isReplaceable(e.kind) ? (getReplaceableAddress(e) ?? undefined) : undefined),
+  );
+}
+
 /** Loads address pointers from the relay hints */
 export function relayHintsAddressPointersLoader(request: NostrRequest): AddressPointersLoader {
   return (pointers) => {
-    const relays = mergeRelaySets(...pointers.map((p) => p.relays));
-    if (relays.length === 0) return EMPTY;
+    // Group pointers by their relay hints so each relay is only asked for its own pointers
+    const byRelay = groupByRelay(pointers);
 
-    const filters = createFiltersFromAddressPointers(pointers);
-    return request(relays, filters);
+    return merge(
+      ...Array.from(byRelay).map(([relay, pointers]) =>
+        requestAddressPointers(request, [relay], pointers).pipe(
+          // Dont let a failing relay cancel the other hints
+          catchError(() => EMPTY),
+        ),
+      ),
+    );
   };
 }
 
@@ -66,8 +87,7 @@ export function relaysAddressPointersLoader(
     unwrap(relays, (relays) => {
       if (relays.length === 0) return EMPTY;
 
-      const filters = createFiltersFromAddressPointers(pointers);
-      return request(relays, filters);
+      return requestAddressPointers(request, relays, pointers);
     });
 }
 

@@ -19,12 +19,19 @@ export function fromGenerator<Result>(
     | AsyncGenerator<Observable<Result> | Result, void, Result[]>,
 ): Observable<Result> {
   return new Observable<Result>((observer) => {
-    let sub: Subscription | undefined;
+    // Track every stage, a synchronous stage can complete into the next one before its own subscribe() returns
+    const subs = new Subscription();
 
     const nextSequence = (prevResults?: Result[]) => {
+      // Dont start another stage after teardown
+      if (subs.closed) return;
+
       const p = prevResults ? generator.next(prevResults) : generator.next();
 
       const handleResult = (result: IteratorResult<Observable<Result> | Result>) => {
+        // Ignore stages resolved after teardown
+        if (subs.closed) return;
+
         // generator complete, exit
         if (result.done) {
           // Ignore result.value here because its the return value and we only want the yield values
@@ -33,20 +40,22 @@ export function fromGenerator<Result>(
 
         const results: Result[] = [];
         if (isObservable(result.value)) {
-          sub = result.value.subscribe({
-            next: (v) => {
-              // track results and pass along values
-              results.push(v);
-              observer.next(v);
-            },
-            error: (err) => {
-              observer.error(err);
-            },
-            complete: () => {
-              // run next step
-              nextSequence(results);
-            },
-          });
+          subs.add(
+            result.value.subscribe({
+              next: (v) => {
+                // track results and pass along values
+                results.push(v);
+                observer.next(v);
+              },
+              error: (err) => {
+                observer.error(err);
+              },
+              complete: () => {
+                // run next step
+                nextSequence(results);
+              },
+            }),
+          );
         } else {
           results.push(result.value);
           observer.next(result.value);
@@ -62,8 +71,16 @@ export function fromGenerator<Result>(
     // start running steps
     nextSequence();
 
-    // Attempt to cleanup
-    return () => sub?.unsubscribe();
+    // Tear down the active stage and let the generator run its finally blocks
+    subs.add(() => {
+      try {
+        const done = generator.return(undefined);
+        if (done instanceof Promise) done.catch(() => {});
+      } catch {
+        // The generator is still executing, it will stop at the closed check
+      }
+    });
+    return subs;
   }).pipe(
     // Only create a single instance of the observalbe to avoice race conditions
     share(),

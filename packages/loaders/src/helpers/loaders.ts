@@ -1,8 +1,10 @@
 import {
+  concat,
+  defer,
+  EMPTY,
   filter,
   identity,
   isObservable,
-  map,
   mergeAll,
   MonoTypeOperatorFunction,
   Observable,
@@ -12,11 +14,61 @@ import {
   switchMap,
   take,
   takeUntil,
+  tap,
 } from "rxjs";
 
 /** Takes a value optionally wrapped in an observable and unwraps it */
 export function unwrap<T, R>(value: T | Observable<T>, next: (value: T) => Observable<R>): Observable<R> {
   return isObservable(value) ? value.pipe(take(1), switchMap(next)) : next(value);
+}
+
+/**
+ * Requests targets again until a round resolves none of the remaining targets, since relays clamp results to their max_limit
+ * @param load Creates the request for the remaining targets
+ * @param targetKey Returns the key a target is resolved by
+ * @param eventKey Returns the key an event resolves, or undefined if it resolves nothing
+ * @param maxRounds The maximum number of requests to make ( default 5 )
+ */
+export function loadUntilSettled<Target, Output>(
+  targets: Target[],
+  load: (targets: Target[]) => Observable<Output>,
+  targetKey: (target: Target) => string,
+  eventKey: (output: Output) => string | undefined,
+  maxRounds = 5,
+): Observable<Output> {
+  return defer(() => {
+    // Keys resolved by any round
+    const resolved = new Set<string>();
+
+    const round = (remaining: Target[], count: number): Observable<Output> =>
+      defer(() => {
+        const earlier = new Set(resolved);
+
+        const request = load(remaining).pipe(
+          // Drop events a previous round already resolved, broad address filters can match them again
+          filter((output) => {
+            const key = eventKey(output);
+            return key === undefined || !earlier.has(key);
+          }),
+          tap((output) => {
+            const key = eventKey(output);
+            if (key !== undefined) resolved.add(key);
+          }),
+        );
+
+        // EOSE is not proof of absence, so request the missing targets again while each round makes progress
+        const retry = defer(() => {
+          const missing = remaining.filter((t) => !resolved.has(targetKey(t)));
+          return count < maxRounds && missing.length > 0 && missing.length < remaining.length
+            ? round(missing, count + 1)
+            : EMPTY;
+        });
+
+        return concat(request, retry);
+      });
+
+    return round(targets, 1);
+  });
 }
 
 /** A loader function that can be torn down via `stop()`, `Symbol.dispose`, or an `AbortSignal` */
@@ -53,21 +105,35 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
 
   // Reference counted batching engine. `share()` subscribes to `queue.pipe(buffer)` (starting the
   // bufferTime timer) only while a loader observable is subscribed, and tears it down otherwise.
-  const batches = queue.pipe(
-    buffer,
-    // If there is nothing in the buffer, dont make a request
-    filter((b) => b.length > 0),
-    // Every "buffer" make a new upstream request
-    map((b) =>
-      upstream(b).pipe(
-        // Drop the in-flight upstream request when the loader is torn down
+  const batches = new Observable<Subject<Output>>((observer) =>
+    queue
+      .pipe(
+        buffer,
+        // If there is nothing in the buffer, dont make a request
+        filter((b) => b.length > 0),
+        // Tear down the entire engine (and its bufferTime timer) on teardown
         takeUntil(destroy),
-        // Never reset the upstream request so events keep loading into the store after unsubscribe
-        share({ resetOnRefCountZero: false, resetOnComplete: false, resetOnError: false }),
-      ),
-    ),
-    // Tear down the entire engine (and its bufferTime timer) on teardown
-    takeUntil(destroy),
+      )
+      .subscribe({
+        next: (inputs) => {
+          const results = new Subject<Output>();
+
+          // Hand the batch to every waiting consumer before the request starts so synchronous results reach all of them
+          observer.next(results);
+
+          // Skip the request if every consumer for this batch already unsubscribed
+          if (!results.observed) return;
+
+          // Not tied to the consumers, so the request keeps running after they unsubscribe until the loader stops
+          defer(() => upstream(inputs))
+            // Drop the in-flight upstream request when the loader is torn down
+            .pipe(takeUntil(destroy))
+            .subscribe(results);
+        },
+        error: (err) => observer.error(err),
+        complete: () => observer.complete(),
+      }),
+  ).pipe(
     // Reference count the engine so the bufferTime timer only runs while something is subscribed
     share(),
   );
@@ -78,7 +144,7 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
         .pipe(
           // wait for the next batch to run
           take(1),
-          // subscribe to it
+          // subscribe to its results
           mergeAll(),
           // filter the results for the requested input
           filter((o) => matcher(input, o)),

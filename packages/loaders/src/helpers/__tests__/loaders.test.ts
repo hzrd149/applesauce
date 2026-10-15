@@ -152,5 +152,37 @@ describe("batchLoader", () => {
       expect(a.getValues()).toEqual([10]);
       expect(b.getValues()).toEqual([20]);
     });
+
+    it("delivers synchronous upstream results to every consumer in the batch", () => {
+      const loader = batchLoader<number, number>(
+        bufferTime(1000),
+        () => of(10, 20),
+        (input, output) => output === input * 10,
+      );
+
+      const a = subscribeSpyTo(loader(1));
+      const b = subscribeSpyTo(loader(2));
+      const c = subscribeSpyTo(loader(2));
+      vi.advanceTimersByTime(1000);
+
+      expect(a.getValues()).toEqual([10]);
+      expect(b.getValues()).toEqual([20]);
+      expect(c.getValues()).toEqual([20]);
+      expect(c.receivedComplete()).toBe(true);
+    });
+
+    it("delivers synchronous results when the buffer size triggers the flush", () => {
+      const loader = batchLoader<number, number>(
+        bufferTime(1000, undefined, 2),
+        () => of(10, 20),
+        (input, output) => output === input * 10,
+      );
+
+      const a = subscribeSpyTo(loader(1));
+      const b = subscribeSpyTo(loader(2));
+
+      expect(a.getValues()).toEqual([10]);
+      expect(b.getValues()).toEqual([20]);
+    });
   });
 });

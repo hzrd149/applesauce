@@ -183,23 +183,25 @@ describe("cacheAddressPointersLoader", () => {
 // ---------------------------------------------------------------------------
 
 describe("relayHintsAddressPointersLoader", () => {
-  it("should call the request with merged relay hints from all pointers", () => {
+  it("should only request each pointer from its own relay hints", () => {
     const profile = user.profile();
+    const other = new FakeUser();
     const relayResult = new Subject<NostrEvent>();
-    const request: Mock<NostrRequest> = vi.fn().mockReturnValue(relayResult.asObservable());
+    const request: Mock<NostrRequest> = vi.fn((relays) => (relays[0] === "wss://relay1.com/" ? relayResult : EMPTY));
 
     const loader = relayHintsAddressPointersLoader(request);
     const spy = subscribeSpyTo(
       loader([
         { kind: 0, pubkey: user.pubkey, relays: ["wss://relay1.com/"] },
-        { kind: 3, pubkey: user.pubkey, relays: ["wss://relay2.com/"] },
+        { kind: 0, pubkey: other.pubkey, relays: ["wss://relay2.com/"] },
+        { kind: 3, pubkey: other.pubkey },
       ]),
     );
 
-    expect(request).toHaveBeenCalledOnce();
-    const [calledRelays] = request.mock.calls[0];
-    // mergeRelaySets normalizes URLs (trailing slash)
-    expect(calledRelays).toEqual(expect.arrayContaining(["wss://relay1.com/", "wss://relay2.com/"]));
+    expect(request.mock.calls).toEqual([
+      [["wss://relay1.com/"], [{ kinds: [0], authors: [user.pubkey] }]],
+      [["wss://relay2.com/"], [{ kinds: [0], authors: [other.pubkey] }]],
+    ]);
 
     relayResult.next(profile);
     relayResult.complete();
@@ -233,19 +235,26 @@ describe("relayHintsAddressPointersLoader", () => {
     expect(spy.getValues()).toHaveLength(0);
   });
 
-  it("should propagate errors from the relay", () => {
-    const relayResult = new Subject<NostrEvent>();
-    const request: Mock<NostrRequest> = vi.fn().mockReturnValue(relayResult.asObservable());
+  it("should not let a failing relay cancel the other hints", () => {
+    const profile = user.profile();
+    const bad = new Subject<NostrEvent>();
+    const good = new Subject<NostrEvent>();
+    const request: Mock<NostrRequest> = vi.fn((relays) => (relays[0] === "wss://bad.com/" ? bad : good));
 
     const loader = relayHintsAddressPointersLoader(request);
-    const spy = subscribeSpyTo(loader([{ kind: 0, pubkey: user.pubkey, relays: ["wss://relay.com"] }]), {
-      expectErrors: true,
-    });
+    const spy = subscribeSpyTo(
+      loader([
+        { kind: 3, pubkey: user.pubkey, relays: ["wss://bad.com/"] },
+        { kind: 0, pubkey: user.pubkey, relays: ["wss://good.com/"] },
+      ]),
+    );
 
-    relayResult.error(new Error("connection refused"));
+    bad.error(new Error("connection refused"));
+    good.next(profile);
+    good.complete();
 
-    expect(spy.receivedError()).toBe(true);
-    expect(spy.getError()).toBeInstanceOf(Error);
+    expect(spy.getValues()).toEqual([profile]);
+    expect(spy.receivedComplete()).toBe(true);
   });
 });
 
@@ -832,5 +841,53 @@ describe("createAddressLoader", () => {
 
     expect(spy.getValues()).toEqual([profile]);
     expect(spy.receivedComplete()).toBe(true);
+  });
+});
+
+describe("capped relay responses", () => {
+  const users = Array.from({ length: 5 }, () => new FakeUser());
+  const profiles = users.map((u) => u.profile());
+
+  /** A request that returns at most `cap` matching profiles per call */
+  const cappedRequest = (cap: number): Mock<NostrRequest> =>
+    vi.fn((_relays, filters) => of(...profiles.filter((p) => filters[0].authors!.includes(p.pubkey)).slice(0, cap)));
+
+  it("should re-request the addresses a capped relay dropped", () => {
+    const request = cappedRequest(2);
+    const loader = relaysAddressPointersLoader(request, ["wss://relay.com"]);
+    const spy = subscribeSpyTo(loader(users.map((u) => ({ kind: 0, pubkey: u.pubkey }))));
+
+    expect(spy.getValues()).toEqual(profiles);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls[2][1]).toEqual([{ kinds: [0], authors: [users[4].pubkey] }]);
+  });
+
+  it("should drop addresses a previous round already resolved", () => {
+    // Overfetching relay that also returns the first profile when retrying the others
+    const request: Mock<NostrRequest> = vi.fn((_relays, filters) => {
+      const matches = profiles.filter((p) => filters[0].authors!.includes(p.pubkey)).slice(0, 2);
+      return of(...(matches.includes(profiles[0]) ? matches : [profiles[0], ...matches]));
+    });
+    const loader = relaysAddressPointersLoader(request, ["wss://relay.com"]);
+    const spy = subscribeSpyTo(loader(users.map((u) => ({ kind: 0, pubkey: u.pubkey }))));
+
+    expect(spy.getValues()).toEqual(profiles);
+  });
+
+  it("should not retry when a round resolves nothing", () => {
+    const request = cappedRequest(0);
+    const loader = relaysAddressPointersLoader(request, ["wss://relay.com"]);
+    subscribeSpyTo(loader(users.map((u) => ({ kind: 0, pubkey: u.pubkey }))));
+
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it("should retry missing hinted addresses on their own relay", () => {
+    const request = cappedRequest(2);
+    const loader = relayHintsAddressPointersLoader(request);
+    const spy = subscribeSpyTo(loader(users.map((u) => ({ kind: 0, pubkey: u.pubkey, relays: ["wss://relay.com/"] }))));
+
+    expect(spy.getValues()).toEqual(profiles);
+    expect(request.mock.calls.every(([relays]) => relays[0] === "wss://relay.com/")).toBe(true);
   });
 });
