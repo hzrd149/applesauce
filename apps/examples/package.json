@@ -19,6 +19,7 @@
     "@noble/hashes": "^2.2.0",
     "@nostrify/nostrify": "jsr:^0.46.5",
     "@snort/worker-relay": "^2.0.1",
+    "@tanstack/react-virtual": "^3.14.19",
     "@tiptap/core": "^3.22.1",
     "@tiptap/react": "^3.22.1",
     "@tiptap/starter-kit": "^3.22.1",
