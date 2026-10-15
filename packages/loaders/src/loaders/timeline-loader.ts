@@ -60,6 +60,8 @@ export function loadBackwardBlocks(
     const log = opts?.logger?.extend("backward").extend(nanoid(8));
 
     let cursor: number | undefined = undefined;
+    // Ids already loaded at the cursor second, since the cursor is requested again as an inclusive `until`
+    let boundary = new Set<string>();
     let loading = false;
     let complete = false;
 
@@ -91,35 +93,51 @@ export function loadBackwardBlocks(
         // Set loading lock
         loading = true;
 
-        // Count returned events so complete set
+        // Count events inside the requested range and the ones not loaded before
         let count = 0;
-        let minCreatedAt: number | undefined;
+        let fresh = 0;
+        let oldest: number | undefined;
+        let oldestIds = new Set<string>();
         const until = cursor;
 
-        log?.(`Loading block since:${cursor}`);
+        log?.(`Loading block until:${until}`);
 
         // Request the next block of events
         return request(until).pipe(
           tap((event) => {
+            // Ignore events from relays that do not respect `until`
+            if (until !== undefined && event.created_at > until) return;
+
             count++;
-            minCreatedAt = Math.min(event.created_at, minCreatedAt ?? Infinity);
+            if (!boundary.has(event.id)) fresh++;
+
+            if (oldest === undefined || event.created_at < oldest) {
+              oldest = event.created_at;
+              oldestIds = new Set([event.id]);
+            } else if (event.created_at === oldest) oldestIds.add(event.id);
           }),
           // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
           tap({
             complete: () => {
-              // NIP-01 defines `until` as inclusive. Move past the oldest event in
-              // the block so the next request does not repeat the boundary second.
-              if (minCreatedAt !== undefined) {
-                const next = minCreatedAt - 1;
+              log?.(`Found ${count} events (${fresh} new)`);
 
-                // Stop if the relay ignores `until` and stops making backward progress.
-                if (until !== undefined && next >= until) complete = true;
-                else cursor = next;
+              if (count === 0 || oldest === undefined) {
+                // Only an empty block proves the source has nothing older
+                complete = true;
+              } else if (fresh === 0 && until !== undefined) {
+                // Every event was already loaded, so more events share the cursor second than the relay returns
+                // in one block. They can't be paged by time, so step past the second
+                log?.(`Skipping saturated second ${until}`);
+                cursor = until - 1;
+                boundary = new Set();
+              } else {
+                // NIP-01 defines `until` as inclusive. Request the oldest second again so events cut off at the
+                // end of this block are not skipped
+                if (oldest === until) for (const id of boundary) oldestIds.add(id);
+                cursor = oldest;
+                boundary = oldestIds;
               }
 
-              complete = complete || count === 0;
-
-              log?.(`Found ${count} events`);
               if (complete) log?.("Complete");
             },
           }),
