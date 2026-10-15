@@ -124,7 +124,7 @@ export type SyncRelayStatus = {
   error?: Error;
 };
 
-/** A full snapshot of a sync loader's status, emitted on every status change */
+/** A full snapshot with immediate lifecycle changes and progress updates throttled to 250 ms */
 export type SyncLoaderStatus = {
   /** Per-relay status keyed by relay url */
   relays: Record<string, SyncRelayStatus>;
@@ -136,7 +136,7 @@ export type SyncLoaderStatus = {
 
 /** The pair of observables returned when a sync loader is called */
 export type SyncLoaderResult = {
-  /** A full status snapshot emitted on every status change. Completes when the load is done */
+  /** A full snapshot with immediate lifecycle changes and progress updates throttled to 250 ms; completes when done */
   status$: Observable<SyncLoaderStatus>;
   /** The deduplicated events streamed from all relays. Completes when the load is done */
   events$: Observable<NostrEvent>;
@@ -365,7 +365,7 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
  * - runs an efficient negentropy sync (Part 2), falling back to a paginated request if the sync fails, or
  * - runs a paginated REQ that pages backward in time until the relay is exhausted (Part 1).
  *
- * Calling the loader returns a `status$` observable (a full status snapshot on every change) and an `events$`
+ * Calling the loader returns a `status$` observable (immediate lifecycle snapshots and progress updates throttled to 250 ms) and an `events$`
  * observable (the deduplicated events). Both complete when every relay has finished and an observable relay list has
  * completed. Subscribing to either
  * observable starts a single shared run that writes received events to the store (deduplicated like the other
@@ -413,7 +413,12 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     type Msg = { event: NostrEvent } | { status: SyncLoaderStatus };
 
     // Build the combined work as a single lazy stream of events and status snapshots
-    const work$ = defer<Observable<Msg>>(() => {
+    const work$ = new Observable<Msg>((subscriber) => {
+      let progressTimer: ReturnType<typeof setTimeout> | undefined;
+      const clearProgress = () => {
+        clearTimeout(progressTimer);
+        progressTimer = undefined;
+      };
       // Mutable per-relay state, reset on each (re)subscription
       const state: Record<string, SyncRelayStatus> = {};
       // The current relays, in the order they were added
@@ -674,6 +679,11 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
               // was not fetched from it with a REQ
               addSeenRelay(event, url);
               state[url].count++;
+              // Share one progress timer across relays and build the snapshot only when it is needed.
+              progressTimer ??= setTimeout(() => {
+                progressTimer = undefined;
+                subscriber.next({ status: snapshot() });
+              }, 250);
               // Skip events another relay already surfaced
               if (seen.has(event.id)) return EMPTY;
               seen.add(event.id);
@@ -808,7 +818,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       );
 
       // A dynamic load emits an initial status before it knows its relays
-      return isObservable(relays)
+      const stream$ = isObservable(relays)
         ? merge(
             status(),
             concat(
@@ -823,6 +833,19 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             ),
           )
         : load$;
+
+      const sub = stream$
+        .pipe(
+          tap((msg) => {
+            // Lifecycle snapshots already include any pending progress.
+            if ("status" in msg) clearProgress();
+          }),
+        )
+        .subscribe(subscriber);
+      return () => {
+        clearProgress();
+        sub.unsubscribe();
+      };
     }).pipe(
       // Delay the run until after same-tick subscriptions to status$ and events$ have attached
       subscribeOn(asapScheduler),

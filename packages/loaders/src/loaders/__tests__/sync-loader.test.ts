@@ -432,6 +432,93 @@ describe("createSyncLoader", () => {
     expect(events).toEqual([a]);
   });
 
+  it.each([false, true])("publishes throttled progress during loading (negentropy=%s)", async (negentropy) => {
+    vi.useFakeTimers();
+    try {
+      const sources = [new Subject<NostrEvent>(), new Subject<NostrEvent>()];
+      const upstream = vi.fn((url: string) => sources[url.includes("one") ? 0 : 1]);
+      const loader = createSyncLoader({
+        eventStore: new EventStore(),
+        request: upstream,
+        sync: upstream,
+        getSupported: async () => (negentropy ? [77] : [1]),
+      });
+      const { status$, events$ } = loader({ relays: ["wss://one/", "wss://two/"], filter, timeout: false });
+      const statuses: SyncLoaderStatus[] = [];
+      const statusSub = status$.subscribe((status) => statuses.push(status));
+      await vi.advanceTimersByTimeAsync(0);
+      const initial = statuses.at(-1)!;
+      const before = statuses.length;
+      const a = user.note("progress a");
+      const b = user.note("progress b");
+      sources[0].next(a);
+      sources[1].next(a);
+      sources[0].next(b);
+      expect(statuses).toHaveLength(before);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(statuses).toHaveLength(before + 1);
+      expect(statuses.at(-1)).toMatchObject({
+        loaded: 2,
+        done: false,
+        relays: {
+          "wss://one/": { state: "loading", count: 2 },
+          "wss://two/": { state: "loading", count: 1 },
+        },
+      });
+      expect(initial.loaded).toBe(0);
+      expect(initial.relays["wss://one/"].count).toBe(0);
+
+      const events: NostrEvent[] = [];
+      const eventSub = events$.subscribe((event) => events.push(event));
+      const c = user.note("progress c");
+      sources[0].next(c);
+      expect(events).toContain(c);
+      expect(statuses.at(-1)!.loaded).toBe(2);
+      const replay: SyncLoaderStatus[] = [];
+      const lateSub = status$.subscribe((status) => replay.push(status));
+      expect(replay).toEqual([statuses.at(-1)]);
+      statusSub.unsubscribe();
+      eventSub.unsubscribe();
+      lateSub.unsubscribe();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("publishes final counters immediately and cancels pending progress", async () => {
+    vi.useFakeTimers();
+    try {
+      const source = new Subject<NostrEvent>();
+      const loader = createSyncLoader({
+        eventStore: new EventStore(),
+        request: vi.fn(),
+        sync: () => source,
+        getSupported: async () => [77],
+      });
+      const statuses: SyncLoaderStatus[] = [];
+      let completed = false;
+      loader({ relays: ["wss://relay/"], filter, timeout: false }).status$.subscribe({
+        next: (status) => statuses.push(status),
+        complete: () => {
+          completed = true;
+        },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      source.next(user.note("final progress"));
+      source.complete();
+      expect(completed).toBe(true);
+      expect(statuses.at(-1)).toMatchObject({ loaded: 1, done: true });
+      expect(vi.getTimerCount()).toBe(0);
+      const count = statuses.length;
+      await vi.advanceTimersByTimeAsync(250);
+      expect(statuses).toHaveLength(count);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits a final status snapshot with done=true and the unique count", async () => {
     const eventStore = new EventStore();
     const a = user.note("a");
@@ -733,7 +820,10 @@ describe("createSyncLoader", () => {
   it("skips a queued relay that is removed before it starts", async () => {
     const eventStore = new EventStore();
     const gate = new Subject<number[]>();
-    const getSupported = vi.fn().mockReturnValueOnce(gate).mockReturnValue(of([1]));
+    const getSupported = vi
+      .fn()
+      .mockReturnValueOnce(gate)
+      .mockReturnValue(of([1]));
     const request = vi.fn().mockReturnValue(of());
 
     const relays$ = new Subject<string[]>();
