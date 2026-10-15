@@ -9,6 +9,7 @@ import { nanoid } from "nanoid";
 import {
   BehaviorSubject,
   catchError,
+  connect,
   distinctUntilChanged,
   EMPTY,
   filter,
@@ -238,18 +239,13 @@ export function loadBlocksFromRelays(
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  if (!Array.isArray(filters)) filters = [filters];
-
-  const logger = opts?.logger?.extend("relays");
-  const request = wrapUpstreamPool(pool);
-  const loader = (base: Filter) =>
-    request(
-      relays,
-      // Create filters from filters, base, and optional limit
-      filters.map((f) => (opts?.limit ? mergeFilters(f, base, { limit: opts.limit }) : mergeFilters(f, base))),
+  return (source) =>
+    source.pipe(
+      // Connect after every relay is listening so cold sources deliver each window to all relays.
+      connect((windows) =>
+        merge(...relays.map((relay) => windows.pipe(loadBlocksFromRelay(pool, relay, filters, opts)))),
+      ),
     );
-
-  return (source) => source.pipe(loadBlocksForTimelineWindow(loader, { ...opts, logger }));
 }
 
 /** Loads timeline blocs from relay set using a pool or request method */
