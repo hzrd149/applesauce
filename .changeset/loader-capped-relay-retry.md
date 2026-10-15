@@ -2,4 +2,4 @@
 "applesauce-loaders": patch
 ---
 
-Re-request event ids and addresses that a relay dropped from a capped response while each retry makes progress
+Fix event and address loaders returning nothing for some events when a relay limits how many results it sends

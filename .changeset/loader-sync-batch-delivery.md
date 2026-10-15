@@ -2,4 +2,4 @@
 "applesauce-loaders": patch
 ---
 
-Fix batched loaders only delivering synchronous cache or relay results to the first subscriber in a batch
+Fix event and address loaders returning a cached event to only one of several components requesting it at the same time

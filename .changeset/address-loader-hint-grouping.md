@@ -2,4 +2,4 @@
 "applesauce-loaders": patch
 ---
 
-Request address pointers only from their own relay hints instead of sending every pointer to every hinted relay
+Fix address loader sending every requested address to every relay hint in the batch instead of only its own relays
