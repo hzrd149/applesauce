@@ -10,6 +10,7 @@ import {
   BehaviorSubject,
   catchError,
   combineLatest,
+  concat,
   defer,
   defaultIfEmpty,
   distinctUntilChanged,
@@ -1736,25 +1737,36 @@ export class Relay {
 
     // One RECEIVE transfer: request a batch of events the local store is missing and report what came back
     const receiveTask = (ids: string[]): Observable<SyncMessage> =>
-      // Defer so every subscription requests the batch under its own id
+      // Defer so every subscription requests the batch under its own id and tracks its own arrivals
       defer(() => {
         const requestId = nanoid();
-        return this.req({ ids }, { id: requestId }).pipe(
+        const received = new Set<string>();
+
+        const transfer$ = this.req({ ids }, { id: requestId }).pipe(
           // Run an auth phase if the relay refuses the request, then send it again
           syncAuth<RelayReqMessage>(() => ({ verb: "REQ", id: requestId, filters: [{ ids }] })),
+          // The relay has nothing further for this id once it sends EOSE
+          takeWhile((message) => message.type !== "EOSE"),
+          // Keep only the events, dropping req()'s own OPEN bookkeeping message
+          filter((message) => message.type === "EVENT"),
+          // Unwrap the event out of its REQ message
+          map((message) => message.event),
+          // Remember which ids arrived so the ones a capped relay dropped can be requested again
+          tap((event) => received.add(event.id)),
+          // Write it to the caller's store as it arrives, rather than batching until EOSE
+          toStore,
+          // Restate it as the outcome message the caller sees
+          map((event) => ({ type: "received", from: fromRelay, event }) satisfies SyncMessage),
         );
-      }).pipe(
-        // The relay has nothing further for this id once it sends EOSE
-        takeWhile((message) => message.type !== "EOSE"),
-        // Keep only the events, dropping req()'s own OPEN bookkeeping message
-        filter((message) => message.type === "EVENT"),
-        // Unwrap the event out of its REQ message
-        map((message) => message.event),
-        // Write it to the caller's store as it arrives, rather than batching until EOSE
-        toStore,
-        // Restate it as the outcome message the caller sees
-        map((event) => ({ type: "received", from: fromRelay, event }) satisfies SyncMessage),
-      );
+
+        // Relays clamp a REQ to their max_limit, so request the missing ids again until a round makes no progress
+        const retry$ = defer(() => {
+          const missing = ids.filter((id) => !received.has(id));
+          return missing.length > 0 && missing.length < ids.length ? receiveTask(missing) : EMPTY;
+        });
+
+        return concat(transfer$, retry$);
+      });
 
     // Negotiate which event ids each side is missing. Deferred so a transport reconnect starts a fresh negotiation
     // under a new id, while an auth retry inside syncAuth reuses this one

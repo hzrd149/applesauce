@@ -254,6 +254,25 @@ describe("sync scheduler", () => {
     );
   });
 
+  it("re-requests ids a capped relay dropped until a round makes no progress", async () => {
+    const events = Array.from({ length: 5 }, (_, n) => event(700 + n));
+    const lost = events[4];
+    vi.spyOn(relay, "negentropy").mockReturnValue(of({ have: [], need: events.map(({ id }) => id) }));
+    // A relay that caps every REQ at 2 events and never returns the lost event
+    const req = vi.spyOn(relay, "req").mockImplementation((filters) => {
+      const { ids } = filters as { ids: string[] };
+      const found = events.filter((value) => value !== lost && ids.includes(value.id)).slice(0, 2);
+      const messages = found.map((value) => ({ type: "EVENT" as const, from: relay.url, id: "capped", event: value }));
+      return of(...messages, { type: "EOSE" as const, from: relay.url, id: "capped" });
+    });
+
+    const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE));
+    await spy.onComplete();
+
+    expect(spy.getValues().map((message) => (message as { event: NostrEvent }).event)).toEqual(events.slice(0, 4));
+    expect(req.mock.calls.map(([filters]) => (filters as { ids: string[] }).ids.length)).toEqual([5, 3, 1]);
+  });
+
   it("rejects invalid batchSize before starting protocol work", async () => {
     const negotiate = vi.spyOn(relay, "negentropy");
     const spy = subscribeSpyTo(relay.sync([], {}, SyncDirection.RECEIVE, { batchSize: 0 }), { expectErrors: true });

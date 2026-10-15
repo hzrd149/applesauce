@@ -45,10 +45,12 @@ function requestLoader(
   request: SyncRequestMethod,
   limit?: number,
   filter: Filter = { kinds: [1], authors: [user.pubkey] },
+  maxLimit?: number,
 ) {
   const eventStore = new EventStore();
   const getSupported = vi.fn().mockResolvedValue([1]);
-  const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+  const getMaxLimit = vi.fn().mockResolvedValue(maxLimit);
+  const loader = createSyncLoader({ eventStore, request, getSupported, getMaxLimit, sync: vi.fn() });
   return loader({ relays: ["wss://relay/"], filter, limit });
 }
 
@@ -58,15 +60,44 @@ describe("paginated request", () => {
     const b = user.note("b", { created_at: 90 });
     const c = user.note("c", { created_at: 80 });
 
-    // First block returns 2 events, second returns a short page and completes
-    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(c));
+    // The relay's cap is unknown, so the short second page is not trusted and an empty third page ends it
+    const request: SyncRequestMethod = vi
+      .fn()
+      .mockReturnValueOnce(asyncOf(a, b))
+      .mockReturnValueOnce(asyncOf(c))
+      .mockReturnValueOnce(asyncOf());
 
     const events = await collect(requestLoader(request, 2).events$);
 
     expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
     // The second call moves past the oldest event of the first block (90 - 1)
     expect((request as any).mock.calls[1][1]).toEqual([{ kinds: [1], authors: [user.pubkey], until: 89, limit: 2 }]);
+  });
+
+  it("keeps paging past a short page from a relay that silently caps results", async () => {
+    const notes = [100, 90, 80, 70, 60].map((created_at) => user.note(String(created_at), { created_at }));
+    // A relay without a NIP-11 max_limit that returns at most 2 events per REQ
+    const request: SyncRequestMethod = vi.fn((_relay, [block]) =>
+      asyncOf(...notes.filter((e) => block.until === undefined || e.created_at <= block.until).slice(0, 2)),
+    );
+
+    const events = await collect(requestLoader(request, 3).events$);
+
+    expect(events.map((e) => e.content)).toEqual(["100", "90", "80", "70", "60"]);
+  });
+
+  it("clamps the page size to the relay's max_limit and stops on a short page", async () => {
+    const a = user.note("a", { created_at: 100 });
+    const b = user.note("b", { created_at: 90 });
+    const c = user.note("c", { created_at: 80 });
+    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(c));
+
+    const events = await collect(requestLoader(request, 500, undefined, 2).events$);
+
+    expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect((request as any).mock.calls[0][1]).toEqual([{ kinds: [1], authors: [user.pubkey], limit: 2 }]);
   });
 
   it("stops without emitting duplicates if the relay makes no backward progress", async () => {
@@ -118,7 +149,7 @@ describe("paginated request", () => {
     // The relay ignores since/until, but the filtered in-window page is short and completes
     const request: SyncRequestMethod = vi.fn().mockReturnValue(asyncOf(newer, inRange, older));
 
-    const events = await collect(requestLoader(request, 3, filter).events$);
+    const events = await collect(requestLoader(request, 3, filter, 3).events$);
 
     expect(events.map((e) => e.content)).toEqual(["in range"]);
     expect(request).toHaveBeenCalledTimes(1);
@@ -178,7 +209,7 @@ describe("createSyncLoader", () => {
     const request = vi.fn().mockReturnValue(of(a));
     const getSupported = vi.fn().mockResolvedValue([1]);
 
-    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const loader = createSyncLoader({ eventStore, request, getSupported, getMaxLimit: async () => 500, sync });
     const { events$ } = loader({ relays: ["wss://relay/"], filter, waitForAuth: user.pubkey });
 
     await collect(events$);
@@ -237,7 +268,7 @@ describe("createSyncLoader", () => {
     const getSupported = vi.fn().mockResolvedValue([1]);
     const onAuthRequired = vi.fn().mockResolvedValue(undefined);
 
-    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const loader = createSyncLoader({ eventStore, request, getSupported, getMaxLimit: async () => 500, sync });
     const { events$ } = loader({
       relays: ["wss://relay/"],
       filter,
@@ -616,7 +647,7 @@ describe("createSyncLoader", () => {
     const getSupported = vi.fn().mockResolvedValue([1]);
     const request = vi.fn().mockReturnValueOnce(asyncOf(a)).mockReturnValueOnce(asyncOf(b));
 
-    const loader = createSyncLoader({ eventStore, request, getSupported, sync: vi.fn() });
+    const loader = createSyncLoader({ eventStore, request, getSupported, getMaxLimit: async () => 500, sync: vi.fn() });
     const { status$, events$ } = loader({ relays: relays$, filter });
 
     const statuses: SyncLoaderStatus[] = [];
@@ -995,7 +1026,7 @@ describe("createSyncLoader", () => {
     const request = vi.fn().mockReturnValueOnce(of(a)).mockReturnValueOnce(of());
     const getSupported = vi.fn().mockResolvedValue([1, 77]);
 
-    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+    const loader = createSyncLoader({ eventStore, request, getSupported, getMaxLimit: async () => 500, sync });
     const { events$ } = loader({ relays: ["wss://relay/"], filter });
 
     const events = await collect(events$);

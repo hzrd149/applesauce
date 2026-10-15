@@ -10,10 +10,12 @@ import {
   concat,
   concatMap,
   connect,
+  defaultIfEmpty,
   defer,
   EMPTY,
   filter as rxFilter,
   finalize,
+  forkJoin,
   from,
   identity,
   isObservable,
@@ -149,6 +151,8 @@ export type SyncMethodOptions = {
   authTimeout?: number | false;
   /** The number of consecutive auth-required cycles to tolerate before giving up */
   authRetries?: number;
+  /** The max number of missing event ids a negentropy sync requests in a single REQ */
+  batchSize?: number;
 };
 
 /** A method that makes a one-shot REQ to a single relay and completes on EOSE */
@@ -156,6 +160,11 @@ export type SyncRequestMethod = (relay: string, filters: Filter[], opts?: SyncMe
 
 /** A method that returns the list of NIPs a single relay supports (used to detect NIP-77) */
 export type SyncSupportedMethod = (relay: string) => Promise<number[] | null> | Observable<number[] | null>;
+
+/** A method that returns the NIP-11 `max_limit` of a single relay, the most events it returns for one REQ */
+export type SyncMaxLimitMethod = (
+  relay: string,
+) => Promise<number | null | undefined> | Observable<number | null | undefined>;
 
 /** Dependency-free structural mirror of relay sync outcomes. */
 export type SyncResult =
@@ -172,6 +181,7 @@ export type SyncSyncMethod = (relay: string, filter: Filter, opts?: SyncMethodOp
 export interface SyncLoaderRelay {
   request(filters: Filter | Filter[], opts?: SyncMethodOptions): Observable<NostrEvent>;
   getSupported(): Promise<number[] | null>;
+  getLimitations?(): Promise<{ max_limit?: number } | null | undefined>;
   sync(store: unknown, filter: Filter, direction?: unknown, opts?: SyncMethodOptions): Observable<SyncResult>;
 }
 
@@ -186,6 +196,8 @@ type EventStoreInput = Parameters<typeof mapEventsToStore>[0];
 export type SyncLoaderMethods = {
   request: SyncRequestMethod;
   getSupported: SyncSupportedMethod;
+  /** Used to fit page and batch sizes under a relay's result cap; without it short pages are not trusted */
+  getMaxLimit?: SyncMaxLimitMethod;
   sync: SyncSyncMethod;
 };
 
@@ -251,7 +263,8 @@ export type SyncLoader = (request: SyncLoadRequest) => SyncLoaderResult;
  * Loads every event matching `filter` from a single relay by requesting blocks backward in time. The first
  * block honors the filter's `until`, and every block preserves the filter's `since`. After each block it moves
  * the `until` cursor just past the oldest event seen and requests again, stopping when a block comes back empty,
- * comes back short, or the next cursor would move before `since`. Events outside the requested window are dropped,
+ * comes back short of a page size known to fit under the relay's `maxLimit`, or the next cursor would move before
+ * `since`. Events outside the requested window are dropped,
  * so a relay that ignores `since` or `until` cannot produce duplicates. Use this for relays that do not support
  * NIP-77, where a single REQ would be capped by the relay's `limit`.
  *
@@ -265,6 +278,7 @@ function paginatedRequest(
   relay: string,
   filter: Filter,
   limit = 500,
+  maxLimit?: number,
   // D-18/WR-07: already the fully-derived "backward" logger, threaded in from buildRelayStream's
   // top level rather than derived here — this function is invoked from request$(), which lives
   // inside the switchMap projector below (a re-enterable reactive callback), so deriving on entry
@@ -274,10 +288,13 @@ function paginatedRequest(
 ): Observable<NostrEvent> {
   const since = filter.since;
   const initialUntil = filter.until;
+  // Relays silently clamp a REQ to their max_limit, so a short page only proves the end when the cap is known
+  const pageSize = maxLimit !== undefined ? Math.min(limit, maxLimit) : limit;
+  const trustShortPage = maxLimit !== undefined;
 
   // Loads blocks ending at `until`, streaming each block before deciding whether to request the next one
   const loadBlocks = (until = initialUntil): Observable<NostrEvent> => {
-    const block: Filter = until !== undefined ? { ...filter, until, limit } : { ...filter, limit };
+    const block: Filter = until !== undefined ? { ...filter, until, limit: pageSize } : { ...filter, limit: pageSize };
     let count = 0;
     let oldest: number | undefined;
 
@@ -299,7 +316,7 @@ function paginatedRequest(
       events$,
       defer(() => {
         log?.(`Found ${count} events`);
-        if (count === 0 || oldest === undefined || count < limit) {
+        if (count === 0 || oldest === undefined || (trustShortPage && count < pageSize)) {
           log?.("Complete");
           return EMPTY;
         }
@@ -325,13 +342,19 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
     return {
       request: (relay, filters, opts) => pool.relay(relay).request(filters, opts),
       getSupported: (relay) => pool.relay(relay).getSupported(),
+      getMaxLimit: async (relay) => (await pool.relay(relay).getLimitations?.())?.max_limit,
       // The event store doubles as the local store the relay reconciles against. The relay defaults to
       // receiving missing events; sending is intentionally left to a higher layer
       sync: (relay, filter, opts) => pool.relay(relay).sync(eventStore, filter, undefined, opts),
     };
   }
 
-  return { request: options.request, getSupported: options.getSupported, sync: options.sync };
+  return {
+    request: options.request,
+    getSupported: options.getSupported,
+    getMaxLimit: options.getMaxLimit,
+    sync: options.sync,
+  };
 }
 
 /**
@@ -358,7 +381,7 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
  * loader({ relays: user.outboxes$.pipe(defined()), filter });
  */
 export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
-  const { request, getSupported, sync } = resolveMethods(options);
+  const { request, getSupported, getMaxLimit, sync } = resolveMethods(options);
   const eventStore = options.eventStore;
   const baseLog = (options.logger ?? baseLogger).extend("sync-loader");
 
@@ -628,6 +651,18 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           catchError(() => of<number[] | null>(null)),
         );
 
+        // Resolve the relay's NIP-11 max_limit alongside, treating a missing or invalid value as unknown
+        const maxLimit$ = defer(() => {
+          if (!getMaxLimit) return of(undefined);
+          const result = getMaxLimit(url);
+          return isObservable(result) ? result.pipe(take(1)) : from(Promise.resolve(result));
+        }).pipe(
+          timeoutMs > 0 ? rxTimeout({ first: timeoutMs }) : identity,
+          map((value) => (typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined)),
+          catchError(() => of(undefined)),
+          defaultIfEmpty(undefined),
+        );
+
         // Adds each event to the store, drops events it rejects (expired/invalid/deleted), counts the
         // store-accepted events from this relay, and globally de-duplicates so `loaded` and events$ only
         // reflect events consumers actually receive
@@ -647,8 +682,8 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           );
 
         // Choose the loading method based on NIP-77 support, then stream the events
-        const load$ = supported$.pipe(
-          switchMap((nips) => {
+        const load$ = forkJoin([supported$, maxLimit$]).pipe(
+          switchMap(([nips, maxLimit]) => {
             const negentropy = !!nips?.includes(77);
             state[url].negentropy = negentropy;
             state[url].method = negentropy ? "negentropy" : "request";
@@ -657,7 +692,9 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
 
             // Part 1: paginated REQ
             const request$ = () =>
-              toMessages(withTimeout(paginatedRequest(request, url, filter, limit, backwardLog, relayMethodOptions)));
+              toMessages(
+                withTimeout(paginatedRequest(request, url, filter, limit, maxLimit, backwardLog, relayMethodOptions)),
+              );
 
             // A relay without NIP-77 just pages through a REQ
             if (!negentropy) return concat(status(), request$());
@@ -666,7 +703,10 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             return concat(
               status(),
               toMessages(
-                withTimeout(sync(url, filter, relayMethodOptions)).pipe(
+                // Fit each batch of missing ids under the relay's cap so fewer re-requests are needed
+                withTimeout(
+                  sync(url, filter, maxLimit ? { ...relayMethodOptions, batchSize: maxLimit } : relayMethodOptions),
+                ).pipe(
                   rxFilter((message) => message.type === "received" || !("type" in message)),
                   map((message) => (message.type === "received" ? message.event : (message as unknown as NostrEvent))),
                 ),
