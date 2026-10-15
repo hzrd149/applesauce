@@ -289,6 +289,11 @@ function loadBackwardFilterBlocks(
               if (cursors.every((cursor) => cursor.complete)) log?.("Complete");
             },
           }),
+          // A failed block leaves the cursors where they were so the next window retries it
+          catchError((error) => {
+            log?.("Failed to load block", error);
+            return EMPTY;
+          }),
           finalize(() => {
             loading = false;
             calls.release();
@@ -375,6 +380,11 @@ function loadForwardFilterBlocks(
               edge = target;
               log?.(`Loaded up to ${target}`);
             },
+          }),
+          // A failed gap leaves the edge where it was so the next window retries it
+          catchError((error) => {
+            log?.("Failed to load block", error);
+            return EMPTY;
           }),
           finalize(() => {
             loading = false;

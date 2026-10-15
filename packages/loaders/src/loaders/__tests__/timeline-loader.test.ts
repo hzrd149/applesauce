@@ -259,18 +259,19 @@ describe("loadBlocksFromFilterMap", () => {
     sub.unsubscribe();
   });
 
-  it("should not error when every relay fails", () => {
+  it("should not error when every relay fails and retry them on the next window", () => {
     const pool = vi.fn(() => throwError(() => new Error("All relays failed")));
     const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
     const error = vi.fn();
-    const complete = vi.fn();
 
-    window$
+    const sub = window$
       .pipe(loadBlocksFromFilterMap(pool, { "wss://a.com/": { kinds: [1] }, "wss://b.com/": { kinds: [1] } }))
-      .subscribe({ error, complete });
+      .subscribe({ error });
+    window$.next({ since: -Infinity });
 
     expect(error).not.toHaveBeenCalled();
-    expect(complete).toHaveBeenCalled();
+    expect(pool).toHaveBeenCalledTimes(4);
+    sub.unsubscribe();
   });
 });
 
@@ -521,3 +522,29 @@ describe("per-filter timeline cursors", () => {
 function loadOnce(op: ReturnType<typeof loadBlocksFromRelay>) {
   new BehaviorSubject<TimelineWindow>({ since: -Infinity }).pipe(op).subscribe().unsubscribe();
 }
+
+describe("relay errors", () => {
+  const relays = ["wss://a.com/", "wss://b.com/"];
+
+  it("should keep loading other relays and retry the failed relay on the next call", async () => {
+    let fail = true;
+    const request = vi.fn((urls: string[]) => {
+      if (urls[0] === relays[0] && fail) {
+        fail = false;
+        return throwError(() => new Error("Connection failed"));
+      }
+      return of({ ...event(100), id: urls[0] });
+    });
+    const loader = createTimelineLoader(request, relays, { kinds: [1] });
+
+    const first = await lastValueFrom(loader().pipe(toArray()));
+    expect(first.map((e) => e.id)).toEqual([relays[1]]);
+
+    const second = await lastValueFrom(loader().pipe(toArray()));
+    expect(second.map((e) => e.id)).toEqual([relays[0]]);
+    expect(request.mock.calls.filter(([urls]) => urls[0] === relays[0]).map(([, f]) => f[0].until)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+});
