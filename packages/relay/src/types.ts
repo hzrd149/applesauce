@@ -298,6 +298,8 @@ export type GroupRequestOptions = RelayRequestOptions & {
 
 /** Options for `RelayGroup.completeAfterIdle()` */
 export type CompleteAfterIdleOptions = {
+  /** Maximum time without new event ids while duplicates arrive, bounded below by idle (default 5 seconds) */
+  progress?: number;
   /** Minimum time after the first EOSE to wait for relays that have not responded (default 3 seconds) */
   grace?: number;
   /** Time without any events before completing once the grace period has passed (default 1.5 seconds) */

@@ -617,39 +617,61 @@ export class RelayGroup {
 
   /**
    * Creates a complete condition that waits after the first EOSE while relays are still sending events
-   * @param opts.grace - Minimum time after the first EOSE to wait for relays that have not responded (default 3s)
-   * @param opts.idle - Time without any events before completing once the grace period has passed (default 1.5s)
-   * @param opts.cap - Maximum time after the first EOSE before completing (default 15s)
+   * @param opts.grace Minimum time after the first EOSE to wait for relays that have not responded (default 3s)
+   * @param opts.idle Time without any events before completing once the grace period has passed (default 1.5s)
+   * @param opts.progress Maximum time without new event ids while duplicate events keep arriving (default 5s)
+   * @param opts.cap Maximum time after the first EOSE before completing (default 15s)
    */
   static completeAfterIdle(opts?: CompleteAfterIdleOptions): GroupRequestCompleteOperator {
-    const { grace = 3_000, idle = 1_500, cap = 15_000 } = opts ?? {};
+    const { grace = 3_000, idle = 1_500, cap = 15_000, progress: progressTimeout = 5_000 } = opts ?? {};
 
     return (source) =>
-      source.pipe(
-        filter((m) => m.type === "EOSE"),
-        take(1),
-        switchMap(() => {
-          // True once no relay has sent an event for `idle` ms, false again when an event arrives
-          const quiet = source.pipe(
-            filter((m) => m.type === "EVENT"),
-            startWith(null),
-            switchMap(() =>
-              timer(idle).pipe(
-                map(() => true),
-                startWith(false),
-              ),
-            ),
-          );
+      defer(() => {
+        // Track progress before the first EOSE too: another relay replaying those ids adds no data.
+        const seen = new Set<string>();
+        const traffic = source.pipe(share());
+        const progress = traffic.pipe(
+          filter((message) => {
+            if (message.type !== "EVENT") return true;
+            if (seen.has(message.event.id)) return false;
+            seen.add(message.event.id);
+            return true;
+          }),
+          share(),
+        );
 
-          return merge(
-            // Complete when the grace period has passed and relays have gone quiet
-            combineLatest([timer(grace), quiet]).pipe(filter(([, isQuiet]) => isQuiet)),
-            // Never wait longer than the cap
-            timer(cap),
-          );
-        }),
-        map(() => true),
-      );
+        return progress.pipe(
+          filter((m) => m.type === "EOSE"),
+          take(1),
+          switchMap(() => {
+            const quiet = combineLatest([
+              traffic.pipe(
+                filter((m) => m.type === "EVENT"),
+                startWith(null),
+                switchMap(() =>
+                  timer(idle).pipe(
+                    map(() => true),
+                    startWith(false),
+                  ),
+                ),
+              ),
+              progress.pipe(
+                filter((m) => m.type === "EVENT"),
+                startWith(null),
+                switchMap(() =>
+                  timer(Math.max(idle, progressTimeout)).pipe(
+                    map(() => true),
+                    startWith(false),
+                  ),
+                ),
+              ),
+            ]).pipe(map(([idle, stalled]) => idle || stalled));
+
+            return merge(combineLatest([timer(grace), quiet]).pipe(filter(([, isQuiet]) => isQuiet)), timer(cap));
+          }),
+          map(() => true),
+        );
+      });
   }
 
   /** Creates a group request complete operator that waits for all relays to send an EOSE message or timeout */
