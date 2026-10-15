@@ -13,6 +13,7 @@ describe("exports", () => {
         "RelayAuthChallengeChangedError",
         "RelayAuthChallengeTimeoutError",
         "RelayClosedError",
+        "RelayConnectionError",
         "RelayCountResponseError",
         "RelayCountTimeoutError",
         "RelayEventTimeoutError",

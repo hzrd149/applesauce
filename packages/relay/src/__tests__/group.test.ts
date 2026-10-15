@@ -7,7 +7,7 @@ import { WS } from "vitest-websocket-mock";
 import { RelayGroup, RelayGroupError } from "../group.js";
 import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
-import { AuthRequiredError, Relay, RelayAuthChallengeChangedError, RelayAuthChallengeTimeoutError } from "../relay.js";
+import { AuthRequiredError, Relay, RelayAuthChallengeChangedError, RelayAuthChallengeTimeoutError, RelayConnectionError } from "../relay.js";
 import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -167,7 +167,7 @@ describe("event", () => {
     mockRelay2.send(["OK", mockEvent.id, true, ""]);
 
     expect(spy.getValues()).toEqual([
-      expect.objectContaining({ ok: false, from: "wss://relay1.test", message: "Unknown error" }),
+      expect.objectContaining({ ok: false, from: "wss://relay1.test", message: "Connection to wss://relay1.test failed" }),
       expect.objectContaining({ ok: true, from: "wss://relay2.test", message: "" }),
     ]);
     expect(spy.receivedComplete()).toBe(true);
@@ -181,8 +181,8 @@ describe("event", () => {
 
     const values = spy.getValues();
     const failed = values.find((v) => v.from === "wss://relay1.test");
-    expect(failed).toMatchObject({ ok: false, from: "wss://relay1.test", message: "Unknown error" });
-    expect(failed?.error).toBeDefined();
+    expect(failed).toMatchObject({ ok: false, from: "wss://relay1.test", message: "Connection to wss://relay1.test failed" });
+    expect(failed?.error).toBeInstanceOf(RelayConnectionError);
 
     const succeeded = values.find((v) => v.from === "wss://relay2.test");
     expect(succeeded).toMatchObject({ ok: true, from: "wss://relay2.test", message: "" });

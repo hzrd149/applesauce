@@ -17,6 +17,7 @@ import {
   AuthTimeoutError,
   Relay,
   RelayClosedError,
+  RelayConnectionError,
   RelayAuthChallengeChangedError,
   RelayAuthChallengeTimeoutError,
   RelayCountTimeoutError,
@@ -382,6 +383,18 @@ describe("req", () => {
 
     // Verify the subscription completed with an error
     expect(spy.receivedError()).toBe(true);
+  });
+
+  it("should convert socket error events to a RelayConnectionError", async () => {
+    const spy = subscribeSpyTo(relay.req([{ kinds: [1] }], { id: "sub1" }), { expectErrors: true });
+    await server.connected;
+
+    server.error({ reason: "error message", code: 1006, wasClean: false });
+
+    const error = spy.getError();
+    expect(error).toBeInstanceOf(RelayConnectionError);
+    expect(error.message).toBe("Connection to wss://test failed");
+    expect(error.cause).toMatchObject({ type: "error" });
   });
 
   it("should not return EOSE while waiting for the relay to be ready", async () => {

@@ -203,6 +203,36 @@ export class RelayCountTimeoutError extends Error {
   }
 }
 
+/** A WebSocket error event converted to an Error with the relay URL and reason */
+export class RelayConnectionError extends Error {
+  constructor(
+    public readonly url: string,
+    cause?: unknown,
+  ) {
+    super(`Connection to ${url} failed${describeSocketError(cause)}`, { cause });
+    this.name = "RelayConnectionError";
+  }
+}
+
+/** Returns ": reason" from a WebSocket error event, or an empty string when the event has no reason */
+function describeSocketError(event: unknown): string {
+  if (typeof event !== "object" || event === null) return "";
+  const reason =
+    ("message" in event && typeof event.message === "string" && event.message) ||
+    ("error" in event && event.error instanceof Error && event.error.message) ||
+    "";
+  return reason ? `: ${reason}` : "";
+}
+
+/** Converts WebSocket error events (which stringify as "[object ErrorEvent]") to a RelayConnectionError */
+function toConnectionError(error: unknown, url: string): unknown {
+  if (error instanceof Error) return error;
+  // Close events are left alone because retry predicates depend on them
+  if (typeof error === "object" && error !== null && "type" in error && error.type === "error")
+    return new RelayConnectionError(url, error);
+  return error;
+}
+
 /** Whether an error represents a transport failure for which reconnecting can make progress. */
 function isReconnectableTransportError(error: unknown): error is CloseEvent {
   return (
@@ -819,7 +849,8 @@ export class Relay {
       // subscribers have already been torn down by the same error. Completing (instead of
       // switching to NEVER) resets the share so the next subscription makes a fresh connection
       catchError((error) => {
-        this.startReconnectTimer(error instanceof Error ? error : new Error("Connection error"));
+        const converted = toConnectionError(error, this.url);
+        this.startReconnectTimer(converted instanceof Error ? converted : new Error("Connection error"));
         return EMPTY;
       }),
       // Keep the connection alive for keepAlive ms after the last subscriber leaves, cancelled when the relay is closed
@@ -962,7 +993,17 @@ export class Relay {
   }
 
   /** Wait for the relay to be ready to accept connections */
-  protected waitForReady<T extends unknown = unknown>(observable: Observable<T>): Observable<T> {
+  protected waitForReady<T extends unknown = unknown>(source: Observable<T>): Observable<T> {
+    // Convert socket error events so callers get a readable Error. Not catchError, which tears down the source
+    // before forwarding the error and would clear request state that error handlers still read
+    const observable = new Observable<T>((observer) =>
+      source.subscribe({
+        next: (value) => observer.next(value),
+        error: (error) => observer.error(toConnectionError(error, this.url)),
+        complete: () => observer.complete(),
+      }),
+    );
+
     // Don't wait if the relay is already ready
     if (this.ready) return observable;
     else
