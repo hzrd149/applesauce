@@ -2,4 +2,4 @@
 "applesauce-loaders": patch
 ---
 
-Complete each timeline loader call once the blocks it started or joined have finished loading.
+Make the observable returned by each timeline loader call complete once its page of events has loaded.
