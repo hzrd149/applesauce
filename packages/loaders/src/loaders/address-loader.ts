@@ -11,8 +11,8 @@ import { bufferTime, catchError, EMPTY, identity, merge, Observable } from "rxjs
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
-import { batchLoader, Loader, loadUntilSettled, unwrap } from "../helpers/loaders.js";
-import { groupByRelay } from "../helpers/pointer.js";
+import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
+import { groupByRelay, isPointerCovered } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -174,6 +174,10 @@ export type AddressLoaderOptions = Partial<{
   extraRelays: string[] | Observable<string[]>;
   /** Fallback lookup relays to check when event cant be found */
   lookupRelays: string[] | Observable<string[]>;
+  /** The maximum number of batches requesting relays at once ( default 4 ) */
+  maxConcurrentBatches: number;
+  /** Time in ms before a loading stage gives up and moves unresolved pointers to the next stage, 0 to disable ( default 10000 ) */
+  stageTimeout: number;
   /** An {@link AbortSignal} that tears down the loader when aborted */
   signal: AbortSignal;
 }>;
@@ -181,6 +185,7 @@ export type AddressLoaderOptions = Partial<{
 /** Create a pre-built address pointer loader that supports batching, caching, and lookup relays */
 export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOptions): AddressPointerLoader {
   const request = wrapUpstreamPool(pool);
+  const stageTimeout = opts?.stageTimeout ?? 10_000;
 
   return batchLoader(
     // buffer requests by time or size
@@ -188,13 +193,22 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
     // Create a loader for batching
     addressPointerLoadingSequence(
       // Step 1. load from cache if available
-      opts?.cacheRequest ? cacheAddressPointersLoader(opts.cacheRequest) : undefined,
+      withStageTimeout(opts?.cacheRequest ? cacheAddressPointersLoader(opts.cacheRequest) : undefined, stageTimeout),
       // Step 2. load from relay hints on pointers
-      opts?.followRelayHints !== false ? relayHintsAddressPointersLoader(request) : undefined,
+      withStageTimeout(
+        opts?.followRelayHints !== false ? relayHintsAddressPointersLoader(request) : undefined,
+        stageTimeout,
+      ),
       // Step 3. load from extra relays
-      opts?.extraRelays ? relaysAddressPointersLoader(request, opts.extraRelays) : undefined,
+      withStageTimeout(
+        opts?.extraRelays ? relaysAddressPointersLoader(request, opts.extraRelays) : undefined,
+        stageTimeout,
+      ),
       // Step 4. load from lookup relays
-      opts?.lookupRelays ? relaysAddressPointersLoader(request, opts.lookupRelays) : undefined,
+      withStageTimeout(
+        opts?.lookupRelays ? relaysAddressPointersLoader(request, opts.lookupRelays) : undefined,
+        stageTimeout,
+      ),
     ),
     // Filter resutls based on requests
     (pointer, event) =>
@@ -203,7 +217,13 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
       (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true),
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
-    // Forward the abort signal for explicit teardown
-    { signal: opts?.signal },
+    {
+      // Forward the abort signal for explicit teardown
+      signal: opts?.signal,
+      // Bound how many batches request relays at once
+      maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4,
+      // Repeated pointers join the batch already loading them
+      inflight: { key: (p) => createReplaceableAddress(p.kind, p.pubkey, p.identifier), covers: isPointerCovered },
+    },
   );
 }

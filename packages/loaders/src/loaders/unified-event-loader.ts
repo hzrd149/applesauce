@@ -23,6 +23,8 @@ export function createUnifiedEventLoader(pool: UpstreamPool, opts?: UnifiedEvent
     cacheRequest: opts?.cacheRequest,
     followRelayHints: opts?.followRelayHints,
     extraRelays: opts?.extraRelays,
+    maxConcurrentBatches: opts?.maxConcurrentBatches,
+    stageTimeout: opts?.stageTimeout,
     signal: opts?.signal,
   });
 
@@ -34,6 +36,8 @@ export function createUnifiedEventLoader(pool: UpstreamPool, opts?: UnifiedEvent
     followRelayHints: opts?.followRelayHints,
     extraRelays: opts?.extraRelays,
     lookupRelays: opts?.lookupRelays,
+    maxConcurrentBatches: opts?.maxConcurrentBatches,
+    stageTimeout: opts?.stageTimeout,
     signal: opts?.signal,
   });
 

@@ -14,6 +14,15 @@ export function groupByRelay<T extends { relays?: string[] }>(pointers: T[], ext
   return byRelay;
 }
 
+/** Checks if a running pointer already loads everything a new pointer asks for (its relay hints and cache bypass) */
+export function isPointerCovered<T extends { relays?: string[]; cache?: boolean }>(running: T, pointer: T): boolean {
+  if (pointer.cache === false && running.cache !== false) return false;
+  if (!pointer.relays?.length) return true;
+
+  const relays = mergeRelaySets(running.relays);
+  return mergeRelaySets(relays, pointer.relays).length === relays.length;
+}
+
 export interface MessageWithRelay {
   relays?: string[];
   /** Ignore timeout and force message through */

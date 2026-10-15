@@ -5,8 +5,8 @@ import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
-import { batchLoader, Loader, loadUntilSettled, unwrap } from "../helpers/loaders.js";
-import { groupByRelay } from "../helpers/pointer.js";
+import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
+import { groupByRelay, isPointerCovered } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -118,6 +118,10 @@ export type EventPointerLoaderOptions = Partial<{
   followRelayHints: boolean;
   /** An array of relays to always fetch from */
   extraRelays: string[] | Observable<string[]>;
+  /** The maximum number of batches requesting relays at once ( default 4 ) */
+  maxConcurrentBatches: number;
+  /** Time in ms before a loading stage gives up and moves unresolved pointers to the next stage, 0 to disable ( default 10000 ) */
+  stageTimeout: number;
   /** An {@link AbortSignal} that tears down the loader when aborted */
   signal: AbortSignal;
 }>;
@@ -125,6 +129,7 @@ export type EventPointerLoaderOptions = Partial<{
 /** Create a pre-built address pointer loader that supports batching, caching, and lookup relays */
 export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderOptions): EventPointerLoader {
   const request = wrapUpstreamPool(pool);
+  const stageTimeout = opts?.stageTimeout ?? 10_000;
 
   return batchLoader(
     // Create batching sequence
@@ -133,17 +138,23 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
     // Create a loader for batching
     eventLoadingSequence(
       // Step 1. load from cache if available
-      opts?.cacheRequest ? cacheEventsLoader(opts.cacheRequest) : undefined,
+      withStageTimeout(opts?.cacheRequest ? cacheEventsLoader(opts.cacheRequest) : undefined, stageTimeout),
       // Step 2. load from relay hints on pointers
-      opts?.followRelayHints !== false ? relayHintsEventsLoader(request) : undefined,
+      withStageTimeout(opts?.followRelayHints !== false ? relayHintsEventsLoader(request) : undefined, stageTimeout),
       // Step 3. load from extra relays
-      opts?.extraRelays ? relaysEventsLoader(request, opts.extraRelays) : undefined,
+      withStageTimeout(opts?.extraRelays ? relaysEventsLoader(request, opts.extraRelays) : undefined, stageTimeout),
     ),
     // Filter resutls based on requests
     (pointer, event) => event.id === pointer.id,
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
-    // Forward the abort signal for explicit teardown
-    { signal: opts?.signal },
+    {
+      // Forward the abort signal for explicit teardown
+      signal: opts?.signal,
+      // Bound how many batches request relays at once
+      maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4,
+      // Repeated pointers join the batch already loading them
+      inflight: { key: (p) => p.id, covers: isPointerCovered },
+    },
   );
 }

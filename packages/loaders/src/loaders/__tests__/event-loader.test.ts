@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { of, Subject } from "rxjs";
+import { NEVER, of, Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -84,5 +84,108 @@ describe("capped relay responses", () => {
 
     expect(spy.getValues()).toEqual(notes);
     expect(request.mock.calls.every(([relays]) => relays[0] === "wss://relay.com/")).toBe(true);
+  });
+});
+
+describe("request pressure and timeouts", () => {
+  const note = user.note("target");
+
+  it("moves on to extra relays when a hint stage times out", () => {
+    const request: Mock<NostrRequest> = vi.fn((relays) => (relays[0] === "wss://extra.test/" ? of(note) : NEVER));
+    const loader = createEventLoader(request, {
+      bufferTime: 10,
+      stageTimeout: 100,
+      extraRelays: ["wss://extra.test/"],
+    });
+
+    const spy = subscribeSpyTo(loader({ id: note.id, relays: ["wss://hint.test/"] }));
+    vi.advanceTimersByTime(10);
+    expect(request).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(100);
+    expect(spy.getValues()).toEqual([note]);
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("completes a stage whose relay list never emits", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => of(note));
+    const loader = createEventLoader(request, { bufferTime: 10, stageTimeout: 100, extraRelays: NEVER });
+
+    const spy = subscribeSpyTo(loader({ id: note.id }));
+    vi.advanceTimersByTime(110);
+
+    expect(request).not.toHaveBeenCalled();
+    expect(spy.receivedComplete()).toBe(true);
+  });
+
+  it("shares a pending request with repeated pointers", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => NEVER);
+    const loader = createEventLoader(request, { bufferTime: 10, stageTimeout: 0, extraRelays: ["wss://extra.test/"] });
+
+    for (let i = 0; i < 5; i++) {
+      subscribeSpyTo(loader({ id: note.id }));
+      vi.advanceTimersByTime(10);
+    }
+
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it("requests a repeated pointer again when it adds a new relay hint", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => NEVER);
+    const loader = createEventLoader(request, { bufferTime: 10, stageTimeout: 0 });
+
+    subscribeSpyTo(loader({ id: note.id, relays: ["wss://a.test/"] }));
+    vi.advanceTimersByTime(10);
+    subscribeSpyTo(loader({ id: note.id, relays: ["wss://a.test/", "wss://b.test/"] }));
+    vi.advanceTimersByTime(10);
+
+    expect(request.mock.calls.map(([relays]) => relays)).toContainEqual(["wss://b.test/"]);
+  });
+
+  it("delivers to every consumer and saves to the store once with the default store", () => {
+    const relay = new Subject<NostrEvent>();
+    const added: NostrEvent[] = [];
+    const loader = createEventLoader(() => relay, {
+      bufferTime: 10,
+      extraRelays: ["wss://extra.test/"],
+      eventStore: { add: (e: NostrEvent) => (added.push(e), e) } as any,
+    });
+
+    const a = subscribeSpyTo(loader({ id: note.id }));
+    const b = subscribeSpyTo(loader({ id: note.id }));
+    vi.advanceTimersByTime(10);
+    relay.next(note);
+
+    expect(a.getValues()).toEqual([note]);
+    expect(b.getValues()).toEqual([note]);
+    expect(added).toEqual([note]);
+  });
+
+  it("runs each stage once with the default store and a synchronous relay", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => of(note));
+    const loader = createEventLoader(request, { bufferTime: 10, extraRelays: ["wss://extra.test/"] });
+
+    const spy = subscribeSpyTo(loader({ id: note.id }));
+    vi.advanceTimersByTime(10);
+
+    expect(request).toHaveBeenCalledOnce();
+    expect(spy.getValues()).toEqual([note]);
+  });
+
+  it("saves events to the store after the consumer unsubscribes", () => {
+    const relay = new Subject<NostrEvent>();
+    const added: NostrEvent[] = [];
+    const loader = createEventLoader(() => relay, {
+      bufferTime: 10,
+      extraRelays: ["wss://extra.test/"],
+      eventStore: { add: (e: NostrEvent) => (added.push(e), e) } as any,
+    });
+
+    const spy = subscribeSpyTo(loader({ id: note.id }));
+    vi.advanceTimersByTime(10);
+    spy.unsubscribe();
+    relay.next(note);
+
+    expect(added).toEqual([note]);
   });
 });

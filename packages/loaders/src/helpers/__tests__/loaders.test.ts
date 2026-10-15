@@ -1,5 +1,5 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
-import { bufferTime, Observable, of, Subject } from "rxjs";
+import { bufferTime, Observable, of, Subject, tap } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { batchLoader } from "../loaders.js";
@@ -184,5 +184,141 @@ describe("batchLoader", () => {
       expect(a.getValues()).toEqual([10]);
       expect(b.getValues()).toEqual([20]);
     });
+  });
+});
+
+describe("batchLoader request pressure", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  /** An upstream that tracks active requests and emits results when told to */
+  const tracked = () => {
+    const state = { calls: 0, active: 0, peak: 0, subjects: [] as Subject<number>[] };
+    const upstream = (_inputs: number[]) =>
+      new Observable<number>((observer) => {
+        const subject = new Subject<number>();
+        state.subjects.push(subject);
+        state.calls++;
+        state.peak = Math.max(state.peak, ++state.active);
+        const sub = subject.subscribe(observer);
+        return () => {
+          state.active--;
+          sub.unsubscribe();
+        };
+      });
+    return { state, upstream };
+  };
+  const inflight = { key: (n: number) => String(n), covers: () => true };
+
+  it("shares a running request with repeated inputs", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10), upstream, (i, o) => o === i * 10, undefined, {
+      inflight,
+    });
+
+    const spies = Array.from({ length: 5 }, () => {
+      const spy = subscribeSpyTo(loader(1));
+      vi.advanceTimersByTime(10);
+      return spy;
+    });
+
+    expect(state.calls).toBe(1);
+    state.subjects[0].next(10);
+    state.subjects[0].complete();
+    for (const spy of spies) expect(spy.getValues()).toEqual([10]);
+  });
+
+  it("replays results already delivered to a joining input", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10), upstream, (i, o) => o === i * 10, undefined, {
+      inflight,
+    });
+
+    subscribeSpyTo(loader(1));
+    vi.advanceTimersByTime(10);
+    state.subjects[0].next(10);
+
+    const late = subscribeSpyTo(loader(1));
+    state.subjects[0].complete();
+    expect(late.getValues()).toEqual([10]);
+    expect(late.receivedComplete()).toBe(true);
+  });
+
+  it("queues new requests for inputs the running request does not cover", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10), upstream, (i, o) => o === i * 10, undefined, {
+      inflight: { ...inflight, covers: () => false },
+    });
+
+    subscribeSpyTo(loader(1));
+    vi.advanceTimersByTime(10);
+    subscribeSpyTo(loader(1));
+    vi.advanceTimersByTime(10);
+
+    expect(state.calls).toBe(2);
+  });
+
+  it("caps concurrent batches and runs queued ones as slots free up", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10, undefined, 1), upstream, () => true, undefined, {
+      maxConcurrentBatches: 2,
+    });
+
+    for (let i = 0; i < 6; i++) subscribeSpyTo(loader(i));
+    expect(state.calls).toBe(2);
+
+    state.subjects[0].complete();
+    expect(state.calls).toBe(3);
+    expect(state.peak).toBe(2);
+  });
+
+  it("skips queued batches whose consumers unsubscribed", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10, undefined, 1), upstream, () => true, undefined, {
+      maxConcurrentBatches: 1,
+    });
+
+    subscribeSpyTo(loader(1));
+    const queued = subscribeSpyTo(loader(2));
+    queued.unsubscribe();
+    state.subjects[0].complete();
+
+    expect(state.calls).toBe(1);
+  });
+
+  it("completes queued consumers and drops the queue on stop()", () => {
+    const { state, upstream } = tracked();
+    const loader = batchLoader<number, number>(bufferTime(10, undefined, 1), upstream, () => true, undefined, {
+      maxConcurrentBatches: 1,
+    });
+
+    subscribeSpyTo(loader(1));
+    const queued = subscribeSpyTo(loader(2));
+    loader.stop();
+
+    expect(queued.receivedComplete()).toBe(true);
+    expect(state.calls).toBe(1);
+    expect(state.active).toBe(0);
+  });
+
+  it("passes events through the output operator after consumers unsubscribe", () => {
+    const { state, upstream } = tracked();
+    const stored: number[] = [];
+    const loader = batchLoader<number, number>(
+      bufferTime(10),
+      upstream,
+      () => true,
+      tap((n) => stored.push(n)),
+    );
+
+    const spy = subscribeSpyTo(loader(1));
+    vi.advanceTimersByTime(10);
+    spy.unsubscribe();
+    state.subjects[0].next(10);
+
+    expect(stored).toEqual([10]);
   });
 });
