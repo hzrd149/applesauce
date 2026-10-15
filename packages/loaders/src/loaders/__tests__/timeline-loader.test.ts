@@ -19,6 +19,7 @@ import {
   createOutboxTimelineLoader,
   createTimelineLoader,
   loadBackwardBlocks,
+  loadBlocksFromRelay,
   loadBlocksFromRelays,
   loadForwardBlocks,
   loadBlocksFromFilterMap,
@@ -447,3 +448,76 @@ describe("loader call completion", () => {
     expect(complete).toHaveBeenCalled();
   });
 });
+
+describe("per-filter timeline cursors", () => {
+  const relay = "wss://a.com/";
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  // A relay that applies `limit` and the inclusive bounds to each filter separately, like NIP-01 requires
+  function filterPool(events: NostrEvent[]) {
+    return vi.fn((_relays: string[], filters: Filter[]) =>
+      of(
+        ...filters.flatMap((f) =>
+          events
+            .filter(
+              (e) =>
+                f.kinds!.includes(e.kind) &&
+                e.created_at <= (f.until ?? Infinity) &&
+                e.created_at >= (f.since ?? -Infinity),
+            )
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, f.limit)
+            .map((e) => ({ ...e })),
+        ),
+      ),
+    );
+  }
+
+  const dense = Array.from({ length: 100 }, (_, i) => event(1000 - i));
+  const sparse = { ...event(10), id: "sparse", kind: 2 };
+
+  it("should load a dense filter completely when a sparse filter on the same relay reaches further back", async () => {
+    const request = filterPool([...dense, sparse]);
+    const loader = createTimelineLoader(request, [relay], [{ kinds: [1] }, { kinds: [2] }], { limit: 10 });
+    const received = new Set<string>();
+
+    for (let i = 0; i < 15; i++)
+      await lastValueFrom(loader().pipe(toArray())).then((p) => p.forEach((e) => received.add(e.id)));
+
+    expect(received).toEqual(new Set([...dense, sparse].map((e) => e.id)));
+    // The exhausted sparse filter is dropped from later requests
+    expect(request.mock.calls.at(-1)![1]).toEqual([{ kinds: [1], until: expect.any(Number), limit: 10 }]);
+  });
+
+  it("should fill the forward gap for every filter on the same relay", async () => {
+    vi.useFakeTimers({ now: 1000_000, toFake: ["Date"] });
+    const events: NostrEvent[] = [];
+    const request = filterPool(events);
+    const window$ = new Subject<TimelineWindow>();
+    const received = new Set<string>();
+    const sub = window$
+      .pipe(loadBlocksFromRelay(request, relay, [{ kinds: [1] }, { kinds: [2] }], { limit: 10 }))
+      .subscribe((e) => received.add(e.id));
+
+    window$.next({ since: 1000 });
+    events.push(...Array.from({ length: 50 }, (_, i) => event(1001 + i)), { ...event(1002), id: "sparse", kind: 2 });
+    vi.setSystemTime(1100_000);
+    window$.next({ until: Infinity });
+    await flush();
+
+    expect(received).toEqual(new Set(events.map((e) => e.id)));
+    sub.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it("should keep filter fields that have no merge rule", () => {
+    const request = vi.fn(() => EMPTY);
+    loadOnce(loadBlocksFromRelay(request, relay, { kinds: [1], search: "nostr" }));
+    expect(request).toHaveBeenCalledWith([relay], [{ kinds: [1], search: "nostr" }]);
+  });
+});
+
+/** Applies a block operator to a single window and unsubscribes */
+function loadOnce(op: ReturnType<typeof loadBlocksFromRelay>) {
+  new BehaviorSubject<TimelineWindow>({ since: -Infinity }).pipe(op).subscribe().unsubscribe();
+}

@@ -2,7 +2,7 @@ import { logger as baseLogger, type Debugger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { unixNow } from "applesauce-core/helpers/time";
-import { Filter, isFilterEqual, mergeFilters } from "applesauce-core/helpers/filter";
+import { Filter, isFilterEqual, matchFilter, mergeFilters } from "applesauce-core/helpers/filter";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
 import { filterDuplicateEvents, mapEventsToStore } from "applesauce-core/observable";
@@ -183,46 +183,67 @@ function createPage(since: number | undefined, until: number | undefined, bounda
   };
 }
 
+/** A method that requests one block of events for a list of filters */
+type FiltersRequest = (filters: Filter[]) => Observable<NostrEvent>;
+
+/** Adds the bounds and limit of a block to a filter, keeping every other field */
+function withBounds(filter: Filter, since?: number, until?: number, limit?: number): Filter {
+  const result: Filter = { ...filter };
+  if (since !== undefined) result.since = since;
+  if (until !== undefined) result.until = until;
+  if (limit) result.limit = limit;
+  return result;
+}
+
+/** Adds an event to the page of every filter it matches. A lone filter takes every event the relay returns */
+function addToPages(event: NostrEvent, filters: Filter[], pages: ReturnType<typeof createPage>[]) {
+  if (filters.length === 1) return pages[0].add(event);
+  for (let i = 0; i < filters.length; i++) if (matchFilter(filters[i], event)) pages[i].add(event);
+}
+
 /**
- * Watches for changes in the window and loads blocks of events going backward
- * NOTE: this operator is stateful
+ * Loads blocks of events going backward with a separate cursor for each filter, since NIP-01 applies `limit` to
+ * each filter and a sparse filter would otherwise move the cursor past a dense one
  */
-export function loadBackwardBlocks(
-  request: (until?: number) => Observable<NostrEvent>,
+function loadBackwardFilterBlocks(
+  filters: Filter[],
+  request: FiltersRequest,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return (source) => {
     const log = opts?.logger?.extend("backward").extend(nanoid(8));
 
-    let cursor: number | undefined = undefined;
-    // Ids already loaded at the cursor second, since the cursor is requested again as an inclusive `until`
-    let boundary = new Set<string>();
+    // The next inclusive `until` for each filter, plus the ids already loaded at that second
+    const cursors = filters.map((filter) => ({
+      filter,
+      until: undefined as number | undefined,
+      boundary: new Set<string>(),
+      complete: false,
+    }));
     let loading = false;
-    let complete = false;
     const calls = createBlockCalls();
+
+    // Filters that still have events to load above `since`. The cursor is the next inclusive `until`,
+    // so everything newer than the cursor has already been loaded
+    const pending = (since: number) =>
+      cursors.filter(
+        (cursor) =>
+          !cursor.complete && (cursor.until === undefined || !Number.isFinite(since) || since <= cursor.until),
+      );
 
     return source.pipe(
       filter((window) => {
         const { since, until } = window;
 
-        // Once complete, prevent further requests
-        if (complete) return false;
-
         // Ignore windows replayed from calls that already finished
         if (getTimelineCall(window)?.settled) return false;
 
-        // If max is unset, initialize to until
-        if (cursor === undefined && until !== undefined && Number.isFinite(until)) cursor = until;
+        // If the cursor is unset, initialize to until
+        if (until !== undefined && Number.isFinite(until))
+          for (const cursor of cursors) if (cursor.until === undefined) cursor.until = until;
 
-        // Skip loads if since is still in range
-        if (
-          // Ignore undefined since values
-          since === undefined ||
-          // If number is finite and in the loaded range, skip. The cursor is the next inclusive `until`,
-          // so everything newer than the cursor has already been loaded
-          (Number.isFinite(since) && cursor !== undefined && since > cursor)
-        )
-          return false;
+        // Skip loads if since is unset or still in range
+        if (since === undefined || pending(since).length === 0) return false;
 
         // Don't load blocks in parallel, wait for the current block instead
         calls.join(window);
@@ -231,32 +252,41 @@ export function loadBackwardBlocks(
         return true;
       }),
       // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(() => {
+      mergeMap(({ since }) => {
         // Set loading lock
         loading = true;
 
-        const until = cursor;
-        const page = createPage(undefined, until, boundary);
+        const active = pending(since!);
+        const pages = active.map((cursor) => createPage(undefined, cursor.until, cursor.boundary));
 
-        log?.(`Loading block until:${until}`);
+        log?.(`Loading block until:${active.map((cursor) => cursor.until).join(",")}`);
 
         // Request the next block of events
-        return request(until).pipe(
-          tap((event) => page.add(event)),
-          // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
+        return request(active.map((cursor) => withBounds(cursor.filter, undefined, cursor.until, opts?.limit))).pipe(
+          tap((event) =>
+            addToPages(
+              event,
+              active.map((cursor) => cursor.filter),
+              pages,
+            ),
+          ),
+          // Only commit the cursors when the block finishes, a cancelled block proves nothing about the source
           tap({
             complete: () => {
-              log?.(`Found ${page.count} events (${page.fresh} new)`);
+              active.forEach((cursor, i) => {
+                const page = pages[i];
+                log?.(`Found ${page.count} events (${page.fresh} new)`);
 
-              const next = page.next();
-              if (!next) complete = true;
-              else {
-                if (page.fresh === 0) log?.(`Skipping saturated second ${until}`);
-                cursor = next.until;
-                boundary = next.boundary;
-              }
+                const next = page.next();
+                if (!next) cursor.complete = true;
+                else {
+                  if (page.fresh === 0) log?.(`Skipping saturated second ${cursor.until}`);
+                  cursor.until = next.until;
+                  cursor.boundary = next.boundary;
+                }
+              });
 
-              if (complete) log?.("Complete");
+              if (cursors.every((cursor) => cursor.complete)) log?.("Complete");
             },
           }),
           finalize(() => {
@@ -269,12 +299,10 @@ export function loadBackwardBlocks(
   };
 }
 
-/**
- * Watches for changes in the window and loads the events between the newest loaded time and the window `until`
- * NOTE: this operator is stateful
- */
-export function loadForwardBlocks(
-  request: (since?: number, until?: number) => Observable<NostrEvent>,
+/** Loads the events between the newest loaded time and the window `until`, paging each filter separately */
+function loadForwardFilterBlocks(
+  filters: Filter[],
+  request: FiltersRequest,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return (source) => {
@@ -311,24 +339,36 @@ export function loadForwardBlocks(
         const since = edge!;
         const target = Math.min(until!, unixNow());
 
-        // Relays return the newest events first, so page backward through the gap until it is drained
-        const loadPage = (cursor: PageCursor): Observable<NostrEvent> => {
-          const page = createPage(since, cursor.until, cursor.boundary);
+        // Relays return the newest events first, so page backward through the gap until every filter has drained it
+        const loadPage = (active: { filter: Filter; cursor: PageCursor }[]): Observable<NostrEvent> => {
+          const pages = active.map(({ cursor }) => createPage(since, cursor.until, cursor.boundary));
 
-          log?.(`Loading block since:${since} until:${cursor.until}`);
+          log?.(`Loading block since:${since} until:${active.map(({ cursor }) => cursor.until).join(",")}`);
 
           return concat(
-            request(since, cursor.until).pipe(tap((event) => page.add(event))),
+            request(active.map(({ filter, cursor }) => withBounds(filter, since, cursor.until, opts?.limit))).pipe(
+              tap((event) =>
+                addToPages(
+                  event,
+                  active.map(({ filter }) => filter),
+                  pages,
+                ),
+              ),
+            ),
             defer(() => {
-              log?.(`Found ${page.count} events (${page.fresh} new)`);
+              const next = active.flatMap(({ filter }, i) => {
+                const cursor = pages[i].next();
+                return cursor ? [{ filter, cursor }] : [];
+              });
 
-              const next = page.next();
-              return next ? loadPage(next) : EMPTY;
+              return next.length > 0 ? loadPage(next) : EMPTY;
             }),
           );
         };
 
-        return loadPage({ until: target, boundary: new Set() }).pipe(
+        return loadPage(
+          filters.map((filter) => ({ filter, cursor: { until: target, boundary: new Set<string>() } })),
+        ).pipe(
           // Only move the edge once the whole gap has loaded, a cancelled block proves nothing about the source
           tap({
             complete: () => {
@@ -344,6 +384,43 @@ export function loadForwardBlocks(
       }),
     );
   };
+}
+
+/** Loads blocks of events going backward and forward with a separate cursor for each filter */
+function loadBlocksForFilters(
+  filters: Filter[],
+  request: FiltersRequest,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return (source) =>
+    merge(
+      source.pipe(loadBackwardFilterBlocks(filters, request, opts)),
+      source.pipe(loadForwardFilterBlocks(filters, request, opts)),
+    );
+}
+
+/**
+ * Watches for changes in the window and loads blocks of events going backward
+ * NOTE: this operator is stateful
+ */
+export function loadBackwardBlocks(
+  request: (until?: number) => Observable<NostrEvent>,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return loadBackwardFilterBlocks([{}], (filters) => request(filters[0].until), { logger: opts?.logger });
+}
+
+/**
+ * Watches for changes in the window and loads the events between the newest loaded time and the window `until`
+ * NOTE: this operator is stateful
+ */
+export function loadForwardBlocks(
+  request: (since?: number, until?: number) => Observable<NostrEvent>,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return loadForwardFilterBlocks([{}], (filters) => request(filters[0].since, filters[0].until), {
+    logger: opts?.logger,
+  });
 }
 
 /** A loader that loads blocks of events until none are returned or the since timestamp is reached */
@@ -367,14 +444,7 @@ export function loadBlocksFromCache(
   if (!Array.isArray(filters)) filters = [filters];
 
   const logger = opts?.logger?.extend("cache");
-  const loader = (base: Filter) =>
-    makeCacheRequest(
-      request,
-      // Create filters from filters, base, and optional limit
-      filters.map((f) => (opts?.limit ? mergeFilters(f, base, { limit: opts.limit }) : mergeFilters(f, base))),
-    );
-
-  return (source) => source.pipe(loadBlocksForTimelineWindow(loader, { ...opts, logger }));
+  return loadBlocksForFilters(filters, (filters) => makeCacheRequest(request, filters), { ...opts, logger });
 }
 
 /** Loads timeline blocs from relays using a pool or request method */
@@ -411,14 +481,7 @@ export function loadBlocksFromRelay(
 
   const logger = opts?.logger?.extend(relay);
   const request = wrapUpstreamPool(pool);
-  const loader = (base: Filter) =>
-    request(
-      [relay],
-      // Create filters from filters, base, and optional limit
-      filters.map((f) => (opts?.limit ? mergeFilters(f, base, { limit: opts.limit }) : mergeFilters(f, base))),
-    );
-
-  return (source) => source.pipe(loadBlocksForTimelineWindow(loader, { ...opts, logger }));
+  return loadBlocksForFilters(filters, (filters) => request([relay], filters), { ...opts, logger });
 }
 
 /** Loads timeline blocks from a map of relays and filters */
