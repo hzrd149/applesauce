@@ -9,6 +9,33 @@ These findings come from stress-testing `createSocialGraphLoader` (`packages/loa
 
 Relays are the example defaults (purplepag.es, indexer.coracle.social, relay.vertexlab.io) unless noted. The seed accounts were hzrd149, jb55, gigi, derek, odell, jack and fiatjaf.
 
+## Status after the loader rewrite (branch `social-graph-loader`, 2026-10-15)
+
+Implemented, with live runs against the default lookup relays (`/tmp/social-graph-stress/loader2.ts`):
+- the idle-aware group completion (finding 1);
+- per-relay requests;
+- retries of lossy relays for users no relay returned, one filter per user and at most 20 per REQ (findings 2 and 3);
+- 6 batches of 100 in flight, with at most 4 open requests per relay (finding 5);
+- the root fetched once (finding 6);
+- hint routing per user with a cap (finding 4);
+- cache refresh with `since` (finding 9);
+- a `{ events$, status$ }` result (finding 10).
+
+| Run | Old loader | New loader |
+|---|---|---|
+| odell, distance 1 | 32s, 53.4% | **30s, 98.9%** |
+| hzrd149, distance 2, with EventStore | 384s, 86.8%, +1.8 GB heap | **276s, 91.2%**, +2.0 GB heap |
+| hzrd149, distance 2, no store | — | 235s (2 per relay) / **210s (4 per relay)**, 91.2%, **+46 MB heap** |
+
+**Lessons from tuning:**
+- **Per-relay concurrency matters more than batch concurrency.** With 6 batches and no per-relay limit, vertexlab queued REQs, and 9 of 18 requests failed the new 10s `firstResponseTimeout`, leaving 72% coverage.
+- **The cap check can't count raw events through `pool.request`,** because the group removes repeated event ids. The retry trigger is "the relay returned stale versions, or under 90% of the batch's found lists" instead.
+- **Memory at distance 2 is dominated by the EventStore** holding about 29k full follow lists. The loader itself adds about 46 MB.
+
+**Still open:**
+- finding 8 (remembering users with no list across re-syncs);
+- the relay follow-ups 2–5 in the investigation section.
+
 ## Headline numbers
 
 | Run | Current loader | Prototype |

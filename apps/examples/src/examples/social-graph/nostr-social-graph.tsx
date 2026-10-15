@@ -6,7 +6,7 @@
 import { castUser, User } from "applesauce-common/casts/user";
 import { EventStore } from "applesauce-core";
 import { kinds } from "applesauce-core/helpers";
-import { createEventLoaderForStore, createSocialGraphLoader } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createSocialGraphLoader, type SocialGraphStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import localforage from "localforage";
@@ -27,6 +27,7 @@ import {
   materialize,
   startWith,
   catchError,
+  combineLatest,
   Observable,
 } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -126,6 +127,49 @@ function UserAvatar({ user }: { user: User }) {
   );
 }
 
+/** Crawl progress from the loader's status$: how many follow lists were found and how each relay is doing */
+function CrawlStatus({ status }: { status: SocialGraphStatus }) {
+  const percent = status.requested > 0 ? ((status.found / status.requested) * 100).toFixed(1) : "0.0";
+
+  return (
+    <div className="border border-base-300 rounded-lg overflow-x-auto">
+      <div className="flex flex-wrap gap-4 p-3 text-sm border-b border-base-300">
+        <span>
+          Found <span className="font-bold">{status.found}</span> / {status.requested} follow lists ({percent}%)
+        </span>
+        <span>No list: {status.missing}</span>
+        <span>Queued: {status.queued}</span>
+        <span>Batches loading: {status.inFlight}</span>
+        {status.done && <span className="badge badge-success">Done</span>}
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Relay</th>
+            <th>Requests</th>
+            <th>Events</th>
+            <th>Retries</th>
+            <th>Errors</th>
+          </tr>
+        </thead>
+        <tbody>
+          {Object.values(status.relays).map((relay) => (
+            <tr key={relay.relay}>
+              <td className="font-mono">{relay.relay}</td>
+              <td>{relay.requests}</td>
+              <td>{relay.events}</td>
+              <td>{relay.retries}</td>
+              <td className={relay.errors > 0 ? "text-error" : ""} title={relay.error?.message}>
+                {relay.errors}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** A row of avatars for a single follow distance */
 function DistanceRow({ distance }: { distance: number }) {
   // Walk the distance set once per update to count loaded contact lists and pick a preview
@@ -178,24 +222,30 @@ export default function NostrSocialGraphExample() {
     () =>
       commands$.pipe(
         switchMap((command) => {
-          const initial = { loaded: 0, running: false, error: "" };
+          const initial = { loaded: 0, status: undefined as SocialGraphStatus | undefined, running: false, error: "" };
           if (!command) return of(initial);
-          return graphLoader({
+          const { events$, status$ } = graphLoader({
             pubkey: command.pubkey,
             relays: command.relays,
             distance: command.level,
             since: command.since,
-          }).pipe(
-            // The loader already adds events to the store and drops duplicates from multiple relays
+          });
+          const loaded$ = events$.pipe(
+            // The loader already adds events to the store and only emits the newest list per user
             tap((event) => socialGraph$.value?.handleEvent(event)),
             scan((loaded) => loaded + 1, 0),
             auditTime(500),
             concatMap(async (loaded) => {
               await socialGraph$.value?.recalculateFollowDistances();
               socialGraph$.next(socialGraph$.value);
-              return { loaded, running: true, error: "" };
+              return loaded;
             }),
             concatWith(defer(() => persistGraph()).pipe(ignoreElements())),
+            startWith(0),
+          );
+          // Subscribing to both streams together shares one crawl
+          return combineLatest([loaded$, status$.pipe(startWith(undefined))]).pipe(
+            map(([loaded, status]) => ({ loaded, status, running: true, error: "" })),
             materialize(),
             scan(
               (state, notification) =>
@@ -412,6 +462,8 @@ export default function NostrSocialGraphExample() {
               </span>
             )}
           </div>
+
+          {syncState?.status && <CrawlStatus status={syncState.status} />}
 
           {/* Follow distance table */}
           {graph ? (
