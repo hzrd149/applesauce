@@ -177,6 +177,20 @@ describe("loadForwardBlocks", () => {
     sub.unsubscribe();
   });
 
+  it("should not request newer events again within the same second", () => {
+    vi.useFakeTimers({ now: 1000_000 });
+    const request = forwardRequest([], 10);
+    const window$ = new Subject<TimelineWindow>();
+    const sub = window$.pipe(loadForwardBlocks(request)).subscribe();
+
+    window$.next({ since: -Infinity });
+    vi.setSystemTime(1100_000);
+    window$.next({ until: Infinity });
+    window$.next({ until: Infinity });
+    expect(request).toHaveBeenCalledTimes(1);
+    sub.unsubscribe();
+  });
+
   it("should load newer events after an empty forward block", () => {
     vi.useFakeTimers({ now: 1000_000 });
     const events: NostrEvent[] = [];

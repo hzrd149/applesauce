@@ -332,8 +332,8 @@ function loadForwardFilterBlocks(
           edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
         }
 
-        // Skip until the window extends past the edge
-        if (until === undefined || until <= edge) return false;
+        // Skip until the window extends past the edge, capped at now so repeated "newer" calls in the same second are free
+        if (until === undefined || Math.min(until, unixNow()) <= edge) return false;
 
         // Don't load blocks in parallel, wait for the current block instead
         calls.join(window);
