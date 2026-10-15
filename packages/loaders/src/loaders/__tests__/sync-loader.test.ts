@@ -820,27 +820,69 @@ describe("createSyncLoader", () => {
     expect(last.loaded).toBe(1);
   });
 
-  it("emits a status update when falling back from negentropy to a request", async () => {
-    const eventStore = new EventStore();
-    const a = user.note("a");
+  it.each([new Error("filter rejected"), "filter rejected"])(
+    "retains the fallback reason in loading and completed statuses (%s)",
+    async (reason) => {
+      const eventStore = new EventStore();
+      const sync = vi.fn().mockReturnValue(throwError(reason));
+      const request = vi.fn().mockReturnValue(of());
+      const getSupported = vi.fn().mockResolvedValue([1, 77]);
+      const loader = createSyncLoader({ eventStore, request, getSupported, sync });
+      const statuses = await collect(loader({ relays: ["wss://relay/"], filter }).status$);
+      const fallback = statuses.find(
+        (s) => s.relays["wss://relay/"].state === "loading" && s.relays["wss://relay/"].method === "request",
+      );
+      expect(fallback?.relays["wss://relay/"].fallbackReason?.message).toBe("filter rejected");
+      const final = statuses.at(-1)!.relays["wss://relay/"];
+      expect(final.state).toBe("complete");
+      expect(final.fallbackReason).toBe(fallback?.relays["wss://relay/"].fallbackReason);
+      if (reason instanceof Error) expect(final.fallbackReason).toBe(reason);
+      expect(final.error).toBeUndefined();
+      expect(statuses[0].relays["wss://relay/"].fallbackReason).toBeUndefined();
+    },
+  );
 
-    const sync = vi.fn().mockReturnValue(throwError());
-    const request = vi.fn().mockReturnValueOnce(of(a)).mockReturnValueOnce(of());
-    const getSupported = vi.fn().mockResolvedValue([1, 77]);
+  it("retains the stall timeout as the fallback reason", async () => {
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      sync: () => NEVER,
+      request: () => of(),
+      getSupported: async () => [77],
+    });
+    const statuses = await collect(loader({ relays: ["wss://relay/"], filter, timeout: 20 }).status$);
+    const final = statuses.at(-1)!.relays["wss://relay/"];
+    expect(final.state).toBe("complete");
+    expect(final.fallbackReason?.message).toContain("timed out waiting for progress");
+    expect(final.error).toBeUndefined();
+  });
 
-    const loader = createSyncLoader({ eventStore, request, getSupported, sync });
-    const { status$, events$ } = loader({ relays: ["wss://relay/"], filter });
+  it("leaves the fallback reason unset for a direct request", async () => {
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      sync: () => NEVER,
+      request: () => of(),
+      getSupported: async () => [1],
+    });
+    const statuses = await collect(loader({ relays: ["wss://relay/"], filter }).status$);
+    expect(statuses.at(-1)!.relays["wss://relay/"].fallbackReason).toBeUndefined();
+  });
 
-    const statusPromise = collect(status$);
-    events$.subscribe();
-    const statuses = await statusPromise;
-
-    // The fallback is surfaced mid-load, not only at completion
-    const fallback = statuses.find(
-      (status) =>
-        status.relays["wss://relay/"].state === "loading" && status.relays["wss://relay/"].method === "request",
-    );
-    expect(fallback).toBeDefined();
+  it("retains both failures when the fallback request fails", async () => {
+    const reason = new Error("negentropy rejected");
+    const error = new Error("request rejected");
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      sync: () => throwError(reason),
+      request: () => throwError(error),
+      getSupported: async () => [77],
+    });
+    const statuses = await collect(loader({ relays: ["wss://relay/"], filter }).status$);
+    expect(statuses.at(-1)!.relays["wss://relay/"]).toMatchObject({
+      state: "error",
+      method: "request",
+      fallbackReason: reason,
+      error,
+    });
   });
 
   it("suspends the stall guard while a slow onAuthRequired handler is running (D-16)", async () => {
@@ -941,6 +983,7 @@ describe("createSyncLoader", () => {
 
     expect(last.relays["wss://relay/"].state).toBe("error");
     expect(last.relays["wss://relay/"].error?.name).toBe("AuthTimeoutError");
+    expect(last.relays["wss://relay/"].fallbackReason).toBeUndefined();
     expect(request).not.toHaveBeenCalled();
   });
 

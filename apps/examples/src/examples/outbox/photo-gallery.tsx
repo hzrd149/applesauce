@@ -420,7 +420,10 @@ function SyncSection({ label, progress }: Run) {
         {relays.map((r) => (
           <div key={r.relay} className="flex items-center gap-3 px-3 py-1">
             <RelayLabel url={r.relay} />
-            <span className="w-24">{r.method ?? "—"}</span>
+            <span className="w-24" title={r.fallbackReason?.message}>
+              {r.method ?? "—"}
+              {r.fallbackReason && " (fallback)"}
+            </span>
             <span className={`w-20 ${r.state === "error" ? "text-error" : ""}`} title={r.error?.message}>
               {r.state}
             </span>

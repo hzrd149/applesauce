@@ -116,6 +116,8 @@ export type SyncRelayStatus = {
   method?: SyncRelayMethod;
   /** The number of events received from this relay */
   count: number;
+  /** The negentropy failure that triggered a request fallback, retained after completion */
+  fallbackReason?: Error;
   /** The error that occurred while loading from this relay */
   error?: Error;
 };
@@ -690,6 +692,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
                   return concat(
                     status(() => {
                       state[url].method = "request";
+                      state[url].fallbackReason = error instanceof Error ? error : new Error(String(error));
                       // Reset the count so it reflects the fallback request, not the partial sync
                       state[url].count = 0;
                     }),
