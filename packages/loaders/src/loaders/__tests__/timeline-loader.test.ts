@@ -3,13 +3,14 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { unixNow } from "applesauce-core/helpers/time";
 import {
   BehaviorSubject,
-  EMPTY,
-  Subject,
-  Subscription,
   defer,
+  EMPTY,
   exhaustMap,
   lastValueFrom,
+  Observable,
   of,
+  Subject,
+  Subscription,
   throwError,
   toArray,
 } from "rxjs";
@@ -235,8 +236,11 @@ describe("cancelled blocks", () => {
     map$.next({ ...map });
     window$.next({ since: -Infinity });
 
-    // The cancelled block is re-requested, then the next page continues past it
-    expect(request.mock.calls.map(([, filters]) => filters[0].until)).toEqual([undefined, undefined, 90]);
+    // The in-flight block keeps loading, then the next page continues past it
+    pending.next(event(95));
+    pending.complete();
+    window$.next({ since: -Infinity });
+    expect(request.mock.calls.map(([, filters]) => filters[0].until)).toEqual([undefined, 95]);
     expect(next).toHaveBeenCalledWith(event(90));
     sub.unsubscribe();
   });
@@ -572,5 +576,44 @@ describe("timeline that starts in the past", () => {
 
     const third = await lastValueFrom(loader({ until: start + 50 * 3600 }).pipe(toArray()));
     expect(third.map((e) => e.created_at)).toEqual([start + 30 * 3600]);
+  });
+});
+
+describe("filter map reconciliation", () => {
+  it("should keep unchanged relays loading when the map is re-emitted", () => {
+    let cancelled = 0;
+    const pending = new Subject<NostrEvent>();
+    const request = vi.fn((relays: string[]) =>
+      relays[0] === "wss://a.com/"
+        ? new Observable<NostrEvent>((observer) => {
+            let done = false;
+            const sub = pending.subscribe({
+              next: (e) => observer.next(e),
+              complete: () => {
+                done = true;
+                observer.complete();
+              },
+            });
+            return () => {
+              if (!done) cancelled++;
+              sub.unsubscribe();
+            };
+          })
+        : of({ ...event(90), id: relays[0] }),
+    );
+    const map$ = new BehaviorSubject<Record<string, { kinds: number[] }>>({ "wss://a.com/": { kinds: [1] } });
+    const next = vi.fn();
+    const sub = new BehaviorSubject<TimelineWindow>({ since: -Infinity })
+      .pipe(loadBlocksFromFilterMap(request, map$))
+      .subscribe(next);
+
+    // An identical map and a map with an extra relay arrive while relay a is still loading
+    map$.next({ "wss://a.com/": { kinds: [1] } });
+    map$.next({ "wss://a.com/": { kinds: [1] }, "wss://b.com/": { kinds: [1] } });
+
+    expect(cancelled).toBe(0);
+    expect(request.mock.calls.filter(([relays]) => relays[0] === "wss://a.com/")).toHaveLength(1);
+    expect(next).toHaveBeenCalledWith({ ...event(90), id: "wss://b.com/" });
+    sub.unsubscribe();
   });
 });

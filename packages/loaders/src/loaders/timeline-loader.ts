@@ -28,6 +28,7 @@ import {
   OperatorFunction,
   share,
   Subject,
+  Subscription,
   switchMap,
   takeUntil,
   tap,
@@ -510,28 +511,77 @@ export function loadBlocksFromFilterMap(
 
     const [hold$, ready$] = holdCallsUntilReady(source, map$);
 
-    const loaders$ = ready$.pipe(
-      map((relayMap) =>
-        Object.entries(relayMap).map(([relay, filters]) => {
-          const existing = cache.get(relay);
-          if (existing && isFilterEqual(existing.filters, filters)) return existing.loader;
+    // Gets the cached loader for a relay, or creates one when the relay is new or its filters changed
+    const getLoader = (relay: string, filters: TimelessFilter[] | TimelessFilter) => {
+      const existing = cache.get(relay);
+      if (existing && isFilterEqual(existing.filters, filters)) return existing.loader;
 
-          // Create a new loader for this relay + filter set
-          const loader = source.pipe(
-            loadBlocksFromRelay(pool, relay, filters, opts),
-            // Drop a failed relay so it does not terminate the loaders for the other relays
-            catchError((error) => {
-              opts?.logger?.(`Failed to load blocks from ${relay}`, error);
-              return EMPTY;
-            }),
-          );
-          cache.set(relay, { filters, loader });
-          return loader;
+      const loader = source.pipe(
+        loadBlocksFromRelay(pool, relay, filters, opts),
+        // Drop a failed relay so it does not terminate the loaders for the other relays
+        catchError((error) => {
+          opts?.logger?.(`Failed to load blocks from ${relay}`, error);
+          return EMPTY;
         }),
-      ),
-    );
+      );
+      cache.set(relay, { filters, loader });
+      return loader;
+    };
 
-    return merge(hold$, loaders$.pipe(switchMap((loaders) => merge(...loaders))));
+    // Reconcile relays on each map so unchanged relays keep their in-flight requests
+    const relays$ = new Observable<NostrEvent>((observer) => {
+      const active = new Map<string, { loader: Observable<NostrEvent>; sub: Subscription }>();
+      let mapComplete = false;
+      const checkComplete = () => {
+        if (mapComplete && active.size === 0) observer.complete();
+      };
+
+      const mapSub = ready$.subscribe({
+        next: (relayMap) => {
+          const loaders = new Map(
+            Object.entries(relayMap).map(([relay, filters]) => [relay, getLoader(relay, filters)]),
+          );
+
+          // Stop relays that were removed or whose filters changed
+          for (const [relay, entry] of active) {
+            if (loaders.get(relay) === entry.loader) continue;
+            active.delete(relay);
+            entry.sub.unsubscribe();
+          }
+
+          // Start relays that are new or changed. Subscribe synchronously so they join the replayed window
+          for (const [relay, loader] of loaders) {
+            if (active.has(relay)) continue;
+
+            const entry = { loader, sub: new Subscription() };
+            active.set(relay, entry);
+            entry.sub.add(
+              loader.subscribe({
+                next: (event) => observer.next(event),
+                error: (error) => observer.error(error),
+                complete: () => {
+                  if (active.get(relay) === entry) active.delete(relay);
+                  checkComplete();
+                },
+              }),
+            );
+          }
+        },
+        error: (error) => observer.error(error),
+        complete: () => {
+          mapComplete = true;
+          checkComplete();
+        },
+      });
+
+      return () => {
+        mapSub.unsubscribe();
+        for (const entry of active.values()) entry.sub.unsubscribe();
+        active.clear();
+      };
+    });
+
+    return merge(hold$, relays$);
   };
 }
 
