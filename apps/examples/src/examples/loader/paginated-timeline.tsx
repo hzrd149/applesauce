@@ -1,7 +1,7 @@
 /**
  * Load timeline events with pagination support for efficient data loading
  * @tags loader, timeline, pagination
- * @related loader/timeline-scrolling, feed/relay-timeline
+ * @related loader/timeline-scrubber, feed/relay-timeline
  */
 import { use$ } from "applesauce-react/hooks";
 import {
