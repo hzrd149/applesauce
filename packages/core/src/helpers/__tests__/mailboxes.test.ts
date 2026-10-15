@@ -14,6 +14,14 @@ const emptyEvent: NostrEvent = {
 
 describe("Mailboxes", () => {
   describe("getInboxes", () => {
+    test("should remove urls that are duplicates once normalized", () => {
+      const tags = [
+        ["r", "wss://inbox.com"],
+        ["r", "wss://inbox.com"],
+      ];
+      expect(getInboxes({ ...emptyEvent, tags })).toEqual(["wss://inbox.com/"]);
+    });
+
     test("should transform urls", () => {
       expect(
         Array.from(
@@ -78,6 +86,14 @@ describe("Mailboxes", () => {
   });
 
   describe("getOutboxes", () => {
+    test("should remove urls that are duplicates once normalized", () => {
+      const tags = [
+        ["r", "wss://outbox.com"],
+        ["r", "wss://outbox.com"],
+      ];
+      expect(getOutboxes({ ...emptyEvent, tags })).toEqual(["wss://outbox.com/"]);
+    });
+
     test("should transform urls", () => {
       expect(
         Array.from(

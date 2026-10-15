@@ -20,10 +20,11 @@ export function getInboxes(event: NostrEvent): string[] {
 
       try {
         const [, url, mode] = tag;
+        if (!url || !isSafeRelayURL(url) || (mode !== "read" && mode !== undefined)) continue;
 
-        if (url && isSafeRelayURL(url) && !inboxes.includes(url) && (mode === "read" || mode === undefined)) {
-          inboxes.push(normalizeURL(url));
-        }
+        // Compare normalized urls so the same relay written differently is only added once
+        const normalized = normalizeURL(url);
+        if (!inboxes.includes(normalized)) inboxes.push(normalized);
       } catch {
         // Ignore invalid url tags
       }
@@ -43,15 +44,11 @@ export function getOutboxes(event: NostrEvent): string[] {
 
       try {
         const [name, url, mode] = tag;
+        if (name !== "r" || !isSafeRelayURL(url) || (mode !== "write" && mode !== undefined)) continue;
 
-        if (
-          name === "r" &&
-          isSafeRelayURL(url) &&
-          !outboxes.includes(url) &&
-          (mode === "write" || mode === undefined)
-        ) {
-          outboxes.push(normalizeURL(url));
-        }
+        // Compare normalized urls so the same relay written differently is only added once
+        const normalized = normalizeURL(url);
+        if (!outboxes.includes(normalized)) outboxes.push(normalized);
       } catch {
         // Ignore invalid url tags
       }
