@@ -22,29 +22,32 @@ export function includeMailboxes(
 ): OperatorFunction<ProfilePointer[], ProfilePointer[]> {
   // Get the outboxes for all contacts
   return switchMap((contacts) =>
-    combineLatest(
-      contacts.map((user) =>
-        // Subscribe to the outboxes for the user
-        store
-          .replaceable({
-            kind: 10002,
-            pubkey: user.pubkey,
-          })
-          .pipe(
-            // Add the relays to the user
-            map((event) => {
-              if (!event) return user;
+    // combineLatest([]) completes without emitting, so emit the empty list directly
+    contacts.length === 0
+      ? of([])
+      : combineLatest(
+          contacts.map((user) =>
+            // Subscribe to the outboxes for the user
+            store
+              .replaceable({
+                kind: 10002,
+                pubkey: user.pubkey,
+              })
+              .pipe(
+                // Add the relays to the user
+                map((event) => {
+                  if (!event) return user;
 
-              // Get the relays from the event
-              const relays = type === "outbox" ? getOutboxes(event) : getInboxes(event);
-              if (!relays) return user;
+                  // Get the relays from the event
+                  const relays = type === "outbox" ? getOutboxes(event) : getInboxes(event);
+                  if (!relays) return user;
 
-              // Add the relays to the user
-              return addRelayHintsToPointer(user, relays);
-            }),
+                  // Add the relays to the user
+                  return addRelayHintsToPointer(user, relays);
+                }),
+              ),
           ),
-      ),
-    ),
+        ),
   );
 }
 
