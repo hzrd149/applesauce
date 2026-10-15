@@ -1,6 +1,7 @@
 import { logger as baseLogger, type Debugger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { unixNow } from "applesauce-core/helpers/time";
 import { Filter, isFilterEqual, mergeFilters } from "applesauce-core/helpers/filter";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
@@ -9,7 +10,9 @@ import { nanoid } from "nanoid";
 import {
   BehaviorSubject,
   catchError,
+  concat,
   connect,
+  defer,
   distinctUntilChanged,
   EMPTY,
   filter,
@@ -47,6 +50,58 @@ export type CommonTimelineLoaderOptions = Partial<{
   /** Logger to extend */
   logger?: Debugger;
 }>;
+
+/** The next inclusive `until` of a paged request and the ids already loaded at that second */
+type PageCursor = { until: number; boundary: Set<string> };
+
+/** Tracks the events of one page requested newest-first and picks the cursor for the next page */
+function createPage(since: number | undefined, until: number | undefined, boundary: Set<string>) {
+  let count = 0;
+  let fresh = 0;
+  let oldest: number | undefined;
+  let oldestIds = new Set<string>();
+
+  return {
+    get count() {
+      return count;
+    },
+    get fresh() {
+      return fresh;
+    },
+    add(event: NostrEvent) {
+      // Ignore events from relays that do not respect the bounds
+      if (until !== undefined && event.created_at > until) return;
+      if (since !== undefined && event.created_at < since) return;
+
+      count++;
+      if (!boundary.has(event.id)) fresh++;
+
+      if (oldest === undefined || event.created_at < oldest) {
+        oldest = event.created_at;
+        oldestIds = new Set([event.id]);
+      } else if (event.created_at === oldest) oldestIds.add(event.id);
+    },
+    /** Returns the cursor for the next page, or undefined when the range has nothing older */
+    next(): PageCursor | undefined {
+      // Only an empty page proves there is nothing older
+      if (count === 0 || oldest === undefined) return undefined;
+
+      let cursor: PageCursor;
+      if (fresh === 0 && until !== undefined) {
+        // Every event was already loaded, so more events share the cursor second than the relay returns
+        // in one page. They can't be paged by time, so step past the second
+        cursor = { until: until - 1, boundary: new Set() };
+      } else {
+        // NIP-01 defines `until` as inclusive. Request the oldest second again so events cut off at the
+        // end of this page are not skipped
+        if (oldest === until) for (const id of boundary) oldestIds.add(id);
+        cursor = { until: oldest, boundary: oldestIds };
+      }
+
+      return since !== undefined && cursor.until < since ? undefined : cursor;
+    },
+  };
+}
 
 /**
  * Watches for changes in the window and loads blocks of events going backward
@@ -93,49 +148,25 @@ export function loadBackwardBlocks(
         // Set loading lock
         loading = true;
 
-        // Count events inside the requested range and the ones not loaded before
-        let count = 0;
-        let fresh = 0;
-        let oldest: number | undefined;
-        let oldestIds = new Set<string>();
         const until = cursor;
+        const page = createPage(undefined, until, boundary);
 
         log?.(`Loading block until:${until}`);
 
         // Request the next block of events
         return request(until).pipe(
-          tap((event) => {
-            // Ignore events from relays that do not respect `until`
-            if (until !== undefined && event.created_at > until) return;
-
-            count++;
-            if (!boundary.has(event.id)) fresh++;
-
-            if (oldest === undefined || event.created_at < oldest) {
-              oldest = event.created_at;
-              oldestIds = new Set([event.id]);
-            } else if (event.created_at === oldest) oldestIds.add(event.id);
-          }),
+          tap((event) => page.add(event)),
           // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
           tap({
             complete: () => {
-              log?.(`Found ${count} events (${fresh} new)`);
+              log?.(`Found ${page.count} events (${page.fresh} new)`);
 
-              if (count === 0 || oldest === undefined) {
-                // Only an empty block proves the source has nothing older
-                complete = true;
-              } else if (fresh === 0 && until !== undefined) {
-                // Every event was already loaded, so more events share the cursor second than the relay returns
-                // in one block. They can't be paged by time, so step past the second
-                log?.(`Skipping saturated second ${until}`);
-                cursor = until - 1;
-                boundary = new Set();
-              } else {
-                // NIP-01 defines `until` as inclusive. Request the oldest second again so events cut off at the
-                // end of this block are not skipped
-                if (oldest === until) for (const id of boundary) oldestIds.add(id);
-                cursor = oldest;
-                boundary = oldestIds;
+              const next = page.next();
+              if (!next) complete = true;
+              else {
+                if (page.fresh === 0) log?.(`Skipping saturated second ${until}`);
+                cursor = next.until;
+                boundary = next.boundary;
               }
 
               if (complete) log?.("Complete");
@@ -151,36 +182,26 @@ export function loadBackwardBlocks(
 }
 
 /**
- * Watches for changes in the window and loads blocks of events going forward
+ * Watches for changes in the window and loads the events between the newest loaded time and the window `until`
  * NOTE: this operator is stateful
  */
 export function loadForwardBlocks(
-  request: (since?: number) => Observable<NostrEvent>,
+  request: (since?: number, until?: number) => Observable<NostrEvent>,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return (source) => {
     const log = opts?.logger?.extend("forward").extend(nanoid(8));
 
-    let cursor: number | undefined = undefined;
+    // Everything up to the edge has been loaded, it starts where the backward loading starts
+    let edge: number | undefined = undefined;
     let loading = false;
-    let complete = false;
 
     return source.pipe(
-      filter(({ since, until }) => {
-        // Once complete, prevent further requests
-        if (complete) return false;
+      filter(({ until }) => {
+        if (edge === undefined) edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
 
-        // If min is unset, initialize to since
-        if (cursor === undefined && since !== undefined && Number.isFinite(since)) cursor = since;
-
-        // Skip loads if until is still in range
-        if (
-          // Ignore undefined until values
-          until === undefined ||
-          // If number is finite and in the loaded range, skip
-          (Number.isFinite(until) && cursor !== undefined && until <= cursor)
-        )
-          return false;
+        // Skip until the window extends past the edge
+        if (until === undefined || until <= edge) return false;
 
         // Don't load blocks in parallel
         if (loading) return false;
@@ -188,36 +209,36 @@ export function loadForwardBlocks(
         return true;
       }),
       // NOTE: use mergeMap here to ensure old requests continue to load
-      mergeMap(() => {
+      mergeMap(({ until }) => {
         // Set loading lock
         loading = true;
 
-        // Count returned events so complete set
-        let count = 0;
-        let maxCreatedAt: number | undefined;
-        const since = cursor;
+        const since = edge!;
+        const target = Math.min(until!, unixNow());
 
-        log?.(`Loading block since:${since}`);
+        // Relays return the newest events first, so page backward through the gap until it is drained
+        const loadPage = (cursor: PageCursor): Observable<NostrEvent> => {
+          const page = createPage(since, cursor.until, cursor.boundary);
 
-        // Request the next block of events
-        return request(since).pipe(
-          tap((event) => {
-            count++;
-            maxCreatedAt = Math.max(event.created_at, maxCreatedAt ?? -Infinity);
-          }),
-          // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
+          log?.(`Loading block since:${since} until:${cursor.until}`);
+
+          return concat(
+            request(since, cursor.until).pipe(tap((event) => page.add(event))),
+            defer(() => {
+              log?.(`Found ${page.count} events (${page.fresh} new)`);
+
+              const next = page.next();
+              return next ? loadPage(next) : EMPTY;
+            }),
+          );
+        };
+
+        return loadPage({ until: target, boundary: new Set() }).pipe(
+          // Only move the edge once the whole gap has loaded, a cancelled block proves nothing about the source
           tap({
             complete: () => {
-              if (maxCreatedAt !== undefined) {
-                // Stop if the source ignores `since` and stops making forward progress.
-                if (since !== undefined && maxCreatedAt <= since) complete = true;
-                else cursor = maxCreatedAt;
-              }
-
-              complete = complete || count === 0;
-
-              log?.(`Found ${count} events`);
-              if (complete) log?.("Complete");
+              edge = target;
+              log?.(`Loaded up to ${target}`);
             },
           }),
           finalize(() => {
@@ -237,7 +258,7 @@ export function loadBlocksForTimelineWindow(
   return (source) =>
     merge(
       source.pipe(loadBackwardBlocks((until) => request({ until }), opts)),
-      source.pipe(loadForwardBlocks((since) => request({ since }), opts)),
+      source.pipe(loadForwardBlocks((since, until) => request({ since, until }), opts)),
     );
 }
 

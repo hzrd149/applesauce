@@ -1,13 +1,14 @@
 import { Filter } from "applesauce-core/helpers/filter";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { BehaviorSubject, Subject, Subscription, defer, of, throwError } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   TimelineWindow,
   createTimelineLoader,
   loadBackwardBlocks,
   loadBlocksFromRelays,
+  loadForwardBlocks,
   loadBlocksFromFilterMap,
 } from "../timeline-loader.js";
 
@@ -123,6 +124,68 @@ describe("boundary second", () => {
     // Relays order ties the same way every time, so only the first block of the crowded second is reachable
     expect(received).toEqual(new Set([...crowded.slice(0, 10), ...older].map((e) => e.id)));
     expect(request.mock.calls.map(([, filters]) => filters[0].until)).toEqual([undefined, 100, 99, 90, 89]);
+  });
+});
+
+describe("loadForwardBlocks", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A relay that returns the newest `limit` events within the inclusive bounds
+  function forwardRequest(events: NostrEvent[], limit: number) {
+    return vi.fn((since?: number, until?: number) =>
+      of(
+        ...events
+          .filter((e) => e.created_at >= (since ?? 0) && e.created_at <= (until ?? Infinity))
+          .sort((a, b) => b.created_at - a.created_at)
+          .slice(0, limit),
+      ),
+    );
+  }
+
+  it("should load every event in the gap since the newest loaded time", () => {
+    vi.useFakeTimers({ now: 1000_000 });
+    const events: NostrEvent[] = [];
+    const request = forwardRequest(events, 10);
+    const window$ = new Subject<TimelineWindow>();
+    const received = new Set<string>();
+    const sub = window$.pipe(loadForwardBlocks(request)).subscribe((e) => received.add(e.id));
+
+    window$.next({ since: -Infinity });
+    events.push(...Array.from({ length: 100 }, (_, i) => event(1001 + i)));
+    vi.setSystemTime(1200_000);
+    window$.next({ until: Infinity });
+
+    expect(received).toEqual(new Set(events.map((e) => e.id)));
+    expect(request.mock.calls[0]).toEqual([1000, 1200]);
+    sub.unsubscribe();
+  });
+
+  it("should load newer events after an empty forward block", () => {
+    vi.useFakeTimers({ now: 1000_000 });
+    const events: NostrEvent[] = [];
+    const request = forwardRequest(events, 10);
+    const window$ = new Subject<TimelineWindow>();
+    const next = vi.fn();
+    const sub = window$.pipe(loadForwardBlocks(request)).subscribe(next);
+
+    window$.next({ since: -Infinity });
+    vi.setSystemTime(1100_000);
+    window$.next({ until: Infinity });
+    expect(next).not.toHaveBeenCalled();
+
+    events.push(event(1150));
+    vi.setSystemTime(1200_000);
+    window$.next({ until: Infinity });
+    expect(next).toHaveBeenCalledWith(event(1150));
+    expect(request.mock.calls).toEqual([
+      [1000, 1100],
+      [1100, 1200],
+      [1100, 1150],
+      [1100, 1149],
+    ]);
+    sub.unsubscribe();
   });
 });
 
