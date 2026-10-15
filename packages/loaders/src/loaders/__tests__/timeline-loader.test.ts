@@ -1,10 +1,22 @@
 import { Filter } from "applesauce-core/helpers/filter";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { BehaviorSubject, Subject, Subscription, defer, of, throwError } from "rxjs";
+import {
+  BehaviorSubject,
+  EMPTY,
+  Subject,
+  Subscription,
+  defer,
+  exhaustMap,
+  lastValueFrom,
+  of,
+  throwError,
+  toArray,
+} from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   TimelineWindow,
+  createOutboxTimelineLoader,
   createTimelineLoader,
   loadBackwardBlocks,
   loadBlocksFromRelays,
@@ -208,7 +220,10 @@ describe("cancelled blocks", () => {
 
   it("should keep loading a relay after an identical filter map is re-emitted mid-block", () => {
     const pending = new Subject<NostrEvent>();
-    const request = vi.fn().mockReturnValueOnce(pending).mockReturnValue(of(event(90)));
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(pending)
+      .mockReturnValue(of(event(90)));
     const map = { "wss://a.com/": { kinds: [1] } };
     const map$ = new BehaviorSubject(map);
     const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
@@ -339,5 +354,96 @@ describe("per-relay timeline cursors", () => {
     const sub = createTimelineLoader(() => of(shared), relays, { kinds: [1] })().subscribe(next);
     expect(next).toHaveBeenCalledTimes(1);
     sub.unsubscribe();
+  });
+});
+
+describe("loader call completion", () => {
+  const relays = ["wss://a.com/", "wss://b.com/"];
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("should complete once every relay and the cache finish their blocks", async () => {
+    const blocks = Object.fromEntries([...relays, "cache"].map((key) => [key, new Subject<NostrEvent>()]));
+    const loader = createTimelineLoader(
+      (urls: string[]) => blocks[urls[0]],
+      relays,
+      { kinds: [1] },
+      {
+        cache: () => blocks.cache,
+      },
+    );
+    const complete = vi.fn();
+    loader().subscribe({ complete });
+
+    for (const key of [...relays, "cache"]) {
+      await flush();
+      expect(complete).not.toHaveBeenCalled();
+      blocks[key].next({ ...event(100), id: key });
+      blocks[key].complete();
+    }
+
+    await flush();
+    expect(complete).toHaveBeenCalled();
+  });
+
+  it("should join a block that is already loading", async () => {
+    const block = new Subject<NostrEvent>();
+    const request = vi.fn(() => block);
+    const loader = createTimelineLoader(request, [relays[0]], { kinds: [1] });
+    const first = vi.fn();
+    const second = vi.fn();
+
+    loader().subscribe({ complete: first });
+    loader().subscribe({ complete: second });
+    expect(request).toHaveBeenCalledTimes(1);
+
+    block.complete();
+    await flush();
+    expect(first).toHaveBeenCalled();
+    expect(second).toHaveBeenCalled();
+  });
+
+  it("should complete right away once every relay is exhausted", async () => {
+    const request = vi.fn(() => EMPTY);
+    const loader = createTimelineLoader(request, relays, { kinds: [1] });
+
+    await lastValueFrom(loader(), { defaultValue: undefined });
+    await lastValueFrom(loader(), { defaultValue: undefined });
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("should load one page per trigger when used with exhaustMap", async () => {
+    const events = Array.from({ length: 30 }, (_, i) => event(100 - i));
+    const request = vi.fn((_urls: string[], filters: Filter[]) =>
+      of(...events.filter((e) => e.created_at <= (filters[0].until ?? Infinity)).slice(0, filters[0].limit)),
+    );
+    const loader = createTimelineLoader(request, [relays[0]], { kinds: [1] }, { limit: 10 });
+    const pages$ = new Subject<void>();
+    const pages: number[] = [];
+    pages$.pipe(exhaustMap(() => loader().pipe(toArray()))).subscribe((page) => pages.push(page.length));
+
+    for (let i = 0; i < 3; i++) {
+      pages$.next();
+      await flush();
+    }
+
+    // Each page after the first overlaps the oldest event of the previous page, which is deduplicated
+    expect(pages).toEqual([10, 9, 9]);
+  });
+
+  it("should wait for an outbox map that arrives after the call", async () => {
+    const outboxes$ = new Subject<Record<string, { pubkey: string }[]>>();
+    const request = vi.fn(() => of(event(100)));
+    const loader = createOutboxTimelineLoader(request, outboxes$, { kinds: [1] });
+    const next = vi.fn();
+    const complete = vi.fn();
+
+    loader().subscribe({ next, complete });
+    await flush();
+    expect(complete).not.toHaveBeenCalled();
+
+    outboxes$.next({ [relays[0]]: [{ pubkey: "a".repeat(64) }] });
+    await flush();
+    expect(next).toHaveBeenCalledWith(event(100));
+    expect(complete).toHaveBeenCalled();
   });
 });

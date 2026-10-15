@@ -18,6 +18,7 @@ import {
   filter,
   finalize,
   identity,
+  ignoreElements,
   isObservable,
   map,
   merge,
@@ -26,7 +27,9 @@ import {
   of,
   OperatorFunction,
   share,
+  Subject,
   switchMap,
+  takeUntil,
   tap,
 } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -50,6 +53,83 @@ export type CommonTimelineLoaderOptions = Partial<{
   /** Logger to extend */
   logger?: Debugger;
 }>;
+
+const TIMELINE_CALL = Symbol("timeline-call");
+
+/** Tracks the blocks a single loader call is waiting on, so the call can complete when they settle */
+class TimelineCall {
+  private pending = 0;
+  settled = false;
+  readonly done$ = new Subject<void>();
+
+  join() {
+    if (!this.settled) this.pending++;
+  }
+  leave() {
+    if (this.settled) return;
+    this.pending--;
+    this.check();
+  }
+  /** Settles on a microtask so a block re-joined in the same tick (like a resubscribed relay) keeps the call open */
+  check() {
+    if (this.pending > 0) return;
+    queueMicrotask(() => {
+      if (this.pending > 0 || this.settled) return;
+      this.settled = true;
+      this.done$.next();
+      this.done$.complete();
+    });
+  }
+}
+
+/** Gets the loader call that emitted a window */
+function getTimelineCall(window: TimelineWindow): TimelineCall | undefined {
+  return (window as { [TIMELINE_CALL]?: TimelineCall })[TIMELINE_CALL];
+}
+
+/** Collects the loader calls waiting on the current block of an operator */
+function createBlockCalls() {
+  let calls = new Set<TimelineCall>();
+
+  return {
+    join(window: TimelineWindow) {
+      const call = getTimelineCall(window);
+      if (!call || calls.has(call)) return;
+      calls.add(call);
+      call.join();
+    },
+    /** Releases the calls waiting on the current block */
+    release() {
+      const released = calls;
+      calls = new Set();
+      for (const call of released) call.leave();
+    },
+  };
+}
+
+/** Holds loader calls open until `ready$` emits, so calls made before the relays are known don't complete empty */
+function holdCallsUntilReady<T>(
+  source: Observable<TimelineWindow>,
+  ready$: Observable<T>,
+): [Observable<never>, Observable<T>] {
+  let ready = false;
+  const held = createBlockCalls();
+  const release$ = new Subject<void>();
+
+  // Stop watching windows once ready so the hold doesn't keep the operator from completing
+  const hold$ = defer(() => (ready ? EMPTY : source.pipe(takeUntil(release$), tap(held.join), ignoreElements())));
+  const released$ = ready$.pipe(
+    // Released calls settle on a microtask, after the new sources have subscribed and joined the replayed window
+    tap(() => {
+      if (ready) return;
+      ready = true;
+      release$.next();
+      held.release();
+    }),
+  );
+
+  return [hold$, released$];
+}
 
 /** The next inclusive `until` of a paged request and the ids already loaded at that second */
 type PageCursor = { until: number; boundary: Set<string> };
@@ -119,11 +199,17 @@ export function loadBackwardBlocks(
     let boundary = new Set<string>();
     let loading = false;
     let complete = false;
+    const calls = createBlockCalls();
 
     return source.pipe(
-      filter(({ since, until }) => {
+      filter((window) => {
+        const { since, until } = window;
+
         // Once complete, prevent further requests
         if (complete) return false;
+
+        // Ignore windows replayed from calls that already finished
+        if (getTimelineCall(window)?.settled) return false;
 
         // If max is unset, initialize to until
         if (cursor === undefined && until !== undefined && Number.isFinite(until)) cursor = until;
@@ -138,7 +224,8 @@ export function loadBackwardBlocks(
         )
           return false;
 
-        // Don't load blocks in parallel
+        // Don't load blocks in parallel, wait for the current block instead
+        calls.join(window);
         if (loading) return false;
 
         return true;
@@ -174,6 +261,7 @@ export function loadBackwardBlocks(
           }),
           finalize(() => {
             loading = false;
+            calls.release();
           }),
         );
       }),
@@ -195,15 +283,22 @@ export function loadForwardBlocks(
     // Everything up to the edge has been loaded, it starts where the backward loading starts
     let edge: number | undefined = undefined;
     let loading = false;
+    const calls = createBlockCalls();
 
     return source.pipe(
-      filter(({ until }) => {
+      filter((window) => {
+        const { until } = window;
+
+        // Ignore windows replayed from calls that already finished
+        if (getTimelineCall(window)?.settled) return false;
+
         if (edge === undefined) edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
 
         // Skip until the window extends past the edge
         if (until === undefined || until <= edge) return false;
 
-        // Don't load blocks in parallel
+        // Don't load blocks in parallel, wait for the current block instead
+        calls.join(window);
         if (loading) return false;
 
         return true;
@@ -243,6 +338,7 @@ export function loadForwardBlocks(
           }),
           finalize(() => {
             loading = false;
+            calls.release();
           }),
         );
       }),
@@ -288,13 +384,20 @@ export function loadBlocksFromRelays(
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  return (source) =>
-    source.pipe(
+  return (source) => {
+    // Create the relay loaders once so their cursors survive resubscribing, reading windows from the current connection
+    let windows$: Observable<TimelineWindow> = EMPTY;
+    const proxy$ = defer(() => windows$);
+    const loaders = relays.map((relay) => proxy$.pipe(loadBlocksFromRelay(pool, relay, filters, opts)));
+
+    return source.pipe(
       // Connect after every relay is listening so cold sources deliver each window to all relays.
-      connect((windows) =>
-        merge(...relays.map((relay) => windows.pipe(loadBlocksFromRelay(pool, relay, filters, opts)))),
-      ),
+      connect((windows) => {
+        windows$ = windows;
+        return merge(...loaders);
+      }),
     );
+  };
 }
 
 /** Loads timeline blocs from relay set using a pool or request method */
@@ -328,7 +431,9 @@ export function loadBlocksFromFilterMap(
     const map$ = isObservable(relayMap) ? relayMap : of(relayMap);
     const cache = new Map<string, { filters: TimelessFilter[] | TimelessFilter; loader: Observable<NostrEvent> }>();
 
-    const loaders$ = map$.pipe(
+    const [hold$, ready$] = holdCallsUntilReady(source, map$);
+
+    const loaders$ = ready$.pipe(
       map((relayMap) =>
         Object.entries(relayMap).map(([relay, filters]) => {
           const existing = cache.get(relay);
@@ -349,7 +454,7 @@ export function loadBlocksFromFilterMap(
       ),
     );
 
-    return loaders$.pipe(switchMap((loaders) => merge(...loaders)));
+    return merge(hold$, loaders$.pipe(switchMap((loaders) => merge(...loaders))));
   };
 }
 
@@ -411,11 +516,17 @@ export function loadBlocksFromOutboxMapCache(
   );
 
   // Load blocks from the filter map
-  return (source) =>
-    filters$.pipe(
-      // Every time the filters change, create a new cache loader instance
-      switchMap((filters) => source.pipe(loadBlocksFromCache(cache, filters, opts))),
+  return (source) => {
+    const [hold$, ready$] = holdCallsUntilReady(source, filters$);
+
+    return merge(
+      hold$,
+      ready$.pipe(
+        // Every time the filters change, create a new cache loader instance
+        switchMap((filters) => source.pipe(loadBlocksFromCache(cache, filters, opts))),
+      ),
     );
+  };
 }
 
 /** Internal logic for function based timeline loaders */
@@ -424,30 +535,41 @@ function wrapTimelineLoader(
   loader$: Observable<NostrEvent>,
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null,
 ): TimelineLoader {
+  // Remember emitted ids across calls, since each call resubscribes and blocks overlap at the boundary second
+  const seen = new Set<string>();
+
   const singleton$ = loader$.pipe(
     // Pass all events through the store if provided
-    eventStore === null ? identity : filterDuplicateEvents(eventStore || new EventMemory<NostrEvent>()),
+    eventStore === null
+      ? identity
+      : (source: Observable<NostrEvent>) =>
+          source.pipe(
+            mapEventsToStore(eventStore || new EventMemory<NostrEvent>(), false),
+            filter((event) => !seen.has(event.id) && !!seen.add(event.id)),
+          ),
     // Ensure a single subscription to the requests
     share(),
   );
 
   return (since?: number | TimelineWindow) => {
     // Return the loader so it can be subscribed to
-    return new Observable((observer) => {
-      const sub = singleton$.subscribe(observer);
+    return new Observable<NostrEvent>((observer) => {
+      const call = new TimelineCall();
 
-      // Once subscribed, update the window
+      // Complete once every block this call started or joined has settled
+      const sub = singleton$.pipe(takeUntil(call.done$)).subscribe(observer);
 
-      if (typeof since === "object" && since !== undefined) {
-        // Pass new window to the loader
-        window$.next(since);
-      } else {
-        // Only update window when this request is subscribed to (prevents window getting lost before subscription)
-        window$.next({
-          // Default to -Infinity to force loading the next block of events (legacy behavior)
-          since: since ?? -Infinity,
-        });
-      }
+      // Only update window when this request is subscribed to (prevents window getting lost before subscription)
+      const window: TimelineWindow =
+        typeof since === "object" && since !== undefined
+          ? { ...since }
+          : // Default to -Infinity to force loading the next block of events (legacy behavior)
+            { since: since ?? -Infinity };
+      Object.defineProperty(window, TIMELINE_CALL, { value: call });
+      window$.next(window);
+
+      // Complete right away if no source started or joined a block
+      call.check();
 
       return () => sub.unsubscribe();
     });
