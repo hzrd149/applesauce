@@ -111,6 +111,8 @@ pool.request(relays, { kinds: [1], limit: 50 }, { timeout: 5000 }).subscribe({
 
 `request()` has one 30-second whole-Observable timeout by default. Events, EOSE, retries, and reconnections do not reset it. A request with no active relays completes empty; one EOSE plus any failures is also a successful request.
 
+By default, `request()` completes once relays go quiet after the first EOSE (`RelayGroup.completeAfterIdle()`). It waits 3 seconds for relays that haven't responded, keeps waiting while events arrive, and stops after 15 seconds. A relay that sends nothing within `firstResponseTimeout` (default 10 seconds) is treated as failed. Pass `complete` to choose a different condition; the [completion conditions example](https://applesauce.build/examples#relay/completion-conditions) compares them side by side.
+
 ### Subscription Method
 
 The `subscription` method creates persistent subscriptions that retry connection errors and can resubscribe after clean relay `CLOSED` messages:

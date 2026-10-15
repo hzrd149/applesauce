@@ -1,5 +1,5 @@
 /**
- * Visualize how different pool.request completion conditions work in real-time
+ * Compare naive completion conditions, the legacy fixed grace window, and the idle-aware default used by pool.request
  * @tags relay, pool, request, completion, eose, performance
  * @related feed/relay-timeline, outbox/relay-selection
  */
@@ -47,12 +47,13 @@ type TimelineMessage = GroupReqMessage & {
 };
 
 interface CompletionMarker {
-  type: "firstEose" | "firstEosePlusTimeout" | "allComplete" | "firstNRelays" | "eventCount" | "timeLimit";
+  type: "firstEose" | "fixedGrace" | "idleAware" | "allComplete" | "firstNRelays" | "eventCount" | "timeLimit";
   time: number; // when it triggered
   eventCount: number; // events received at that point
   label: string; // display name
   explanation: string; // why it completed
-  color: string; // tailwind color class
+  color: string; // tailwind background class
+  border: string; // tailwind border class, written out so Tailwind generates it
 }
 
 const MESSAGE_STYLES = {
@@ -102,7 +103,8 @@ export default function CompletionConditions() {
 
   const [currentRelay, setCurrentRelay] = useState("");
 
-  const [filterJson, setFilterJson] = useState('{"kinds":[1],"limit":20}');
+  // Contact lists are large, so relays keep streaming long enough to show the difference between policies
+  const [filterJson, setFilterJson] = useState('{"kinds":[3],"limit":200}');
 
   const [filterError, setFilterError] = useState<string | null>(null);
 
@@ -111,15 +113,24 @@ export default function CompletionConditions() {
 
   const [firstEoseTimeout, setFirstEoseTimeout] = useState(5000);
 
+  const [grace, setGrace] = useState(3000);
+
+  const [idle, setIdle] = useState(1500);
+
+  const [cap, setCap] = useState(15000);
+
   const [firstNRelaysCount, setFirstNRelaysCount] = useState(2);
 
-  const [timeLimitMs, setTimeLimitMs] = useState(10000);
+  const [timeLimitMs, setTimeLimitMs] = useState(20000);
 
   const [config, setConfig] = useState<{
     relays: string[];
     filter: Filter;
     eventCountThreshold: number;
     firstEoseTimeout: number;
+    grace: number;
+    idle: number;
+    cap: number;
     firstNRelaysCount: number;
     timeLimitMs: number;
   } | null>(null);
@@ -151,7 +162,7 @@ export default function CompletionConditions() {
       const marker = (
         type: CompletionMarker["type"],
         label: string,
-        color: string,
+        [color, border]: [string, string],
         condition: Observable<GroupReqMessage>,
         explanation: string,
       ) =>
@@ -167,6 +178,7 @@ export default function CompletionConditions() {
               type,
               label,
               color,
+              border,
               explanation,
               eventCount: seen.size,
               time: Date.now() - started,
@@ -206,24 +218,51 @@ export default function CompletionConditions() {
       );
       const items$ = merge(
         messages$.pipe(map((message) => ({ message }))),
-        marker("firstEose", "First EOSE", "bg-yellow-500", firstEose$, "First EOSE or request time limit"),
-        marker("eventCount", "Event Count", "bg-blue-500", eventCount$, "Event threshold or request time limit"),
-        marker("firstNRelays", "First N Relays", "bg-green-500", firstN$, "Relay threshold or request time limit"),
         marker(
-          "firstEosePlusTimeout",
-          "First EOSE + Timeout",
-          "bg-orange-500",
+          "firstEose",
+          "First EOSE",
+          ["bg-yellow-500", "border-yellow-500"],
+          firstEose$,
+          "First EOSE or request time limit",
+        ),
+        marker(
+          "eventCount",
+          "Event Count",
+          ["bg-blue-500", "border-blue-500"],
+          eventCount$,
+          "Event threshold or request time limit",
+        ),
+        marker(
+          "firstNRelays",
+          "First N Relays",
+          ["bg-green-500", "border-green-500"],
+          firstN$,
+          "Relay threshold or request time limit",
+        ),
+        marker(
+          "fixedGrace",
+          "Fixed grace (legacy)",
+          ["bg-orange-500", "border-orange-500"],
           messages$.pipe(completeWhen(RelayGroup.completeAfterFirstRelay(config.firstEoseTimeout))),
-          "Grace period after first EOSE or request time limit",
+          "Fixed window after the first EOSE, even if relays are still sending events",
+        ),
+        marker(
+          "idleAware",
+          "Idle-aware (default)",
+          ["bg-teal-500", "border-teal-500"],
+          messages$.pipe(
+            completeWhen(RelayGroup.completeAfterIdle({ grace: config.grace, idle: config.idle, cap: config.cap })),
+          ),
+          "Waits the grace period for silent relays, keeps waiting while events flow, stops at the cap",
         ),
         marker(
           "allComplete",
           "All Complete",
-          "bg-purple-500",
+          ["bg-purple-500", "border-purple-500"],
           messages$.pipe(completeWhen(RelayGroup.completeOnAllEose())),
           "All relays finished or request time limit",
         ),
-        marker("timeLimit", "Time Limit", "bg-red-500", messages$, "Overall request time limit"),
+        marker("timeLimit", "Time Limit", ["bg-red-500", "border-red-500"], messages$, "Overall request time limit"),
       );
       return items$.pipe(
         scan(
@@ -334,6 +373,9 @@ export default function CompletionConditions() {
       filter: JSON.parse(filterJson),
       eventCountThreshold,
       firstEoseTimeout,
+      grace,
+      idle,
+      cap,
       firstNRelaysCount,
       timeLimitMs,
     });
@@ -432,7 +474,7 @@ export default function CompletionConditions() {
 
             <div className="flex flex-col gap-2">
               <label className="label">
-                <span className="label-text">First EOSE Timeout: {formatTime(firstEoseTimeout)}</span>
+                <span className="label-text">Legacy grace window: {formatTime(firstEoseTimeout)}</span>
               </label>
               <input
                 type="range"
@@ -441,6 +483,51 @@ export default function CompletionConditions() {
                 step="100"
                 value={firstEoseTimeout}
                 onChange={(e) => setFirstEoseTimeout(Number(e.target.value))}
+                className="range range-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="label">
+                <span className="label-text">Idle-aware grace: {formatTime(grace)}</span>
+              </label>
+              <input
+                type="range"
+                min="100"
+                max="10000"
+                step="100"
+                value={grace}
+                onChange={(e) => setGrace(Number(e.target.value))}
+                className="range range-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="label">
+                <span className="label-text">Idle-aware idle window: {formatTime(idle)}</span>
+              </label>
+              <input
+                type="range"
+                min="100"
+                max="5000"
+                step="100"
+                value={idle}
+                onChange={(e) => setIdle(Number(e.target.value))}
+                className="range range-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="label">
+                <span className="label-text">Idle-aware cap: {formatTime(cap)}</span>
+              </label>
+              <input
+                type="range"
+                min="1000"
+                max="30000"
+                step="100"
+                value={cap}
+                onChange={(e) => setCap(Number(e.target.value))}
                 className="range range-sm"
               />
             </div>
@@ -599,7 +686,7 @@ export default function CompletionConditions() {
                       <>
                         {/* Completion markers */}
                         {markersBefore.map((marker) => {
-                          const borderColor = marker.color.replace("bg-", "border-");
+                          const borderColor = marker.border;
                           return (
                             <tr key={`completion-${marker.type}-${marker.time}`}>
                               <td colSpan={5} className={`border-l-4 ${borderColor} p-3 bg-base-200`}>
@@ -636,7 +723,7 @@ export default function CompletionConditions() {
                         m.time >= timelineMessages[timelineMessages.length - 1].timestamp,
                     )
                     .map((marker) => {
-                      const borderColor = marker.color.replace("bg-", "border-");
+                      const borderColor = marker.border;
                       return (
                         <tr key={`completion-${marker.type}-${marker.time}`}>
                           <td colSpan={5} className={`border-l-4 ${borderColor} p-3 bg-base-200`}>

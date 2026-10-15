@@ -72,8 +72,8 @@ export function selectOptimalRelays(
         if (!user.relays || !user.relays.includes(relay)) return true;
 
         // Increment user relay count
-        let count = selectionCount.get(user.pubkey) || 0;
-        selectionCount.set(user.pubkey, count++);
+        const count = (selectionCount.get(user.pubkey) || 0) + 1;
+        selectionCount.set(user.pubkey, count);
 
         // Remove the user if their relay has been selected more than maxRelaysPerUser times
         if (count >= maxRelaysPerUser) return false;
@@ -84,12 +84,13 @@ export function selectOptimalRelays(
   }
 
   // Take the original users and only include relays that where selected
-  return users.map((user) => ({
-    ...user,
-    // TODO: this will have more than maxRelaysPerUser relays
-    // but its not a big deal as long as we are taking the maxRelaysPerUser into account above
-    relays: user.relays?.filter((relay) => selection.has(relay)),
-  }));
+  return users.map((user) => {
+    if (!user.relays) return { ...user };
+
+    // Keep relays in selection order so the cap keeps the relays that were selected for this user first
+    const relays = Array.from(selection).filter((relay) => user.relays!.includes(relay));
+    return { ...user, relays: maxRelaysPerUser ? relays.slice(0, maxRelaysPerUser) : relays };
+  });
 }
 
 /** Sets relays for any user that has 0 relays */

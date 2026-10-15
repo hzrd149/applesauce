@@ -7,7 +7,14 @@ import { WS } from "vitest-websocket-mock";
 import { RelayGroup, RelayGroupError } from "../group.js";
 import { RELAY_REQ_LIFECYCLE } from "../internal.js";
 import { AUTH_PHASE_GATE, AuthPhaseGate } from "../operators/auth-retry.js";
-import { AuthRequiredError, Relay, RelayAuthChallengeChangedError, RelayAuthChallengeTimeoutError, RelayConnectionError } from "../relay.js";
+import {
+  AuthRequiredError,
+  Relay,
+  RelayAuthChallengeChangedError,
+  RelayAuthChallengeTimeoutError,
+  RelayConnectionError,
+  RelayFirstResponseTimeoutError,
+} from "../relay.js";
 import { withDebugCapture } from "./debug-capture.js";
 import { FakeUser } from "./fake-user.js";
 
@@ -167,7 +174,11 @@ describe("event", () => {
     mockRelay2.send(["OK", mockEvent.id, true, ""]);
 
     expect(spy.getValues()).toEqual([
-      expect.objectContaining({ ok: false, from: "wss://relay1.test", message: "Connection to wss://relay1.test failed" }),
+      expect.objectContaining({
+        ok: false,
+        from: "wss://relay1.test",
+        message: "Connection to wss://relay1.test failed",
+      }),
       expect.objectContaining({ ok: true, from: "wss://relay2.test", message: "" }),
     ]);
     expect(spy.receivedComplete()).toBe(true);
@@ -181,7 +192,11 @@ describe("event", () => {
 
     const values = spy.getValues();
     const failed = values.find((v) => v.from === "wss://relay1.test");
-    expect(failed).toMatchObject({ ok: false, from: "wss://relay1.test", message: "Connection to wss://relay1.test failed" });
+    expect(failed).toMatchObject({
+      ok: false,
+      from: "wss://relay1.test",
+      message: "Connection to wss://relay1.test failed",
+    });
     expect(failed?.error).toBeInstanceOf(RelayConnectionError);
 
     const succeeded = values.find((v) => v.from === "wss://relay2.test");
@@ -633,6 +648,159 @@ describe("request() CR-02 gap closure — the group's own ERROR bookkeeping must
 
     expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
     expect(spy.receivedError()).toBe(true);
+    expect(spy.getError()).not.toBeInstanceOf(RelayGroupError);
+  });
+});
+
+describe("completeAfterIdle", () => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  const event = (id: string) => ({ ...mockEvent, id });
+
+  it("keeps receiving events from a streaming relay after another relay sends an empty EOSE", async () => {
+    const complete = RelayGroup.completeAfterIdle({ grace: 50, idle: 80, cap: 2_000 });
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle1", complete }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle1", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "idle1", { kinds: [1] }]);
+    mockRelay1.send(["EOSE", "idle1"]);
+
+    // Stream events past the grace period, each within the idle window
+    for (let i = 0; i < 5; i++) {
+      await sleep(40);
+      mockRelay2.send(["EVENT", "idle1", event(`e${i}`)]);
+    }
+
+    await spy.onComplete();
+    expect(spy.getValues()).toHaveLength(5);
+  });
+
+  it("completes after the grace period when the other relay is silent", async () => {
+    const complete = RelayGroup.completeAfterIdle({ grace: 100, idle: 20, cap: 2_000 });
+    const startedAt = Date.now();
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle2", complete }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle2", { kinds: [1] }]);
+    mockRelay1.send(["EVENT", "idle2", mockEvent]);
+    mockRelay1.send(["EOSE", "idle2"]);
+
+    await spy.onComplete();
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(90);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  it("includes a relay whose first event arrives inside the grace period", async () => {
+    const complete = RelayGroup.completeAfterIdle({ grace: 150, idle: 20, cap: 2_000 });
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle3", complete }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle3", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "idle3", { kinds: [1] }]);
+    mockRelay1.send(["EOSE", "idle3"]);
+
+    // Longer than the idle window but inside the grace period
+    await sleep(100);
+    mockRelay2.send(["EVENT", "idle3", mockEvent]);
+
+    await spy.onComplete();
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+  });
+
+  it("completes an idle window after a relay stalls mid-stream", async () => {
+    const complete = RelayGroup.completeAfterIdle({ grace: 20, idle: 100, cap: 2_000 });
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle4", complete }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle4", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "idle4", { kinds: [1] }]);
+    mockRelay1.send(["EOSE", "idle4"]);
+    mockRelay2.send(["EVENT", "idle4", mockEvent]);
+    const stalledAt = Date.now();
+
+    await spy.onComplete();
+    expect(Date.now() - stalledAt).toBeGreaterThanOrEqual(90);
+    expect(Date.now() - stalledAt).toBeLessThan(1_000);
+  });
+
+  it("stops waiting on a trickling relay at the cap", async () => {
+    const complete = RelayGroup.completeAfterIdle({ grace: 20, idle: 80, cap: 200 });
+    const startedAt = Date.now();
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle5", complete }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle5", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "idle5", { kinds: [1] }]);
+    mockRelay1.send(["EOSE", "idle5"]);
+
+    for (let i = 0; i < 10 && !spy.receivedComplete(); i++) {
+      await sleep(50);
+      if (!spy.receivedComplete()) mockRelay2.send(["EVENT", "idle5", event(`t${i}`)]);
+    }
+
+    await spy.onComplete();
+    expect(Date.now() - startedAt).toBeLessThan(400);
+    expect(spy.getValues().length).toBeLessThan(10);
+  });
+
+  it("is the default completion for request()", async () => {
+    // Without the idle policy the default would complete when the first relay sends EOSE plus a fixed window
+    const startedAt = Date.now();
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "idle6" }));
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "idle6", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "idle6", { kinds: [1] }]);
+    mockRelay1.send(["EOSE", "idle6"]);
+    mockRelay2.send(["EVENT", "idle6", mockEvent]);
+
+    await spy.onComplete();
+    // The 3s default grace period is the earliest it can complete
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(2_900);
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+  }, 10_000);
+});
+
+describe("firstResponseTimeout", () => {
+  it("fails a silent relay and completes with the other relay's events", async () => {
+    const spy = subscribeSpyTo(
+      group.request([{ kinds: [1] }], {
+        id: "frt1",
+        firstResponseTimeout: 100,
+        complete: RelayGroup.completeOnAllEose(),
+      }),
+    );
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "frt1", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "frt1", { kinds: [1] }]);
+    mockRelay1.send(["EVENT", "frt1", mockEvent]);
+    mockRelay1.send(["EOSE", "frt1"]);
+
+    await spy.onComplete();
+    expect(spy.getValues()).toEqual([expect.objectContaining(mockEvent)]);
+  });
+
+  it("errors with RelayGroupError when every relay is silent", async () => {
+    const startedAt = Date.now();
+    const spy = subscribeSpyTo(group.request([{ kinds: [1] }], { id: "frt2", firstResponseTimeout: 100 }), {
+      expectErrors: true,
+    });
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "frt2", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "frt2", { kinds: [1] }]);
+
+    await spy.onError();
+    const error = spy.getError();
+    expect(error).toBeInstanceOf(RelayGroupError);
+    expect((error as RelayGroupError).errors[0]).toBeInstanceOf(RelayFirstResponseTimeoutError);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+
+  it("does not fail a relay when disabled", async () => {
+    const spy = subscribeSpyTo(
+      group.request([{ kinds: [1] }], { id: "frt3", firstResponseTimeout: false, timeout: 300 }),
+      { expectErrors: true },
+    );
+
+    await expect(mockRelay1).toReceiveMessage(["REQ", "frt3", { kinds: [1] }]);
+    await expect(mockRelay2).toReceiveMessage(["REQ", "frt3", { kinds: [1] }]);
+
+    // Only the whole-request timeout ends it
+    await spy.onError();
     expect(spy.getError()).not.toBeInstanceOf(RelayGroupError);
   });
 });

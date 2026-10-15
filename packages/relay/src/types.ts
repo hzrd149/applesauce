@@ -290,8 +290,20 @@ export type GroupReqOptions = RelayReqOptions;
 export type GroupRequestOptions = RelayRequestOptions & {
   /** Deduplicate events with an event store (default is a temporary instance of EventMemory), null will disable deduplication */
   eventStore?: IEventStoreActions | IAsyncEventStoreActions | null;
-  /** A custom operator that determines when the request should complete.*/
+  /** A custom operator that determines when the request should complete (default `RelayGroup.completeAfterIdle()`) */
   complete?: GroupRequestCompleteOperator;
+  /** Fails a relay that sends no EVENT or EOSE within this many ms, false disables it (default 10 seconds) */
+  firstResponseTimeout?: number | false;
+};
+
+/** Options for `RelayGroup.completeAfterIdle()` */
+export type CompleteAfterIdleOptions = {
+  /** Minimum time after the first EOSE to wait for relays that have not responded (default 3 seconds) */
+  grace?: number;
+  /** Time without any events before completing once the grace period has passed (default 1.5 seconds) */
+  idle?: number;
+  /** Maximum time after the first EOSE before completing (default 15 seconds) */
+  cap?: number;
 };
 
 /** The message that is emitted when the group receives an error message from the relay observable */

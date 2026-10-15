@@ -203,6 +203,14 @@ export class RelayCountTimeoutError extends Error {
   }
 }
 
+/** A relay in a group request sent no EVENT or EOSE before the first-response timeout */
+export class RelayFirstResponseTimeoutError extends Error {
+  constructor(public readonly url: string) {
+    super(`Timed out waiting for a first response from ${url}`);
+    this.name = "RelayFirstResponseTimeoutError";
+  }
+}
+
 /** A WebSocket error event converted to an Error with the relay URL and reason */
 export class RelayConnectionError extends Error {
   constructor(

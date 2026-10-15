@@ -29,14 +29,16 @@ import {
   Subscription,
   switchMap,
   take,
+  throwError,
   timer,
   toArray,
 } from "rxjs";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
-import { AuthPhaseGate, authSuspendableLifetime } from "./operators/auth-retry.js";
+import { AuthPhaseGate, authSuspendableLifetime, suspendableTimeout } from "./operators/auth-retry.js";
 import { reverseSwitchMap } from "./operators/reverse-switch-map.js";
-import { isReqProgress, Relay, SyncDirection } from "./relay.js";
+import { isReqProgress, Relay, RelayFirstResponseTimeoutError, SyncDirection } from "./relay.js";
 import {
+  CompleteAfterIdleOptions,
   FilterInput,
   GroupRelayInput,
   GroupReqErrorMessage,
@@ -366,9 +368,10 @@ export class RelayGroup {
 
   /** Request events from all relays and complete based on condition */
   request(filters: FilterInput, opts?: GroupRequestOptions): Observable<NostrEvent> {
-    // Cohort settlement owns all-terminal completion. Preserve the legacy five-second
-    // fallback after the first EOSE; a caller-supplied operator replaces that early policy.
-    const complete = opts?.complete ?? RelayGroup.completeAfterFirstRelay(5_000);
+    // Cohort settlement owns all-terminal completion. The default early policy stops waiting once
+    // relays go quiet after the first EOSE; a caller-supplied operator replaces it.
+    const complete = opts?.complete ?? RelayGroup.completeAfterIdle();
+    const firstResponseTimeout = opts?.firstResponseTimeout ?? 10_000;
 
     // D-15/WR-02: one AuthPhaseGate per call, shared by every relay in the fan-out — the group's clock
     // is a single budget over the whole fan-out, so any relay's in-flight auth phase must suspend it.
@@ -378,9 +381,18 @@ export class RelayGroup {
       "request",
       // NOTE: we need to use the .req() method here because it returns the full RelayReqResponse object
       (relay) =>
-        typeof relay[RELAY_REQ_LIFECYCLE] === "function"
+        (typeof relay[RELAY_REQ_LIFECYCLE] === "function"
           ? relay[RELAY_REQ_LIFECYCLE](filters, { ...opts, reconnect: opts?.reconnect ?? relay.requestReconnect }, gate)
-          : relay.req(filters, opts as GroupReqOptions),
+          : relay.req(filters, opts as GroupReqOptions)
+        ).pipe(
+          // Fail a relay that never answers so a group of silent relays settles before the whole-request timeout
+          firstResponseTimeout === false
+            ? identity
+            : suspendableTimeout<RelayReqMessage>(firstResponseTimeout, gate, {
+                firstWhen: (message) => message.type === "EVENT" || message.type === "EOSE",
+                with: () => throwError(() => new RelayFirstResponseTimeoutError(relay.url)),
+              }),
+        ),
       complete,
     ).pipe(
       // Suspend the whole-operation clock across auth. This lifetime consumes no values, so neither
@@ -599,6 +611,43 @@ export class RelayGroup {
         // Start a timeout for the remaining relays
         switchMap(() => timer(timeout)),
         // Emit true when the timeout completes
+        map(() => true),
+      );
+  }
+
+  /**
+   * Creates a complete condition that waits after the first EOSE while relays are still sending events
+   * @param opts.grace - Minimum time after the first EOSE to wait for relays that have not responded (default 3s)
+   * @param opts.idle - Time without any events before completing once the grace period has passed (default 1.5s)
+   * @param opts.cap - Maximum time after the first EOSE before completing (default 15s)
+   */
+  static completeAfterIdle(opts?: CompleteAfterIdleOptions): GroupRequestCompleteOperator {
+    const { grace = 3_000, idle = 1_500, cap = 15_000 } = opts ?? {};
+
+    return (source) =>
+      source.pipe(
+        filter((m) => m.type === "EOSE"),
+        take(1),
+        switchMap(() => {
+          // True once no relay has sent an event for `idle` ms, false again when an event arrives
+          const quiet = source.pipe(
+            filter((m) => m.type === "EVENT"),
+            startWith(null),
+            switchMap(() =>
+              timer(idle).pipe(
+                map(() => true),
+                startWith(false),
+              ),
+            ),
+          );
+
+          return merge(
+            // Complete when the grace period has passed and relays have gone quiet
+            combineLatest([timer(grace), quiet]).pipe(filter(([, isQuiet]) => isQuiet)),
+            // Never wait longer than the cap
+            timer(cap),
+          );
+        }),
         map(() => true),
       );
   }

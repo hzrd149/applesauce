@@ -18,6 +18,7 @@ describe("exports", () => {
         "RelayCountTimeoutError",
         "RelayEventTimeoutError",
         "RelayEventVerdictError",
+        "RelayFirstResponseTimeoutError",
         "RelayGroup",
         "RelayGroupError",
         "RelayLiveness",
