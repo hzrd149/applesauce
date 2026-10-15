@@ -80,6 +80,42 @@ describe("loadBackwardBlocks", () => {
   });
 });
 
+describe("cancelled blocks", () => {
+  it("should not mark the source complete when a block is cancelled before any events", () => {
+    const window$ = new Subject<TimelineWindow>();
+    const request = vi.fn(() => new Subject<NostrEvent>());
+
+    const first = window$.pipe(loadBackwardBlocks(request));
+    let sub = first.subscribe();
+    window$.next({ since: -Infinity, until: 100 });
+    sub.unsubscribe();
+
+    sub = first.subscribe();
+    window$.next({ since: -Infinity });
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenLastCalledWith(100);
+    sub.unsubscribe();
+  });
+
+  it("should keep loading a relay after an identical filter map is re-emitted mid-block", () => {
+    const pending = new Subject<NostrEvent>();
+    const request = vi.fn().mockReturnValueOnce(pending).mockReturnValue(of(event(90)));
+    const map = { "wss://a.com/": { kinds: [1] } };
+    const map$ = new BehaviorSubject(map);
+    const window$ = new BehaviorSubject<TimelineWindow>({ since: -Infinity });
+    const next = vi.fn();
+
+    const sub = window$.pipe(loadBlocksFromFilterMap(request, map$)).subscribe(next);
+    map$.next({ ...map });
+    window$.next({ since: -Infinity });
+
+    // The cancelled block is re-requested, then the next page continues past it
+    expect(request.mock.calls.map(([, filters]) => filters[0].until)).toEqual([undefined, undefined, 89]);
+    expect(next).toHaveBeenCalledWith(event(90));
+    sub.unsubscribe();
+  });
+});
+
 describe("loadBlocksFromFilterMap", () => {
   it("should keep loading from other relays when one relay fails", () => {
     const pool = vi.fn((relays: string[]) =>

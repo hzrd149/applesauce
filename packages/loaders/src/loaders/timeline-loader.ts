@@ -104,22 +104,27 @@ export function loadBackwardBlocks(
             count++;
             minCreatedAt = Math.min(event.created_at, minCreatedAt ?? Infinity);
           }),
+          // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
+          tap({
+            complete: () => {
+              // NIP-01 defines `until` as inclusive. Move past the oldest event in
+              // the block so the next request does not repeat the boundary second.
+              if (minCreatedAt !== undefined) {
+                const next = minCreatedAt - 1;
+
+                // Stop if the relay ignores `until` and stops making backward progress.
+                if (until !== undefined && next >= until) complete = true;
+                else cursor = next;
+              }
+
+              complete = complete || count === 0;
+
+              log?.(`Found ${count} events`);
+              if (complete) log?.("Complete");
+            },
+          }),
           finalize(() => {
-            // NIP-01 defines `until` as inclusive. Move past the oldest event in
-            // the block so the next request does not repeat the boundary second.
-            if (minCreatedAt !== undefined) {
-              const next = minCreatedAt - 1;
-
-              // Stop if the relay ignores `until` and stops making backward progress.
-              if (until !== undefined && next >= until) complete = true;
-              else cursor = next;
-            }
-
             loading = false;
-            complete = complete || count === 0;
-
-            log?.(`Found ${count} events`);
-            if (complete) log?.("Complete");
           }),
         );
       }),
@@ -182,18 +187,23 @@ export function loadForwardBlocks(
             count++;
             maxCreatedAt = Math.max(event.created_at, maxCreatedAt ?? -Infinity);
           }),
+          // Only commit the cursor when the block finishes, a cancelled block proves nothing about the source
+          tap({
+            complete: () => {
+              if (maxCreatedAt !== undefined) {
+                // Stop if the source ignores `since` and stops making forward progress.
+                if (since !== undefined && maxCreatedAt <= since) complete = true;
+                else cursor = maxCreatedAt;
+              }
+
+              complete = complete || count === 0;
+
+              log?.(`Found ${count} events`);
+              if (complete) log?.("Complete");
+            },
+          }),
           finalize(() => {
-            if (maxCreatedAt !== undefined) {
-              // Stop if the source ignores `since` and stops making forward progress.
-              if (since !== undefined && maxCreatedAt <= since) complete = true;
-              else cursor = maxCreatedAt;
-            }
-
             loading = false;
-            complete = complete || count === 0;
-
-            log?.(`Found ${count} events`);
-            if (complete) log?.("Complete");
           }),
         );
       }),
