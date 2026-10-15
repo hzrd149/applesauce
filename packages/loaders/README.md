@@ -141,7 +141,7 @@ The unified loader accepts all options from both `EventPointerLoaderOptions` and
 
 ## Timeline Loader
 
-The Timeline Loader is designed for fetching paginated Nostr events in chronological order. It maintains state between calls, allowing you to efficiently load timeline events in blocks until you reach a specific timestamp or exhaust available events.
+The Timeline Loader is designed for infinite scrolling timelines. Each call loads the next page of older events from every relay and completes once the page has loaded, and the loader keeps a separate cursor for each relay and filter so no events are skipped.
 
 ```ts
 import { createTimelineLoader } from "applesauce-loaders/loaders";
@@ -165,11 +165,12 @@ timelineLoader().subscribe((event) => {
   console.log("Loaded older event:", event);
 });
 
-// Load events until a specific timestamp
+// Load the next page only if the timeline hasn't reached a week ago yet
 const oneWeekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
-timelineLoader(oneWeekAgo).subscribe((event) => {
-  console.log("Event from last week:", event);
-});
+timelineLoader(oneWeekAgo).subscribe();
+
+// Load every event published since the last load
+timelineLoader({ until: Infinity }).subscribe();
 ```
 
 ## Loading from cache

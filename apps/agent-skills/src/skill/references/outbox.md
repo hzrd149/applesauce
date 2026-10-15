@@ -23,20 +23,24 @@ await pool.publish(outboxes, signed);
 
 For a social feed (timeline across the people the active user follows), you need a _map of pubkey → relays_ and to subscribe across all of them efficiently.
 
-`applesauce-loaders/outbox` exports:
+Build the map with the relay-selection operators from `applesauce-core`, then pass it to the timeline loader:
 
-- `createOutboxMap(eventStore, pubkeys)` — produces a reactive `Map<pubkey, string[]>` keyed by author.
-- `loadBlocksFromOutboxMap(...)` — batches loaders across the relays grouped by reachability.
-- `selectOptimalRelays(...)` — minimises the set of relays needed to cover the requested authors (each relay typically covers many).
+- `includeMailboxes(eventStore)` — adds each user's NIP-65 outboxes to their `ProfilePointer`.
+- `filterOptimalRelays(maxConnections, maxRelaysPerUser)` — minimises the set of relays needed to cover every author (each relay typically covers many).
+- `createOutboxMap(pointers)` — groups the pointers into a `relay → users` map.
+- `createOutboxTimelineLoader(pool, outboxMap$, filter, opts)` — pages each relay's authors separately. The map can be an observable, so the feed follows contact list changes.
 
 ```ts
+import { includeMailboxes, filterOptimalRelays } from "applesauce-core";
+import { createOutboxMap } from "applesauce-core/helpers";
 import { createOutboxTimelineLoader } from "applesauce-loaders/loaders";
 
-const loader = createOutboxTimelineLoader(pool, eventStore, {
-  authors: followedPubkeys,
-  kinds: [1],
-});
-loader.subscribe();
+// contacts$ emits the ProfilePointer[] of the users to follow
+const outboxMap$ = contacts$.pipe(includeMailboxes(eventStore), filterOptimalRelays(30, 4), map(createOutboxMap));
+const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, limit: 50 });
+
+// Each call loads the next page of older events and completes when every relay has answered
+loader().subscribe();
 ```
 
 The pool side has matching helpers — `pool.outboxSubscription(...)` for the live REQ. See `packages/relay.md` and `packages/loaders.md`.

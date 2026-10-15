@@ -4,9 +4,9 @@ description: Load timeline events from multiple relays with pagination, deduplic
 
 # Timeline Loader
 
-The Timeline Loader is designed for fetching paginated Nostr events in chronological order. It maintains state between calls, allowing you to efficiently load timeline events in blocks until you reach a specific timestamp or exhaust available events.
+The Timeline Loader is designed for infinite scrolling timelines. It keeps its position between calls, so each call loads the next page of older events, and it can also fill in newer events since the last load.
 
-The loader automatically deduplicates events by default, so you won't receive the same event multiple times even if it appears on multiple relays or in multiple blocks.
+Each relay and each filter pages with its own cursor, so a relay with a lower `max_limit` or a filter with fewer events never causes events to be skipped. Events are deduplicated across relays and across calls.
 
 :::warning
 The observable returned by the Timeline Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
@@ -33,44 +33,41 @@ const timelineLoader = createTimelineLoader(
 // Initial load - gets the most recent events
 timelineLoader().subscribe({
   next: (event) => console.log("Loaded event:", event),
-  complete: () => console.log("Block loaded"),
+  complete: () => console.log("Page loaded"),
 });
 
 // Later, load older events by calling the loader again
 // Each call continues from where the previous one left off
 timelineLoader().subscribe((event) => console.log("Loaded older event:", event));
 
-// Pass a window to load missing events in a specific range
-timelineLoader({ since: oldestTimestamp, until: newestTimestamp }).subscribe((event) => console.log(event));
+// Load the newer events published since the last load
+timelineLoader({ until: Infinity }).subscribe((event) => console.log("Loaded newer event:", event));
 ```
+
+Each call completes once every relay has finished its page, so `lastValueFrom`, `toArray` and `exhaustMap` work as expected. A call made while a page is still loading waits for that page instead of starting another.
 
 ## Configuration Options
 
 ### Timeline Window
 
-The timeline loader can accept a timeline window to load missing events within a specific range. The window is an object with optional `since` and `until` properties:
+Each call takes an optional window with `since` and `until` timestamps:
 
 ```ts
-// Load the next block of historical events (default behavior)
-// Since defaults to -Infinity, forcing the loader to load new blocks
-timelineLoader().subscribe((event) => console.log(event));
+// Load the next page of older events
+timelineLoader();
 
-// Load events newer than a specific timestamp (backward compatibility)
-timelineLoader(1234567890).subscribe((event) => console.log(event));
+// Load the next page of older events, but only if the timeline hasn't reached this timestamp yet
+timelineLoader(oneWeekAgo); // Same as { since: oneWeekAgo }
 
-// Pass a window to load missing events in a specific time range
-timelineLoader({ since: oldestTimestamp, until: newestTimestamp }).subscribe((event) => console.log(event));
+// Start the timeline at a timestamp (only on the first call)
+timelineLoader({ since: -Infinity, until: startTimestamp });
 
-// Load only newer events (forward in time)
-timelineLoader({ until: newestTimestamp }).subscribe((event) => console.log(event));
+// Load every event newer than the last load, up to now
+timelineLoader({ until: Infinity });
 ```
 
-The loader intelligently loads missing blocks of events based on the window you provide:
-
-- **`since`** - Minimum `created_at` timestamp (lower bound of the window). If `undefined`, defaults to `-Infinity` which forces loading new blocks from all relays
-- **`until`** - Maximum `created_at` timestamp (upper bound of the window). If `undefined`, only loads historical events going backwards in time
-
-When you pass a window to the loader, it will load any missing events that fall within that range. This allows your app to reactively update the timeline as the user scrolls and the visible window changes.
+- **`since`** - How far back to load. Each call loads one page of older events while the timeline is still newer than `since`, and `-Infinity` always loads the next page. Without `since`, no older events are loaded.
+- **`until`** - On the first call, the timestamp the timeline starts from (default: now). On later calls, an `until` newer than the last load fills in every newer event up to `until`, and `Infinity` means now.
 
 ### Limit
 
@@ -141,30 +138,20 @@ const outboxMap$ = contacts$.pipe(map(createOutboxMap));
 const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, limit: 100 });
 ```
 
-## Using Timeline Windows with Function-Based Loaders
+## How Pagination Works
 
-When using the function-based loaders (`createTimelineLoader` and `createOutboxTimelineLoader`), you can pass a timeline window directly to the loader to load missing events:
+Relays return the newest `limit` events that match a filter, and many relays cap `limit` with their own `max_limit`. A page therefore never proves how far back a relay's events go, so the loader:
 
-```ts
-import { TimelineWindow } from "applesauce-loaders/loaders";
+- Keeps a separate cursor for each relay and each filter, and only moves it past events that relay actually returned
+- Stops loading a relay or filter only when it returns an empty page
+- Loads newer events by paging backward from the target down to the last load, so a gap is filled completely rather than with only the newest page
+- Requests the oldest second of a page again, so events cut off at the end of a page aren't skipped
 
-// As user scrolls, pass the visible window to the loader
-const window: TimelineWindow = {
-  since: oldestVisibleEvent.created_at,
-  until: newestVisibleEvent.created_at,
-};
+A failed or cancelled request doesn't move the cursor, and the next call retries it.
 
-// The loader will automatically load any missing events in this range
-timelineLoader(window).subscribe((event) => console.log(event));
-```
-
-The timeline loader intelligently loads missing blocks of events when:
-
-- The window expands (user scrolls to older/newer content)
-- Events are missing in the current range
-- You call the loader with a new window
-
-This approach allows your app to reactively load timeline events as the user scrolls, ensuring that all visible events are fetched.
+:::warning
+If more events share a single `created_at` second than a relay returns in one page, the rest of that second can't be paged by time. The loader skips past that second instead of looping.
+:::
 
 ## Using Timeline Windows with RxJS Operators
 
@@ -184,7 +171,7 @@ window$.next({
 });
 ```
 
-The timeline loader operators watch this window and automatically load missing events when the window changes. This reactive approach means you just update the window observable to reflect what's on screen, and the operators handle fetching the necessary blocks of events.
+The timeline loader operators watch this window and load a page whenever the window extends past what has been loaded. This reactive approach means you just update the window observable to reflect what's on screen.
 
 ## RxJS Operators
 
@@ -250,27 +237,17 @@ function loadMore() {
 }
 ```
 
-### Window-Based Feed
+### Load More and Newer Events
 
 ```ts
 const loader = createTimelineLoader(pool, relays, { kinds: [1] }, { eventStore, limit: 20 });
+const more$ = new Subject<void>();
 
-// Track the visible window as user scrolls
-let currentWindow: TimelineWindow = { since: Date.now() / 1000 };
+// exhaustMap ignores clicks until the current page completes
+more$.pipe(exhaustMap(() => loader())).subscribe();
 
-// Load events for the current window
-let subscription = loader(currentWindow).subscribe((event) => {
-  events.push(event);
-});
-
-// Update window as user scrolls
-function updateWindow(since: number, until: number) {
-  subscription.unsubscribe();
-  currentWindow = { since, until };
-  subscription = loader(currentWindow).subscribe((event) => {
-    events.push(event);
-  });
-}
+// Fill in events published since the last load, e.g. after the app was in the background
+loader({ until: Infinity }).subscribe();
 ```
 
 ### Social Feed with Outbox Model (Using RxJS Operators)
@@ -305,8 +282,14 @@ const loader = createOutboxTimelineLoader(pool, outboxMap, { kinds: [1] }, { eve
 // Load initial block of events
 loader().subscribe((event) => events.push(event));
 
-// Load events as the window changes
-function loadWindow(since: number, until: number) {
-  loader({ since, until }).subscribe((event) => events.push(event));
+// Load the next page of older events
+function loadMore() {
+  loader().subscribe((event) => events.push(event));
 }
 ```
+
+## Best Practices
+
+- **Use `exhaustMap` for "load more"** so repeated scroll or click triggers don't stack requests.
+- **Keep a live subscription separate.** The loader only loads history. Open your own subscription for live events, and call `loader({ until: Infinity })` to fill the gap after reconnecting.
+- **Reuse one loader per timeline.** The cursors live in the loader, so creating a new loader starts again from the newest events.

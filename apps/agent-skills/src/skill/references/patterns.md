@@ -152,13 +152,13 @@ For publishing to the _right_ relays (the author's outboxes, recipients' inboxes
 ## Bridging observables to Promises
 
 ```ts
-import { firstValueFrom, lastValueFrom } from "rxjs";
+import { firstValueFrom, lastValueFrom, toArray } from "rxjs";
 
 // First emission (one-shot fetches)
 const event = await firstValueFrom(loader({ id, relays }));
 
-// Last emission (after the stream completes — e.g. timeline loaders that EOSE)
-const allEvents = await lastValueFrom(timelineLoader());
+// Every emission (after the stream completes — e.g. one page from a timeline loader)
+const page = await lastValueFrom(timelineLoader().pipe(toArray()));
 ```
 
 `firstValueFrom` subscribes, waits for the first `next`, then unsubscribes. `lastValueFrom` waits for `complete`. If the stream never completes (a live relay subscription), `lastValueFrom` hangs — pair with `takeUntil(timer(ms))` or `take(n)`.
