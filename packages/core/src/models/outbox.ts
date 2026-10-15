@@ -14,10 +14,10 @@ export type OutboxModelOptions = SelectOptimalRelaysOptions & {
 export function OutboxModel(user: string | ProfilePointer, opts: OutboxModelOptions): Model<ProfilePointer[]> {
   return (store) =>
     store.contacts(user).pipe(
-      /** Ignore blacklisted relays */
-      opts?.blacklist ? ignoreBlacklistedRelays(opts.blacklist) : identity,
       /** Include mailboxes */
       includeMailboxes(store, opts.type),
+      /** Ignore blacklisted relays, after mailboxes so relay lists can't add them back */
+      opts?.blacklist ? ignoreBlacklistedRelays(opts.blacklist) : identity,
       /** Select the optimal relays */
       map((users) => selectOptimalRelays(users, opts)),
     );
