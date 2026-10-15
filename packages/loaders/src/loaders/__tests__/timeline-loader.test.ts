@@ -1,5 +1,6 @@
 import { Filter } from "applesauce-core/helpers/filter";
 import { NostrEvent } from "applesauce-core/helpers/event";
+import { unixNow } from "applesauce-core/helpers/time";
 import {
   BehaviorSubject,
   EMPTY,
@@ -546,5 +547,30 @@ describe("relay errors", () => {
       undefined,
       undefined,
     ]);
+  });
+});
+
+describe("timeline that starts in the past", () => {
+  it("should load forward from the window until of the first call", async () => {
+    const now = unixNow();
+    const start = now - 100 * 3600;
+    const events = [event(start - 3600), event(start + 5 * 3600), event(start + 30 * 3600)];
+    const request = vi.fn((_relays: string[], filters: Filter[]) =>
+      of(
+        ...events.filter(
+          (e) => e.created_at <= (filters[0].until ?? Infinity) && e.created_at >= (filters[0].since ?? -Infinity),
+        ),
+      ),
+    );
+    const loader = createTimelineLoader(request, ["wss://a.com/"], { kinds: [1] });
+
+    const first = await lastValueFrom(loader({ since: start - 24 * 3600, until: start }).pipe(toArray()));
+    expect(first.map((e) => e.created_at)).toEqual([start - 3600]);
+
+    const second = await lastValueFrom(loader({ until: start + 10 * 3600 }).pipe(toArray()));
+    expect(second.map((e) => e.created_at)).toEqual([start + 5 * 3600]);
+
+    const third = await lastValueFrom(loader({ until: start + 50 * 3600 }).pipe(toArray()));
+    expect(third.map((e) => e.created_at)).toEqual([start + 30 * 3600]);
   });
 });

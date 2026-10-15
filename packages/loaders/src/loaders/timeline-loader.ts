@@ -325,7 +325,11 @@ function loadForwardFilterBlocks(
         // Ignore windows replayed from calls that already finished
         if (getTimelineCall(window)?.settled) return false;
 
-        if (edge === undefined) edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
+        if (edge === undefined) {
+          // Wait for a real window, the empty window seeded by the loaders would start the timeline at now
+          if (window.since === undefined && until === undefined) return false;
+          edge = until !== undefined && Number.isFinite(until) ? until : unixNow();
+        }
 
         // Skip until the window extends past the edge
         if (until === undefined || until <= edge) return false;
