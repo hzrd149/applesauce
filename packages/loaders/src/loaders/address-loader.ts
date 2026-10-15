@@ -7,7 +7,7 @@ import {
   mergeRelaySets,
 } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { bufferTime, catchError, EMPTY, identity, merge, Observable } from "rxjs";
+import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -108,7 +108,8 @@ export function addressPointerLoadingSequence(
     for (const loader of loaders) {
       if (loader === undefined) continue;
 
-      const results = yield loader(remaining).pipe(
+      // Defer so a synchronous throw while building the request is caught like an async error
+      const results = yield defer(() => loader(remaining)).pipe(
         // If the loader throws an error, skip it
         catchError(() => EMPTY),
       );

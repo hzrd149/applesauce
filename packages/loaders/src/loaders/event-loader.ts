@@ -2,7 +2,7 @@ import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { filterDuplicateEvents } from "applesauce-core/observable";
-import { bufferTime, catchError, EMPTY, identity, merge, Observable, tap } from "rxjs";
+import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable, tap } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
 import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
@@ -70,7 +70,14 @@ export function relayHintsEventsLoader(
     const byRelay = groupByRelay(pointers);
 
     // Request the pointers from each relay
-    return merge(...Array.from(byRelay).map(([relay, pointers]) => getLoader(relay)(pointers)));
+    return merge(
+      ...Array.from(byRelay).map(([relay, pointers]) =>
+        getLoader(relay)(pointers).pipe(
+          // Dont let a failing relay cancel the other hints
+          catchError(() => EMPTY),
+        ),
+      ),
+    );
   };
 }
 
@@ -89,7 +96,8 @@ export function eventLoadingSequence(...loaders: (createEventLoader | undefined)
     for (const loader of loaders) {
       if (loader === undefined) continue;
 
-      yield loader(remaining).pipe(
+      // Defer so a synchronous throw while building the request is caught like an async error
+      yield defer(() => loader(remaining)).pipe(
         // If the loader throws an error, skip it
         catchError(() => EMPTY),
         // Record events that where found

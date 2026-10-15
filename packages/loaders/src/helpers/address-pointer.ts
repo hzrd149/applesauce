@@ -3,7 +3,10 @@ import { Filter } from "applesauce-core/helpers/filter";
 import { AddressPointer, AddressPointerWithoutD } from "applesauce-core/helpers/pointers";
 import { unique } from "./array.js";
 
-/** Converts an array of address pointers to a filter */
+/**
+ * Converts an array of address pointers to a filter
+ * @note the filter matches every author and identifier combination, use {@link createFiltersFromAddressPointers} for exact matches
+ */
 export function createFilterFromAddressPointers(pointers: AddressPointerWithoutD[] | AddressPointer[]): Filter {
   const filter: Filter = {};
 
@@ -31,9 +34,48 @@ export function createFiltersFromAddressPointers(pointers: AddressPointerWithout
   };
 
   addGroupFilters(replaceable);
-  addGroupFilters(addressable);
+  for (const group of groupAddressPointersByKind(addressable).values())
+    filters.push(...createExactAddressableFilters(group));
 
   return filters;
+}
+
+/** Groups keys by the set of values they map to, returning [keys, values] pairs */
+function groupBySharedValues(map: Map<string, Set<string>>): [string[], string[]][] {
+  const groups = new Map<string, [string[], string[]]>();
+  for (const [key, values] of map) {
+    const sorted = Array.from(values).sort();
+    const id = sorted.join(",");
+    const group = groups.get(id);
+    if (group) group[0].push(key);
+    else groups.set(id, [[key], sorted]);
+  }
+  return Array.from(groups.values());
+}
+
+/** Creates filters for addressable pointers of one kind that only match the requested author and identifier pairs */
+function createExactAddressableFilters(pointers: AddressPointerWithoutD[]): Filter[] {
+  const kind = pointers[0].kind;
+  const byAuthor = new Map<string, Set<string>>();
+  const byIdentifier = new Map<string, Set<string>>();
+
+  for (const { pubkey, identifier } of pointers) {
+    if (identifier === undefined) continue;
+    if (!byAuthor.has(pubkey)) byAuthor.set(pubkey, new Set());
+    byAuthor.get(pubkey)!.add(identifier);
+    if (!byIdentifier.has(identifier)) byIdentifier.set(identifier, new Set());
+    byIdentifier.get(identifier)!.add(pubkey);
+  }
+
+  // Both groupings are exact, use whichever needs fewer filters since relays limit filters per request
+  const authorGroups = groupBySharedValues(byAuthor).map(([authors, identifiers]) => ({ authors, identifiers }));
+  const identifierGroups = groupBySharedValues(byIdentifier).map(([identifiers, authors]) => ({
+    authors,
+    identifiers,
+  }));
+  const groups = identifierGroups.length < authorGroups.length ? identifierGroups : authorGroups;
+
+  return groups.map(({ authors, identifiers }) => ({ kinds: [kind], authors, "#d": identifiers }));
 }
 
 /** Checks if a relay will understand an address pointer */

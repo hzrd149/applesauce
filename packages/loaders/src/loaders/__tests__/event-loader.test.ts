@@ -189,3 +189,55 @@ describe("request pressure and timeouts", () => {
     expect(added).toEqual([note]);
   });
 });
+
+describe("stage errors and cache bypass", () => {
+  const note = user.note("target");
+
+  it("falls back to relays when the cache request throws synchronously", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => of(note));
+    const loader = createEventLoader(request, {
+      bufferTime: 10,
+      extraRelays: ["wss://extra.test/"],
+      cacheRequest: () => {
+        throw new Error("cache");
+      },
+    });
+
+    const spy = subscribeSpyTo(loader({ id: note.id }));
+    vi.advanceTimersByTime(10);
+
+    expect(spy.getValues()).toEqual([note]);
+    expect(spy.receivedError()).toBe(false);
+  });
+
+  it("does not let a failing hinted relay cancel a healthy one", () => {
+    const bad = new Subject<NostrEvent>();
+    const good = new Subject<NostrEvent>();
+    const loader = createEventLoader((relays) => (relays[0] === "wss://bad.test/" ? bad : good), { bufferTime: 10 });
+
+    const spy = subscribeSpyTo(loader({ id: note.id, relays: ["wss://bad.test/", "wss://good.test/"] }));
+    vi.advanceTimersByTime(10);
+    bad.error(new Error("connection refused"));
+    good.next(note);
+
+    expect(spy.getValues()).toEqual([note]);
+  });
+
+  it.each([
+    ["cache: false first", [{ cache: false }, {}]],
+    ["cache: false last", [{}, { cache: false }]],
+  ])("skips the cache when any duplicate pointer sets %s", (_name, flags) => {
+    const cacheRequest = vi.fn(() => [note]);
+    const loader = createEventLoader(() => of(note), {
+      bufferTime: 10,
+      eventStore: null,
+      cacheRequest,
+      extraRelays: ["wss://extra.test/"],
+    });
+
+    for (const flag of flags) subscribeSpyTo(loader({ id: note.id, ...flag }));
+    vi.advanceTimersByTime(10);
+
+    expect(cacheRequest).not.toHaveBeenCalled();
+  });
+});
