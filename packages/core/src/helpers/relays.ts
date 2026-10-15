@@ -4,9 +4,21 @@ import { ensureWebSocketURL, normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
 
-/** Normalizes a relay URL by using {@link normalizeURL} and {@link ensureWebSocketURL} */
+/**
+ * Normalizes a relay URL by using {@link normalizeURL} and {@link ensureWebSocketURL}
+ * @throws if the input is not a single WebSocket URL
+ */
 export function normalizeRelayUrl(input: string): string {
-  return normalizeURL(ensureWebSocketURL(input));
+  const trimmed = input.trim();
+  // URL parsing percent-encodes or strips inner whitespace, which would merge joined lists into one URL
+  if (/[\s\x00-\x1f\x7f]/.test(trimmed)) throw new Error("Relay URL contains whitespace");
+
+  const url = normalizeURL(ensureWebSocketURL(trimmed));
+  // ensureWebSocketURL cannot change non-special schemes like javascript: or nostr:
+  const { protocol, hostname } = new URL(url);
+  if ((protocol !== "ws:" && protocol !== "wss:") || !hostname) throw new Error("Not a WebSocket URL");
+
+  return url;
 }
 
 /** Marks an event as being seen on a relay */

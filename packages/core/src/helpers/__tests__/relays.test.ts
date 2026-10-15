@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
-import { addSeenRelay, isSafeRelayURL, mergeRelaySets, SeenRelaysSymbol } from "../relays.js";
+import { addSeenRelay, isSafeRelayURL, mergeRelaySets, normalizeRelayUrl, SeenRelaysSymbol } from "../relays.js";
 
 describe("isSafeRelayURL", () => {
   it("should correctly filter URLs", () => {
@@ -155,6 +155,29 @@ describe("mergeRelaySets", () => {
     expect(result).toContain("wss://nostrue.com/ws");
   });
 
+  it("should ignore joined lists of relays", () => {
+    expect(mergeRelaySets("wss://relay.damus.io/ wss://nos.lol/", "wss://relay.damus.io/\nwss://nos.lol")).toEqual([]);
+  });
+
+  it("should ignore URLs with inner whitespace", () => {
+    expect(mergeRelaySets("wss://nos.lol/?x=1 y")).toEqual([]);
+  });
+
+  it("should ignore non-WebSocket URLs", () => {
+    expect(mergeRelaySets("javascript:alert(1)", "nostr:npub1abc")).toEqual([]);
+  });
+
+  it("should accept padded URLs", () => {
+    expect(mergeRelaySets("  wss://relay.damus.io  ")).toEqual(["wss://relay.damus.io/"]);
+  });
+
+  it("should accept localhost and IPv6 relays", () => {
+    expect(mergeRelaySets("ws://localhost:4869", "wss://[::1]:7777")).toEqual([
+      "ws://localhost:4869/",
+      "wss://[::1]:7777/",
+    ]);
+  });
+
   it("should handle large number of arguments", () => {
     const args = [
       ["wss://relay1.com/"],
@@ -173,6 +196,20 @@ describe("mergeRelaySets", () => {
     for (let i = 1; i <= 8; i++) {
       expect(result).toContain(`wss://relay${i}.com/`);
     }
+  });
+});
+
+describe("normalizeRelayUrl", () => {
+  it("should throw on a space-joined list", () => {
+    expect(() => normalizeRelayUrl("wss://relay.damus.io/ wss://nos.lol/")).toThrow();
+  });
+
+  it("should throw on non-WebSocket protocols", () => {
+    expect(() => normalizeRelayUrl("javascript:alert(1)")).toThrow();
+  });
+
+  it("should trim surrounding whitespace", () => {
+    expect(normalizeRelayUrl("  wss://relay.damus.io  ")).toBe("wss://relay.damus.io/");
   });
 });
 
