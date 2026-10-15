@@ -1,4 +1,4 @@
-import { mergeRelaySets } from "applesauce-core/helpers";
+import { mergeRelaySets, normalizeURL } from "applesauce-core/helpers";
 
 /** Takes an array of objects with a `relays` property and returns a map of relays to the objects */
 export function groupByRelay<T extends { relays?: string[] }>(pointers: T[], extraRelays?: string[]): Map<string, T[]> {
@@ -12,6 +12,29 @@ export function groupByRelay<T extends { relays?: string[] }>(pointers: T[], ext
   }
 
   return byRelay;
+}
+
+/** Groups pointers by the relays left after removing the relays already tried for each pointer */
+export function groupByUntriedRelays<T>(
+  pointers: T[],
+  relays: string[],
+  tried?: (pointer: T) => string[] | undefined,
+): [string[], T[]][] {
+  if (!tried) return relays.length > 0 && pointers.length > 0 ? [[relays, pointers]] : [];
+
+  const groups = new Map<string, [string[], T[]]>();
+  for (const pointer of pointers) {
+    const skip = new Set((tried(pointer) ?? []).map((r) => normalizeURL(r)));
+    const untried = relays.filter((r) => !skip.has(normalizeURL(r)));
+    if (untried.length === 0) continue;
+
+    const key = untried.join(" ");
+    const group = groups.get(key);
+    if (group) group[1].push(pointer);
+    else groups.set(key, [untried, [pointer]]);
+  }
+
+  return Array.from(groups.values());
 }
 
 /** Checks if a running pointer already loads everything a new pointer asks for (its relay hints and cache bypass) */

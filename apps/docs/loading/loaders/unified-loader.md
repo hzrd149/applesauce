@@ -98,18 +98,16 @@ The `createUnifiedEventLoader` function accepts all options from both `EventPoin
 
 - `bufferTime`: Time interval to buffer requests in ms (default 1000)
 - `bufferSize`: Max buffer size (default 200)
-- `eventStore`: An event store used to deduplicate events
+- `eventStore`: An event store used to deduplicate events (defaults to an internal `EventMemory`, `null` disables deduplication)
 - `cacheRequest`: A method used to load events from a local cache
 - `followRelayHints`: Whether to follow relay hints (default true)
-- `extraRelays`: An array of relays to always fetch from
+- `extraRelays`: Relays to ask for pointers the cache and relay hints didn't resolve
+- `maxConcurrentBatches`: The maximum number of batches requesting relays at once (default 4)
+- `stageTimeout`: Time in ms before a slow stage gives up and moves on to the next one, `0` disables it (default 10000)
 
 ### Address Loader Specific Options
 
-- `lookupRelays`: Fallback lookup relays to check when event can't be found
-
-:::warning
-If an event store is not provided, the loader will not be able to deduplicate events.
-:::
+- `lookupRelays`: Fallback relays to ask for addresses still unresolved after the extra relays
 
 ## Working with Relay Pools
 

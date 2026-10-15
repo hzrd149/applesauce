@@ -401,7 +401,7 @@ createEventLoaderForStore(eventStore, pool, {
   cacheRequest: (filters) => pool.relay("ws://localhost:4869").request(filters),
   // Fallback to public relays
   lookupRelays: ["wss://purplepag.es", "wss://relay.damus.io"],
-  // Extra relays to always load from
+  // Extra relays to ask for events the cache and hints didn't find
   extraRelays: ["wss://relay.damus.io", "wss://nos.lol"],
 });
 ```

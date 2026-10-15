@@ -38,14 +38,17 @@ The `createAddressLoader` function accepts these options:
 
 - `bufferTime`: Time interval to buffer requests in ms (default 1000)
 - `bufferSize`: Max buffer size (default 200)
-- `eventStore`: An event store used to deduplicate events
+- `eventStore`: An event store used to deduplicate events (defaults to an internal `EventMemory`, `null` disables deduplication)
 - `cacheRequest`: A method used to load events from a local cache
 - `followRelayHints`: Whether to follow relay hints (default true)
-- `lookupRelays`: Fallback lookup relays to check when event can't be found
-- `extraRelays`: An array of relays to always fetch from
+- `extraRelays`: Relays to ask for pointers the cache and relay hints didn't resolve
+- `lookupRelays`: Fallback relays to ask for pointers that are still unresolved after the extra relays
+- `maxConcurrentBatches`: The maximum number of batches requesting relays at once (default 4)
+- `stageTimeout`: Time in ms before a slow stage gives up and moves on to the next one, `0` disables it (default 10000)
+- `signal`: An `AbortSignal` that tears down the loader
 
-:::warning
-If an event store is not provided, the loader will not be able to deduplicate events.
+:::tip
+Pass your app's `EventStore` as `eventStore` so loaded events are added to it, even if the requesting component unsubscribes first.
 :::
 
 ## Working with Relay Pools
@@ -184,7 +187,9 @@ The Address Loader follows this sequence when loading events:
 
 1. Attempt to load from cache (if configured)
 2. Use relay hints from address pointers (if enabled)
-3. Fetch from additional relays (if configured)
+3. Fetch from extra relays (if configured)
 4. Try fallback lookup relays (if configured)
 
-This approach ensures efficient event loading with minimal network requests while providing good fallback options for retrieving replaceable events.
+Each stage only receives the addresses earlier stages didn't find, and skips relays that were already asked for that address. A stage that takes longer than `stageTimeout` is ended so the next stage can run.
+
+Each hinted relay is only asked for the addresses that hint it. Requesting an address that is already being loaded joins the running request, and if a relay limits how many results it returns, the missing addresses are requested again while each retry makes progress.

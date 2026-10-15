@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { NEVER, of, Subject } from "rxjs";
+import { EMPTY, NEVER, of, Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, Mock, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
@@ -239,5 +239,30 @@ describe("stage errors and cache bypass", () => {
     vi.advanceTimersByTime(10);
 
     expect(cacheRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("cross-stage relay deduplication", () => {
+  const note = user.note("target");
+
+  it("does not ask extra relays that were already asked as a hint", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => EMPTY);
+    const loader = createEventLoader(request, { bufferTime: 10, extraRelays: ["wss://same.test", "wss://other.test"] });
+
+    subscribeSpyTo(loader({ id: note.id, relays: ["wss://same.test/"] }));
+    vi.advanceTimersByTime(10);
+
+    expect(request.mock.calls.map(([relays]) => relays)).toEqual([["wss://same.test/"], ["wss://other.test"]]);
+  });
+
+  it("still asks extra relays for pointers that did not hint them", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => EMPTY);
+    const loader = createEventLoader(request, { bufferTime: 10, extraRelays: ["wss://same.test"] });
+
+    subscribeSpyTo(loader({ id: note.id, relays: ["wss://same.test"] }));
+    subscribeSpyTo(loader({ id: user.note("other").id }));
+    vi.advanceTimersByTime(10);
+
+    expect(request.mock.calls.map(([, filters]) => filters[0].ids!.length)).toEqual([1, 1]);
   });
 });

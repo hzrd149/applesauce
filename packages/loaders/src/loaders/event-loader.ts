@@ -6,7 +6,7 @@ import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable, tap 
 import { makeCacheRequest } from "../helpers/cache.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
 import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
-import { groupByRelay, isPointerCovered } from "../helpers/pointer.js";
+import { groupByRelay, groupByUntriedRelays, isPointerCovered } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -28,16 +28,27 @@ export function cacheEventsLoader(request: CacheRequest): createEventLoader {
   };
 }
 
-/** Creates a loader that gets an array of events from a list of relays */
-export function relaysEventsLoader(request: NostrRequest, relays: string[] | Observable<string[]>): createEventLoader {
+/**
+ * Creates a loader that gets an array of events from a list of relays
+ * @param tried Returns the relays an earlier stage already asked for a pointer, so they are skipped
+ */
+export function relaysEventsLoader(
+  request: NostrRequest,
+  relays: string[] | Observable<string[]>,
+  tried?: (pointer: LoadableEventPointer) => string[] | undefined,
+): createEventLoader {
   return (pointers) =>
     unwrap(relays, (relays) =>
-      // Re-request ids a capped relay dropped
-      loadUntilSettled(
-        pointers,
-        (remaining) => request(relays, [{ ids: remaining.map((p) => p.id) }]),
-        (p) => p.id,
-        (e) => e.id,
+      merge(
+        ...groupByUntriedRelays(pointers, relays, tried).map(([relays, pointers]) =>
+          // Re-request ids a capped relay dropped
+          loadUntilSettled(
+            pointers,
+            (remaining) => request(relays, [{ ids: remaining.map((p) => p.id) }]),
+            (p) => p.id,
+            (e) => e.id,
+          ),
+        ),
       ),
     );
 }
@@ -118,13 +129,13 @@ export type EventPointerLoaderOptions = Partial<{
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
-  /** An event store used to deduplicate events. Set to null to disable deduplication */
+  /** An event store loaded events are added to and deduplicated with ( default an internal EventMemory, null disables deduplication ) */
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
   followRelayHints: boolean;
-  /** An array of relays to always fetch from */
+  /** Relays to ask for events the cache and relay hints didn't resolve */
   extraRelays: string[] | Observable<string[]>;
   /** The maximum number of batches requesting relays at once ( default 4 ) */
   maxConcurrentBatches: number;
@@ -134,10 +145,11 @@ export type EventPointerLoaderOptions = Partial<{
   signal: AbortSignal;
 }>;
 
-/** Create a pre-built address pointer loader that supports batching, caching, and lookup relays */
+/** Creates a pre-built event pointer loader that supports batching, caching, relay hints, and extra relays */
 export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderOptions): EventPointerLoader {
   const request = wrapUpstreamPool(pool);
   const stageTimeout = opts?.stageTimeout ?? 10_000;
+  const followHints = opts?.followRelayHints !== false;
 
   return batchLoader(
     // Create batching sequence
@@ -150,7 +162,12 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
       // Step 2. load from relay hints on pointers
       withStageTimeout(opts?.followRelayHints !== false ? relayHintsEventsLoader(request) : undefined, stageTimeout),
       // Step 3. load from extra relays
-      withStageTimeout(opts?.extraRelays ? relaysEventsLoader(request, opts.extraRelays) : undefined, stageTimeout),
+      withStageTimeout(
+        opts?.extraRelays
+          ? relaysEventsLoader(request, opts.extraRelays, followHints ? (p) => p.relays : undefined)
+          : undefined,
+        stageTimeout,
+      ),
     ),
     // Filter resutls based on requests
     (pointer, event) => event.id === pointer.id,

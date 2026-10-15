@@ -12,7 +12,7 @@ import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable } fro
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
-import { groupByRelay, isPointerCovered } from "../helpers/pointer.js";
+import { groupByRelay, groupByUntriedRelays, isPointerCovered } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { wrapGeneratorFunction } from "../operators/generator.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
@@ -34,7 +34,7 @@ export type AddressPointerLoader = Loader<LoadableAddressPointer, NostrEvent>;
 
 /**
  * Loads address pointers from an async cache
- * @note ignores pointers with force=true
+ * @note ignores pointers with `cache: false`
  */
 export function cacheAddressPointersLoader(request: CacheRequest): AddressPointersLoader {
   return (pointers) => {
@@ -78,17 +78,23 @@ export function relayHintsAddressPointersLoader(request: NostrRequest): AddressP
   };
 }
 
-/** Loads address pointers from an array of relays */
+/**
+ * Loads address pointers from an array of relays
+ * @param tried Returns the relays an earlier stage already asked for a pointer, so they are skipped
+ */
 export function relaysAddressPointersLoader(
   request: NostrRequest,
   relays: Observable<string[]> | string[],
+  tried?: (pointer: LoadableAddressPointer) => string[] | undefined,
 ): AddressPointersLoader {
   return (pointers) =>
-    unwrap(relays, (relays) => {
-      if (relays.length === 0) return EMPTY;
-
-      return requestAddressPointers(request, relays, pointers);
-    });
+    unwrap(relays, (relays) =>
+      merge(
+        ...groupByUntriedRelays(pointers, relays, tried).map(([relays, pointers]) =>
+          requestAddressPointers(request, relays, pointers),
+        ),
+      ),
+    );
 }
 
 /** Creates a loader that loads all event pointers based on their relays */
@@ -165,15 +171,15 @@ export type AddressLoaderOptions = Partial<{
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
-  /** An event store used to deduplicate events. Set to null to disable deduplication */
+  /** An event store loaded events are added to and deduplicated with ( default an internal EventMemory, null disables deduplication ) */
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
   /** A method used to load events from a local cache */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
   followRelayHints: boolean;
-  /** An array of relays to always fetch from */
+  /** Relays to ask for pointers the cache and relay hints didn't resolve */
   extraRelays: string[] | Observable<string[]>;
-  /** Fallback lookup relays to check when event cant be found */
+  /** Fallback relays to ask for pointers still unresolved after the extra relays */
   lookupRelays: string[] | Observable<string[]>;
   /** The maximum number of batches requesting relays at once ( default 4 ) */
   maxConcurrentBatches: number;
@@ -187,6 +193,7 @@ export type AddressLoaderOptions = Partial<{
 export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOptions): AddressPointerLoader {
   const request = wrapUpstreamPool(pool);
   const stageTimeout = opts?.stageTimeout ?? 10_000;
+  const followHints = opts?.followRelayHints !== false;
 
   return batchLoader(
     // buffer requests by time or size
@@ -202,12 +209,21 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
       ),
       // Step 3. load from extra relays
       withStageTimeout(
-        opts?.extraRelays ? relaysAddressPointersLoader(request, opts.extraRelays) : undefined,
+        opts?.extraRelays
+          ? relaysAddressPointersLoader(request, opts.extraRelays, followHints ? (p) => p.relays : undefined)
+          : undefined,
         stageTimeout,
       ),
-      // Step 4. load from lookup relays
+      // Step 4. load from lookup relays, skipping the hints and extra relays already asked
       withStageTimeout(
-        opts?.lookupRelays ? relaysAddressPointersLoader(request, opts.lookupRelays) : undefined,
+        opts?.lookupRelays
+          ? (pointers) =>
+              unwrap(opts.extraRelays ?? [], (extras) =>
+                relaysAddressPointersLoader(request, opts.lookupRelays!, (p) =>
+                  followHints && p.relays ? [...p.relays, ...extras] : extras,
+                )(pointers),
+              )
+          : undefined,
         stageTimeout,
       ),
     ),

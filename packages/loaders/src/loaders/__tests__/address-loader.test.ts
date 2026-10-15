@@ -891,3 +891,25 @@ describe("capped relay responses", () => {
     expect(request.mock.calls.every(([relays]) => relays[0] === "wss://relay.com/")).toBe(true);
   });
 });
+
+describe("cross-stage relay deduplication", () => {
+  it("does not ask lookup relays that were already asked as a hint or extra relay", () => {
+    const request: Mock<NostrRequest> = vi.fn(() => EMPTY);
+    const loader = createAddressLoader(request, {
+      bufferTime: 10,
+      extraRelays: ["wss://extra.test"],
+      lookupRelays: ["wss://hint.test", "wss://extra.test", "wss://lookup.test"],
+    });
+
+    vi.useFakeTimers();
+    subscribeSpyTo(loader({ kind: 0, pubkey: user.pubkey, relays: ["wss://hint.test"] }));
+    vi.advanceTimersByTime(10);
+
+    expect(request.mock.calls.map(([relays]) => relays)).toEqual([
+      ["wss://hint.test/"],
+      ["wss://extra.test"],
+      ["wss://lookup.test"],
+    ]);
+    vi.useRealTimers();
+  });
+});
