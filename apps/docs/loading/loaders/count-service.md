@@ -5,10 +5,10 @@
 ## How to use it
 
 ```ts
-import { createCountService, relayCountSource } from "applesauce-loaders/loaders";
+import { createCountService } from "applesauce-loaders/loaders";
 
-const counts = createCountService({
-  sources: [relayCountSource({ count: pool.count.bind(pool), relays: trustedRelays$ })],
+const counts = createCountService(pool, {
+  relays: trustedRelays$,
   ttl: ({ age }) => (age < 3600 ? 30_000 : 300_000),
 });
 
@@ -16,6 +16,19 @@ const note = counts.event(event);
 const subscription = note.reactions$.subscribe(renderCount);
 subscription.unsubscribe();
 ```
+
+Pass a structural pool directly; its methods keep their receiver. Configure `relays` for NIP-45, `providers` for NIP-85, or both to try assertions before relay counts. For explicit transports, use the options form:
+
+```ts
+const counts = createCountService({
+  count,
+  request,
+  relays: trustedRelays$,
+  providers: (kind, tag) => providerLists(kind, tag),
+});
+```
+
+`createCountService(request, { providers })` creates an assertion-only service from a finite event request function. NIP-45 requires a separate `count` method; an event request function does not implicitly download related events to count them. The options form also accepts `pool`, with explicit `count`/`request` methods taking precedence over pool methods.
 
 Handles are lazy. `reactions$` and `comments$` emit `number | undefined`, with distinct numeric emissions. Zero is a successful count; undefined means no accepted value. The corresponding `reactions` and `comments` properties expose chainable state:
 
@@ -43,15 +56,15 @@ Event IDs are the default target identity. To count a stable address rather than
 
 ### Sources and fallbacks
 
-Sources implement the same `CountSource` interface. The service tries them in order, stops at the first valid result, and never adds counts from different relays or providers. `fallbackCountSource(children, id)` composes a nested hierarchy without adding another cache or scheduler.
+Use `sources` for an explicit hierarchy; it overrides automatic source creation from `relays` and `providers`. Individual adapters also accept `pool` or their explicit transport method. Sources implement the same `CountSource` interface. The service tries them in order, stops at the first valid result, and never adds counts from different relays or providers. `fallbackCountSource(children, id)` composes a nested hierarchy without adding another cache or scheduler.
 
 ```ts
 const assertions = nip85CountSource({
-  request: pool.request.bind(pool),
+  pool,
   providers: (kind, tag) => providerLists(kind, tag),
 });
 const counts = createCountService({
-  sources: [assertions, relayCountSource({ count, relays: trustedRelays$ })],
+  sources: [assertions, relayCountSource({ pool, relays: trustedRelays$ })],
 });
 ```
 
@@ -88,7 +101,7 @@ Future target timestamps have age zero. Invalid finite TTL values use the minimu
 
 ```ts
 const assertions = nip85CountSource({
-  request: pool.request.bind(pool),
+  pool,
   providers: (kind, tag) =>
     user.trustedProviders$.pipe(switchMap((list) => (list ? list.providersFor$(kind, tag) : of([])))),
 });
@@ -110,6 +123,33 @@ Multiple components observing the same metric share one canonical resolution. Co
 ### Custom metrics and sources
 
 Use stable versioned metric IDs and explicit units. A source's `policy(query)` stays observed after its finite `count(query, context)` settles. Change the policy identity whenever trust or routing changes. Return one valid safe nonnegative integer, complete empty when unsupported, and tear down work on unsubscribe. Dispatch transports with `context.transport.run(resources, factory)` so custom sources respect service limits and cancellation. Resource keys use `relay:<normalized-url>` and `provider:<pubkey>`.
+
+### Debug logging
+
+Enable the core logger namespaces before reproducing a network problem:
+
+```ts
+import { enableLoggerNamespaces } from "applesauce-core";
+
+enableLoggerNamespaces("applesauce:count-service*,applesauce:count-sources:*");
+```
+
+Service logs cover policy changes, cache acceptance, resolution failures, retry/refresh scheduling, and teardown. The `:transport` child reports queue admission, wait duration, overload, and abandoned work. The `:sources:fallback`, `:sources:relay`, and `:sources:nip85` children trace attempts, relay refusals, assertion validation, missing-subject recovery, and shared-batch cancellation. Sources used outside a service use `applesauce:count-sources:*`.
+
+Records include target/metric identifiers, relay/provider routes, batch IDs, and operation durations; they omit signed event bodies and content. A transport that emitted a reply before `take(1)` unsubscribed is logged as answered rather than cancelled. An empty operation, a failed operation, and cancellation before an answer have separate records.
+
+Use `DEBUG='applesauce:count-service*'` in Node, or inject a parent logger to distinguish application instances:
+
+```ts
+import { logger } from "applesauce-core";
+
+const counts = createCountService(pool, {
+  relays: trustedRelays$,
+  logger: logger.extend("timeline"),
+});
+```
+
+That instance logs under `applesauce:timeline:count-service:*` and `applesauce:timeline:count-service`. Source adapters also accept `logger` to override their inherited parent. Logging is disabled unless its namespace is enabled, and it retains no history. Keep `diagnostic` for numerical instrumentation; debug logs explain individual operations.
 
 ## Best Practices
 
