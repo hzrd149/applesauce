@@ -52,7 +52,7 @@ export function cacheTagValueLoader(
     const baseFilter: Filter = {};
     if (opts?.kinds) baseFilter.kinds = opts.kinds;
     if (opts?.authors) baseFilter.authors = opts.authors;
-    if (opts?.since) baseFilter.since = opts.since;
+    if (opts?.since !== undefined) baseFilter.since = opts.since;
 
     const filterTag: `#${string}` = `#${tagName}`;
     const filter = { ...baseFilter, [filterTag]: unique(pointers.map((p) => p.value)) };
@@ -74,7 +74,7 @@ export function relaysTagValueLoader(
       const baseFilter: Filter = {};
       if (opts?.kinds) baseFilter.kinds = opts.kinds;
       if (opts?.authors) baseFilter.authors = opts.authors;
-      if (opts?.since) baseFilter.since = opts.since;
+      if (opts?.since !== undefined) baseFilter.since = opts.since;
 
       // build request map for relays
       const requestMap = pointers.reduce<Record<string, Filter>>((map, pointer) => {
@@ -92,7 +92,10 @@ export function relaysTagValueLoader(
         return map;
       }, {});
 
-      const requests = Object.entries(requestMap).map(([relay, filter]) => request([relay], [filter]));
+      const requests = Object.entries(requestMap).map(([relay, filter]) => {
+        filter[filterTag] = unique(filter[filterTag]!);
+        return request([relay], [filter]);
+      });
 
       return merge(...requests);
     });
