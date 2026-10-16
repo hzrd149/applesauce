@@ -36,6 +36,11 @@ export function getRelayDiscoveryNetworkType(event: NostrEvent): string | undefi
   return getTagValue(event, "n");
 }
 
+/** Gets all relay types from a relay discovery event (from `T` tags), e.g. `PublicOutbox` */
+export function getRelayDiscoveryTypes(event: NostrEvent): string[] {
+  return event.tags.filter((t) => t[0] === "T" && t[1]).map((t) => t[1]);
+}
+
 /**
  * Gets all relay attributes from a relay discovery event (from `W` tags)
  * Attributes describe the relay type/characteristics
@@ -83,6 +88,11 @@ export function getRelayDiscoveryAcceptedKinds(event: NostrEvent): string[] {
  */
 export function getRelayDiscoveryGeohash(event: NostrEvent): string | undefined {
   return getTagValue(event, "g");
+}
+
+/** Gets all geohashes from a relay discovery event (from `g` tags) */
+export function getRelayDiscoveryGeohashes(event: NostrEvent): string[] {
+  return event.tags.filter((t) => t[0] === "g" && t[1]).map((t) => t[1]);
 }
 
 /**

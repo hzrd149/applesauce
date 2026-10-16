@@ -346,14 +346,23 @@ export default function RelayDiscoveryAttributes() {
 
   return (
     <div className="container mx-auto p-2 h-full">
-      <div className="flex gap-2 justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
-        <RelayPicker
-          value={relayUrl}
-          onChange={(next: string) => setRelayUrl(next)}
-          common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]}
-        />
-      </div>
+      <header className="mb-6 flex flex-col gap-4 border-b border-base-300 pb-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold">Relay Discovery Attributes</h1>
+          <p className="mt-1 text-sm text-base-content/70">
+            Explore relay attributes from NIP-66 reports and select attributes to filter the results.
+          </p>
+        </div>
+        <div className="w-full shrink-0 lg:w-96">
+          <p className="mb-2 text-sm font-medium">Report relay</p>
+          <RelayPicker
+            className="w-full"
+            value={relayUrl}
+            onChange={(next: string) => setRelayUrl(next)}
+            common={["wss://relay.nostr.watch/", ...COMMON_RELAYS]}
+          />
+        </div>
+      </header>
 
       <Nip91Warning relayUrl={relayUrl} supportsNip91={supportsNip91} supportedNips={supportedNips} />
 

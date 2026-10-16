@@ -3,11 +3,13 @@ import {
   getRelayDiscoveryAcceptedKinds,
   getRelayDiscoveryAttributes,
   getRelayDiscoveryGeohash,
+  getRelayDiscoveryGeohashes,
   getRelayDiscoveryNetworkType,
   getRelayDiscoveryRequirements,
   getRelayDiscoveryRTT,
   getRelayDiscoverySupportedNIPs,
   getRelayDiscoveryTopics,
+  getRelayDiscoveryTypes,
   getRelayDiscoveryURL,
   isValidRelayDiscovery,
   RelayDiscoveryEvent,
@@ -46,6 +48,11 @@ export class RelayDiscovery extends EventCast<RelayDiscoveryEvent> {
     return getRelayDiscoveryNetworkType(this.event);
   }
 
+  /** Gets all relay types from this discovery event (from `T` tags) */
+  get types() {
+    return getRelayDiscoveryTypes(this.event);
+  }
+
   /** Gets all relay attributes from this discovery event (from `W` tags) */
   get attributes() {
     return getRelayDiscoveryAttributes(this.event);
@@ -74,5 +81,10 @@ export class RelayDiscovery extends EventCast<RelayDiscoveryEvent> {
   /** Gets the geohash from this discovery event (NIP-52 geohash) */
   get geohash() {
     return getRelayDiscoveryGeohash(this.event);
+  }
+
+  /** Gets all geohashes from this discovery event (from `g` tags) */
+  get geohashes() {
+    return getRelayDiscoveryGeohashes(this.event);
   }
 }

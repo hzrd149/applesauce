@@ -21,15 +21,29 @@ import {
   isSameURL,
   relaySet,
   NostrEvent,
+  unixNow,
+  isFromRelay,
 } from "applesauce-core/helpers";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createTimelineLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import { storeEvents } from "applesauce-relay/operators";
 import Keyv from "keyv";
 import { KeyvIndexedDB } from "keyv-browser";
 import type { ISigner } from "applesauce-signers";
 import { useCallback, useMemo, useState } from "react";
-import { BehaviorSubject, catchError, map, Observable, of, scan, startWith, switchMap } from "rxjs";
+import {
+  BehaviorSubject,
+  distinctUntilChanged,
+  catchError,
+  map,
+  ignoreElements,
+  Observable,
+  of,
+  scan,
+  startWith,
+  switchMap,
+} from "rxjs";
 import LoginView from "../../components/login-view";
 import NoteContent from "../../components/note-content";
 import RelayPicker from "../../components/relay-picker";
@@ -359,11 +373,80 @@ function Composer({ pointer, channel, recent }: { pointer: GroupPointer; channel
 
 function ChannelView({ relay, channel }: { relay: string; channel: Channel }) {
   const pointer = useMemo<GroupPointer>(() => ({ relay, id: channel.id, name: channel.name }), [relay, channel]);
-  const timeline = use$(
-    () => relayTimeline(relay, { kinds: [GROUP_MESSAGE_KIND], "#h": [channel.id], limit: 200 }),
-    [relay, channel.id],
+  const filter = useMemo(() => ({ kinds: [GROUP_MESSAGE_KIND], "#h": [channel.id] }), [channel.id]);
+  const since = useMemo(() => unixNow(), [relay, channel.id]);
+  const loader = useMemo(
+    () =>
+      createTimelineLoader(
+        (_, filters) => pool.relay(relay).request(filters, { authTimeout: false }),
+        [relay],
+        filter,
+        { eventStore },
+      ),
+    [relay, filter],
   );
-  const messages = timeline?.events ?? [];
+  const cursor = useMemo(() => new BehaviorSubject(since), [relay, channel.id, since]);
+  const historyError = use$(
+    () =>
+      loader(
+        cursor.pipe(
+          distinctUntilChanged(),
+          map((time) => ({ since: Math.max(0, time - 86400), until: since })),
+        ),
+      ).pipe(
+        ignoreElements(),
+        catchError((error) => of(String(error))),
+      ),
+    [loader, cursor, since],
+  );
+  const statuses = use$(loader.status$);
+  const loading = !statuses?.length || statuses.some((status) => status.state === "loading");
+
+  // Follow the oldest visible message and keep a day of history ahead of scrolling.
+  const observer = useMemo(
+    () =>
+      new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting)
+            cursor.next(Math.min(cursor.value, Number((entry.target as HTMLElement).dataset.createdAt)));
+        }
+      }),
+    [cursor],
+  );
+  const trackScroll = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (!element) return;
+      observer.observe(element);
+      return () => observer.unobserve(element);
+    },
+    [observer],
+  );
+
+  // The focused channel owns its live subscription independently of history loading.
+  const liveError = use$(
+    () =>
+      pool
+        .relay(relay)
+        .subscription({ ...filter, since }, { reconnect: true, authTimeout: false })
+        .pipe(
+          storeEvents(eventStore),
+          ignoreElements(),
+          catchError((error) => of(String(error))),
+        ),
+    [relay, filter, since],
+  );
+
+  // Both sources feed the store; relay provenance keeps identical group ids isolated.
+  const messages =
+    use$(
+      () =>
+        eventStore
+          .timeline(filter)
+          .pipe(map((events) => events.filter((event) => isFromRelay(event, pool.relay(relay).url)))),
+      [relay, filter],
+    ) ?? [];
+  const incomplete = statuses?.find((status) => status.state === "incomplete");
+  const error = liveError || historyError || (incomplete && String(incomplete.error ?? "Incomplete history coverage"));
 
   // Group consecutive messages oldest-first, then reverse for the bottom-anchored list
   const groups = useMemo(() => groupMessageEvents([...messages].reverse()).reverse(), [messages]);
@@ -378,16 +461,19 @@ function ChannelView({ relay, channel }: { relay: string; channel: Channel }) {
 
       <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto py-2">
         {groups.map((group) => (
-          <MessageGroup key={group[0].id} messages={group} />
+          <div key={group[0].id} ref={trackScroll} data-created-at={group[0].created_at}>
+            <MessageGroup messages={group} />
+          </div>
         ))}
-        {timeline?.loading && messages.length === 0 && (
+        {loading && messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center">
             <span className="loading loading-spinner" />
           </div>
         )}
-        {timeline?.error && <div className="p-4 text-error">{timeline.error.message}</div>}
-        {!timeline?.loading && !timeline?.error && messages.length === 0 && (
-          <div className="p-4 opacity-60">This is the beginning of #{channel.name}</div>
+        {loading && messages.length > 0 && <span className="loading loading-spinner loading-sm mx-auto shrink-0" />}
+        {error != null && <div className="p-4 text-error">{String(error)}</div>}
+        {!loading && !error && messages.length === 0 && (
+          <div className="p-4 opacity-60">No messages in the loaded history for #{channel.name}</div>
         )}
       </div>
 
