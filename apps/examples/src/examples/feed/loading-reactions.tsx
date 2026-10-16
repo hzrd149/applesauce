@@ -148,27 +148,51 @@ function FeedNote({
     [note.id, relay, refresh, paused, duplicate],
   );
 
+  const loading = !status || status === "loading";
+  const finished = status === "settled";
+  const stateColor = loading
+    ? "text-primary border-primary/40"
+    : finished
+      ? "text-success border-success/40"
+      : status === "paused"
+        ? "text-base-content/70 border-base-300"
+        : "text-error border-error/40";
+
   return (
     <article className="min-w-0 border-b border-r border-base-300 px-3 py-1" style={{ height: ROW_HEIGHT }}>
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="truncate font-semibold">{getDisplayName(profile, note.author.pubkey.slice(0, 12))}</span>
-        <time className="shrink-0 text-base-content/60">
-          {new Date(note.event.created_at * 1000).toLocaleTimeString()}
-        </time>
+      <div className="flex h-7 items-center justify-between gap-2" aria-label="Loaded reactions">
+        <span className="min-w-0 truncate">
+          <strong className="text-lg tabular-nums">{groups?.total ?? "—"}</strong>
+          <span className="ml-1 text-sm font-medium">reactions loaded</span>
+        </span>
+        <span
+          className={`flex shrink-0 items-center gap-1 rounded border px-1.5 text-sm font-semibold ${stateColor}`}
+          role="status"
+          title={status}
+        >
+          {loading && <span className="loading loading-spinner h-3 w-3" aria-hidden="true" />}
+          {loading ? "Loading" : finished ? "Loaded" : status === "paused" ? "Paused" : "Failed"}
+        </span>
       </div>
-      <div className="h-6 overflow-hidden" title={note.event.content}>
-        <NoteContent event={note.event} maxLength={200} className="line-clamp-1 break-all" />
-      </div>
-      <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-sm" aria-label="Loaded reactions">
-        <span className="shrink-0 text-base-content/60">{groups?.total ?? 0} loaded</span>
+      <div className="flex h-5 items-center gap-3 overflow-hidden whitespace-nowrap text-sm font-medium">
         {groups?.entries.slice(0, 4).map(([content, count]) => (
-          <span key={content} className="max-w-20 truncate" title={content}>
-            {content} {count}
+          <span key={content} className="max-w-24 truncate" title={content}>
+            {content} <span className="tabular-nums">{count}</span>
           </span>
         ))}
-        <span className="ml-auto shrink-0 text-base-content/60" role="status">
-          {status ?? "loading"}
-        </span>
+        {!groups?.total && (
+          <span className="text-base-content/60">
+            {loading ? "Fetching reaction events…" : finished ? "No reactions returned" : "No reactions loaded"}
+          </span>
+        )}
+      </div>
+      <div
+        className="flex h-5 min-w-0 items-center gap-2 overflow-hidden text-sm text-base-content/50"
+        title={`${getDisplayName(profile, note.author.pubkey)}: ${note.event.content}`}
+      >
+        <span className="max-w-24 shrink-0 truncate">{getDisplayName(profile, note.author.pubkey.slice(0, 12))}</span>
+        <span aria-hidden="true">·</span>
+        <NoteContent event={note.event} maxLength={200} className="min-w-0 flex-1 line-clamp-1 break-all" />
       </div>
     </article>
   );
