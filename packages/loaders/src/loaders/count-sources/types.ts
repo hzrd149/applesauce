@@ -1,6 +1,7 @@
 import type { Debugger } from "applesauce-core";
 import type { Filter, NostrEvent } from "applesauce-core/helpers";
 import type { Observable, SchedulerLike } from "rxjs";
+import type { CountRuntime } from "../count-runtime.js";
 
 /** A static or reactive ordered configuration list */
 export type CountList<T> = readonly T[] | Observable<readonly T[]>;
@@ -82,6 +83,21 @@ export interface CountTransportScheduler {
 
 /** The shared context for one resolution */
 export interface CountContext {
+  /** The protocol endpoints already dispatched during this resolution */
+  attempts?: Set<string>;
+
+  /** The service-owned batching scope */
+  batchScope?: object;
+
+  /** The shared optional routing runtime */
+  runtime?: CountRuntime;
+
+  /** Whether routing nodes own branch budgets instead of legacy source timeouts */
+  routed?: boolean;
+
+  /** The maximum wait for source capacity in milliseconds */
+  selectionTimeout?: number;
+
   /** The absolute resolution deadline in scheduler milliseconds */
   deadline: number;
 
@@ -98,7 +114,7 @@ export interface CountContext {
   logger?: Debugger;
 
   /** The optional resolution instrumentation callback */
-  diagnostic?: (type: string) => void;
+  diagnostic?: (type: string, latency?: number) => void;
 
   /** Reports a failed candidate while allowing subsequent fallbacks */
   onFailure?: (error: unknown) => void;
@@ -108,6 +124,15 @@ export interface CountContext {
 export interface CountSource {
   /** The stable source identity */
   id: string;
+
+  /** Whether this source manages its own transport and selection budgets */
+  managed?: boolean;
+
+  /** Observes whether this source supports the query under its configuration */
+  supports?: (query: CountQuery) => Observable<boolean>;
+
+  /** Observes support, health, and transport eligibility for routing */
+  available?: (query: CountQuery, context: CountContext) => Observable<boolean>;
 
   /** Returns a policy identity and keeps observing configuration after settlement */
   policy: (query: CountQuery) => Observable<string>;

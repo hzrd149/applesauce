@@ -3,6 +3,7 @@ import { verifyEvent, type NostrEvent } from "applesauce-core/helpers";
 import {
   catchError,
   defaultIfEmpty,
+  defer,
   combineLatest,
   concatMap,
   EMPTY,
@@ -19,7 +20,9 @@ import {
   timeout,
   reduce,
   tap,
+  timer,
 } from "rxjs";
+import { admitCountTransport } from "../../helpers/count-service/admission.js";
 import { createCountSourceLogger, traceCountOperation } from "../../helpers/count-service/logging.js";
 import { distinctPolicy, listStream, relays } from "../../helpers/count-service/policy.js";
 import type {
@@ -32,7 +35,6 @@ import type {
   CountQuery,
   CountResult,
   CountSource,
-  CountTransportScheduler,
 } from "./types.js";
 
 /** Options for metric-specific NIP-85 assertion counts */
@@ -72,6 +74,7 @@ interface Route {
 
 interface Pending {
   query: CountQuery;
+  context: CountContext;
   subscriber: Subscriber<CountResult>;
 }
 
@@ -108,14 +111,15 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
   )
     throw new Error("Invalid assertion batch or freshness options");
 
-  // Weakly keyed by the service scheduler so adapters can safely be reused across services.
-  const batches = new WeakMap<CountTransportScheduler, Map<string, Batch>>();
+  // Keep batches separate for each service, even when services share this source.
+  const batches = new WeakMap<object, Map<string, Batch>>();
 
   // Share routing per metric and assertion kind without extending metric object lifetimes.
   const configurations = new WeakMap<object, Map<number, Observable<Route[]>>>();
 
   const routes = (query: CountQuery): Observable<Route[]> => {
     const kind = query.target.address ? 30384 : 30383;
+
     let byKind = configurations.get(query.metric);
 
     if (!byKind) {
@@ -127,30 +131,37 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
 
     if (!config) {
       const tag = query.metric.assertionTag;
+
+      // Metrics without an assertion tag cannot use this source.
       config = !tag
         ? of([])
-        : listStream(options.providers(query.target.address ? 30384 : 30383, tag)).pipe(
+        : defer(() => listStream(options.providers(kind, tag))).pipe(
             // Replacing the trust list also releases subscriptions to removed providers' routes.
-            switchMap((providers) =>
-              providers.length
-                ? // Nested relay updates remain part of the effective policy.
-                  combineLatest(
-                    providers.map((provider) =>
-                      "pubkey" in provider
-                        ? listStream(provider.relays$).pipe(
-                            map((list) => ({ pubkey: provider.pubkey, relays: relays(list) })),
-                          )
-                        : of({
-                            pubkey: provider.servicePubkey,
-                            relays:
-                              provider.kind === kind && provider.tag === tag
-                                ? relays(provider.relay ? [provider.relay] : [])
-                                : [],
-                          }),
-                    ),
-                  )
-                : of([]),
-            ),
+            switchMap((providers) => {
+              if (!providers.length) return of([]);
+
+              // Each provider can update its relays without replacing the whole trust list.
+              const providerRoutes = providers.map((provider) => {
+                if ("pubkey" in provider) {
+                  return listStream(provider.relays$).pipe(
+                    map((list) => ({ pubkey: provider.pubkey, relays: relays(list) })),
+                  );
+                }
+
+                // Static declarations only apply to the requested kind and metric.
+                const matches = provider.kind === kind && provider.tag === tag;
+                const hints = provider.relay ? [provider.relay] : [];
+
+                return of({
+                  pubkey: provider.servicePubkey,
+                  relays: matches ? relays(hints) : [],
+                });
+              });
+
+              return combineLatest(providerRoutes);
+            }),
+
+            // Combine duplicate provider declarations before trying their relays.
             map((list) => {
               const merged = new Map<string, Route>();
 
@@ -184,7 +195,7 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
 
     const tags = latest.tags.filter((tag) => tag[0] === pending.query.metric.assertionTag);
 
-    if (tags?.length !== 1 || !/^\d+$/.test(tags[0][1] ?? "")) return;
+    if (tags.length !== 1 || !/^\d+$/.test(tags[0][1] ?? "")) return;
 
     const value = Number(tags[0][1]);
 
@@ -201,11 +212,11 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
   const request = (query: CountQuery, route: Route, relay: string, context: CountContext, singleton = false) =>
     new Observable<CountResult>((subscriber) => {
       const log = loggerFor(context);
-      let groups = batches.get(context.transport);
+      let groups = batches.get(context.batchScope ?? context.transport);
 
       if (!groups) {
         groups = new Map();
-        batches.set(context.transport, groups);
+        batches.set(context.batchScope ?? context.transport, groups);
       }
 
       // Metrics may share an assertion batch; singleton recovery stays scoped to one subject.
@@ -217,7 +228,7 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
       ]);
 
       let batch = groups.get(key);
-      const pending: Pending = { query, subscriber };
+      const pending: Pending = { query, context, subscriber };
 
       if (!batch || batch.dispatched || batch.pending.size >= size) {
         batch = { id: ++batchSequence, pending: new Set([pending]), work: new Subscription(), dispatched: false };
@@ -226,121 +237,147 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
 
         const current = batch;
 
+        // Every subscriber keeps its own resolution deadline; the batch lives for remaining interests.
+        const batchContext: CountContext = {
+          ...context,
+          get deadline() {
+            return Math.max(...[...current.pending].map((entry) => entry.context.deadline));
+          },
+        };
+
         // Collect demand during the batch window without holding transport capacity.
         current.work.add(
-          context.clock.schedule(() => {
-            current.work.add(
-              context.transport
-                .run([`relay:${relay}`, `provider:${route.pubkey}`], () => {
-                  // Build requested subjects at admission, after queued cancellations have detached.
-                  current.dispatched = true;
+          timer(window, context.clock)
+            .pipe(
+              switchMap(() =>
+                admitCountTransport(
+                  batchContext,
+                  [`relay:${relay}`, `provider:${route.pubkey}`],
+                  `assertion:${route.pubkey}:${relay}`,
+                  () => {
+                    // Build requested subjects at admission, after queued cancellations have detached.
+                    current.dispatched = true;
 
-                  // New interests now form another batch instead of joining an in-flight request.
-                  if (groups!.get(key) === current) groups!.delete(key);
+                    // New interests now form another batch instead of joining an in-flight request.
+                    if (groups!.get(key) === current) groups!.delete(key);
 
-                  const subjects = [
-                    ...new Set(
-                      [...current.pending].map((entry) => entry.query.target.address ?? entry.query.target.id),
-                    ),
-                  ];
-                  if (!subjects.length) return EMPTY;
-                  log("Assertion batch dispatched", id, current.id, route.pubkey, relay, "subjects", subjects.length);
+                    const subjects = [
+                      ...new Set(
+                        [...current.pending].map((entry) => entry.query.target.address ?? entry.query.target.id),
+                      ),
+                    ];
 
-                  const kind = query.target.address ? 30384 : 30383;
+                    if (!subjects.length) return EMPTY;
 
-                  return upstream([relay], [{ kinds: [kind], authors: [route.pubkey], "#d": subjects }]).pipe(
-                    timeout({
-                      each: Math.max(1, Math.min(context.attemptTimeout, context.deadline - context.clock.now())),
-                      scheduler: context.clock,
-                    }),
+                    log("Assertion batch dispatched", id, current.id, route.pubkey, relay, "subjects", subjects.length);
 
-                    // Validate before retaining events, including the signer, subject, and freshness.
-                    filter((event) => {
-                      const subject = event.tags.find((tag) => tag[0] === "d")?.[1];
-                      let rejected: string | undefined;
+                    const kind = query.target.address ? 30384 : 30383;
 
-                      if (event.kind !== kind || event.pubkey !== route.pubkey) rejected = "unexpected signer or kind";
-                      else if (!subjects.includes(subject ?? "")) rejected = "unexpected subject";
-                      else if (
-                        !Number.isSafeInteger(event.created_at) ||
-                        event.created_at < 0 ||
-                        event.created_at > context.clock.now() / 1000 + 60
-                      )
-                        rejected = "invalid timestamp";
-                      else if (context.clock.now() / 1000 - event.created_at > maxAge) rejected = "stale assertion";
-                      else if (!(options.verify ?? verifyEvent)(event)) rejected = "invalid signature";
+                    return upstream([relay], [{ kinds: [kind], authors: [route.pubkey], "#d": subjects }]).pipe(
+                      // Stop waiting if the relay goes quiet before completing its response.
+                      timeout({
+                        each: Math.max(
+                          1,
+                          Math.min(context.attemptTimeout, batchContext.deadline - context.clock.now()),
+                        ),
+                        scheduler: context.clock,
+                      }),
 
-                      if (rejected) log("Assertion rejected", id, current.id, event.id, rejected);
-                      return rejected === undefined;
-                    }),
+                      // Validate before retaining events, including the signer, subject, and freshness.
+                      filter((event) => {
+                        const subject = event.tags.find((tag) => tag[0] === "d")?.[1];
+                        let rejected: string | undefined;
 
-                    // Retain only the latest valid assertion per subject until the finite request ends.
-                    reduce((latest, event) => {
-                      const subject = event.tags.find((tag) => tag[0] === "d")![1];
-                      const previous = latest.get(subject);
+                        if (event.kind !== kind || event.pubkey !== route.pubkey)
+                          rejected = "unexpected signer or kind";
+                        else if (!subjects.includes(subject ?? "")) rejected = "unexpected subject";
+                        else if (
+                          !Number.isSafeInteger(event.created_at) ||
+                          event.created_at < 0 ||
+                          event.created_at > context.clock.now() / 1000 + 60
+                        )
+                          rejected = "invalid timestamp";
+                        else if (context.clock.now() / 1000 - event.created_at > maxAge) rejected = "stale assertion";
+                        else if (!(options.verify ?? verifyEvent)(event)) rejected = "invalid signature";
 
-                      if (
-                        !previous ||
-                        event.created_at > previous.created_at ||
-                        (event.created_at === previous.created_at && event.id < previous.id)
-                      )
-                        latest.set(subject, event);
+                        if (rejected) log("Assertion rejected", id, current.id, event.id, rejected);
 
-                      return latest;
-                    }, new Map<string, NostrEvent>()),
-                    map((latest) => [...latest.values()]),
+                        return rejected === undefined;
+                      }),
 
-                    traceCountOperation(log, context.clock, "Assertion batch", {
-                      source: id,
-                      batch: current.id,
-                      provider: route.pubkey,
-                      relay,
-                      subjects: subjects.length,
-                    }),
-                  );
-                })
-                .subscribe({
-                  next: (events) => {
-                    // Delivery can synchronously detach interests, so iterate a membership snapshot.
-                    for (const entry of [...current.pending]) {
-                      try {
-                        const result = parse(events, entry, route, relay);
+                      // Retain only the latest valid assertion per subject until the finite request ends.
+                      reduce((latest, event) => {
+                        const subject = event.tags.find((tag) => tag[0] === "d")![1];
+                        const previous = latest.get(subject);
 
-                        if (result) {
-                          log(
-                            "Assertion metric accepted",
-                            id,
-                            current.id,
-                            entry.query.metric.id,
-                            entry.query.target.address ?? entry.query.target.id,
-                            result.value,
-                          );
-                          entry.subscriber.next(result);
-                        } else {
-                          log(
-                            "Assertion metric unavailable",
-                            id,
-                            current.id,
-                            entry.query.metric.id,
-                            entry.query.target.address ?? entry.query.target.id,
-                          );
-                        }
-                      } catch (error) {
-                        entry.subscriber.error(error);
-                      }
+                        if (
+                          !previous ||
+                          event.created_at > previous.created_at ||
+                          (event.created_at === previous.created_at && event.id < previous.id)
+                        )
+                          latest.set(subject, event);
+
+                        return latest;
+                      }, new Map<string, NostrEvent>()),
+
+                      // reduce emits once, when the relay finishes; then deliver the final assertions.
+                      map((latest) => [...latest.values()]),
+
+                      traceCountOperation(log, context.clock, "Assertion batch", {
+                        source: id,
+                        batch: current.id,
+                        provider: route.pubkey,
+                        relay,
+                        subjects: subjects.length,
+                      }),
+                    );
+                  },
+                  singleton
+                    ? `assertion:${route.pubkey}:${relay}:singleton:${query.target.address ?? query.target.id}`
+                    : `assertion:${route.pubkey}:${relay}`,
+                ),
+              ),
+            )
+            .subscribe({
+              next: (events) => {
+                // Delivery can synchronously detach interests, so iterate a membership snapshot.
+                for (const entry of [...current.pending]) {
+                  try {
+                    const result = parse(events, entry, route, relay);
+
+                    if (result) {
+                      log(
+                        "Assertion metric accepted",
+                        id,
+                        current.id,
+                        entry.query.metric.id,
+                        entry.query.target.address ?? entry.query.target.id,
+                        result.value,
+                      );
+                      entry.subscriber.next(result);
+                    } else {
+                      log(
+                        "Assertion metric unavailable",
+                        id,
+                        current.id,
+                        entry.query.metric.id,
+                        entry.query.target.address ?? entry.query.target.id,
+                      );
                     }
-                  },
+                  } catch (error) {
+                    entry.subscriber.error(error);
+                  }
+                }
+              },
 
-                  error: (error) => {
-                    for (const entry of [...current.pending]) entry.subscriber.error(error);
-                  },
+              error: (error) => {
+                for (const entry of [...current.pending]) entry.subscriber.error(error);
+              },
 
-                  complete: () => {
-                    for (const entry of [...current.pending]) entry.subscriber.complete();
-                  },
-                }),
-            );
-          }, window),
+              complete: () => {
+                for (const entry of [...current.pending]) entry.subscriber.complete();
+              },
+            }),
         );
       } else {
         batch.pending.add(pending);
@@ -361,6 +398,7 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
           "remaining",
           current.pending.size,
         );
+
         if (!current.pending.size) {
           log("Assertion batch released", id, current.id, "dispatched", current.dispatched);
           current.work.unsubscribe();
@@ -371,18 +409,38 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
 
   return {
     id,
+    managed: true,
+
+    supports: (query) =>
+      routes(query).pipe(map((providers) => providers.some((provider) => provider.relays.length > 0))),
+
+    // Route changes and released transport capacity both update availability.
+    available: (query, context) =>
+      combineLatest([routes(query), context.runtime?.changes$ ?? of(null)]).pipe(
+        map(([providers]) =>
+          providers.some((provider) =>
+            provider.relays.some(
+              (relay) =>
+                !context.runtime ||
+                (context.runtime.healthy(`assertion:${provider.pubkey}:${relay}`) &&
+                  context.runtime.available([`relay:${relay}`, `provider:${provider.pubkey}`])),
+            ),
+          ),
+        ),
+      ),
 
     // Keep observing trust and nested routing even after a lower-priority source answers.
     policy: (query) =>
       routes(query).pipe(
-        map((value) => JSON.stringify(value)),
+        map((value) => JSON.stringify([maxAge, window, size, value])),
         distinctPolicy(),
       ),
 
     count: (query, context) =>
-      routes(query).pipe(
+      defer(() => routes(query)).pipe(
         // Resolve against one configuration snapshot; policy changes restart the service resolution.
         take(1),
+
         tap((providers) =>
           loggerFor(context)(
             "Provider candidates",
@@ -399,14 +457,18 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
             // Preserve provider priority, then relay priority within each provider.
             concatMap((provider) =>
               from(provider.relays).pipe(
-                concatMap((relay) =>
-                  // A singleton recovery handles relay truncation without an unbounded retry loop.
-                  request(query, provider, relay, context).pipe(
+                // Finish one relay before trying the next relay for this provider.
+                concatMap((relay) => {
+                  const healthy = !context.runtime || context.runtime.healthy(`assertion:${provider.pubkey}:${relay}`);
+                  const firstAttempt = healthy ? request(query, provider, relay, context) : EMPTY;
+
+                  return firstAttempt.pipe(
                     // A missing metric triggers recovery; a result with value zero still succeeds.
                     defaultIfEmpty(undefined),
 
                     switchMap((result) => {
                       if (result) return of(result);
+
                       loggerFor(context)(
                         "Retrying missing assertion subject",
                         id,
@@ -415,9 +477,14 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
                         query.metric.id,
                         query.target.address ?? query.target.id,
                       );
+
+                      if (context.runtime && !context.runtime.healthy(`assertion:${provider.pubkey}:${relay}`))
+                        return EMPTY;
+
                       return request(query, provider, relay, context, true);
                     }),
 
+                    // A failed provider/relay pair must not end the search through later pairs.
                     catchError((error) => {
                       loggerFor(context)(
                         "Assertion attempt failed",
@@ -432,8 +499,8 @@ export function nip85CountSource(options: Nip85CountSourceOptions): CountSource 
 
                       return EMPTY;
                     }),
-                  ),
-                ),
+                  );
+                }),
               ),
             ),
 

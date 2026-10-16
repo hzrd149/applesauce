@@ -26,9 +26,11 @@ export function fallbackCountSource(sources: readonly CountSource[], id = "fallb
         ...sources.map((source, index) =>
           // Invoke a source only when its turn arrives and demand still exists.
           defer(() => {
+            const remaining = context.deadline - context.clock.now();
+
             if (index) context.diagnostic?.("fallback");
 
-            if (context.clock.now() >= context.deadline) {
+            if (remaining <= 0) {
               loggerFor(context)(
                 "Resolution deadline exhausted",
                 source.id,
@@ -38,35 +40,40 @@ export function fallbackCountSource(sources: readonly CountSource[], id = "fallb
               return EMPTY;
             }
 
-            return source.count(query, context);
-          }).pipe(
-            // Bound each candidate's wait; the service also enforces the shared resolution deadline.
-            timeout({
-              first: Math.max(1, Math.min(context.attemptTimeout, context.deadline - context.clock.now())),
-              scheduler: context.clock,
-            }),
+            return defer(() => source.count(query, context)).pipe(
+              // Ignore malformed results, while preserving a successful zero.
+              filter(
+                (result: CountResult) =>
+                  result.metric === query.metric.id && Number.isSafeInteger(result.value) && result.value >= 0,
+              ),
 
-            // Ignore malformed results, while preserving a successful zero.
-            filter(
-              (result: CountResult) =>
-                result.metric === query.metric.id && Number.isSafeInteger(result.value) && result.value >= 0,
-            ),
-            take(1),
+              // The first valid count finishes this candidate, including a count of zero.
+              take(1),
 
-            traceCountOperation(loggerFor(context), context.clock, "Source attempt", {
-              source: source.id,
-              metric: query.metric.id,
-              target: query.target.address ?? query.target.id,
-              priority: index,
-            }),
+              // Bound each candidate's wait; the service also enforces the shared resolution deadline.
+              timeout({
+                first: Math.max(
+                  1,
+                  Math.min(source.managed && context.routed ? Infinity : context.attemptTimeout, remaining),
+                ),
+                scheduler: context.clock,
+              }),
 
-            // Empty completion advances concat to the next candidate; errors do the same.
-            catchError((error) => {
-              context.onFailure?.(error);
+              traceCountOperation(loggerFor(context), context.clock, "Source attempt", {
+                source: source.id,
+                metric: query.metric.id,
+                target: query.target.address ?? query.target.id,
+                priority: index,
+              }),
 
-              return EMPTY;
-            }),
-          ),
+              // Empty completion advances concat to the next candidate; errors do the same.
+              catchError((error) => {
+                context.onFailure?.(error);
+
+                return EMPTY;
+              }),
+            );
+          }),
         ),
       ).pipe(
         // The first valid result prevents later sources from subscribing.

@@ -28,10 +28,12 @@ import {
   timer,
   type SchedulerLike,
 } from "rxjs";
+import { createCountRuntime, type CountRuntime, type CountRuntimeOptions } from "./count-runtime.js";
 import { createPersistentCountCache } from "../helpers/count-service/cache.js";
 import { createTransportScheduler } from "../helpers/count-service/scheduler.js";
 import { fallbackCountSource } from "./count-sources/fallback.js";
 import { nip85CountSource, type Nip85CountSourceOptions } from "./count-sources/nip85.js";
+import { routingCountSource } from "./count-sources/routing.js";
 import { relayCountSource } from "./count-sources/relay.js";
 import type {
   AssertionRequest,
@@ -90,7 +92,7 @@ export interface CountDiagnostic {
   /** The canonical observed metric entries */
   activeMetrics: number;
 
-  /** The first-value latency in milliseconds, when reporting first-value */
+  /** The measured duration in milliseconds for timing diagnostics */
   latency?: number;
 }
 
@@ -118,6 +120,18 @@ export interface CountCacheRecord {
 
 /** Options for demand-driven event metric counts */
 export interface CountServiceOptions {
+  /** The explicit routing tree, overriding the legacy source hierarchy */
+  source?: CountSource;
+
+  /** The shared transport runtime for explicit routing trees */
+  runtime?: CountRuntime;
+
+  /** The optional capacity settings for a service-owned routing runtime */
+  capacity?: Omit<CountRuntimeOptions, "scheduler">;
+
+  /** The capacity selection wait in milliseconds, default 1000 */
+  selectionTimeout?: number;
+
   /** The explicit ordered hierarchy, overriding automatic source creation */
   sources?: readonly CountSource[];
 
@@ -284,12 +298,16 @@ export function createCountService(
   const transportLog = log.extend("transport");
 
   // Explicit composition wins; automatic sources try assertions before relay counts.
-  const sources = options.sources ?? [
-    ...(options.providers
-      ? [nip85CountSource({ pool: options.pool, request: options.request, providers: options.providers })]
-      : []),
-    ...(options.relays ? [relayCountSource({ pool: options.pool, count: options.count, relays: options.relays })] : []),
-  ];
+  const sources = options.source
+    ? [options.source]
+    : (options.sources ?? [
+        ...(options.providers
+          ? [nip85CountSource({ pool: options.pool, request: options.request, providers: options.providers })]
+          : []),
+        ...(options.relays
+          ? [relayCountSource({ pool: options.pool, count: options.count, relays: options.relays })]
+          : []),
+      ]);
 
   const positive = (name: string, value: number) => {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive and finite`);
@@ -297,7 +315,11 @@ export function createCountService(
     return value;
   };
 
-  const clock = options.scheduler ?? asyncScheduler;
+  const clock = options.scheduler ?? options.runtime?.scheduler ?? asyncScheduler;
+  if (options.runtime && options.scheduler && options.runtime.scheduler !== options.scheduler)
+    throw new Error("Count service and runtime must use the same scheduler");
+  const runtime =
+    options.runtime ?? (options.source ? createCountRuntime({ ...options.capacity, scheduler: clock }) : undefined);
   const minimum = positive("minimumRefresh", options.minimumRefresh ?? 1000);
   const retry = positive("retryDelay", options.retryDelay ?? 10000);
   const deadline = positive("resolutionTimeout", options.resolutionTimeout ?? 15000);
@@ -325,21 +347,25 @@ export function createCountService(
     throw new Error("admissionWindow must be nonnegative and finite");
 
   // All sources share admission limits, including nested fallbacks and retries.
-  const transport = createTransportScheduler({
-    admissionWindow,
-    clock,
-    logger: transportLog,
-    concurrency: limit("concurrency", options.concurrency ?? 8),
-    perRelay: limit("perRelay", options.perRelay ?? 2),
-    perProvider: limit("perProvider", options.perProvider ?? 2),
-    queueCapacity: limit("queueCapacity", options.queueCapacity ?? 256),
-    diagnostic: (event) => {
-      activity = { active: event.active, pending: event.pending };
-      options.diagnostic?.({ ...event, cacheEntries: cache.size, activeMetrics: registry.size });
-    },
-  });
+  const transport =
+    runtime ??
+    createTransportScheduler({
+      admissionWindow,
+      clock,
+      logger: transportLog,
+      concurrency: limit("concurrency", options.concurrency ?? 8),
+      perRelay: limit("perRelay", options.perRelay ?? 2),
+      perProvider: limit("perProvider", options.perProvider ?? 2),
+      queueCapacity: limit("queueCapacity", options.queueCapacity ?? 256),
+      diagnostic: (event) => {
+        activity = { active: event.active, pending: event.pending };
+        options.diagnostic?.({ ...event, cacheEntries: cache.size, activeMetrics: registry.size });
+      },
+    });
 
-  const resolver = fallbackCountSource(sources);
+  const resolver = options.source ? routingCountSource("fallback", [options.source]) : fallbackCountSource(sources);
+  const batchScope = {};
+  const selectionTimeout = positive("selectionTimeout", options.selectionTimeout ?? 1000);
   const stopped$ = new ReplaySubject<void>(1);
   const invalidated$ = new Subject<string | undefined>();
   let stopped = false;
@@ -531,6 +557,11 @@ export function createCountService(
                         return resolver
                           .count(query, {
                             deadline: clock.now() + deadline,
+                            runtime,
+                            attempts: new Set(),
+                            routed: !!options.source,
+                            batchScope,
+                            selectionTimeout,
                             transport,
                             clock,
                             attemptTimeout: attempt,
@@ -711,6 +742,8 @@ export function createCountService(
     },
 
     stop: () => {
+      runtimeEvents?.unsubscribe();
+      if (!options.runtime) runtime?.stop();
       if (!stopped) {
         log("Stopped", "observed metrics", registry.size, "cached entries", cache.size);
         stopped = true;
@@ -724,6 +757,10 @@ export function createCountService(
     },
   };
 
+  const runtimeEvents = runtime?.events$.subscribe((event) => {
+    activity = { active: event.active, pending: event.pending };
+    options.diagnostic?.({ ...event, cacheEntries: cache.size, activeMetrics: registry.size });
+  });
   if (options.signal?.aborted) service.stop();
   else options.signal?.addEventListener("abort", service.stop, { once: true });
 

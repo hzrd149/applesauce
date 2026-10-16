@@ -8,11 +8,14 @@ describe("exports", () => {
         "DnsIdentityLoader",
         "RELAY_AUTH_ERROR_NAMES",
         "addressPointerLoadingSequence",
+        "availabilityCountSource",
         "cacheAddressPointersLoader",
         "cacheEventsLoader",
         "cacheTagValueLoader",
         "consolidateAddressPointers",
+        "countService",
         "createAddressLoader",
+        "createCountRuntime",
         "createCountService",
         "createEventLoader",
         "createEventLoaderForStore",
@@ -44,6 +47,7 @@ describe("exports", () => {
         "relaysTagValueLoader",
         "rootCommentCountMetric",
         "roundRobinCountSource",
+        "routingCountSource",
       ]
     `);
   });

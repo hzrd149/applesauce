@@ -15,9 +15,7 @@ import {
   normalizeURL,
 } from "applesauce-core/helpers";
 import {
-  createCountService,
-  nip85CountSource,
-  roundRobinCountSource,
+  countService,
   type CountService,
   createEventLoaderForStore,
   createTimelineLoader,
@@ -47,10 +45,21 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { Fragment, useState, type DragEvent } from "react";
+import {
+  createContext,
+  Fragment,
+  memo,
+  useContext,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+} from "react";
 import Keyv from "keyv";
 import { KeyvIndexedDB } from "keyv-browser";
 import {
+  asapScheduler,
   auditTime,
   BehaviorSubject,
   combineLatest,
@@ -68,6 +77,7 @@ import {
   shareReplay,
   startWith,
   Subject,
+  subscribeOn,
   switchMap,
   take,
   tap,
@@ -106,7 +116,45 @@ const COUNT_PRESETS = [
 
 // Relay groups are ordered; each group distributes its requests round-robin.
 const countRelays$ = new BehaviorSubject<string[][]>(COUNT_PRESETS[0].groups.map((group) => [...group]));
+type Distribution = "fallback" | "round-robin" | "availability";
+const routing$ = new BehaviorSubject({
+  mode: "fallback" as Distribution,
+  busy: "wait" as "wait" | "skip",
+  branchTimeout: 15000,
+  attemptTimeout: ATTEMPT_TIMEOUT,
+  resolutionTimeout: 15000,
+  selectionTimeout: 1000,
+  concurrency: 8,
+  perRelay: 2,
+  perProvider: 2,
+  queueCapacity: 256,
+  failureCooldown: 1000,
+});
+const routeMethod = (mode: Distribution) => (mode === "round-robin" ? "roundRobin" : mode);
+const groupModes = new WeakMap<readonly string[], Distribution>();
+const distributionFor = (group: readonly string[]) => groupModes.get(group) ?? "round-robin";
+function withoutEntry(group: string[], entry: string) {
+  const next = group.filter((value) => value !== entry);
+  groupModes.set(next, distributionFor(group));
+  return next;
+}
 const provider$ = new BehaviorSubject<{ pubkey: string; relay: string } | null>(null);
+
+const RoutingDraftContext = createContext({ countRelays$, provider$, routing$ });
+
+function createRoutingDraft() {
+  return {
+    countRelays$: new BehaviorSubject(
+      countRelays$.value.map((group) => {
+        const copy = [...group];
+        groupModes.set(copy, distributionFor(group));
+        return copy;
+      }),
+    ),
+    provider$: new BehaviorSubject(provider$.value),
+    routing$: new BehaviorSubject({ ...routing$.value }),
+  };
+}
 
 type Outcome = "sent" | "answered" | "refused" | "failed" | "timeout" | "cancelled";
 type Transport = { type: "count" | "assertion"; outcome: Outcome };
@@ -118,6 +166,7 @@ const diagnostics$ = new Subject<CountDiagnostic>();
 function track<T>(type: Transport["type"], request: Observable<T>, answer: (value: T) => Outcome | undefined) {
   return defer(() => {
     const started = Date.now();
+    const attemptTimeout = routing$.value.attemptTimeout;
     let settled = false;
     const report = (outcome: Outcome) => {
       settled = true;
@@ -135,7 +184,7 @@ function track<T>(type: Transport["type"], request: Observable<T>, answer: (valu
         error: () => settled || report("failed"),
       }),
       // Unsubscribed without an answer: either the attempt timed out or its row scrolled away
-      finalize(() => settled || report(Date.now() - started >= ATTEMPT_TIMEOUT ? "timeout" : "cancelled")),
+      finalize(() => settled || report(Date.now() - started >= attemptTimeout ? "timeout" : "cancelled")),
     );
   });
 }
@@ -148,31 +197,52 @@ const count: CountRequest = (relays, filters) =>
 const request: AssertionRequest = (relays, filters) =>
   track("assertion", pool.request(relays, filters), () => undefined);
 
-// Each priority group shares count requests between its trusted relays.
-const assertionSource = nip85CountSource({
-  request,
-  providers: (kind, tag) =>
+const assertionOptions = {
+  providers: (kind: number, tag: string) =>
     provider$.pipe(map((p) => (p ? [{ kind, tag, servicePubkey: p.pubkey, relay: p.relay }] : []))),
-});
+};
 
 // Only include NIP-85 when a provider is configured, so plain relay lookups skip the assertion attempt
-const counts$ = combineLatest([provider$.pipe(map(Boolean), distinctUntilChanged()), countRelays$]).pipe(
+const counts$ = combineLatest([provider$.pipe(map(Boolean), distinctUntilChanged()), countRelays$, routing$]).pipe(
+  auditTime(0),
   switchMap(
-    ([nip85, groups]) =>
+    ([nip85, groups, settings]) =>
       new Observable<CountService>((subscriber) => {
-        const relaySources = groups.map((relays, index) =>
-          roundRobinCountSource({ count, relays, id: `relay-group-${index}` }),
-        );
-        const service = createCountService({
-          cache: countCache,
-          ttl: () => 5 * 60_000,
-          cacheRetention: 24 * 60 * 60_000,
-          sources: nip85 ? [assertionSource, ...relaySources] : relaySources,
-          // Single-relay groups can still receive every request
-          perRelay: 6,
-          attemptTimeout: ATTEMPT_TIMEOUT,
-          diagnostic: (event) => diagnostics$.next(event),
-        });
+        const service = countService({ count, request })
+          [routeMethod(settings.mode)](
+            (route) => {
+              const relayGroups = groups.map((entries) => {
+                const relays = entries.map((entry) =>
+                  entry === "nip85" ? route.nip85(assertionOptions) : route.relay(entry),
+                );
+                return route[routeMethod(distributionFor(entries))](relays, {
+                  busy: settings.busy,
+                  timeout: settings.branchTimeout,
+                });
+              });
+              return nip85 && !groups.flat().includes("nip85")
+                ? [route.nip85(assertionOptions), ...relayGroups]
+                : relayGroups;
+            },
+            { busy: settings.busy, timeout: settings.branchTimeout },
+          )
+          .capacity({
+            concurrency: settings.concurrency,
+            perRelay: settings.perRelay,
+            perProvider: settings.perProvider,
+            queueCapacity: settings.queueCapacity,
+            failureCooldown: settings.failureCooldown,
+          })
+          .configure({
+            cache: countCache,
+            ttl: () => 5 * 60_000,
+            cacheRetention: 24 * 60 * 60_000,
+            attemptTimeout: settings.attemptTimeout,
+            resolutionTimeout: settings.resolutionTimeout,
+            selectionTimeout: settings.selectionTimeout,
+            diagnostic: (event) => diagnostics$.next(event),
+          })
+          .build();
         subscriber.next(service);
 
         // Replacing the service cancels its queued work and refresh timers
@@ -249,7 +319,7 @@ function reduce(stats: Stats, event: CountDiagnostic | Transport): Stats {
     ...stats,
     gauges,
     events: { ...stats.events, [type]: (stats.events[type] ?? 0) + 1 },
-    latency: stats.latency + (latency ?? 0),
+    latency: stats.latency + (type === "first-value" ? (latency ?? 0) : 0),
   };
 }
 
@@ -271,6 +341,8 @@ function feed$(relay: string) {
     const windows$ = historyWindows(more$, STEP).pipe(share({ connector: () => new ReplaySubject(1) }));
     const notes$ = windows$.pipe(
       switchMap(({ since }) => eventStore.timeline({ ...NOTES, since })),
+      // Coalesce incoming events before casting and rendering the growing timeline.
+      auditTime(16),
       castTimelineStream(Note, eventStore),
     );
     const loading$ = loader.status$.pipe(
@@ -297,10 +369,15 @@ function describe(label: string, state: CountState | undefined) {
   return `${label}: unavailable, ${failure}`;
 }
 
-function MetricCount({ note, entry }: { note: Note; entry: (typeof METRICS)[number] }) {
+const MetricCount = memo(function MetricCount({ note, entry }: { note: Note; entry: (typeof METRICS)[number] }) {
   // Subscribing starts the request, unmounting cancels it if it is still queued or in flight
   const state = use$(
-    () => counts$.pipe(switchMap((counts) => counts.event(note.event).metric(entry.metric))),
+    () =>
+      counts$.pipe(
+        switchMap((counts) => counts.event(note.event).metric(entry.metric)),
+        // Skip demand during use$'s synchronous render probe; subscribe after commit.
+        subscribeOn(asapScheduler),
+      ),
     [note, entry],
   );
   const Icon = entry.icon;
@@ -322,10 +399,10 @@ function MetricCount({ note, entry }: { note: Note; entry: (typeof METRICS)[numb
       {state?.origin && <RelayColor relay={state.origin.relay} />}
     </span>
   );
-}
+});
 
 /** Uses a stable relay color across counts, grouping changes, and reloads */
-function RelayColor({ relay }: { relay: string }) {
+const RelayColor = memo(function RelayColor({ relay }: { relay: string }) {
   const url = normalizeURL(relay);
   const preset = COUNT_RELAYS.indexOf(url);
   let hash = 0;
@@ -340,10 +417,11 @@ function RelayColor({ relay }: { relay: string }) {
       style={{ backgroundColor: `hsl(${hue} 75% 55%)` }}
     />
   );
-}
+});
 
-function FeedNote({ note }: { note: Note }) {
+const FeedNote = memo(function FeedNote({ note }: { note: Note }) {
   const profile = use$(note.author.profile$);
+  const time = useMemo(() => new Date(note.event.created_at * 1000).toLocaleTimeString(), [note.event.created_at]);
 
   return (
     <article className="min-w-0 border-b border-r border-base-300 px-3 py-2" style={{ height: ROW_HEIGHT }}>
@@ -354,9 +432,7 @@ function FeedNote({ note }: { note: Note }) {
           alt=""
         />
         <span className="min-w-0 truncate font-semibold">{getDisplayName(profile)}</span>
-        <time className="ml-auto shrink-0 text-sm text-base-content/60">
-          {new Date(note.event.created_at * 1000).toLocaleTimeString()}
-        </time>
+        <time className="ml-auto shrink-0 text-sm text-base-content/60">{time}</time>
       </div>
       <p className="truncate text-sm text-base-content/70">{note.event.content}</p>
       <div className="mt-1 flex gap-3 overflow-hidden">
@@ -366,7 +442,7 @@ function FeedNote({ note }: { note: Note }) {
       </div>
     </article>
   );
-}
+});
 
 /** Emits how many note columns fit in the element as it resizes */
 function columns$(element: HTMLElement | null) {
@@ -380,19 +456,20 @@ function columns$(element: HTMLElement | null) {
   });
 }
 
-function Feed({ notes, loading }: { notes: Note[]; loading: boolean }) {
+const Feed = memo(function Feed({ notes, loading }: { notes: Note[]; loading: boolean }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const columns = use$(() => columns$(scroller), [scroller]) ?? 1;
   const rowCount = Math.ceil(notes.length / columns);
+  const getItemKey = useCallback((index: number) => notes[index * columns]?.id ?? index, [notes, columns]);
 
   // Virtualize rows of notes, each row is a fixed height so nothing needs measuring
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scroller,
-    getItemKey: (index) => notes[index * columns]?.id ?? index,
+    getItemKey,
     estimateSize: () => ROW_HEIGHT,
-    // No overscan, rows that leave the viewport release their counts immediately
-    overscan: 0,
+    // Keep a small buffer to avoid subscription churn when scrolling across row boundaries.
+    overscan: 2,
   });
 
   // Request an older page once the previous one has loaded and the last rows are on screen
@@ -429,14 +506,14 @@ function Feed({ notes, loading }: { notes: Note[]; loading: boolean }) {
       </div>
     </div>
   );
-}
+});
 
 // Separate drag payloads let relay drops stack while group drops reorder
 const RELAY_DRAG = "application/x-count-relay";
 const GROUP_DRAG = "application/x-count-group";
 
 /** Moves a priority group and re-resolves visible counts */
-function moveGroup(from: number, to: number) {
+function moveGroup(from: number, to: number, countRelays$: BehaviorSubject<string[][]>) {
   const next = [...countRelays$.value];
   if (from === to || !next[from] || !next[to]) return;
   next.splice(to, 0, ...next.splice(from, 1));
@@ -444,21 +521,58 @@ function moveGroup(from: number, to: number) {
 }
 
 /** Moves a relay into another priority group */
-function groupRelay(relay: string, target: number) {
+function groupRelay(relay: string, target: number, countRelays$: BehaviorSubject<string[][]>) {
   const groups = countRelays$.value;
   const destination = groups[target];
   if (!destination || destination.includes(relay)) return;
   const next = groups
     .map((group) => {
-      const remaining = group.filter((value) => value !== relay);
-      return group === destination ? [...remaining, relay] : remaining;
+      const remaining = withoutEntry(group, relay);
+      if (group !== destination) return remaining;
+      const merged = [...remaining, relay];
+      groupModes.set(merged, distributionFor(group));
+      return merged;
     })
     .filter((group) => group.length);
   countRelays$.next(next);
 }
 
-function CountRelayItem({ relay }: { relay: string }) {
+function SourceGroupPicker({ source }: { source: string }) {
+  const { countRelays$ } = useContext(RoutingDraftContext);
+  const groups = use$(countRelays$);
+  const current = groups.findIndex((group) => group.includes(source));
+  return (
+    <select
+      className="select select-sm max-w-32"
+      aria-label={`Group for ${source}`}
+      value={current}
+      onChange={(event) => {
+        const target = Number(event.target.value);
+        if (target < groups.length) groupRelay(source, target, countRelays$);
+        else
+          countRelays$.next([
+            ...groups.map((group) => withoutEntry(group, source)).filter((group) => group.length),
+            [source],
+          ]);
+      }}
+    >
+      {groups.map((_, index) => (
+        <option key={index} value={index}>
+          Group {index + 1}
+        </option>
+      ))}
+      <option value={groups.length}>New group</option>
+    </select>
+  );
+}
+
+function RelayName({ relay }: { relay: string }) {
   const name = use$(() => pool.relay(relay).name$, [relay]);
+  return <span className="truncate">{name?.trim() || new URL(relay).hostname}</span>;
+}
+
+function CountRelayItem({ relay }: { relay: string }) {
+  const { countRelays$ } = useContext(RoutingDraftContext);
   const supported = use$(() => pool.relay(relay).supported$, [relay]);
   const nip45 = supported === undefined ? undefined : !!supported?.includes(45);
   return (
@@ -474,10 +588,10 @@ function CountRelayItem({ relay }: { relay: string }) {
     >
       <GripVertical className="h-4 w-4 shrink-0 text-base-content/40" />
       <RelayColor relay={relay} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{name ?? relay}</div>
-        <div className="truncate text-sm text-base-content/60">{relay}</div>
+      <div className="min-w-0 flex-1 truncate font-medium" title={relay}>
+        <RelayName relay={relay} />
       </div>
+      <SourceGroupPicker source={relay} />
       {nip45 === undefined ? (
         <span className="loading loading-spinner loading-sm" />
       ) : nip45 ? (
@@ -488,9 +602,7 @@ function CountRelayItem({ relay }: { relay: string }) {
       <button
         className="btn btn-ghost btn-sm px-1"
         title={`Remove ${relay}`}
-        onClick={() =>
-          countRelays$.next(countRelays$.value.map((g) => g.filter((r) => r !== relay)).filter((g) => g.length))
-        }
+        onClick={() => countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, relay)).filter((g) => g.length))}
       >
         <Trash2 className="h-4 w-4" />
       </button>
@@ -499,27 +611,64 @@ function CountRelayItem({ relay }: { relay: string }) {
 }
 
 /** Inserts a dragged relay or group at a boundary between priority groups */
-function insertCountGroup(event: DragEvent, position: number) {
+function insertCountGroup(event: DragEvent, position: number, countRelays$: BehaviorSubject<string[][]>) {
   const groups = countRelays$.value;
   const relay = event.dataTransfer.getData(RELAY_DRAG);
   const from = event.dataTransfer.getData(GROUP_DRAG);
   if (relay && groups.some((group) => group.includes(relay))) {
     const before = groups
       .slice(0, position)
-      .map((group) => group.filter((r) => r !== relay))
+      .map((group) => withoutEntry(group, relay))
       .filter((g) => g.length);
     const after = groups
       .slice(position)
-      .map((group) => group.filter((r) => r !== relay))
+      .map((group) => withoutEntry(group, relay))
       .filter((g) => g.length);
     countRelays$.next([...before, [relay], ...after]);
   } else if (from !== "" && groups[Number(from)]) {
     const index = Number(from);
-    moveGroup(index, position > index ? position - 1 : position);
+    moveGroup(index, position > index ? position - 1 : position, countRelays$);
   }
 }
 
+function CountProviderItem() {
+  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
+  const provider = use$(provider$);
+  if (!provider) return null;
+  return (
+    <div
+      className="flex cursor-grab items-center gap-2 px-2 py-1"
+      draggable
+      title="Drag provider"
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.dataTransfer.setData(RELAY_DRAG, "nip85");
+        e.dataTransfer.effectAllowed = "move";
+      }}
+    >
+      <GripVertical className="h-4 w-4 shrink-0 text-base-content/40" />
+      <RelayColor relay={provider.relay} />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">NIP-85</div>
+        <div className="truncate text-sm text-base-content/60">{provider.pubkey}</div>
+      </div>
+      <SourceGroupPicker source="nip85" />
+      <button
+        className="btn btn-ghost btn-sm px-1"
+        title="Remove provider"
+        onClick={() => {
+          provider$.next(null);
+          countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, "nip85")).filter((g) => g.length));
+        }}
+      >
+        <Trash2 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function CountPresets() {
+  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
   const groups = use$(countRelays$);
   const provider = use$(provider$);
   return (
@@ -527,7 +676,10 @@ function CountPresets() {
       <h2 className="font-semibold">Presets</h2>
       <div className="flex flex-wrap gap-2">
         {COUNT_PRESETS.map((preset) => {
-          const active = !provider && JSON.stringify(groups) === JSON.stringify(preset.groups);
+          const active =
+            !provider &&
+            groups.every((group) => distributionFor(group) === "round-robin") &&
+            JSON.stringify(groups) === JSON.stringify(preset.groups);
           return (
             <button
               key={preset.label}
@@ -548,6 +700,7 @@ function CountPresets() {
 }
 
 function CountRelays() {
+  const { countRelays$ } = useContext(RoutingDraftContext);
   const groups = use$(countRelays$);
   const [over, setOver] = useState<string | null>(null);
   const accepts = (event: DragEvent) =>
@@ -566,13 +719,13 @@ function CountRelays() {
       onDrop={(e) => {
         e.preventDefault();
         setOver(null);
-        insertCountGroup(e, index);
+        insertCountGroup(e, index, countRelays$);
       }}
     />
   );
   return (
     <section className="flex flex-col gap-2" onDragEnd={() => setOver(null)}>
-      <h2 className="font-semibold">COUNT relays</h2>
+      <h2 className="font-semibold">Count sources</h2>
       <ol className="flex flex-col">
         {groups.map((group, i) => (
           <Fragment key={JSON.stringify(group)}>
@@ -592,10 +745,10 @@ function CountRelays() {
                 e.preventDefault();
                 setOver(null);
                 const relay = e.dataTransfer.getData(RELAY_DRAG);
-                if (relay && groups.some((g) => g.includes(relay))) groupRelay(relay, i);
+                if (relay && groups.some((g) => g.includes(relay))) groupRelay(relay, i, countRelays$);
                 else {
                   const from = e.dataTransfer.getData(GROUP_DRAG);
-                  if (from !== "") moveGroup(Number(from), i);
+                  if (from !== "") moveGroup(Number(from), i, countRelays$);
                 }
               }}
             >
@@ -611,13 +764,27 @@ function CountRelays() {
                 >
                   <GripVertical className="h-4 w-4 text-base-content/40" />
                   {i + 1}
-                  {group.length > 1 ? " · Round-robin" : ""}
                 </span>
+                {group.length > 1 && (
+                  <select
+                    className="select select-sm max-w-40"
+                    aria-label={`Routing for group ${i + 1}`}
+                    value={distributionFor(group)}
+                    onChange={(event) => {
+                      groupModes.set(group, event.target.value as Distribution);
+                      countRelays$.next([...groups]);
+                    }}
+                  >
+                    <option value="fallback">Ordered fallback</option>
+                    <option value="round-robin">Round-robin</option>
+                    <option value="availability">Available first</option>
+                  </select>
+                )}
                 <button
                   className="btn btn-ghost btn-sm px-1"
                   disabled={i === 0}
                   title="Move group up"
-                  onClick={() => moveGroup(i, i - 1)}
+                  onClick={() => moveGroup(i, i - 1, countRelays$)}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>
@@ -625,14 +792,14 @@ function CountRelays() {
                   className="btn btn-ghost btn-sm px-1"
                   disabled={i === groups.length - 1}
                   title="Move group down"
-                  onClick={() => moveGroup(i, i + 1)}
+                  onClick={() => moveGroup(i, i + 1, countRelays$)}
                 >
                   <ArrowDown className="h-4 w-4" />
                 </button>
               </div>
-              {group.map((relay) => (
-                <CountRelayItem key={relay} relay={relay} />
-              ))}
+              {group.map((relay) =>
+                relay === "nip85" ? <CountProviderItem key={relay} /> : <CountRelayItem key={relay} relay={relay} />,
+              )}
             </li>
           </Fragment>
         ))}
@@ -645,6 +812,7 @@ function CountRelays() {
 }
 
 function ProviderSettings() {
+  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
   const provider = use$(provider$);
   const [pubkey, setPubkey] = useState(provider?.pubkey ?? "");
   const [relay, setRelay] = useState(provider?.relay ?? "");
@@ -656,6 +824,7 @@ function ProviderSettings() {
     if (!hex) return setError("Enter a hex pubkey or npub");
     try {
       provider$.next({ pubkey: hex, relay: normalizeURL(ensureWebSocketURL(relay.trim())) });
+      if (!countRelays$.value.flat().includes("nip85")) countRelays$.next([["nip85"], ...countRelays$.value]);
       setError("");
     } catch {
       setError("Enter a valid relay URL");
@@ -667,12 +836,14 @@ function ProviderSettings() {
       <h2 className="font-semibold">NIP-85 provider</h2>
       <input
         className="input w-full"
+        aria-label="Provider pubkey or npub"
         placeholder="Provider pubkey or npub"
         value={pubkey}
         onChange={(e) => setPubkey(e.target.value)}
       />
       <input
         className="input w-full"
+        aria-label="Provider relay"
         placeholder="wss://provider.relay"
         value={relay}
         onChange={(e) => setRelay(e.target.value)}
@@ -683,7 +854,14 @@ function ProviderSettings() {
           {provider ? "Update" : "Use provider"}
         </button>
         {provider && (
-          <button type="button" className="btn btn-sm" onClick={() => provider$.next(null)}>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              provider$.next(null);
+              countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, "nip85")).filter((g) => g.length));
+            }}
+          >
             Remove
           </button>
         )}
@@ -716,7 +894,7 @@ function transportRows(tally: Tally): [string, number, string][] {
     ["Answered", tally.answered, "Requests that returned a result"],
     ["Refused", tally.refused, "Relays that rejected the COUNT"],
     ["Failed", tally.failed, "Requests that errored"],
-    ["Timed out", tally.timeout, `No answer within ${ATTEMPT_TIMEOUT / 1000}s`],
+    ["Timed out", tally.timeout, `No answer within ${routing$.value.attemptTimeout / 1000}s`],
     ["Cancelled in flight", tally.cancelled, "The row scrolled away before the relay answered"],
   ];
 }
@@ -776,13 +954,175 @@ function RequestStats() {
           ["Restored", total("persistent-cache-hit"), "A saved count was restored from IndexedDB"],
           ["Hits", total("cache-hit"), "A fresh cached count was reused"],
           ["Misses", total("cache-miss"), "No fresh count, a request was needed"],
-          ["Relay fallbacks", total("fallback"), "A relay answered after NIP-85 had no assertion"],
+          ["Fallbacks", total("fallback"), "Another routing candidate was tried"],
           ["Metrics released", total("released"), "Counts no longer observed by any row"],
           ["First values", firstValues],
           ["Avg time to first count", firstValues ? `${Math.round(stats.latency / firstValues)} ms` : "—"],
         ]}
       />
     </section>
+  );
+}
+
+function RoutingSummary() {
+  const groups = use$(countRelays$);
+  const settings = use$(routing$);
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      <p>
+        {settings.mode} · busy candidates: {settings.busy}
+      </p>
+      <ol className="border-l-2 border-primary pl-3">
+        {groups.map((group, index) => (
+          <li key={index} className="py-2">
+            <div className="font-medium">
+              {index + 1}. {distributionFor(group)}
+            </div>
+            {group.map((relay) => (
+              <div key={relay} className="flex items-center gap-2">
+                {relay !== "nip85" && <RelayColor relay={relay} />}
+                {relay === "nip85" ? <span>NIP-85 provider</span> : <RelayName relay={relay} />}
+              </div>
+            ))}
+          </li>
+        ))}
+      </ol>
+      {!groups.length && <p>No count sources configured.</p>}
+      <p className="text-base-content/60">
+        {settings.concurrency} concurrent requests · {settings.attemptTimeout / 1000}s per attempt
+      </p>
+    </div>
+  );
+}
+
+function RoutingSettings() {
+  const { routing$ } = useContext(RoutingDraftContext);
+  const settings = use$(routing$);
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-semibold">Routing policy and transport limits</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          Root distribution
+          <select
+            className="select w-full"
+            value={settings.mode}
+            onChange={(e) => routing$.next({ ...settings, mode: e.target.value as Distribution })}
+          >
+            <option value="fallback">Ordered fallback</option>
+            <option value="round-robin">Round-robin</option>
+            <option value="availability">Available first</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          Busy candidates
+          <select
+            className="select w-full"
+            value={settings.busy}
+            onChange={(e) => routing$.next({ ...settings, busy: e.target.value as "wait" | "skip" })}
+          >
+            <option value="wait">Wait for capacity</option>
+            <option value="skip">Skip busy candidates</option>
+          </select>
+        </label>
+        {(
+          [
+            ["branchTimeout", "Branch budget (ms)"],
+            ["attemptTimeout", "Attempt timeout (ms)"],
+            ["resolutionTimeout", "Resolution deadline (ms)"],
+            ["selectionTimeout", "Capacity wait (ms)"],
+            ["concurrency", "Concurrent transports"],
+            ["perRelay", "Transports per relay"],
+            ["perProvider", "Transports per provider"],
+            ["queueCapacity", "Queue capacity"],
+            ["failureCooldown", "Failure cooldown (ms)"],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="flex flex-col gap-1 text-sm">
+            {label}
+            <input
+              className="input w-full"
+              type="number"
+              min={key === "failureCooldown" ? 0 : 1}
+              step="1"
+              value={settings[key]}
+              onChange={(e) => {
+                const value = e.target.valueAsNumber;
+                if (Number.isSafeInteger(value) && value >= (key === "failureCooldown" ? 0 : 1))
+                  routing$.next({ ...settings, [key]: value });
+              }}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RoutingModal() {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [draft, setDraft] = useState(createRoutingDraft);
+  const [session, setSession] = useState(0);
+  const open = () => {
+    setDraft(createRoutingDraft());
+    setSession((value) => value + 1);
+    dialog.current?.showModal();
+  };
+  const submit = () => {
+    provider$.next(draft.provider$.value);
+    countRelays$.next(draft.countRelays$.value);
+    routing$.next(draft.routing$.value);
+    dialog.current?.close();
+  };
+  return (
+    <>
+      <button className="btn btn-primary" onClick={open}>
+        Configure routing
+      </button>
+      <dialog ref={dialog} className="modal" aria-labelledby="count-routing-title">
+        <div className="modal-box flex max-h-[90vh] w-11/12 max-w-7xl flex-col rounded-none p-0 shadow-none">
+          <header className="flex items-center justify-between gap-4 border-b border-base-300 p-4">
+            <div>
+              <h1 id="count-routing-title" className="text-xl font-semibold">
+                Count routing laboratory
+              </h1>
+              <p className="text-sm text-base-content/60">Changes apply when you submit this configuration.</p>
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              aria-label="Close routing settings"
+              onClick={() => dialog.current?.close()}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </header>
+          <RoutingDraftContext.Provider key={session} value={draft}>
+            <div className="grid gap-6 overflow-y-auto p-4 lg:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-6">
+                <CountPresets />
+                <p className="text-sm text-base-content/60">
+                  Drag sources together to group them. Drop between groups to split them. Use arrows to change priority.
+                </p>
+                <CountRelays />
+                <ProviderSettings />
+              </div>
+              <RoutingSettings />
+            </div>
+          </RoutingDraftContext.Provider>
+          <footer className="flex justify-end gap-2 border-t border-base-300 p-3">
+            <button className="btn" onClick={() => dialog.current?.close()}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={submit}>
+              Apply routing
+            </button>
+          </footer>
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button>Close</button>
+        </form>
+      </dialog>
+    </>
   );
 }
 
@@ -802,9 +1142,9 @@ export default function EventCounts() {
         <Feed notes={feed?.notes ?? []} loading={feed?.loading ?? true} />
       </div>
       <aside className="flex min-h-0 w-96 flex-col gap-6 overflow-y-auto border-l border-base-300 p-4">
-        <CountPresets />
-        <CountRelays />
-        <ProviderSettings />
+        <h2 className="font-semibold">Count routing</h2>
+        <RoutingSummary />
+        <RoutingModal />
         <RequestStats />
       </aside>
     </div>
