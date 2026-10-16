@@ -8,3 +8,5 @@ export * from "./tag-value-loader.js";
 export * from "./timeline-loader.js";
 export * from "./unified-event-loader.js";
 export * from "./zaps-loader.js";
+export * from "./count-service.js";
+export * from "./count-sources/index.js";

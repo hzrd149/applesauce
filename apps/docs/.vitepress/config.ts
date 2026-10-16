@@ -80,6 +80,7 @@ export default defineConfig({
               { text: "Zaps Loader", link: "/loading/loaders/zaps-loader" },
               { text: "Reactions Loader", link: "/loading/loaders/reactions-loader" },
               { text: "Tag Value Loader", link: "/loading/loaders/tag-value-loader" },
+              { text: "Event Count Service", link: "/loading/loaders/count-service" },
             ],
           },
         ],
@@ -204,6 +205,11 @@ export default defineConfig({
         text: "Features",
         collapsed: false,
         items: [{ text: "App Handlers", link: "/features/app-handlers" }],
+      },
+      {
+        text: "NIPs",
+        collapsed: false,
+        items: [{ text: "NIP-35 Torrents", link: "/nips/nip-35" }],
       },
       {
         text: "Storing events",
