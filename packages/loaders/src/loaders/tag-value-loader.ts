@@ -3,7 +3,20 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { filterDuplicateEvents } from "applesauce-core/observable";
-import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable } from "rxjs";
+import {
+  bufferTime,
+  catchError,
+  defer,
+  EMPTY,
+  identity,
+  merge,
+  Observable,
+  takeUntil,
+  timer,
+  throwError,
+  mergeMap,
+  from,
+} from "rxjs";
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
@@ -31,6 +44,12 @@ export type TagValueLoaderOptions = {
   bufferTime?: number;
   /** Max buffer size ( default 200 ) */
   bufferSize?: number;
+  /** Maximum running batches ( default 4 ) */
+  maxConcurrentBatches?: number;
+  /** Maximum running relay requests per batch ( default 8 ) */
+  relayConcurrency?: number;
+  /** Maximum cache or relay request lifetime in ms ( default 10000, Infinity disables ) */
+  requestTimeout?: number;
   /** Restrict queries to specific kinds */
   kinds?: number[];
   /** Restrict queries to specific authors */
@@ -57,7 +76,14 @@ function isolateSource(
   source: TagValueLoaderErrorSource,
   opts?: TagValueLoaderOptions,
 ): Observable<NostrEvent> {
+  const duration = opts?.requestTimeout ?? 10000;
   return defer(load).pipe(
+    // A total lifetime deadline, independent of how frequently events arrive.
+    takeUntil(
+      duration === Infinity
+        ? EMPTY
+        : timer(duration).pipe(mergeMap(() => throwError(() => new Error("Tag value request timed out")))),
+    ),
     catchError((error) => {
       opts?.onError?.(error, source);
       return EMPTY;
@@ -120,7 +146,7 @@ export function relaysTagValueLoader(
         return isolateSource(() => request([relay], [filter]), { source: "relay", relay }, opts);
       });
 
-      return merge(...requests);
+      return from(requests).pipe(mergeMap(identity, opts?.relayConcurrency ?? 8));
     });
 }
 
@@ -153,6 +179,6 @@ export function createTagValueLoader(
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     // Forward the abort signal for explicit teardown
-    { signal: opts?.signal },
+    { signal: opts?.signal, maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4 },
   );
 }

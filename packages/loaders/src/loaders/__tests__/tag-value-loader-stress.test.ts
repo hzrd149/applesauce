@@ -32,11 +32,15 @@ function transport() {
 
 it("routes 1000 targets across 10 relays and releases all transports on stop", () => {
   const { state, request } = transport();
-  const loader = createTagValueLoader(request, "e", { bufferSize: 200 });
+  const loader = createTagValueLoader(request, "e", {
+    bufferSize: 200,
+    maxConcurrentBatches: Infinity,
+    relayConcurrency: Infinity,
+  });
   for (let i = 0; i < 1000; i++) loader({ value: String(i), relays: [`wss://relay-${i % 10}.test/`] }).subscribe();
   expect(state.starts).toBe(50);
   expect(state.values).toBe(1000);
-  // Baseline: batches currently have no concurrency limit.
+  // Explicitly unbounded baseline for comparison with configured limits.
   expect(state.peak).toBe(50);
   loader.stop();
   expect(state.active).toBe(0);
@@ -45,7 +49,11 @@ it("routes 1000 targets across 10 relays and releases all transports on stop", (
 
 it("compacts 1000 repeated callers to 10 values per batch and delivers to every caller", () => {
   const { state, sources, request } = transport();
-  const loader = createTagValueLoader(request, "e", { bufferSize: 200, extraRelays: ["wss://relay.test/"] });
+  const loader = createTagValueLoader(request, "e", {
+    bufferSize: 200,
+    maxConcurrentBatches: Infinity,
+    extraRelays: ["wss://relay.test/"],
+  });
   const deliveries = Array.from({ length: 1000 }, () => 0);
   for (let i = 0; i < 1000; i++)
     loader({ value: String(i % 10) }).subscribe(() => {
@@ -72,5 +80,50 @@ it("compacts 1000 repeated callers to 10 values per batch and delivers to every 
   expect(deliveries.every((count) => count === 1)).toBe(true);
   expect(state.active).toBe(0);
   loader.stop();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("bounds relay fan-out and advances queued batches when stalled sources time out", () => {
+  const { state, request } = transport();
+  const onError = vi.fn();
+  const loader = createTagValueLoader(request, "e", {
+    bufferSize: 1,
+    maxConcurrentBatches: 2,
+    relayConcurrency: 3,
+    requestTimeout: 100,
+    onError,
+  });
+  let completed = 0;
+  for (let i = 0; i < 20; i++)
+    loader({ value: String(i), relays: Array.from({ length: 10 }, (_, j) => `wss://relay-${j}.test/`) }).subscribe({
+      complete: () => {
+        completed++;
+      },
+    });
+  expect(state.starts).toBe(6);
+  vi.advanceTimersByTime(4000);
+  expect(completed).toBe(20);
+  expect(state.starts).toBe(200);
+  expect(state.peak).toBeLessThanOrEqual(6);
+  expect(onError).toHaveBeenCalledTimes(200);
+  expect(state.active).toBe(0);
+  loader.stop();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("drops queued work and active deadlines on stop", () => {
+  const { state, request } = transport();
+  const loader = createTagValueLoader(request, "e", { bufferSize: 1, maxConcurrentBatches: 1 });
+  let completed = 0;
+  for (let i = 0; i < 100; i++)
+    loader({ value: String(i), relays: ["wss://relay.test/"] }).subscribe({
+      complete: () => {
+        completed++;
+      },
+    });
+  expect(state.starts).toBe(1);
+  loader.stop();
+  expect(completed).toBe(100);
+  expect(state.active).toBe(0);
   expect(vi.getTimerCount()).toBe(0);
 });

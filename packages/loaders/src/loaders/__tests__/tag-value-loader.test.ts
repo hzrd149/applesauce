@@ -194,3 +194,84 @@ describe("tag value loader source failures", () => {
     loader.stop();
   });
 });
+
+describe("tag value loader deadlines", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("expires a continuously emitting relay by total lifetime and preserves partial events", () => {
+    const source = new Subject<NostrEvent>();
+    const onError = vi.fn();
+    const loader = createTagValueLoader(() => source, "e", {
+      bufferSize: 1,
+      extraRelays: [relay],
+      requestTimeout: 100,
+      onError,
+    });
+    const values: NostrEvent[] = [];
+    let complete = false;
+    loader({ value: "a" }).subscribe({
+      next: (e) => values.push(e),
+      complete: () => {
+        complete = true;
+      },
+    });
+    for (let i = 0; i < 4; i++) {
+      vi.advanceTimersByTime(20);
+      source.next(event("a", String(i)));
+    }
+    expect(complete).toBe(false);
+    vi.advanceTimersByTime(20);
+    expect(complete).toBe(true);
+    expect(values).toHaveLength(4);
+    expect(source.observed).toBe(false);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), { source: "relay", relay });
+    loader.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("expires a silent cache without discarding relay results", () => {
+    const cache = new Subject<NostrEvent>();
+    const onError = vi.fn();
+    const loader = createTagValueLoader(() => of(event("a")), "e", {
+      bufferSize: 1,
+      extraRelays: [relay],
+      requestTimeout: 100,
+      cacheRequest: () => cache,
+      onError,
+    });
+    const values: NostrEvent[] = [];
+    let complete = false;
+    loader({ value: "a" }).subscribe({
+      next: (e) => values.push(e),
+      complete: () => {
+        complete = true;
+      },
+    });
+    expect(values).toEqual([event("a")]);
+    expect(complete).toBe(false);
+    vi.advanceTimersByTime(100);
+    expect(complete).toBe(true);
+    expect(cache.observed).toBe(false);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), { source: "cache" });
+    loader.stop();
+  });
+
+  it("allows disabling deadlines", () => {
+    const source = new Subject<NostrEvent>();
+    const loader = createTagValueLoader(() => source, "e", {
+      bufferSize: 1,
+      extraRelays: [relay],
+      requestTimeout: Infinity,
+    });
+    loader({ value: "a" }).subscribe();
+    vi.advanceTimersByTime(60000);
+    expect(source.observed).toBe(true);
+    loader.stop();
+    expect(source.observed).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
