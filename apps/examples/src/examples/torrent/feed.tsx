@@ -1,22 +1,26 @@
 /**
- * Display torrent files shared on Nostr with metadata and download information
- * @tags nip-35, torrent, feed, files
- * @related feed/relay-timeline
+ * Display torrent files shared on Nostr with metadata, download information and NIP-22 comments
+ * @tags nip-35, nip-22, torrent, feed, files, comments
+ * @related torrent/publisher, torrent/search, torrent/manager, comment/feed
  */
-import { Reaction, Torrent, Zap } from "applesauce-common/casts";
-import { TORRENT_KIND } from "applesauce-common/helpers";
+import { CreateComment } from "applesauce-actions/actions";
+import { ActionRunner } from "applesauce-actions";
+import { Comment, Reaction, Torrent, Zap } from "applesauce-common/casts";
+import { COMMENT_KIND, TORRENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
 import { EventStore, mapEventsToStore } from "applesauce-core";
-import { Filter, NostrEvent, persistEventsToCache } from "applesauce-core/helpers";
+import { Filter, NostrEvent, persistEventsToCache, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useState } from "react";
+import type { ISigner } from "applesauce-signers";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BehaviorSubject } from "rxjs";
+import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
 
 // Setup event store
@@ -113,6 +117,81 @@ function ZapItem({ zap }: { zap: Zap }) {
   );
 }
 
+// Optional signer for posting comments
+const signer$ = new BehaviorSubject<ISigner | null>(null);
+
+/** Posts a NIP-22 comment on the torrent with the CreateComment action */
+function CommentBox({ torrent, relay }: { torrent: Torrent; relay: string }) {
+  const signer = use$(signer$);
+  const [showLogin, setShowLogin] = useState(false);
+  const [text, setText] = useState("");
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Publish to the user's outboxes and the parent author's inboxes, plus the relay this feed reads from
+  const actions = useMemo(
+    () =>
+      signer &&
+      new ActionRunner(eventStore, signer, async (event, relays) => {
+        await pool.publish(relaySet(relays ?? [], [relay]), event);
+      }),
+    [signer, relay],
+  );
+
+  if (!actions) {
+    if (showLogin) return <LoginView onLogin={(next) => signer$.next(next)} />;
+    return (
+      <button className="btn btn-sm btn-outline" onClick={() => setShowLogin(true)}>
+        Log in to comment
+      </button>
+    );
+  }
+
+  const post = async () => {
+    setPosting(true);
+    setError(null);
+    try {
+      await actions.run(CreateComment, torrent.event, text.trim());
+      setText("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to post comment");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <textarea
+        className="textarea w-full"
+        rows={2}
+        placeholder="Write a comment..."
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button className="btn btn-sm btn-primary self-end" disabled={posting || !text.trim()} onClick={post}>
+        {posting ? "Posting..." : "Comment"}
+      </button>
+      {error && <div className="text-error text-sm">{error}</div>}
+    </div>
+  );
+}
+
+/** Component to render a single NIP-22 comment */
+function CommentItem({ comment }: { comment: Comment }) {
+  const profile = use$(comment.author.profile$);
+
+  return (
+    <div className="border-l-2 border-base-300 pl-3">
+      <div className="flex items-center gap-2 text-sm mb-1">
+        <span className="font-medium">{profile?.displayName || comment.author.npub}</span>
+        <time className="text-base-content/60">{comment.createdAt.toLocaleString()}</time>
+      </div>
+      <p className="whitespace-pre-wrap">{comment.event.content}</p>
+    </div>
+  );
+}
+
 /** Component to render a single torrent with reactions and zaps */
 function TorrentItem({ torrent }: { torrent: Torrent }) {
   const profile = use$(torrent.author.profile$);
@@ -144,10 +223,10 @@ function TorrentItem({ torrent }: { torrent: Torrent }) {
 
   return (
     <div
-      className="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
+      className="border border-base-300 rounded-box bg-base-100 cursor-pointer hover:border-primary"
       onClick={() => selectedTorrent$.next(torrent)}
     >
-      <div className="card-body">
+      <div className="p-4">
         <div className="flex items-center gap-3 mb-2">
           <div className="avatar">
             <div className="w-10 rounded-full">
@@ -259,10 +338,21 @@ function TorrentItem({ torrent }: { torrent: Torrent }) {
 }
 
 /** Component for the full torrent view */
-function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void }) {
+function TorrentView({ torrent, relay, onBack }: { torrent: Torrent; relay: string; onBack: () => void }) {
   const profile = use$(torrent.author.profile$);
   const reactions = use$(torrent.reactions$);
   const zaps = use$(torrent.zaps$);
+  const comments = use$(torrent.comments$);
+
+  // Load NIP-22 comments that reply directly to this torrent
+  use$(
+    () =>
+      pool
+        .relay(relay)
+        .subscription({ kinds: [COMMENT_KIND], "#e": [torrent.id] })
+        .pipe(mapEventsToStore(eventStore)),
+    [relay, torrent.id],
+  );
 
   const displayName = profile?.displayName || torrent.author.npub;
   const picture = profile?.picture || `https://robohash.org/${torrent.author.pubkey}.png`;
@@ -290,8 +380,8 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
           Back to Feed
         </button>
 
-        <div className="card bg-base-100 shadow-lg">
-          <div className="card-body">
+        <div className="border border-base-300 rounded-box bg-base-100">
+          <div className="p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="avatar">
                 <div className="w-12 rounded-full">
@@ -308,7 +398,7 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
             <h1 className="text-4xl font-bold mb-4">{torrent.title || "Untitled Torrent"}</h1>
 
             {/* Torrent Info */}
-            <div className="mb-6 p-4 bg-base-200 rounded-lg">
+            <div className="mb-6 p-4 border border-base-300 rounded-box">
               <div className="space-y-2 text-sm">
                 <div>
                   <span className="font-medium">Info Hash: </span>
@@ -320,10 +410,25 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
                     <span>{torrent.category}</span>
                   </div>
                 )}
-                {torrent.categoryPath && (
+                {torrent.categoryPathParts.length > 0 && (
                   <div>
                     <span className="font-medium">Category Path: </span>
-                    <span>{torrent.categoryPath}</span>
+                    <span>{torrent.categoryPathParts.join(" › ")}</span>
+                  </div>
+                )}
+                {torrent.externalIdentifiers.length > 0 && (
+                  <div>
+                    <span className="font-medium">External IDs: </span>
+                    <span>{torrent.externalIdentifiers.map((id) => id.identifier).join(", ")}</span>
+                  </div>
+                )}
+                {torrent.searchTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {torrent.searchTags.map((tag) => (
+                      <span key={tag} className="badge badge-outline">
+                        #{tag}
+                      </span>
+                    ))}
                   </div>
                 )}
                 {torrent.files && torrent.files.length > 0 && (
@@ -427,6 +532,17 @@ function TorrentView({ torrent, onBack }: { torrent: Torrent; onBack: () => void
                 </div>
               </div>
             )}
+
+            {/* NIP-22 Comments */}
+            <div className="mt-6 pt-6 border-t border-base-300/50">
+              <h2 className="font-semibold mb-3">Comments ({comments?.length ?? 0})</h2>
+              <CommentBox torrent={torrent} relay={relay} />
+              <div className="flex flex-col gap-3 mt-4">
+                {comments?.map((comment) => (
+                  <CommentItem key={comment.id} comment={comment} />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -456,7 +572,7 @@ export default function TorrentFeed() {
   );
 
   if (selectedTorrent) {
-    return <TorrentView torrent={selectedTorrent} onBack={() => selectedTorrent$.next(null)} />;
+    return <TorrentView torrent={selectedTorrent} relay={relay} onBack={() => selectedTorrent$.next(null)} />;
   }
 
   return (
