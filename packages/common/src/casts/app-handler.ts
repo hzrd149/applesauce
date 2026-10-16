@@ -1,12 +1,13 @@
 import { ChainableObservable } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   EventPointer,
   getAddressPointerForEvent,
   ProfilePointer,
 } from "applesauce-core/helpers/pointers";
-import { of } from "rxjs";
+import { getProfileContent, isValidProfile, ProfileContent } from "applesauce-core/helpers/profile";
+import { map, of } from "rxjs";
 import {
   AppHandlerEvent,
   createHandlerLink,
@@ -59,6 +60,10 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
   get description() {
     return getHandlerDescription(this.event);
   }
+  /** The handler's own kind:0-style metadata, or undefined when it uses the author's profile */
+  get metadata(): ProfileContent | undefined {
+    return isValidProfile(this.event) ? getProfileContent(this.event) : undefined;
+  }
   /** The event kinds the handler supports */
   get supportedKinds() {
     return getHandlerSupportedKinds(this.event);
@@ -85,6 +90,16 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
     return createHandlerLink(this.event, pointer, platform);
   }
 
+  /** Subscribes to the handler's metadata, falling back to the author's kind:0 profile when its content is empty */
+  get metadata$(): ChainableObservable<ProfileContent | undefined> {
+    return this.$$ref("metadata$", (store) =>
+      this.metadata
+        ? of(this.metadata)
+        : store
+            .replaceable({ kind: kinds.Metadata, pubkey: this.event.pubkey })
+            .pipe(map((profile) => (isValidProfile(profile) ? getProfileContent(profile) : undefined))),
+    );
+  }
   /** Subscribes to the named nsite from the `latest` tag */
   get latest$(): ChainableObservable<NamedNsite | undefined> {
     return this.$$ref("latest$", (store) =>

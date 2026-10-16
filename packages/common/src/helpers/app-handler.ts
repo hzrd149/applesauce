@@ -44,6 +44,7 @@ export interface ClientTag {
 
 const LatestSymbol = Symbol.for("app-handler-latest");
 const NextSymbol = Symbol.for("app-handler-next");
+const KindsSymbol = Symbol.for("app-handler-kinds");
 
 /** Checks if an event is a valid NIP-89 handler information event (kind 31990) */
 export function isValidAppHandler(event?: NostrEvent): event is AppHandlerEvent {
@@ -88,7 +89,9 @@ export function getClientTag(event: NostrEvent): ClientTag | undefined {
 
 /** Returns an array of supported kinds for a given handler */
 export function getHandlerSupportedKinds(handler: NostrEvent): number[] {
-  return processTags(handler.tags, (t) => (t[0] === "k" && t[1] ? parseInt(t[1]) : undefined));
+  return getOrComputeCachedValue(handler, KindsSymbol, () =>
+    processTags(handler.tags, (t) => (t[0] === "k" && /^\d+$/.test(t[1] ?? "") ? parseInt(t[1]) : undefined)),
+  );
 }
 
 /** Returns the name of the handler */
@@ -156,7 +159,7 @@ export function createHandlerAddressLink(
   pointer: AddressPointer,
   platform: HandlerLinkPlatform = "web",
 ): string | undefined {
-  // First attempt to use a nevent link, then fallback to note
+  // First attempt to use a naddr link, then fallback to the generic link
   return (
     getHandlerLinkTemplate(handler, platform, "naddr")?.replace("<bech32>", naddrEncode(pointer)) ||
     getHandlerLinkTemplate(handler, platform)?.replace("<bech32>", naddrEncode(pointer))

@@ -38,6 +38,8 @@ describe("exports", () => {
         "NewFavoriteRelays",
         "NewSearchRelays",
         "PinNote",
+        "RecommendAppHandler",
+        "RemoveAppHandlerRecommendation",
         "RemoveBlockedRelay",
         "RemoveBlossomServer",
         "RemoveDirectMessageRelay",

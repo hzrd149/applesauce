@@ -3,21 +3,17 @@
  * @tags nip-19, nip-89, misc, links, encoding
  * @related misc/app-data
  */
-import {
-  createHandlerLink,
-  getHandlerDescription,
-  getHandlerName,
-  getHandlerPicture,
-  getHandlerSupportedKinds,
-} from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore, mapEventsToTimeline, Models } from "applesauce-core";
-import { isAddressPointer, isEventPointer } from "applesauce-core/helpers";
+import { AppHandler } from "applesauce-common/casts";
+import { APP_HANDLER_KIND } from "applesauce-common/helpers";
+import { AppHandlersModel } from "applesauce-common/models";
+import { castTimelineStream } from "applesauce-common/observable";
+import { EventStore, mapEventsToStore, Models } from "applesauce-core";
+import { isAddressPointer, isEventPointer, kinds } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { AddressPointer, decodePointer, EventPointer, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { useRef, useMemo, useState } from "react";
-import { map } from "rxjs";
+import { endWith, ignoreElements, startWith } from "rxjs";
 
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import RelayPicker from "../../components/relay-picker";
@@ -83,29 +79,32 @@ function HandlerCard({
   handler,
   pointer,
 }: {
-  handler: NostrEvent;
+  handler: AppHandler;
   pointer: AddressPointer | EventPointer | ProfilePointer;
 }) {
   const modal = useRef<HTMLDialogElement>(null);
-  const link = createHandlerLink(handler, pointer);
+  const link = handler.link(pointer);
+  // Falls back to the author's kind:0 profile when the handler has no metadata of its own
+  const metadata = use$(handler.metadata$);
+  const name = metadata?.display_name || metadata?.name || handler.name;
 
   return (
-    <div key={handler.id} className="border border-base-300 bg-base-100 ">
+    <div className="border border-base-300 bg-base-100 ">
       <figure className="px-4 pt-4">
         <img
-          src={getHandlerPicture(handler, `https://robohash.org/${handler.pubkey}.png`)}
-          alt={getHandlerName(handler)}
+          src={metadata?.picture || `https://robohash.org/${handler.event.pubkey}.png`}
+          alt={name}
           className="rounded-xl w-24 h-24 object-cover"
         />
       </figure>
       <div className="p-4">
-        <h2 className="font-semibold">{getHandlerName(handler)}</h2>
+        <h2 className="font-semibold">{name}</h2>
 
-        <p className="text-sm">{getHandlerDescription(handler)}</p>
+        <p className="text-sm">{metadata?.about}</p>
 
         <div>
           <p className="text-sm font-bold">Supported kinds:</p>
-          <p className="text-sm text-secondary ">{getHandlerSupportedKinds(handler).join(", ")}</p>
+          <p className="text-sm text-secondary ">{handler.supportedKinds.join(", ")}</p>
         </div>
 
         <div className="flex gap-2 mt-2 items-center">
@@ -125,7 +124,7 @@ function HandlerCard({
       {/* Open the modal using document.getElementById('ID').showModal() method */}
       <dialog className="modal" ref={modal}>
         <div className="modal-box w-11/12 max-w-5xl">
-          <pre>{JSON.stringify(handler, null, 2)}</pre>
+          <pre>{JSON.stringify(handler.event, null, 2)}</pre>
         </div>
         <form method="dialog" className="modal-backdrop">
           <button>close</button>
@@ -161,33 +160,31 @@ export default function LinkHandlerExample() {
     }
   }, [input]);
 
-  // Second step: Fetch app handlers based on the entity type
-  // This observable only runs after parsing is complete
-  const handlers = use$(() => {
-    if (!pointer) return undefined;
+  // The event kind the handlers need to support (kind 0 for profiles)
+  const kind = !pointer
+    ? undefined
+    : isAddressPointer(pointer)
+      ? pointer.kind
+      : isEventPointer(pointer)
+        ? (pointer.kind ?? kinds.ShortTextNote)
+        : kinds.Metadata;
 
-    // Get the handler kind for the link
-    let filter: Filter = {
-      kinds: [kinds.Handlerinformation],
-    };
+  // Second step: request NIP-89 handlers for the kind into the store and track when the request finishes
+  const isLoading = use$(() => {
+    if (kind === undefined) return undefined;
+    return pool
+      .request([relay], { kinds: [APP_HANDLER_KIND], "#k": [String(kind)] })
+      .pipe(mapEventsToStore(eventStore), ignoreElements(), endWith(false), startWith(true));
+  }, [kind, relay]);
 
-    // Set kind filter
-    if (isEventPointer(pointer)) filter["#k"] = [String(pointer.kind ?? 1)];
-    else if (isAddressPointer(pointer)) filter["#k"] = [String(pointer.kind)];
-
-    // Create an observable that requests NIP-89 application handlers
-    return pool.request([relay], filter).pipe(
-      // Collect all handlers into an array
-      mapEventsToStore(eventStore),
-      // Accumulate handlers
-      mapEventsToTimeline(),
-      // Hack to recreate the array for react
-      map((t) => [...t]),
-    );
-  }, [pointer, relay]);
-
-  // Subscribe to the handlers observable
-  const isLoading = !!pointer && !handlers;
+  // Render the handlers from the store so replaceable revisions update in place
+  const handlers = use$(
+    () =>
+      kind === undefined
+        ? undefined
+        : eventStore.model(AppHandlersModel, kind).pipe(castTimelineStream(AppHandler, eventStore)),
+    [kind],
+  );
 
   return (
     <div className="container mx-auto my-8 p-4">

@@ -51,6 +51,18 @@ describe("getHandlerSupportedKinds", () => {
     expect(getHandlerSupportedKinds(mockHandler)).toEqual([0, 1, 30023]);
   });
 
+  it("should ignore non-numeric k tags", () => {
+    const event = user.event({
+      kind: kinds.Handlerinformation,
+      tags: [
+        ["d", "x"],
+        ["k", "abc"],
+        ["k", "1"],
+      ],
+    });
+    expect(getHandlerSupportedKinds(event)).toEqual([1]);
+  });
+
   it("should return an empty array when no kinds are specified", () => {
     const handlerWithoutKinds = user.event({
       kind: kinds.Handlerinformation,

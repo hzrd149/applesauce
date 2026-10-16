@@ -1,4 +1,5 @@
 export * from "./app-data.js";
+export * from "./app-handlers.js";
 export * from "./blocked-relays.js";
 export * from "./blossom.js";
 export * from "./bookmarks.js";

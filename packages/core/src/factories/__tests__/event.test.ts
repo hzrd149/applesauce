@@ -20,4 +20,11 @@ describe("EventFactory", () => {
       expect(event.created_at).toBe(timestamp);
     });
   });
+
+  describe("clientTag", () => {
+    it("should add a NIP-89 client tag", async () => {
+      const event = await EventFactory.fromKind(1).clientTag("App", { pubkey: user.pubkey, identifier: "app" });
+      expect(event.tags).toEqual([["client", "App", `31990:${user.pubkey}:app`]]);
+    });
+  });
 });

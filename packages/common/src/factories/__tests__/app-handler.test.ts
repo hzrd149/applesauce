@@ -32,5 +32,7 @@ describe("AppRecommendationFactory", () => {
     expect(getRecommendedHandlers(rec)).toHaveLength(1);
     const modified = await AppRecommendationFactory.modify(rec).removeHandler(address).sign(user);
     expect(getRecommendedHandlers(modified)).toEqual([]);
+    expect((await AppRecommendationFactory.create(1).sign(user)).tags).toEqual([["d", "1"]]);
+    expect(() => AppRecommendationFactory.modify(user.note("hi"))).toThrow();
   });
 });

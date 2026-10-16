@@ -201,6 +201,11 @@ export default defineConfig({
         ],
       },
       {
+        text: "NIPs",
+        collapsed: false,
+        items: [{ text: "NIP-89 App Handlers", link: "/nips/nip-89" }],
+      },
+      {
         text: "Storing events",
         collapsed: false,
         link: "/storage",
