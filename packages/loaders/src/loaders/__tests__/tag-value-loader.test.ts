@@ -452,3 +452,57 @@ it("preserves source identity when an asynchronous store returns one canonical e
   expect(add).toHaveBeenCalledTimes(2);
   loader.stop();
 });
+
+describe("tag value loader in-flight sharing", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("replays events to late callers with covered relay hints and refreshes after completion", () => {
+    const source = new Subject<NostrEvent>();
+    const request = vi.fn(() => source);
+    const loader = createTagValueLoader(request, "e", { bufferSize: 1, extraRelays: [relay] });
+    loader({ value: "a", relays: [other] }).subscribe();
+    source.next(event("a"));
+    const values: NostrEvent[] = [];
+    loader({ value: "a" }).subscribe((e) => values.push(e));
+    expect(values).toEqual([event("a")]);
+    expect(request).toHaveBeenCalledTimes(2);
+    source.complete();
+    loader({ value: "a" }).subscribe();
+    expect(request).toHaveBeenCalledTimes(3);
+    loader.stop();
+  });
+
+  it("starts a new request when existing relay coverage is insufficient", () => {
+    const request = vi.fn(() => new Subject<NostrEvent>());
+    const loader = createTagValueLoader(request, "e", { bufferSize: 1 });
+    loader({ value: "a", relays: [relay] }).subscribe();
+    loader({ value: "a", relays: [other] }).subscribe();
+    expect(request).toHaveBeenCalledTimes(2);
+    loader.stop();
+  });
+
+  it.each([false, true])("does not share between forced and ordinary callers (first force=%s)", (force) => {
+    const request = vi.fn(() => new Subject<NostrEvent>());
+    const loader = createTagValueLoader(request, "e", { bufferSize: 1, extraRelays: [relay] });
+    loader({ value: "a", force }).subscribe();
+    loader({ value: "a", force: !force }).subscribe();
+    expect(request).toHaveBeenCalledTimes(2);
+    loader.stop();
+  });
+
+  it.each([{ shareInflight: false, extraRelays: [relay] }, { extraRelays: of([relay]) }])(
+    "allows independent requests when sharing is disabled or routing is dynamic",
+    (opts) => {
+      const request = vi.fn(() => new Subject<NostrEvent>());
+      const loader = createTagValueLoader(request, "e", { bufferSize: 1, ...opts });
+      loader({ value: "a" }).subscribe();
+      loader({ value: "a" }).subscribe();
+      expect(request).toHaveBeenCalledTimes(2);
+      loader.stop();
+    },
+  );
+});

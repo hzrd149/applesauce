@@ -52,6 +52,7 @@ it("compacts 1000 repeated callers to 10 values per batch and delivers to every 
   const loader = createTagValueLoader(request, "e", {
     bufferSize: 200,
     maxConcurrentBatches: Infinity,
+    shareInflight: false,
     extraRelays: ["wss://relay.test/"],
   });
   const deliveries = Array.from({ length: 1000 }, () => 0);
@@ -124,6 +125,40 @@ it("drops queued work and active deadlines on stop", () => {
   expect(state.starts).toBe(1);
   loader.stop();
   expect(completed).toBe(100);
+  expect(state.active).toBe(0);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("shares one running target across 1000 callers and replays 2000 unique events", () => {
+  const { state, sources, request } = transport();
+  const loader = createTagValueLoader(request, "e", { bufferSize: 1, extraRelays: ["wss://relay.test/"] });
+  let early = 0;
+  loader({ value: "a" }).subscribe(() => {
+    early++;
+  });
+  for (let i = 0; i < 2000; i++) {
+    const event: NostrEvent = {
+      id: String(i),
+      pubkey: "a".repeat(64),
+      sig: "b".repeat(128),
+      kind: 7,
+      created_at: 1,
+      content: "+",
+      tags: [["e", "a"]],
+    };
+    sources[0].next(event);
+    sources[0].next({ ...event });
+  }
+  const deliveries = Array.from({ length: 999 }, () => 0);
+  for (let i = 0; i < deliveries.length; i++)
+    loader({ value: "a" }).subscribe(() => {
+      deliveries[i]++;
+    });
+  expect(early).toBe(2000);
+  expect(deliveries.every((count) => count === 2000)).toBe(true);
+  expect(state.starts).toBe(1);
+  sources[0].complete();
+  loader.stop();
   expect(state.active).toBe(0);
   expect(vi.getTimerCount()).toBe(0);
 });

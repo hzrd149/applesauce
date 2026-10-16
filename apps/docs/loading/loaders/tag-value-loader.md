@@ -37,6 +37,7 @@ The `createTagValueLoader` function accepts these options:
 
 - `bufferTime`: Time interval to buffer requests in ms (default 1000)
 - `bufferSize`: Max buffer size (default 200)
+- `shareInflight`: Shares compatible queued or running requests (default true, disabled automatically for observable `extraRelays`)
 - `maxConcurrentBatches`: Maximum running batches (default 4, `Infinity` disables the limit)
 - `relayConcurrency`: Maximum running relay requests per batch (default 8, `Infinity` disables the limit)
 - `requestTimeout`: Total lifetime of each cache request, relay request, or extra relay discovery in ms (default 10000, `Infinity` disables the deadline)
@@ -58,6 +59,8 @@ Started batches continue warming the store after consumers unsubscribe, within t
 Explicit relay hints start without waiting for observable `extraRelays`. The loader uses the first emitted relay list to request only relay/value pairs not already covered by hints, within the same relay concurrency limit. Empty discovery completes normally; failed or timed-out discovery reports `{ source: "routing" }` through `onError` without cancelling hinted requests.
 
 Set `force: true` on a pointer to skip cache lookup for that caller and receive only relay results. In a mixed batch, ordinary callers can still query the same value from cache; those cache arrivals are excluded from forced callers. A relay arrival is delivered even when the same event arrived from cache first, and ordinary callers still receive that event only once. Relay results may reuse the store’s canonical event object, so `force` does not bypass the event store.
+
+Repeated calls for the same value and force mode join a queued or running request when its relay coverage includes the new caller’s hints. Late joiners receive previously delivered events, and a call after completion starts a new fetch. Sharing applies only to static relay routing; set `shareInflight: false` to request independently. Replay retains matching events until the batch finishes, so high-volume targets can use more memory while running.
 
 ## Working with Relay Pools
 

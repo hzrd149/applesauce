@@ -50,6 +50,8 @@ export type TagValueLoaderOptions = {
   bufferTime?: number;
   /** Max buffer size ( default 200 ) */
   bufferSize?: number;
+  /** Shares queued or running requests with matching force mode and covered static relay hints ( default true ) */
+  shareInflight?: boolean;
   /** Maximum running batches ( default 4 ) */
   maxConcurrentBatches?: number;
   /** Maximum running relay requests per batch ( default 8 ) */
@@ -210,8 +212,23 @@ export function createTagValueLoader(
               ),
             )
           : identity,
+        store ? distinct((result) => JSON.stringify([result.cache, result.event.id])) : identity,
       ),
-    { signal: opts?.signal, maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4 },
+    {
+      signal: opts?.signal,
+      maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4,
+      inflight:
+        (opts?.shareInflight ?? true) && !isObservable(opts?.extraRelays)
+          ? {
+              key: (pointer) => JSON.stringify([pointer.value, !!pointer.force]),
+              covers: (running, pointer) => {
+                const extra = opts?.extraRelays as string[] | undefined;
+                const covered = new Set(mergeRelaySets(running.relays, extra));
+                return mergeRelaySets(pointer.relays, extra).every((relay) => covered.has(relay));
+              },
+            }
+          : undefined,
+    },
   );
 
   const load = (pointer: TagValuePointer) =>
