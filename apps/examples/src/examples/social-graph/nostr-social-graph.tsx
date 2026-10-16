@@ -1,7 +1,7 @@
 /**
  * Load and display social graph connections (follows, followers) between users
  * @tags loader, social-graph, follows
- * @related loader/parallel-async-loading
+ * @related loader/social-graph, loader/parallel-async-loading
  */
 import { castUser, User } from "applesauce-common/casts/user";
 import { EventStore } from "applesauce-core";
