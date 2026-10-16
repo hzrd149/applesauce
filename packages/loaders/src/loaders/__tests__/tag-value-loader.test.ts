@@ -275,3 +275,84 @@ describe("tag value loader deadlines", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("tag value loader relay discovery", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("starts hints immediately and times out silent relay discovery", () => {
+    const routes = new Subject<string[]>();
+    const request = vi.fn(() => of(event("a")));
+    const onError = vi.fn();
+    const loader = createTagValueLoader(request, "e", {
+      bufferSize: 1,
+      extraRelays: routes,
+      requestTimeout: 100,
+      onError,
+    });
+    const values: NostrEvent[] = [];
+    let complete = false;
+    loader({ value: "a", relays: [relay] }).subscribe({
+      next: (e) => values.push(e),
+      complete: () => {
+        complete = true;
+      },
+    });
+    expect(values).toEqual([event("a")]);
+    expect(request).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(100);
+    expect(complete).toBe(true);
+    expect(routes.observed).toBe(false);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), { source: "routing" });
+    loader.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([EMPTY, throwError(() => new Error("routing failed"))])(
+    "preserves hints when discovery ends without relays",
+    (extraRelays) => {
+      const request = vi.fn(() => of(event("a")));
+      const loader = createTagValueLoader(request, "e", { bufferSize: 1, extraRelays });
+      let complete = false;
+      loader({ value: "a", relays: [relay] }).subscribe({
+        complete: () => {
+          complete = true;
+        },
+      });
+      expect(request).toHaveBeenCalledWith([relay], [{ "#e": ["a"] }]);
+      expect(complete).toBe(true);
+      loader.stop();
+    },
+  );
+
+  it("shares the concurrency budget and requests only uncovered values on discovered relays", () => {
+    const routes = new Subject<string[]>();
+    const sources: Subject<NostrEvent>[] = [];
+    const request = vi.fn(() => {
+      const source = new Subject<NostrEvent>();
+      sources.push(source);
+      return source;
+    });
+    const loader = createTagValueLoader(request, "e", { bufferSize: 2, relayConcurrency: 1, extraRelays: routes });
+    loader({ value: "a", relays: [relay] }).subscribe();
+    loader({ value: "b", relays: [other] }).subscribe();
+    routes.next([relay, other]);
+    expect(request).toHaveBeenCalledTimes(1);
+    sources[0].complete();
+    sources[1].complete();
+    sources[2].complete();
+    sources[3].complete();
+    expect(request.mock.calls).toEqual([
+      [[relay], [{ "#e": ["a"] }]],
+      [[other], [{ "#e": ["b"] }]],
+      [[other], [{ "#e": ["a"] }]],
+      [[relay], [{ "#e": ["b"] }]],
+    ]);
+    expect(routes.observed).toBe(false);
+    loader.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});

@@ -39,21 +39,23 @@ The `createTagValueLoader` function accepts these options:
 - `bufferSize`: Max buffer size (default 200)
 - `maxConcurrentBatches`: Maximum running batches (default 4, `Infinity` disables the limit)
 - `relayConcurrency`: Maximum running relay requests per batch (default 8, `Infinity` disables the limit)
-- `requestTimeout`: Total lifetime of each cache or relay request in ms (default 10000, `Infinity` disables the deadline)
+- `requestTimeout`: Total lifetime of each cache request, relay request, or extra relay discovery in ms (default 10000, `Infinity` disables the deadline)
 - `kinds`: Restrict queries to specific kinds
 - `authors`: Restrict queries to specific authors
 - `since`: Restrict queries since timestamp
 - `cacheRequest`: A method used to load events from a local cache
-- `onError`: Receives a failed source’s error and `{ source: "cache" }` or `{ source: "relay", relay }` while other sources continue
+- `onError`: Receives a failed source’s error and `{ source: "cache" }`, `{ source: "relay", relay }`, or `{ source: "routing" }` while other sources continue
 - `extraRelays`: An array (or observable array) of relays to always fetch from
 - `eventStore`: An event store used to deduplicate events (defaults to an in-memory store, pass `null` to disable)
 - `signal`: An `AbortSignal` that tears down the loader when aborted
 
 Cache and individual relay failures are skipped, including exceptions thrown when starting a request. Events already received remain available, and healthy sources continue until they complete. If every source fails, the loader completes without events; use `onError` to distinguish failures from an empty result. Exceptions thrown by `onError` propagate to subscribers.
 
-With the default limits, one loader runs at most 32 relay requests and four cache requests at once. Relay deadlines start when each request is subscribed, excluding time spent queued. Events do not reset the deadline. A timed-out source is cancelled and reported through `onError`; other sources continue. These limits do not bound the number of queued callers, and waiting for an observable `extraRelays` value is outside the source deadline.
+With the default limits, one loader runs at most 32 relay requests and four cache requests at once. Relay deadlines start when each request is subscribed, excluding time spent queued. Events do not reset the deadline. A timed-out source is cancelled and reported through `onError`; other sources continue. These limits do not bound the number of queued callers, and observable `extraRelays` discovery uses its own deadline of the same duration.
 
 Started batches continue warming the store after consumers unsubscribe, within their source deadlines. Queued batches whose consumers have all unsubscribed are skipped. Calling `stop()` or aborting `signal` cancels active requests and completes queued callers.
+
+Explicit relay hints start without waiting for observable `extraRelays`. The loader uses the first emitted relay list to request only relay/value pairs not already covered by hints, within the same relay concurrency limit. Empty discovery completes normally; failed or timed-out discovery reports `{ source: "routing" }` through `onError` without cancelling hinted requests.
 
 ## Working with Relay Pools
 

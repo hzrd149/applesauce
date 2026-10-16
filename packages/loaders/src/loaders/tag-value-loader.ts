@@ -16,10 +16,12 @@ import {
   throwError,
   mergeMap,
   from,
+  isObservable,
+  take,
 } from "rxjs";
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
-import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
+import { batchLoader, Loader } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
 
@@ -36,6 +38,7 @@ export type TagValuePointer = {
 /** The source of a failed tag value request */
 export type TagValueLoaderErrorSource =
   | { /** The failed cache source */ source: "cache" }
+  | { /** The failed extra relay discovery source */ source: "routing" }
   | { /** The failed relay source */ source: "relay"; /** The relay URL */ relay: string };
 
 /** Options for batching and fetching events by tag value */
@@ -48,7 +51,7 @@ export type TagValueLoaderOptions = {
   maxConcurrentBatches?: number;
   /** Maximum running relay requests per batch ( default 8 ) */
   relayConcurrency?: number;
-  /** Maximum cache or relay request lifetime in ms ( default 10000, Infinity disables ) */
+  /** Maximum cache, relay, or relay discovery lifetime in ms ( default 10000, Infinity disables ) */
   requestTimeout?: number;
   /** Restrict queries to specific kinds */
   kinds?: number[];
@@ -58,7 +61,7 @@ export type TagValueLoaderOptions = {
   since?: number;
   /** Method used to load from the cache */
   cacheRequest?: CacheRequest;
-  /** A callback for cache and individual relay failures that are skipped while other sources continue */
+  /** A callback for cache, relay discovery, and individual relay failures that are skipped while other sources continue */
   onError?: (error: unknown, source: TagValueLoaderErrorSource) => void;
   /** An array of relays to always fetch from */
   extraRelays?: string[] | Observable<string[]>;
@@ -71,11 +74,11 @@ export type TagValueLoaderOptions = {
 /** A batched loader for events matching a tag value */
 export type TagValueLoader = Loader<TagValuePointer, NostrEvent>;
 
-function isolateSource(
-  load: () => Observable<NostrEvent>,
+function isolateSource<T>(
+  load: () => Observable<T>,
   source: TagValueLoaderErrorSource,
   opts?: TagValueLoaderOptions,
-): Observable<NostrEvent> {
+): Observable<T> {
   const duration = opts?.requestTimeout ?? 10000;
   return defer(load).pipe(
     // A total lifetime deadline, independent of how frequently events arrive.
@@ -119,34 +122,48 @@ export function relaysTagValueLoader(
   const filterTag: `#${string}` = `#${tagName}`;
 
   return (pointers) =>
-    unwrap(opts?.extraRelays, (extraRelays) => {
+    defer(() => {
       const baseFilter: Filter = {};
       if (opts?.kinds) baseFilter.kinds = opts.kinds;
       if (opts?.authors) baseFilter.authors = opts.authors;
       if (opts?.since !== undefined) baseFilter.since = opts.since;
 
-      // build request map for relays
-      const requestMap = pointers.reduce<Record<string, Filter>>((map, pointer) => {
-        const relays = mergeRelaySets(pointer.relays, extraRelays);
-
-        for (const relay of relays) {
-          if (!map[relay]) {
-            // create new filter for relay
-            map[relay] = { ...baseFilter, [filterTag]: [pointer.value] };
-          } else {
-            // map for relay already exists, add the tag value
-            map[relay][filterTag]!.push(pointer.value);
+      // Coverage belongs to this subscription, including relay requests still queued.
+      const covered = new Map<string, Set<string>>();
+      const tasks = (extraRelays?: string[], hints = true) => {
+        const filters = new Map<string, Set<string>>();
+        for (const pointer of pointers) {
+          for (const relay of mergeRelaySets(hints ? pointer.relays : undefined, extraRelays)) {
+            let values = covered.get(relay);
+            if (!values) covered.set(relay, (values = new Set()));
+            if (values.has(pointer.value)) continue;
+            values.add(pointer.value);
+            let pending = filters.get(relay);
+            if (!pending) filters.set(relay, (pending = new Set()));
+            pending.add(pointer.value);
           }
         }
-        return map;
-      }, {});
+        return Array.from(filters, ([relay, values]) =>
+          isolateSource(
+            () => request([relay], [{ ...baseFilter, [filterTag]: [...values] }]),
+            { source: "relay", relay },
+            opts,
+          ),
+        );
+      };
 
-      const requests = Object.entries(requestMap).map(([relay, filter]) => {
-        filter[filterTag] = unique(filter[filterTag]!);
-        return isolateSource(() => request([relay], [filter]), { source: "relay", relay }, opts);
-      });
+      const extraRelays = opts?.extraRelays;
+      const requests = isObservable(extraRelays)
+        ? merge(
+            from(tasks()),
+            isolateSource(() => extraRelays.pipe(take(1)), { source: "routing" }, opts).pipe(
+              mergeMap((relays) => from(tasks(relays, false))),
+            ),
+          )
+        : from(tasks(extraRelays));
 
-      return from(requests).pipe(mergeMap(identity, opts?.relayConcurrency ?? 8));
+      // Hints and discovered relays share the same concurrency budget.
+      return requests.pipe(mergeMap(identity, opts?.relayConcurrency ?? 8));
     });
 }
 
