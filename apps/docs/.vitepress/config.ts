@@ -201,6 +201,11 @@ export default defineConfig({
         ],
       },
       {
+        text: "NIPs",
+        collapsed: false,
+        items: [{ text: "NIP-35 Torrents", link: "/nips/nip-35" }],
+      },
+      {
         text: "Communities",
         collapsed: false,
         items: [
