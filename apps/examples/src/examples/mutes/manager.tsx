@@ -1,10 +1,8 @@
 /**
- * Manage your mute list to hide content from specific users
- * @tags nip-51, casting, mutes, moderation
- * @related casting/contacts
+ * Browse any user's mute list, or sign in to add and remove public and private mutes on your own
+ * @tags nip-51, casting, mutes, moderation, actions
+ * @related casting/contacts, contacts/manager
  */
-import { publishEvent } from "../../extra/publish";
-
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import {
@@ -17,784 +15,449 @@ import {
   UnmuteUser,
   UnmuteWord,
 } from "applesauce-actions/actions";
-import { Article, castUser, Note, User } from "applesauce-common/casts";
+import { castUser, Note, type User } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
-import { defined, EventStore } from "applesauce-core";
-import {
-  AddressPointer,
-  decodePointer,
-  EventPointer,
-  getReplaceableAddressFromPointer,
-  isEventPointer,
-  npubEncode,
-} from "applesauce-core/helpers";
+import { defined, EventStore, mapEventsToStore } from "applesauce-core";
+import { kinds, normalizeToEventPointer, normalizeToPubkey } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import {
+  BehaviorSubject,
+  endWith,
+  ignoreElements,
+  type Observable,
+  of,
+  startWith,
+  switchMap,
+  take,
+  timeout,
+} from "rxjs";
+
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
+import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 
-// Setup application state
-const signer$ = new BehaviorSubject<ISigner | null>(null);
-const pubkey$ = new BehaviorSubject<string | null>(null);
-const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
-// Setup event store and relay pool
+// The signed in account, only needed for editing
+const signer$ = new BehaviorSubject<ISigner | null>(null);
+const account$ = new BehaviorSubject<string | null>(null);
+
 const eventStore = new EventStore();
 const pool = new RelayPool();
+
+// Loads profiles, mute lists, and muted notes on demand
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
+
+// Mute actions publish to the outboxes of the mute list owner
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  // Get the users outboxes
-  if (relays?.length) {
-    await publishEvent(pool, relays, event);
-    return;
-  }
-  const outboxes = await castUser(event.pubkey, eventStore).outboxes$.$first(5_000, [
-    "wss://relay.damus.io/",
-    "wss://nos.lol/",
-  ]);
-
-  // Publish the event to the outboxes
-  await publishEvent(pool, outboxes.length ? outboxes : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+  await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
 });
 
-// Create unified event loader for the store
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: lookupRelays$,
-  // Few hard coded relays to load articles and notes without relay hints
-  extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
-});
+type OutboxLoad = { relays: string[]; fallback: boolean; done: boolean };
 
-function MuteHashtagForm({ onAdd }: { onAdd: (hashtag: string, hidden: boolean) => Promise<boolean> }) {
-  const [input, setInput] = useState("");
-
-  const [hidden, setHidden] = useState(false);
-
-  const handleAdd = async () => {
-    const hashtag = input.trim().toLowerCase().replace(/^#/, "");
-    if (!hashtag) return;
-    if (!(await onAdd(hashtag, hidden))) return;
-    setInput("");
-    setHidden(false);
-  };
-
-  return (
-    <div className="flex gap-2 items-end">
-      <div className="flex-1">
-        <label className="label">
-          <span className="label-text">Hashtag</span>
-        </label>
-        <input
-          type="text"
-          className="input input-bordered w-full"
-          placeholder="Enter hashtag (without #)..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleAdd()}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label className="label cursor-pointer">
-          <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
-        </label>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!input.trim()}>
-          Add
-        </button>
-      </div>
-    </div>
+/**
+ * Fetches a user's list from their outboxes, the source of truth for events they publish.
+ * The store only loads missing events, so without this a copy found on the lookup relays (before the NIP-65 list arrives) would never be refreshed.
+ */
+function loadFromOutboxes(user: User, kind: number): Observable<OutboxLoad> {
+  return user.outboxes$.pipe(
+    defined(),
+    take(1),
+    // Users without a NIP-65 relay list fall back to a few popular relays
+    timeout({ first: 10_000, with: () => of<string[]>([]) }),
+    switchMap((outboxes) => {
+      const fallback = outboxes.length === 0;
+      const relays = fallback ? FALLBACK_RELAYS : outboxes;
+      return pool
+        .request(relays, { kinds: [kind], authors: [user.pubkey] })
+        .pipe(
+          mapEventsToStore(eventStore),
+          ignoreElements(),
+          startWith({ relays, fallback, done: false }),
+          endWith({ relays, fallback, done: true }),
+        );
+    }),
   );
 }
 
-function MuteWordForm({ onAdd }: { onAdd: (word: string, hidden: boolean) => Promise<boolean> }) {
-  const [input, setInput] = useState("");
-
-  const [hidden, setHidden] = useState(false);
-
-  const handleAdd = async () => {
-    const word = input.trim().toLowerCase();
-    if (!word) return;
-    if (!(await onAdd(word, hidden))) return;
-    setInput("");
-    setHidden(false);
-  };
-
+function OutboxStatus({ load }: { load?: OutboxLoad }) {
   return (
-    <div className="flex gap-2 items-end">
-      <div className="flex-1">
-        <label className="label">
-          <span className="label-text">Word</span>
-        </label>
-        <input
-          type="text"
-          className="input input-bordered w-full"
-          placeholder="Enter word to mute..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleAdd()}
-        />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label className="label cursor-pointer">
-          <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
-        </label>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!input.trim()}>
-          Add
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MutePubkeyForm({ onAdd }: { onAdd: (pubkey: string, hidden: boolean) => Promise<boolean> }) {
-  const [pubkey, setPubkey] = useState("");
-
-  const [hidden, setHidden] = useState(false);
-
-  const handleAdd = async () => {
-    if (!pubkey) return;
-    if (!(await onAdd(pubkey, hidden))) return;
-    setPubkey("");
-    setHidden(false);
-  };
-
-  return (
-    <div className="flex gap-2 items-end">
-      <div className="flex-1">
-        <label className="label">
-          <span className="label-text">User</span>
-        </label>
-        <PubkeyPicker value={pubkey} onChange={(value: string) => setPubkey(value)} />
-      </div>
-      <div className="flex flex-col gap-2">
-        <label className="label cursor-pointer">
-          <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
-        </label>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!pubkey}>
-          Add
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MuteThreadForm({ onAdd }: { onAdd: (thread: EventPointer, hidden: boolean) => Promise<boolean> }) {
-  const [input, setInput] = useState("");
-
-  const [hidden, setHidden] = useState(false);
-
-  const pointer = useMemo(() => {
-    if (!input.trim()) return null;
-
-    try {
-      const result = decodePointer(input.trim().replace(/^nostr:/, ""));
-      if (result.type === "nevent") {
-        return result.data;
-      }
-      // Mute lists only support event threads, not address threads
-    } catch (error) {}
-    return null;
-  }, [input]);
-
-  const event = use$(() => (pointer ? eventStore.event(pointer) : undefined), [pointer]);
-
-  const handleAdd = async () => {
-    if (!pointer || !event || !isEventPointer(pointer)) return;
-    if (!(await onAdd(pointer, hidden))) return;
-    setInput("");
-    setHidden(false);
-  };
-
-  const isValid = pointer && isEventPointer(pointer);
-  const showError = input.trim() && !pointer;
-
-  return (
-    <>
-      <input
-        type="text"
-        className={`input input-bordered w-full ${showError ? "input-error" : ""}`}
-        placeholder="Paste nevent here..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-      />
-      {showError && (
-        <label className="label">
-          <span className="label-text-alt text-error">Only nevent is supported for muting threads</span>
-        </label>
+    <section className="flex flex-col gap-1">
+      <h2 className="font-semibold">Source</h2>
+      {!load ? (
+        <p className="text-sm text-base-content/60">Finding outbox relays…</p>
+      ) : (
+        <>
+          <p className="text-sm text-base-content/60">
+            {load.fallback
+              ? "No outbox relays published, using fallback relays"
+              : "Loaded from the user's outbox relays"}
+            {load.done ? "" : "…"}
+          </p>
+          {load.relays.map((relay) => (
+            <p key={relay} className="truncate font-mono text-sm">
+              {new URL(relay).host}
+            </p>
+          ))}
+        </>
       )}
-
-      {pointer && isEventPointer(pointer) ? (
-        <MutedThreadItem pointer={pointer} />
-      ) : pointer ? (
-        <div className="alert alert-error">
-          <span>Only event threads (nevent) are supported for muting. Address threads (naddr) are not supported.</span>
-        </div>
-      ) : null}
-      <div className="flex gap-2 justify-end mt-2">
-        <label className="label cursor-pointer">
-          <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} className="checkbox" />
-        </label>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!isValid || !event}>
-          Add
-        </button>
-      </div>
-    </>
+    </section>
   );
 }
 
-function MuteList<T>({
-  items,
-  onRemove,
-  renderItem,
-  emptyMessage,
-}: {
-  items: T[];
-  onRemove: (item: T) => void;
-  renderItem: (item: T) => React.ReactNode;
-  emptyMessage?: string;
-}) {
-  if (items.length === 0) {
-    return emptyMessage ? <div className="alert alert-info alert-soft">{emptyMessage}</div> : null;
+type Kind = "pubkeys" | "threads" | "words" | "hashtags";
+type Entry = { kind: Kind; value: string; hidden: boolean };
+
+const KINDS: { kind: Kind; label: string; noun: string; mute: typeof MuteUser; unmute: typeof UnmuteUser }[] = [
+  { kind: "pubkeys", label: "Users", noun: "User", mute: MuteUser, unmute: UnmuteUser },
+  { kind: "threads", label: "Threads", noun: "Thread", mute: MuteThread, unmute: UnmuteThread },
+  { kind: "words", label: "Words", noun: "Word", mute: MuteWord, unmute: UnmuteWord },
+  { kind: "hashtags", label: "Hashtags", noun: "Hashtag", mute: MuteHashtag, unmute: UnmuteHashtag },
+];
+
+const entryKey = (e: Entry) => `${e.kind}:${e.value}:${e.hidden}`;
+
+/** Detects what a single input should mute: npub / nevent / #tag / word */
+function parseInput(input: string): Omit<Entry, "hidden"> | null {
+  const text = input.trim().replace(/^nostr:/, "");
+  if (!text) return null;
+  const pubkey = normalizeToPubkey(text);
+  if (pubkey) return { kind: "pubkeys", value: pubkey };
+  if (/^(note|nevent)1/.test(text)) {
+    const pointer = normalizeToEventPointer(text);
+    return pointer ? { kind: "threads", value: pointer.id } : null;
   }
-
-  return (
-    <div className="space-y-2">
-      {items.map((item, index) => (
-        <div key={index} className="flex items-center justify-between p-2 bg-base-200 rounded">
-          <div className="flex-1">{renderItem(item)}</div>
-          <button className="btn btn-sm btn-error btn-ghost" onClick={() => onRemove(item)}>
-            Remove
-          </button>
-        </div>
-      ))}
-    </div>
-  );
+  if (text.startsWith("#")) return text.length > 1 ? { kind: "hashtags", value: text.slice(1).toLowerCase() } : null;
+  return { kind: "words", value: text.toLowerCase() };
 }
 
-function MutedPubkeyItem({ pubkey, onRemove }: { pubkey: string; onRemove?: () => void }) {
+function UserLabel({ pubkey }: { pubkey: string }) {
   const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
   const profile = use$(user.profile$);
 
-  const displayName = profile?.displayName ?? npubEncode(pubkey).slice(0, 8) + "...";
-  const picture = profile?.picture ?? `https://robohash.org/${pubkey}.png`;
-
   return (
-    <div className="flex items-center gap-3">
-      <div className="avatar">
-        <div className="w-10 rounded-full">
-          <img src={picture} alt={displayName} />
-        </div>
+    <div className="flex min-w-0 items-center gap-3">
+      <img
+        src={profile?.picture ?? `https://robohash.org/${pubkey}.png`}
+        className="size-8 shrink-0 rounded-full object-cover"
+        alt=""
+      />
+      <div className="min-w-0">
+        <div className="truncate font-medium">{profile?.displayName ?? user.npub.slice(0, 16) + "…"}</div>
+        <div className="truncate font-mono text-sm text-base-content/50">{user.npub}</div>
       </div>
-      <div className="flex-1">
-        <div className="font-medium">{displayName}</div>
-        <div className="text-sm opacity-60 font-mono">{pubkey.slice(0, 16)}...</div>
-      </div>
-      {onRemove && (
-        <button className="btn btn-sm btn-error btn-ghost" onClick={onRemove}>
-          Remove
-        </button>
-      )}
     </div>
   );
 }
 
-function MutedThreadItem({ pointer, onRemove }: { pointer: EventPointer | AddressPointer; onRemove?: () => void }) {
-  return isEventPointer(pointer) ? (
-    <MutedNoteItem pointer={pointer} onRemove={onRemove} />
-  ) : (
-    <MutedArticleItem pointer={pointer} onRemove={onRemove} />
-  );
-}
-function MutedNoteItem({ pointer, onRemove }: { pointer: EventPointer; onRemove?: () => void }) {
-  const note = use$(
-    () => eventStore.event(pointer).pipe(castEventStream(Note, eventStore)),
-    [pointer.id, pointer.relays?.join("|")],
-  );
+function ThreadLabel({ id }: { id: string }) {
+  const note = use$(() => eventStore.event({ id }).pipe(castEventStream(Note, eventStore)), [id]);
   const profile = use$(() => note?.author.profile$, [note]);
 
-  if (!note)
-    return (
-      <div role="alert" className="alert alert-vertical sm:alert-horizontal">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          className="stroke-info h-6 w-6 shrink-0"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          ></path>
-        </svg>
-        <div>
-          <h3 className="font-bold">Loading note {pointer.id}...</h3>
-        </div>
-        {onRemove && (
-          <button className="btn btn-sm btn-error btn-ghost" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
-    );
-
-  const displayName = profile?.displayName ?? note.author.npub.slice(0, 8) + "...";
+  if (!note) return <span className="font-mono text-sm text-base-content/50">Loading {id.slice(0, 16)}…</span>;
 
   return (
-    <div className="border border-base-300 bg-base-100 ">
-      <div className="p-4">
-        <div className="font-semibold flex gap-2 items-center">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt={displayName} />
-            </div>
-          </div>
-          <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{note.createdAt.toLocaleString()}</div>
-        </div>
-        <p className="line-clamp-5">{note.event.content}</p>
-
-        {onRemove && (
-          <div className="flex gap-2 justify-end">
-            <button className="btn btn-sm btn-error btn-ghost" onClick={onRemove}>
-              Remove
-            </button>
-          </div>
-        )}
+    <div className="min-w-0">
+      <div className="text-sm text-base-content/60">
+        {profile?.displayName ?? note.author.npub.slice(0, 12)} · {note.createdAt.toLocaleDateString()}
       </div>
-    </div>
-  );
-}
-function MutedArticleItem({ pointer, onRemove }: { pointer: AddressPointer; onRemove?: () => void }) {
-  const article = use$(
-    () => eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)),
-    [getReplaceableAddressFromPointer(pointer)],
-  );
-  const profile = use$(() => article?.author.profile$, [article]);
-
-  if (!article)
-    return (
-      <div role="alert" className="alert alert-vertical sm:alert-horizontal">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          className="stroke-info h-6 w-6 shrink-0"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          ></path>
-        </svg>
-        <div>
-          <h3 className="font-bold">Loading article {getReplaceableAddressFromPointer(pointer)}...</h3>
-        </div>
-        {onRemove && (
-          <button className="btn btn-sm btn-error btn-ghost" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
-    );
-
-  const displayName = profile?.displayName ?? article.author.npub.slice(0, 8) + "...";
-
-  return (
-    <div className="border border-base-300 bg-base-100 ">
-      <div className="p-4">
-        <div className="font-semibold flex gap-2 items-center">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${article.author.pubkey}.png`} alt={displayName} />
-            </div>
-          </div>
-          <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{article.publishedDate.toLocaleDateString()}</div>
-        </div>
-        <div className="flex gap-2 w-full">
-          {article.image && <img src={article.image} alt={article.title} className="h-48 object-cover aspect-video" />}
-          <div>
-            <h4 className="font-bold text-base mt-2">{article.title || "Untitled Article"}</h4>
-            <p className="line-clamp-5">{article.summary}</p>
-          </div>
-        </div>
-
-        {onRemove && (
-          <div className="flex gap-2 justify-end">
-            <button className="btn btn-sm btn-error btn-ghost" onClick={onRemove}>
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
+      <p className="line-clamp-2">{note.event.content}</p>
     </div>
   );
 }
 
-function MuteManager({ user }: { user: User }) {
-  const signer = use$(signer$);
-  const outboxes = use$(user.outboxes$);
+function EntryLabel({ entry }: { entry: Omit<Entry, "hidden"> }) {
+  switch (entry.kind) {
+    case "pubkeys":
+      return <UserLabel pubkey={entry.value} />;
+    case "threads":
+      return <ThreadLabel id={entry.value} />;
+    case "hashtags":
+      return <span className="font-mono">#{entry.value}</span>;
+    default:
+      return <span className="font-mono">{entry.value}</span>;
+  }
+}
 
+function AddMute({ onAdd }: { onAdd: (entry: Entry) => Promise<boolean> }) {
+  const [input, setInput] = useState("");
+  const [hidden, setHidden] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const parsed = parseInput(input);
+
+  const submit = async () => {
+    if (!parsed || busy) return;
+    setBusy(true);
+    if (await onAdd({ ...parsed, hidden })) setInput("");
+    setBusy(false);
+  };
+
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="font-semibold">Add mute</h2>
+      <input
+        className={`input w-full ${input.trim() && !parsed ? "input-error" : ""}`}
+        placeholder="npub, nevent, #hashtag, or word"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && submit()}
+      />
+      {parsed && (
+        <div className="border border-base-300 p-2">
+          <div className="mb-1 text-sm text-base-content/60">
+            Mute {KINDS.find((k) => k.kind === parsed.kind)?.noun.toLowerCase()}
+          </div>
+          <EntryLabel entry={parsed} />
+        </div>
+      )}
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="toggle toggle-sm"
+          checked={hidden}
+          onChange={(e) => setHidden(e.target.checked)}
+        />
+        Private (encrypted to yourself)
+      </label>
+      <button className="btn btn-primary" disabled={!parsed || busy} onClick={submit}>
+        {busy ? <span className="loading loading-spinner loading-sm" /> : "Mute"}
+      </button>
+    </section>
+  );
+}
+
+function MuteList({ pubkey, account, onSignIn }: { pubkey: string; account: string | null; onSignIn: () => void }) {
+  const user = useMemo(() => castUser(pubkey, eventStore), [pubkey]);
+  const profile = use$(user.profile$);
+  const load = use$(() => loadFromOutboxes(user, kinds.Mutelist), [user]);
   const mutes = use$(user.mutes$);
+  const hidden = use$(() => mutes?.hidden$, [mutes]);
+  const signer = use$(signer$);
+  const editable = pubkey === account && !!signer;
 
-  // Get hidden mutes if unlocked
-  const hasHidden = mutes?.hasHidden ?? false;
-  const hidden = use$(mutes?.hidden$);
-
-  // Get public mutes
-  const publicHashtags = useMemo(() => Array.from(mutes?.hashtags ?? []), [mutes?.hashtags]);
-  const publicWords = useMemo(() => Array.from(mutes?.words ?? []), [mutes?.words]);
-  const publicPubkeys = useMemo(() => Array.from(mutes?.pubkeys ?? []), [mutes?.pubkeys]);
-  const publicThreads = useMemo(() => Array.from(mutes?.threads ?? []), [mutes?.threads]);
-
-  // Get hidden mutes
-  const hiddenHashtags = useMemo(() => Array.from(hidden?.hashtags ?? []), [hidden?.hashtags]);
-  const hiddenWords = useMemo(() => Array.from(hidden?.words ?? []), [hidden?.words]);
-  const hiddenPubkeys = useMemo(() => Array.from(hidden?.pubkeys ?? []), [hidden?.pubkeys]);
-  const hiddenThreads = useMemo(() => Array.from(hidden?.threads ?? []), [hidden?.threads]);
-
+  const [filter, setFilter] = useState<Kind | "all">("all");
+  const [visibility, setVisibility] = useState<"all" | "public" | "private">("all");
+  const [search, setSearch] = useState("");
   const [unlocking, setUnlocking] = useState(false);
+  const [pending, setPending] = useState<string[]>([]);
 
-  const handleMuteHashtag = async (hashtag: string, hidden: boolean) => {
-    return actions
-      .run(MuteHashtag, hashtag, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to mute hashtag");
-        return false;
-      });
-  };
+  const entries = useMemo<Entry[]>(
+    () =>
+      KINDS.flatMap(({ kind }) => [
+        ...Array.from(mutes?.[kind] ?? [], (value) => ({ kind, value, hidden: false })),
+        ...Array.from(hidden?.[kind] ?? [], (value) => ({ kind, value, hidden: true })),
+      ]),
+    [mutes, hidden],
+  );
 
-  const handleUnmuteHashtag = async (hashtag: string, hidden: boolean) => {
-    return actions
-      .run(UnmuteHashtag, hashtag, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to unmute hashtag");
-        return false;
-      });
-  };
+  const query = search.trim().toLowerCase();
+  const visible = entries.filter(
+    (e) =>
+      (filter === "all" || e.kind === filter) &&
+      (visibility === "all" || e.hidden === (visibility === "private")) &&
+      (!query || e.value.includes(query)),
+  );
 
-  const handleMuteWord = async (word: string, hidden: boolean) => {
-    return actions
-      .run(MuteWord, word, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to mute word");
-        return false;
-      });
-  };
-
-  const handleUnmuteWord = async (word: string, hidden: boolean) => {
-    return actions
-      .run(UnmuteWord, word, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to unmute word");
-        return false;
-      });
-  };
-
-  const handleMutePubkey = async (pubkey: string, hidden: boolean) => {
-    return actions
-      .run(MuteUser, pubkey, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to mute user");
-        return false;
-      });
-  };
-
-  const handleUnmutePubkey = async (pubkey: string, hidden: boolean) => {
-    return actions
-      .run(UnmuteUser, pubkey, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to unmute user");
-        return false;
-      });
-  };
-
-  const handleMuteThread = async (thread: EventPointer, hidden: boolean) => {
-    return actions
-      .run(MuteThread, thread, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to mute thread");
-        return false;
-      });
-  };
-
-  const handleUnmuteThread = async (thread: EventPointer | string, hidden: boolean) => {
-    return actions
-      .run(UnmuteThread, thread, hidden)
-      .then(() => true)
-      .catch((err) => {
-        alert(err instanceof Error ? err.message : "Failed to unmute thread");
-        return false;
-      });
-  };
-
-  const handleUnlock = async () => {
-    if (!mutes || !signer || unlocking) return;
-
+  const run = async (entry: Entry, mute: boolean) => {
+    const { mute: muteAction, unmute } = KINDS.find((k) => k.kind === entry.kind)!;
+    const key = mute ? undefined : entryKey(entry);
+    if (key) setPending((p) => [...p, key]);
     try {
-      setUnlocking(true);
+      await actions.run(mute ? muteAction : unmute, entry.value, entry.hidden);
+      return true;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      return false;
+    } finally {
+      if (key) setPending((p) => p.filter((k) => k !== key));
+    }
+  };
+
+  const unlock = async () => {
+    if (!mutes || !signer) return;
+    setUnlocking(true);
+    try {
       await mutes.unlock(signer);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to unlock hidden mutes");
+      alert(err instanceof Error ? err.message : "Failed to unlock private mutes");
     } finally {
       setUnlocking(false);
     }
   };
 
   return (
-    <div className="container mx-auto my-8 px-4 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Mute Manager</h1>
-
-      {/* Unlock Hidden Mutes */}
-      {hasHidden && !hidden && (
-        <div className="border border-base-300 bg-base-100  mb-6">
-          <div className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Hidden Mutes Available</h3>
-                <p className="text-sm opacity-70">Unlock to view hidden mutes</p>
-              </div>
-              <button className="btn btn-primary" onClick={handleUnlock} disabled={unlocking || !signer}>
-                {unlocking ? <span className="loading loading-spinner" /> : "Unlock Hidden Mutes"}
-              </button>
-            </div>
-          </div>
+    <div className="flex min-h-0 grow">
+      <aside className="flex w-80 shrink-0 flex-col gap-6 overflow-y-auto border-e border-base-300 p-4">
+        <div>
+          <p className="text-sm text-base-content/60">MUTE LIST</p>
+          <h1 className="truncate text-2xl font-semibold">{profile?.displayName ?? user.npub.slice(0, 16) + "…"}</h1>
+          <p className="text-sm text-base-content/60">
+            {mutes
+              ? `Updated ${mutes.createdAt.toLocaleString()}`
+              : load?.done
+                ? "No mute list published"
+                : "Loading mute list…"}
+          </p>
         </div>
-      )}
 
-      {!mutes ? (
-        outboxes && outboxes.length > 0 ? (
-          <div className="alert">
-            <span>Loading mutes from {outboxes.join(", ")}</span>
-          </div>
+        <OutboxStatus load={load} />
+
+        {editable ? (
+          <AddMute onAdd={(entry) => run(entry, true)} />
         ) : (
-          <div className="alert">
-            <span>Loading mutes...</span>
-          </div>
-        )
-      ) : null}
+          <p className="border-l-2 border-base-300 pl-3 text-sm text-base-content/70">
+            Read only.{" "}
+            {!account && (
+              <button className="link" onClick={onSignIn}>
+                Sign in to manage your own mutes
+              </button>
+            )}
+          </p>
+        )}
 
-      {/* Mutes Section */}
-      <div className="space-y-6">
-        {/* Hashtags */}
-        <div className="border border-base-300 bg-base-100 ">
-          <div className="p-4">
-            <h3 className="text-xl font-bold mb-3">
-              Hashtags ({publicHashtags.length + (hidden?.hashtags.size ?? 0)})
-            </h3>
-            <MuteHashtagForm onAdd={(hashtag, hidden) => handleMuteHashtag(hashtag, hidden)} />
-            <div className="mt-4">
-              <div className="tabs tabs-lift">
-                <input
-                  type="radio"
-                  name="hashtags_tabs"
-                  className="tab"
-                  aria-label={`Public (${publicHashtags.length})`}
-                  defaultChecked
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={publicHashtags}
-                    onRemove={(hashtag) => handleUnmuteHashtag(hashtag, false)}
-                    renderItem={(hashtag) => <span className="font-mono">#{hashtag}</span>}
-                    emptyMessage="No public hashtags muted"
-                  />
-                </div>
+        {mutes?.hasHidden && !hidden && (
+          <section className="flex flex-col gap-2">
+            <h2 className="font-semibold">Private mutes</h2>
+            <p className="text-sm text-base-content/60">
+              {editable
+                ? "Some entries are encrypted. Decrypt them with your signer to view and edit."
+                : "This list has encrypted entries only its owner can read."}
+            </p>
+            {editable && (
+              <button className="btn btn-outline" onClick={unlock} disabled={unlocking}>
+                {unlocking ? <span className="loading loading-spinner loading-sm" /> : "Unlock private mutes"}
+              </button>
+            )}
+          </section>
+        )}
 
-                <input
-                  type="radio"
-                  name="hashtags_tabs"
-                  className="tab"
-                  aria-label={`Hidden (${hiddenHashtags.length})`}
-                  disabled={!hidden}
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={hiddenHashtags}
-                    onRemove={(hashtag) => handleUnmuteHashtag(hashtag, true)}
-                    renderItem={(hashtag) => <span className="font-mono">#{hashtag}</span>}
-                    emptyMessage="No hidden hashtags muted"
-                  />
-                </div>
-              </div>
-            </div>
+        <nav className="flex flex-col">
+          {[{ kind: "all" as const, label: "Everything" }, ...KINDS].map(({ kind, label }) => (
+            <button
+              key={kind}
+              className={`flex justify-between border-s-2 px-3 py-1.5 text-left ${filter === kind ? "border-primary bg-base-200" : "border-transparent"}`}
+              onClick={() => setFilter(kind)}
+            >
+              {label}
+              <span className="tabular-nums text-base-content/60">
+                {entries.filter((e) => kind === "all" || e.kind === kind).length}
+              </span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-base-300 p-3">
+          <input
+            type="search"
+            className="input w-72"
+            placeholder="Filter by value"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="join">
+            {(["all", "public", "private"] as const).map((v) => (
+              <button
+                key={v}
+                className={`btn join-item capitalize ${visibility === v ? "btn-active" : ""}`}
+                onClick={() => setVisibility(v)}
+              >
+                {v}
+              </button>
+            ))}
           </div>
+          <span className="ms-auto text-sm text-base-content/60">
+            {visible.length} of {entries.length}
+          </span>
         </div>
 
-        {/* Words */}
-        <div className="border border-base-300 bg-base-100 ">
-          <div className="p-4">
-            <h3 className="text-xl font-bold mb-3">Words ({publicWords.length + (hidden?.words.size ?? 0)})</h3>
-            <MuteWordForm onAdd={(word, hidden) => handleMuteWord(word, hidden)} />
-            <div className="mt-4">
-              <div className="tabs tabs-lift">
-                <input
-                  type="radio"
-                  name="words_tabs"
-                  className="tab"
-                  aria-label={`Public (${publicWords.length})`}
-                  defaultChecked
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={publicWords}
-                    onRemove={(word) => handleUnmuteWord(word, false)}
-                    renderItem={(word) => <span className="font-mono">{word}</span>}
-                    emptyMessage="No public words muted"
-                  />
+        <div className="min-h-0 flex-1 divide-y divide-base-300 overflow-y-auto">
+          {visible.map((entry) => {
+            const key = entryKey(entry);
+            return (
+              <div key={key} className="flex items-center gap-4 px-4 py-2">
+                <span className="w-20 shrink-0 text-sm text-base-content/50">
+                  {KINDS.find((k) => k.kind === entry.kind)?.noun}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <EntryLabel entry={entry} />
                 </div>
-
-                <input
-                  type="radio"
-                  name="words_tabs"
-                  className="tab"
-                  aria-label={`Hidden (${hiddenWords.length})`}
-                  disabled={!hidden}
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={hiddenWords}
-                    onRemove={(word) => handleUnmuteWord(word, true)}
-                    renderItem={(word) => <span className="font-mono">{word}</span>}
-                    emptyMessage="No hidden words muted"
-                  />
-                </div>
+                {entry.hidden && <span className="badge badge-outline">private</span>}
+                {editable && (
+                  <button
+                    className="btn btn-ghost btn-sm text-error"
+                    disabled={pending.includes(key)}
+                    onClick={() => run(entry, false)}
+                  >
+                    {pending.includes(key) ? <span className="loading loading-spinner loading-sm" /> : "Unmute"}
+                  </button>
+                )}
               </div>
-            </div>
-          </div>
+            );
+          })}
+          {visible.length === 0 && (
+            <p className="p-8 text-center text-base-content/60">
+              {entries.length ? "Nothing matches these filters." : load?.done ? "Nothing muted." : "Loading mutes…"}
+            </p>
+          )}
         </div>
-
-        {/* Pubkeys */}
-        <div className="border border-base-300 bg-base-100 ">
-          <div className="p-4">
-            <h3 className="text-xl font-bold mb-3">Users ({publicPubkeys.length + (hidden?.pubkeys.size ?? 0)})</h3>
-            <MutePubkeyForm onAdd={(pubkey, hidden) => handleMutePubkey(pubkey, hidden)} />
-            <div className="mt-4">
-              <div className="tabs tabs-lift">
-                <input
-                  type="radio"
-                  name="users_tabs"
-                  className="tab"
-                  aria-label={`Public (${publicPubkeys.length})`}
-                  defaultChecked
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={publicPubkeys}
-                    onRemove={(pubkey) => handleUnmutePubkey(pubkey, false)}
-                    renderItem={(pubkey) => <MutedPubkeyItem pubkey={pubkey} />}
-                    emptyMessage="No public users muted"
-                  />
-                </div>
-
-                <input
-                  type="radio"
-                  name="users_tabs"
-                  className="tab"
-                  aria-label={`Hidden (${hiddenPubkeys.length})`}
-                  disabled={!hidden}
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <MuteList
-                    items={hiddenPubkeys}
-                    onRemove={(pubkey) => handleUnmutePubkey(pubkey, true)}
-                    renderItem={(pubkey) => <MutedPubkeyItem pubkey={pubkey} />}
-                    emptyMessage="No hidden users muted"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Threads */}
-        <div className="border border-base-300 bg-base-100 ">
-          <div className="p-4">
-            <h3 className="text-xl font-bold mb-3">Threads ({publicThreads.length + (hidden?.threads.size ?? 0)})</h3>
-            <MuteThreadForm onAdd={(thread, hidden) => handleMuteThread(thread, hidden)} />
-            <div className="mt-4">
-              <div className="tabs tabs-lift">
-                <input
-                  type="radio"
-                  name="threads_tabs"
-                  className="tab"
-                  aria-label={`Public (${publicThreads.length})`}
-                  defaultChecked
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <div className="space-y-2">
-                    {publicThreads.length === 0 ? (
-                      <div className="alert alert-info alert-soft">No public threads muted</div>
-                    ) : (
-                      publicThreads.map((threadId, index) => (
-                        <MutedThreadItem
-                          key={index}
-                          pointer={{ id: threadId }}
-                          onRemove={() => handleUnmuteThread(threadId, false)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <input
-                  type="radio"
-                  name="threads_tabs"
-                  className="tab"
-                  aria-label={`Hidden (${hiddenThreads.length})`}
-                  disabled={!hidden}
-                />
-                <div className="tab-content bg-base-100 border-base-300 p-6 h-128 overflow-y-auto">
-                  <div className="space-y-2">
-                    {hiddenThreads.length === 0 ? (
-                      <div className="alert alert-info alert-soft">No hidden threads muted</div>
-                    ) : (
-                      hiddenThreads.map((threadId, index) => (
-                        <MutedThreadItem
-                          key={index}
-                          pointer={{ id: threadId }}
-                          onRemove={() => handleUnmuteThread(threadId, true)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-export default function MutesExample() {
-  const user = use$(user$);
+export default function MuteManagerExample() {
+  const account = use$(account$);
+  const [pubkey, setPubkey] = useState("");
 
-  const handleLogin = async (signer: ISigner, pubkey: string) => {
+  const login = (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
-    pubkey$.next(pubkey);
+    account$.next(pubkey);
+    setPubkey(pubkey);
+  };
+  const logout = () => {
+    signer$.next(null);
+    account$.next(null);
   };
 
-  // Show login view if not logged in
-  if (!user) return <LoginView onLogin={handleLogin} />;
+  return (
+    <div className="flex min-h-0 grow flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-base-300 p-3">
+        <PubkeyPicker value={pubkey} onChange={setPubkey} className="flex-1" />
+        {account ? (
+          <>
+            {pubkey !== account && (
+              <button className="btn" onClick={() => setPubkey(account)}>
+                My mutes
+              </button>
+            )}
+            <button className="btn btn-ghost" onClick={logout}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          pubkey && (
+            <button className="btn" onClick={() => setPubkey("")}>
+              Sign in
+            </button>
+          )
+        )}
+      </div>
 
-  // Show main mute manager view
-  return <MuteManager user={user} />;
+      {pubkey ? (
+        <MuteList key={pubkey} pubkey={pubkey} account={account} onSignIn={() => setPubkey("")} />
+      ) : (
+        // LoginView also restores a saved account, which opens that account's mute list
+        <div className="min-h-0 grow overflow-y-auto">
+          <LoginView onLogin={login} />
+        </div>
+      )}
+    </div>
+  );
 }
