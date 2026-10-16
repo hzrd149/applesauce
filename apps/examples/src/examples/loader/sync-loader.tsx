@@ -1,7 +1,7 @@
 /**
  * Confidently load a set of events from multiple relays using NIP-77 negentropy sync with a paginated request fallback
  * @tags loader, nip-77, negentropy, sync
- * @related loader/paginated-timeline, negentrapy/relay-difference
+ * @related loader/infinite-scroll, negentrapy/relay-difference
  */
 import { castUser } from "applesauce-common/casts";
 import { combineLatest, scan, startWith, map, catchError, of } from "rxjs";

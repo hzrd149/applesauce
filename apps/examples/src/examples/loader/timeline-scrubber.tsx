@@ -1,7 +1,7 @@
 /**
  * Scrub a user's timeline backward and forward across their NIP-65 outbox relays to stress test the timeline loader
  * @tags loader, timeline, outbox, nip-65, stress
- * @related loader/paginated-timeline, outbox/social-feed
+ * @related loader/infinite-scroll, outbox/social-feed
  */
 import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";

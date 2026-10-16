@@ -319,7 +319,7 @@ Every example follows this pattern:
 
 **Casts & reactive data**: `casting/thread` (Note cast + threading), `casting/custom` (custom EventCast subclass), `casting/mutes` (mute lists)
 
-**Loaders**: `loader/paginated-timeline` (TimelineLoader), `loader/parallel-async-loading` (batch loading), `loader/using-ndk` / `loader/using-nostrify` / `loader/using-nostr-tools` (third-party pool adapters)
+**Loaders**: `loader/infinite-scroll` (TimelineLoader), `loader/parallel-async-loading` (batch loading), `loader/using-ndk` / `loader/using-nostrify` / `loader/using-nostr-tools` (third-party pool adapters)
 
 **Actions**: `simple/profile-editor` (UpdateProfile), `bookmarks/manager` (BookmarkEvent), `blossom/server-manager` (Blossom actions)
 
