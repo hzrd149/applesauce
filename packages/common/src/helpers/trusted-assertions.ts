@@ -13,6 +13,35 @@ import {
 // NIP-85 Trusted Assertions Kinds
 export const TRUSTED_PROVIDER_LIST_KIND = 10040;
 export const USER_ASSERTION_KIND = 30382;
+export const EVENT_ASSERTION_KIND = 30383;
+export const ADDRESS_ASSERTION_KIND = 30384;
+export const IDENTIFIER_ASSERTION_KIND = 30385;
+
+/** The result tags defined by NIP-85 for each assertion kind */
+export const TRUSTED_ASSERTION_TAGS: Record<number, string[]> = {
+  [USER_ASSERTION_KIND]: [
+    "rank",
+    "followers",
+    "first_created_at",
+    "post_cnt",
+    "reply_cnt",
+    "reactions_cnt",
+    "zap_amt_recd",
+    "zap_amt_sent",
+    "zap_cnt_recd",
+    "zap_cnt_sent",
+    "zap_avg_amt_day_recd",
+    "zap_avg_amt_day_sent",
+    "reports_cnt_recd",
+    "reports_cnt_sent",
+    "t",
+    "active_hours_start",
+    "active_hours_end",
+  ],
+  [EVENT_ASSERTION_KIND]: ["rank", "comment_cnt", "quote_cnt", "repost_cnt", "reaction_cnt", "zap_cnt", "zap_amount"],
+  [ADDRESS_ASSERTION_KIND]: ["rank", "comment_cnt", "quote_cnt", "repost_cnt", "reaction_cnt", "zap_cnt", "zap_amount"],
+  [IDENTIFIER_ASSERTION_KIND]: ["rank", "comment_cnt", "reaction_cnt"],
+};
 
 // Register NIP-85 kind 10040 as using NIP-44 hidden tags
 setHiddenTagsEncryptionMethod(TRUSTED_PROVIDER_LIST_KIND, "nip44");
@@ -68,6 +97,13 @@ export function parseProviderTag(tag: string[]): TrustedProvider | undefined {
   if (isNaN(kind) || !assertionTag) return undefined;
 
   return { kind, tag: assertionTag, servicePubkey, relay: relay || undefined };
+}
+
+/** Creates a kind 10040 provider tag from a {@link TrustedProvider} */
+export function createProviderTag(provider: TrustedProvider): string[] {
+  const tag = [`${provider.kind}:${provider.tag}`, provider.servicePubkey];
+  if (provider.relay) tag.push(provider.relay);
+  return tag;
 }
 
 /** Returns all public trusted providers from a kind 10040 event */

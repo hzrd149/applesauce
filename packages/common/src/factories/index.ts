@@ -62,3 +62,4 @@ export * from "./root-nsite.js";
 export * from "./named-nsite.js";
 export * from "./nsite-snapshot.js";
 export * from "./user-status.js";
+export * from "./trusted-provider-list.js";

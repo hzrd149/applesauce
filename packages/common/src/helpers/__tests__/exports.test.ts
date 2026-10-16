@@ -5,6 +5,7 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
+        "ADDRESS_ASSERTION_KIND",
         "APP_HANDLER_KIND",
         "APP_RECOMMENDATION_KIND",
         "BLOSSOM_SERVER_LIST_KIND",
@@ -27,6 +28,7 @@ describe("exports", () => {
         "DELETE_GROUP_KIND",
         "EDIT_METADATA_KIND",
         "EMOJI_PACK_KIND",
+        "EVENT_ASSERTION_KIND",
         "EXTERNAL_IDENTITIES_KIND",
         "EncryptedContentFromCacheSymbol",
         "ExternalIdentitiesSymbol",
@@ -77,6 +79,7 @@ describe("exports", () => {
         "HighlightAttributionSymbol",
         "HighlightSourceAddressPointerSymbol",
         "HighlightSourceEventPointerSymbol",
+        "IDENTIFIER_ASSERTION_KIND",
         "JOIN_REQUEST_KIND",
         "LEAVE_REQUEST_KIND",
         "LEGACY_PROFILE_BADGES_IDENTIFIER",
@@ -122,6 +125,7 @@ describe("exports", () => {
         "SharedEventSymbol",
         "TIME_BASED_CALENDAR_EVENT_KIND",
         "TORRENT_KIND",
+        "TRUSTED_ASSERTION_TAGS",
         "TRUSTED_PROVIDER_LIST_KIND",
         "TrustedProvidersHiddenSymbol",
         "TrustedProvidersPublicSymbol",
@@ -157,6 +161,7 @@ describe("exports", () => {
         "createImetaTagForAttachment",
         "createMutedWordsRegExp",
         "createNostrWebTokenAuthorizationHeader",
+        "createProviderTag",
         "createTorrentExternalIdentifier",
         "decodeGroupPointer",
         "decodeLNURL",

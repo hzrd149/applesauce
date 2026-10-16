@@ -17,5 +17,6 @@ export * from "./pins.js";
 export * from "./profile.js";
 export * from "./relay-sets.js";
 export * from "./search-relays.js";
+export * from "./trusted-providers.js";
 export * from "./wrapped-messages.js";
 export * from "./user-status.js";
