@@ -41,8 +41,8 @@ export function ReplyToLegacyMessage(parent: NostrEvent, message: string, option
     if (options?.expiration) draft = draft.expiration(options.expiration);
     const signed = await draft.sign(signer);
 
-    // Get the recipient's inbox relays (the sender of the parent message)
-    const receiver = castUser(parent.pubkey, events);
+    // Get the recipient's inbox relays, which are our own when replying to a message we sent
+    const receiver = castUser(recipient, events);
     const [inboxes, directMessageRelays] = await Promise.all([
       receiver.inboxes$.$first(1_000, undefined),
       receiver.directMessageRelays$.$first(1_000, undefined),
