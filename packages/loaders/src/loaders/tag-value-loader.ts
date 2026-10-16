@@ -2,7 +2,7 @@ import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
-import { filterDuplicateEvents } from "applesauce-core/observable";
+import { filterDuplicateEvents, mapEventsToStore } from "applesauce-core/observable";
 import {
   bufferTime,
   catchError,
@@ -18,6 +18,9 @@ import {
   from,
   isObservable,
   take,
+  map,
+  of,
+  distinct,
 } from "rxjs";
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -31,7 +34,7 @@ export type TagValuePointer = {
   value: string;
   /** The relays to load from */
   relays?: string[];
-  /** bypass the cache */
+  /** Skips cache queries and receives only relay results */
   force?: boolean;
 };
 
@@ -101,6 +104,9 @@ export function cacheTagValueLoader(
   opts?: TagValueLoaderOptions,
 ): (pointers: TagValuePointer[]) => Observable<NostrEvent> {
   return (pointers) => {
+    pointers = pointers.filter((pointer) => !pointer.force);
+    if (pointers.length === 0) return EMPTY;
+
     const baseFilter: Filter = {};
     if (opts?.kinds) baseFilter.kinds = opts.kinds;
     if (opts?.authors) baseFilter.authors = opts.authors;
@@ -175,27 +181,44 @@ export function createTagValueLoader(
 ): TagValueLoader {
   const request = wrapUpstreamPool(pool);
 
-  return batchLoader(
-    // buffer requests by time or size
+  type Result = { event: NostrEvent; cache: boolean };
+  const store = opts?.eventStore === null ? null : (opts?.eventStore ?? new EventMemory<NostrEvent>());
+  const loader = batchLoader<TagValuePointer, Result>(
     bufferTime(opts?.bufferTime ?? 1000, undefined, opts?.bufferSize ?? 200),
-    // Create a loader for batching
-    (pointers) => {
-      // Skip if there are no pointers
-      if (pointers.length === 0) return EMPTY;
-
-      // Load from cache and relays in parallel
-      return merge(
-        // load from cache if available
-        opts?.cacheRequest ? cacheTagValueLoader(opts.cacheRequest, tagName, opts)(pointers) : [],
-        // load from relays
-        relaysTagValueLoader(request, tagName, opts)(pointers),
-      );
-    },
-    // Filter results based on requests
-    (pointer, event) => event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
-    // Pass all events through the store if provided, or use EventMemory for deduplication by default
-    opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
-    // Forward the abort signal for explicit teardown
+    (pointers) =>
+      merge(
+        opts?.cacheRequest
+          ? cacheTagValueLoader(
+              opts.cacheRequest,
+              tagName,
+              opts,
+            )(pointers).pipe(map((event) => ({ event, cache: true })))
+          : EMPTY,
+        relaysTagValueLoader(request, tagName, opts)(pointers).pipe(map((event) => ({ event, cache: false }))),
+      ),
+    (pointer, result) =>
+      (!pointer.force || !result.cache) &&
+      result.event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
+    (source) =>
+      source.pipe(
+        // Preserve arrival provenance even when the store returns the same canonical event.
+        store
+          ? mergeMap((result) =>
+              of(result.event).pipe(
+                mapEventsToStore(store, false),
+                map((event) => ({ ...result, event })),
+              ),
+            )
+          : identity,
+      ),
     { signal: opts?.signal, maxConcurrentBatches: opts?.maxConcurrentBatches ?? 4 },
   );
+
+  const load = (pointer: TagValuePointer) =>
+    loader(pointer).pipe(
+      map((result) => result.event),
+      // Deduplicate after matching so a cache arrival cannot hide a relay arrival from forced callers.
+      store ? distinct((event) => event.id) : identity,
+    );
+  return Object.assign(load, { stop: loader.stop, [Symbol.dispose]: loader[Symbol.dispose] });
 }

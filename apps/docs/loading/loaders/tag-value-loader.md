@@ -57,6 +57,8 @@ Started batches continue warming the store after consumers unsubscribe, within t
 
 Explicit relay hints start without waiting for observable `extraRelays`. The loader uses the first emitted relay list to request only relay/value pairs not already covered by hints, within the same relay concurrency limit. Empty discovery completes normally; failed or timed-out discovery reports `{ source: "routing" }` through `onError` without cancelling hinted requests.
 
+Set `force: true` on a pointer to skip cache lookup for that caller and receive only relay results. In a mixed batch, ordinary callers can still query the same value from cache; those cache arrivals are excluded from forced callers. A relay arrival is delivered even when the same event arrived from cache first, and ordinary callers still receive that event only once. Relay results may reuse the store’s canonical event object, so `force` does not bypass the event store.
+
 ## Working with Relay Pools
 
 The Tag Value Loader requires a request method for loading Nostr events from relays. You can provide this in multiple ways:

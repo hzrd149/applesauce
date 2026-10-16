@@ -356,3 +356,99 @@ describe("tag value loader relay discovery", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe("tag value loader forced requests", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("skips forced pointers in cache filters and skips all-forced cache queries", () => {
+    const cache = vi.fn(() => []);
+    const load = cacheTagValueLoader(cache, "e");
+    load([{ value: "a", force: true }]).subscribe();
+    expect(cache).not.toHaveBeenCalled();
+    load([{ value: "a", force: true }, { value: "b" }]).subscribe();
+    expect(cache).toHaveBeenCalledWith([{ "#e": ["b"] }]);
+  });
+
+  it.each(["cache-first", "relay-first"])("preserves provenance in a mixed batch (%s)", (order) => {
+    const cache = new Subject<NostrEvent>();
+    const relayEvents = new Subject<NostrEvent>();
+    const loader = createTagValueLoader(() => relayEvents, "e", {
+      bufferSize: 2,
+      extraRelays: [relay],
+      cacheRequest: () => cache,
+    });
+    const ordinary: NostrEvent[] = [];
+    const forced: NostrEvent[] = [];
+    loader({ value: "a" }).subscribe((e) => ordinary.push(e));
+    loader({ value: "a", force: true }).subscribe((e) => forced.push(e));
+    const a = event("a");
+    const cachedOnly = event("a", "cached-only");
+    if (order === "cache-first") {
+      cache.next(a);
+      cache.next(cachedOnly);
+      expect(forced).toEqual([]);
+      relayEvents.next({ ...a });
+    } else {
+      relayEvents.next(a);
+      cache.next({ ...a });
+      cache.next(cachedOnly);
+    }
+    cache.complete();
+    relayEvents.complete();
+    expect(ordinary).toEqual([a, cachedOnly]);
+    expect(forced).toEqual([a]);
+    loader.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("keeps cache-only events out of forced callers when deduplication is disabled", () => {
+    const a = event("a");
+    const loader = createTagValueLoader(() => of(a, a), "e", {
+      bufferSize: 2,
+      extraRelays: [relay],
+      cacheRequest: () => [a],
+      eventStore: null,
+    });
+    const ordinary: NostrEvent[] = [];
+    const forced: NostrEvent[] = [];
+    loader({ value: "a" }).subscribe((e) => ordinary.push(e));
+    loader({ value: "a", force: true }).subscribe((e) => forced.push(e));
+    expect(ordinary).toHaveLength(3);
+    expect(forced).toHaveLength(2);
+    loader.stop();
+  });
+});
+
+it("preserves source identity when an asynchronous store returns one canonical event", async () => {
+  const a = event("a");
+  const add = vi.fn(async () => a);
+  const loader = createTagValueLoader(() => of({ ...a }), "e", {
+    bufferSize: 2,
+    extraRelays: [relay],
+    cacheRequest: () => [a],
+    eventStore: { add },
+  });
+  const ordinary: NostrEvent[] = [];
+  const forced: NostrEvent[] = [];
+  const first = new Promise<void>((resolve) =>
+    loader({ value: "a" }).subscribe({
+      next: (e) => ordinary.push(e),
+      complete: resolve,
+    }),
+  );
+  const second = new Promise<void>((resolve) =>
+    loader({ value: "a", force: true }).subscribe({
+      next: (e) => forced.push(e),
+      complete: resolve,
+    }),
+  );
+  await Promise.all([first, second]);
+  expect(ordinary).toEqual([a]);
+  expect(forced).toEqual([a]);
+  expect(add).toHaveBeenCalledTimes(2);
+  loader.stop();
+});
