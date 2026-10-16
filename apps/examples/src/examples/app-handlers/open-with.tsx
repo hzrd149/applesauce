@@ -1,6 +1,6 @@
 /**
- * Find apps that can open event kinds this client doesn't render, using NIP-89 recommendations from your follows
- * @tags nip-89, nip-19, nip-31, app-handlers, recommendations, links
+ * Resolve the apps your follows trust to open any nostr address, using NIP-89 recommendations
+ * @tags nip-89, nip-19, app-handlers, recommendations, links
  * @related app-handlers/recommendations, app-handlers/publisher
  */
 import { AppHandler, castUser } from "applesauce-common/casts";
@@ -12,16 +12,10 @@ import { castEvent } from "applesauce-core/casts";
 import {
   AddressPointer,
   decodePointer,
-  encodePointer,
   EventPointer,
-  getAddressPointerForEvent,
-  getEventPointerForEvent,
-  getTagValue,
-  isAddressableKind,
   isAddressPointer,
   isEventPointer,
   kinds,
-  NostrEvent,
   ProfilePointer,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -30,20 +24,18 @@ import { RelayPool } from "applesauce-relay";
 import { useMemo, useRef, useState } from "react";
 import { catchError, distinctUntilChanged, endWith, ignoreElements, map, Observable, of, startWith } from "rxjs";
 import LoginView from "../../components/login-view";
-import RelayPicker from "../../components/relay-picker";
-import { relayTimeline } from "../../extra/relay-timeline";
 import { lookupRelays$ } from "../../settings";
 
 type Pointer = AddressPointer | EventPointer | ProfilePointer;
 type LoadState = { status: "loading" | "done" } | { status: "error"; message: string };
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
+const EXAMPLE = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+
 const eventStore = new EventStore();
 const pool = new RelayPool();
-createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
-
-// Kinds a social client typically can't render, so the feed shows events that need another app
-const FEED_KINDS = [20, 21, 1063, 9802, 30023, 30311, 30402, 30617, 31922, 31923, 34235, 34550, 31337];
-const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
 
 /** Parses a pasted NIP-19 entity into a pointer */
 function parseEntity(input: string): { pointer?: Pointer; error?: string } {
@@ -77,9 +69,9 @@ function pointerKind$(pointer: Pointer): Observable<number | undefined> {
 }
 
 /** Requests handlers and recommendations for a kind into the store and reports the request status */
-function loadHandlers(relay: string, kind: number, authors?: string[]): Observable<LoadState> {
+function loadHandlers(relays: string[], kind: number, authors?: string[]): Observable<LoadState> {
   const filters = [getAppHandlersFilter(kind), getAppRecommendationsFilter(kind, authors)];
-  return pool.request([relay], filters).pipe(
+  return pool.request(relays, filters).pipe(
     mapEventsToStore(eventStore),
     ignoreElements(),
     endWith<LoadState>({ status: "done" }),
@@ -88,43 +80,32 @@ function loadHandlers(relay: string, kind: number, authors?: string[]): Observab
   );
 }
 
-function FeedRow({ event, selected, onSelect }: { event: NostrEvent; selected: boolean; onSelect: () => void }) {
-  const profile = use$(() => castUser(event.pubkey, eventStore).profile$, [event.pubkey]);
+function RecommenderAvatar({ pubkey }: { pubkey: string }) {
+  const profile = use$(() => castUser(pubkey, eventStore).profile$, [pubkey]);
+  const name = profile?.displayName || pubkey.slice(0, 8);
   return (
-    <button
-      className={`block w-full text-left p-3 border-b border-base-300 hover:bg-base-200 ${selected ? "bg-base-200" : ""}`}
-      onClick={onSelect}
-    >
-      <div className="flex justify-between gap-2">
-        <span className="font-semibold truncate">{profile?.displayName ?? event.pubkey.slice(0, 8)}</span>
-        <span className="badge badge-outline">kind {event.kind}</span>
-      </div>
-      <p className="text-sm text-base-content/70 line-clamp-2">{getTagValue(event, "alt") ?? "No alt description"}</p>
-    </button>
+    <img
+      src={profile?.picture || `https://robohash.org/${pubkey}.png`}
+      alt={name}
+      title={name}
+      className="h-6 w-6 rounded-full border border-base-100 object-cover"
+    />
   );
 }
 
-function Feed({ relay, selected, onSelect }: { relay: string; selected: string; onSelect: (entity: string) => void }) {
-  const feed = use$(() => relayTimeline(eventStore, pool, [relay], { kinds: FEED_KINDS, limit: 50 }), [relay]);
-
-  if (!feed || (feed.status === "loading" && feed.events.length === 0))
-    return <div className="loading loading-spinner m-4" />;
-  if (feed.errors.length > 0 && feed.events.length === 0)
-    return <p className="p-3 text-error">Failed to load feed: {feed.errors.join(", ")}</p>;
-  if (feed.events.length === 0) return <p className="p-3">No unsupported events found on this relay.</p>;
-
+/** A compact stack of the users that recommend an app */
+function RecommendedBy({ pubkeys }: { pubkeys: string[] }) {
   return (
-    <>
-      {feed.events.map((event) => {
-        const pointer = isAddressableKind(event.kind)
-          ? getAddressPointerForEvent(event, [relay])!
-          : getEventPointerForEvent(event, [relay]);
-        const entity = encodePointer(pointer);
-        return (
-          <FeedRow key={event.id} event={event} selected={entity === selected} onSelect={() => onSelect(entity)} />
-        );
-      })}
-    </>
+    <div className="flex items-center gap-2">
+      <div className="flex -space-x-2">
+        {pubkeys.slice(0, 5).map((p) => (
+          <RecommenderAvatar key={p} pubkey={p} />
+        ))}
+      </div>
+      <span className="text-sm text-base-content/60">
+        Recommended by {pubkeys.length} {pubkeys.length === 1 ? "person" : "people"}
+      </span>
+    </div>
   );
 }
 
@@ -132,55 +113,55 @@ function HandlerRow({
   handler,
   pointer,
   platform,
-  count,
-  untrusted,
+  recommenders,
 }: {
   handler: AppHandler;
   pointer: Pointer;
   platform: HandlerLinkPlatform;
-  count?: number;
-  untrusted?: boolean;
+  recommenders?: string[];
 }) {
-  // Falls back to the author's kind:0 profile when the handler has no metadata of its own
+  // Falls back to the author's profile when the handler has no metadata of its own
   const metadata = use$(handler.metadata$);
   const name = metadata?.display_name || metadata?.name || handler.name;
   const link = handler.link(pointer, platform);
-  const usingWebFallback = !!link && !handler.platforms.includes(platform);
 
   return (
-    <div className="flex gap-3 p-3 border-b border-base-300">
+    <div className="flex items-center gap-3 p-3 border-b border-base-300">
       <img
         src={metadata?.picture || `https://robohash.org/${handler.event.pubkey}.png`}
         alt={name}
-        className="w-12 h-12 rounded object-cover shrink-0"
+        className="w-10 h-10 rounded object-cover shrink-0"
       />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold">{name}</span>
-          {count !== undefined && <span className="badge badge-success badge-outline">recommended by {count}</span>}
-          {untrusted && <span className="badge badge-warning badge-outline">unverified</span>}
-        </div>
-        {metadata?.about && <p className="text-sm line-clamp-2">{metadata.about}</p>}
-        <p className="text-sm text-base-content/60">Kinds: {handler.supportedKinds.join(", ")}</p>
-        {usingWebFallback && <p className="text-sm text-base-content/60">No {platform} link, using web</p>}
+        <div className="font-semibold truncate">{name}</div>
+        {recommenders && <RecommendedBy pubkeys={recommenders} />}
       </div>
       {link ? (
-        <a className="btn btn-primary btn-sm self-center" href={link} target="_blank" rel="noreferrer">
+        <a className="btn btn-primary btn-sm" href={link} target="_blank" rel="noreferrer">
           Open
         </a>
       ) : (
-        <span className="text-sm text-error self-center">No link</span>
+        <span className="text-sm text-base-content/60">No {platform} link</span>
       )}
     </div>
   );
 }
 
-function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string; pubkey?: string }) {
-  const [platform, setPlatform] = useState<HandlerLinkPlatform>("web");
+function Handlers({
+  pointer,
+  relays,
+  pubkey,
+  platform,
+}: {
+  pointer: Pointer;
+  relays: string[];
+  pubkey?: string;
+  platform: HandlerLinkPlatform;
+}) {
   const kind = use$(() => pointerKind$(pointer), [pointer]);
 
   // The user and their follows, joined into a string so the streams below only resubscribe when the set changes.
-  // An empty key means trust recommendations from anyone on the relay
+  // An empty key means trust recommendations from anyone
   const authorsKey = use$(
     () =>
       pubkey
@@ -194,24 +175,22 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
   const authors = useMemo(() => (authorsKey ? authorsKey.split(",") : undefined), [authorsKey]);
 
   const state = use$(
-    () => (kind === undefined ? undefined : loadHandlers(relay, kind, authors)),
-    [relay, kind, authors],
+    () => (kind === undefined ? undefined : loadHandlers(relays, kind, authors)),
+    [relays.join(","), kind, authors],
   );
   // Handlers ranked by how many of the authors recommend each
   const recommended = use$(
     () =>
       kind === undefined
         ? undefined
-        : eventStore
-            .model(RecommendedAppHandlersModel, kind, authors)
-            .pipe(
-              map((ranked) =>
-                ranked.map((r) => ({
-                  handler: castEvent(r.handler, AppHandler, eventStore),
-                  count: r.recommenders.length,
-                })),
-              ),
+        : eventStore.model(RecommendedAppHandlersModel, kind, authors).pipe(
+            map((ranked) =>
+              ranked.map((r) => ({
+                handler: castEvent(r.handler, AppHandler, eventStore),
+                recommenders: r.recommenders,
+              })),
             ),
+          ),
     [kind, authors],
   );
   const all = use$(
@@ -227,15 +206,71 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
     return all?.filter((h) => !ranked.has(h.uid));
   }, [all, recommended]);
 
-  if (kind === undefined) return <p className="p-3">Loading the event to find its kind...</p>;
+  const loading = kind === undefined || state?.status === "loading";
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {state?.status === "error" && <p className="p-3 text-error">Failed to load apps: {state.message}</p>}
+
+      <h3 className="flex items-center gap-2 px-3 pt-3 font-semibold">
+        {pubkey ? "Trusted by you and your follows" : "Recommended by anyone"}
+        {loading && <span className="loading loading-spinner loading-sm" />}
+      </h3>
+      {recommended?.length ? (
+        recommended.map(({ handler, recommenders }) => (
+          <HandlerRow
+            key={handler.uid}
+            handler={handler}
+            pointer={pointer}
+            platform={platform}
+            recommenders={recommenders}
+          />
+        ))
+      ) : (
+        <p className="p-3 text-base-content/60">{loading ? "Looking for apps..." : "No recommendations found."}</p>
+      )}
+
+      {others && others.length > 0 && (
+        <>
+          <h3 className="px-3 pt-6 font-semibold">Other apps</h3>
+          <p className="px-3 text-sm text-base-content/60">Not recommended by anyone you trust.</p>
+          {others.map((h) => (
+            <HandlerRow key={h.uid} handler={h} pointer={pointer} platform={platform} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function OpenWith() {
+  const [input, setInput] = useState(EXAMPLE);
+  const [platform, setPlatform] = useState<HandlerLinkPlatform>("web");
+  const [pubkey, setPubkey] = useState<string>();
+  const login = useRef<HTMLDialogElement>(null);
+  const { pointer, error } = useMemo(() => parseEntity(input), [input]);
+
+  // Read from the user's outbox relays once they log in, otherwise from a few popular relays
+  const relays = use$(
+    () =>
+      pubkey
+        ? castUser(pubkey, eventStore).outboxes$.pipe(map((o) => o && (o.length ? o : FALLBACK_RELAYS)))
+        : of(FALLBACK_RELAYS),
+    [pubkey],
+  );
 
   return (
     <div className="flex flex-col min-h-0 grow">
-      <div className="flex items-center gap-2 p-3 border-b border-base-300">
-        <span className="font-semibold">Apps for kind {kind}</span>
-        {state?.status === "loading" && <span className="loading loading-spinner loading-sm" />}
+      <div className="flex flex-wrap gap-2 p-3 border-b border-base-300">
+        <input
+          type="text"
+          className="input input-bordered flex-1 min-w-64"
+          placeholder="Paste an npub, nprofile, note, nevent or naddr"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
         <select
-          className="select select-bordered select-sm ms-auto w-auto"
+          className="select select-bordered w-auto"
           value={platform}
           onChange={(e) => setPlatform(e.target.value as HandlerLinkPlatform)}
         >
@@ -245,57 +280,6 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
             </option>
           ))}
         </select>
-      </div>
-      {state?.status === "error" && <p className="p-3 text-error">Failed to load handlers: {state.message}</p>}
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <h3 className="px-3 pt-3 font-semibold">
-          {pubkey ? "Recommended by you and your follows" : "Recommended by anyone on this relay"}
-        </h3>
-        {recommended?.length ? (
-          recommended.map(({ handler, count }) => (
-            <HandlerRow key={handler.uid} handler={handler} pointer={pointer} platform={platform} count={count} />
-          ))
-        ) : (
-          <p className="p-3 text-base-content/60">
-            {state?.status === "loading" ? "Looking for recommendations..." : "No recommendations found."}
-          </p>
-        )}
-
-        <h3 className="px-3 pt-3 font-semibold">Other handlers</h3>
-        <p className="px-3 text-sm text-warning">
-          Anyone can publish a handler for any kind, so these are not vetted by anyone you follow.
-        </p>
-        {others?.length ? (
-          others.map((h) => <HandlerRow key={h.uid} handler={h} pointer={pointer} platform={platform} untrusted />)
-        ) : (
-          <p className="p-3 text-base-content/60">
-            {state?.status === "loading" ? "Looking for handlers..." : "No other handlers found."}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function OpenWith() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-  const [input, setInput] = useState("");
-  const [pubkey, setPubkey] = useState<string>();
-  const login = useRef<HTMLDialogElement>(null);
-  const { pointer, error } = useMemo(() => parseEntity(input), [input]);
-
-  return (
-    <div className="flex flex-col min-h-0 grow">
-      <div className="flex flex-wrap gap-2 p-3 border-b border-base-300">
-        <input
-          type="text"
-          className="input input-bordered flex-1 min-w-64"
-          placeholder="Paste an npub, nprofile, note, nevent or naddr, or pick an event"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <RelayPicker value={relay} onChange={setRelay} />
         {pubkey ? (
           <button className="btn" onClick={() => setPubkey(undefined)}>
             Log out
@@ -306,18 +290,17 @@ export default function OpenWith() {
           </button>
         )}
       </div>
-      {error && <p className="p-3 text-error">{error}</p>}
 
-      <div className="flex min-h-0 grow">
-        <div className="w-80 shrink-0 min-h-0 overflow-y-auto border-r border-base-300">
-          <Feed relay={relay} selected={input.trim()} onSelect={setInput} />
+      {error && <p className="p-3 text-error">{error}</p>}
+      {pointer && !relays ? (
+        <div className="flex items-center gap-2 p-3">
+          <span className="loading loading-spinner loading-sm" /> Loading your outbox relays...
         </div>
-        {pointer ? (
-          <Handlers pointer={pointer} relay={relay} pubkey={pubkey} />
-        ) : (
-          <p className="p-3">Pick an event or paste an entity to find apps that can open it.</p>
-        )}
-      </div>
+      ) : pointer && relays ? (
+        <Handlers pointer={pointer} relays={relays} pubkey={pubkey} platform={platform} />
+      ) : (
+        !error && <p className="p-3">Paste a nostr address to find apps that can open it.</p>
+      )}
 
       <dialog className="modal" ref={login}>
         <div className="modal-box">
