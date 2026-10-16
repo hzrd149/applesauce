@@ -2,6 +2,7 @@ import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getTagValue } from "applesauce-core/helpers/event";
 
+/** The NIP-35 torrent event kind */
 export const TORRENT_KIND = 2003;
 
 /** Type for validated torrent events */
@@ -52,6 +53,8 @@ export function getTorrentInfoHash(torrent: NostrEvent): string | undefined {
 }
 
 /** Returns the torrent title from the `title` tag */
+export function getTorrentTitle(torrent: TorrentEvent): string | undefined;
+export function getTorrentTitle(torrent: NostrEvent): string | undefined;
 export function getTorrentTitle(torrent: NostrEvent): string | undefined {
   if (torrent.kind !== TORRENT_KIND) return undefined;
 
@@ -150,13 +153,18 @@ export function getTorrentCategoryPath(torrent: NostrEvent): string | undefined 
   });
 }
 
-/**
- * Parses an external identifier from an `i` tag value
- * Supports prefixes: tmdb, ttvdb, imdb, mal, anilist
- * Supports second-level prefixes: tmdb:movie, ttvdb:movie, mal:anime, mal:manga
- * Note: tcat is excluded as it's handled separately via getTorrentCategoryPath
- * Note: newznab is excluded as it's handled separately via getTorrentCategory
- */
+/** Returns the `tcat` category path split into its parts (e.g., ["video", "movie", "4k"]) */
+export function getTorrentCategoryPathParts(torrent: NostrEvent): string[] {
+  const path = getTorrentCategoryPath(torrent);
+  if (!path) return [];
+
+  return path
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+// Parses tmdb, ttvdb, imdb, mal and anilist identifiers; tcat and newznab are handled by their own getters
 function parseTorrentExternalIdentifier(value: string): TorrentExternalIdentifier | null {
   // Skip tcat - it's handled separately as a category path
   if (value.startsWith("tcat:")) return null;
@@ -264,10 +272,7 @@ export function getTorrentExternalIdentifiers(torrent: NostrEvent): TorrentExter
   });
 }
 
-/**
- * Creates a TorrentExternalIdentifier object from prefix, id, and optional mediaType
- * Automatically constructs the full identifier string
- */
+/** Creates a TorrentExternalIdentifier and builds its full identifier string */
 export function createTorrentExternalIdentifier(
   prefix: TorrentExternalIdentifierPrefix,
   id: string,
@@ -294,7 +299,7 @@ export function createTorrentExternalIdentifier(
 
 /**
  * Builds a magnet link from an info hash, optional trackers, and optional name
- * Format: magnet:?xt=urn:btih:${infoHash}${trackers ? '&tr=' + trackers.join('&tr=') : ''}${name ? '&dn=' + encodeURIComponent(name) : ''}
+ * @see https://www.bittorrent.org/beps/bep_0053.html
  */
 export function buildTorrentMagnetLink(infoHash: string, trackers?: string[], name?: string): string {
   const parts = [`magnet:?xt=urn:btih:${infoHash}`];
@@ -327,7 +332,15 @@ export function getTorrentMagnetLink(torrent: NostrEvent): string | undefined {
   });
 }
 
-/** Validates that an event is a valid torrent event (kind 2003 with required `x` tag) */
+/** Checks if a string is a hex encoded V1 BitTorrent info hash */
+export function isTorrentInfoHash(hash: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(hash);
+}
+
+/** Checks if an event is a valid torrent event (kind 2003 with a V1 info hash in the `x` tag) */
 export function isValidTorrent(torrent: NostrEvent): torrent is TorrentEvent {
-  return torrent.kind === TORRENT_KIND && getTorrentInfoHash(torrent) !== undefined;
+  if (torrent.kind !== TORRENT_KIND) return false;
+
+  const infoHash = getTorrentInfoHash(torrent);
+  return infoHash !== undefined && isTorrentInfoHash(infoHash);
 }

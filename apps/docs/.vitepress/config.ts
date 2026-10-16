@@ -204,7 +204,10 @@ export default defineConfig({
       {
         text: "Features",
         collapsed: false,
-        items: [{ text: "User Statuses", link: "/features/user-statuses" }],
+        items: [
+          { text: "Torrents", link: "/nips/nip-35" },
+          { text: "User Statuses", link: "/features/user-statuses" },
+        ],
       },
       {
         text: "Storing events",
