@@ -115,7 +115,7 @@ relayList$.pipe(ignoreUnhealthyRelays(liveness)).subscribe((availableRelays) => 
 });
 ```
 
-### Using the `ignoreUnhealthyRelaysOnPointers` operator
+#### Using the `ignoreUnhealthyRelaysOnPointers` operator
 
 The `ignoreUnhealthyRelaysOnPointers` operator is useful when you have a list of nip-19 pointers with relays and you want to filter out unhealthy relays.
 
@@ -133,23 +133,12 @@ contacts$
   });
 ```
 
-#### Using the `ignoreUnhealthyMailboxes` operator
+#### Filtering mailboxes
 
-The `ignoreUnhealthyMailboxes` operator is useful when you have a users mailboxes and you want to filter out unhealthy relays.
+Use `ignoreUnhealthyMailboxes(liveness)` to filter a single `{ inboxes, outboxes }` object. `eventStore.mailboxes()` emits `undefined` until the list loads, so add `defined()` first:
 
 ```typescript
-import { ignoreUnhealthyMailboxes } from "applesauce-relay/operators";
-
-const mailboxes$ = eventStore.mailboxes("pubkey...");
-
-// Filter unhealthy relays from user mailboxes
-mailboxes$
-  .pipe(
-    ignoreUnhealthyMailboxes(liveness), // Removes unhealthy relays
-  )
-  .subscribe((mailboxes) => {
-    // mailboxes now have unhealthy relays filtered out
-  });
+eventStore.mailboxes(pubkey).pipe(defined(), ignoreUnhealthyMailboxes(liveness));
 ```
 
 ### Manual Filtering
@@ -157,11 +146,11 @@ mailboxes$
 You can also manually filter relays using the `filter()` method:
 
 ```typescript
-// Get current blacklisted relays
+// Remove unhealthy relays from a list
 const healthy = liveness.filter(allRelays);
 
-// Filter them out manually
-const availableRelays = allRelays.filter((relay) => !blacklistedRelays.includes(relay));
+// Or check against the current blacklist
+const available = allRelays.filter((relay) => !liveness.unhealthy.includes(relay));
 ```
 
 ## Manual Management
@@ -203,22 +192,4 @@ liveness.state("wss://relay.example.com").subscribe((state) => {
 
 ## Using with outbox model
 
-The liveness tracker works particularly well with relay selection algorithms (outbox model):
-
-```typescript
-// 1. Load user contacts
-const contacts$ = pubkey$.pipe(switchMap((pubkey) => eventStore.contacts(pubkey)));
-
-// 2. Load their mailboxes and filter unhealthy relays
-const availableContacts$ = contacts$.pipe(
-  // Load the contacts mailboxes
-  includeMailboxes(eventStore),
-  // Filter out unhealthy relays
-  ignoreUnhealthyRelaysOnPointers(liveness),
-);
-
-// 3. Select optimal relays from available ones only
-const selection$ = availableContacts$.pipe(
-  map((users) => selectOptimalRelays(users, { maxConnections, maxRelaysPerUser })),
-);
-```
+Filter relays through the liveness tracker before selecting relays for many users so dead relays don't take a slot. See [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users) for the full pipeline.

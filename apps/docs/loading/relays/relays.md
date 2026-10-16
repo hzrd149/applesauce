@@ -118,96 +118,6 @@ relay
   });
 ```
 
-## Authentication
-
-The `Relay` class supports [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication and keeps track of the authentication state and challenge. `event()` always sends `EVENT`; `auth()` always sends one `AUTH` and returns its matching relay verdict.
-
-- `challenge$` - An observable that tracks the authentication challenge from the relay.
-- `authenticated$` - An observable that emits true when at least one user is authenticated.
-- `authentications$` - An observable of all authentication attempts on the connection, keyed by pubkey.
-- `authenticatedPubkeys$` - An observable of the pubkeys that are currently authenticated.
-- `authenticate` - Waits for a challenge, signs it, verifies freshness, and sends one current AUTH candidate.
-
-More information about authentication can be found in the [typedocs](https://applesauce.build/typedoc/classes/applesauce-relay.Relay).
-
-```typescript
-const controller = new AbortController();
-
-const response = await relay.authenticate(window.nostr, {
-  timeout: 30_000,
-  challengeRetries: 1,
-  signal: controller.signal,
-});
-```
-
-The timeout covers challenge acquisition, signer latency, freshness retries, and the AUTH reply. Pass `timeout: false` to disable that outer deadline; the fixed low-level reply bound still applies. If the challenge changes during signing, `authenticate()` discards the stale candidate and re-signs within `challengeRetries` (default `1`). Matching `OK true` and `OK false` replies are response values; timeout, freshness, signer, transport, and abort failures reject the promise.
-
-If you want to manually build the authentication event you can use the `auth` method to send the event to the relay.
-
-```typescript
-import { makeAuthEvent } from "nostr-tools/nip42";
-
-relay.challenge$.subscribe(async (challenge) => {
-  if (!challenge) return;
-  const auth = await window.nostr.signEvent(makeAuthEvent(relay.url, challenge));
-  const response = await relay.auth(auth);
-  console.log("Authentication response:", response);
-});
-```
-
-### Auth-required responses
-
-Relays refuse individual requests with `auth-required:`, so each `REQ`, `COUNT`, `EVENT`, and negentropy operation handles its own refusal. A refused request never holds back other requests on the same connection.
-
-When an operation is refused it calls its `onAuthRequired` handler, waits up to `authTimeout` (default 30s) for `waitForAuth` to be satisfied, then resends once. If nobody authenticates in time it errors with `AuthTimeoutError`.
-
-```typescript
-relay.subscription(filters, {
-  onAuthRequired: ({ relay }) => relay.authenticate(signer),
-  waitForAuth: pubkey, // default `true`: any authenticated user
-});
-```
-
-Pass `waitForAuth: false` to fail immediately with `AuthRequiredError` instead of waiting.
-
-To authenticate proactively as a side process, watch `challenge$` instead of waiting for a refusal:
-
-```typescript
-relay.challenge$.pipe(filter(Boolean)).subscribe(() => relay.authenticate(signer));
-```
-
-### Integration
-
-Use `authenticate()` for normal signer integration, including remote or interactive signers. Use `challenge$` plus `auth()` only when an application intentionally owns challenge freshness and event construction itself.
-
-### Best Practices
-
-- Pass an `AbortSignal` when authentication belongs to a cancellable view or operation.
-- Treat `ok: false` as a relay verdict; catch rejected promises for client, signer, freshness, timeout, abort, and transport failures.
-- Prefer `authenticate()` unless manual AUTH event construction is required.
-
-### Multiple users
-
-A single connection can authenticate multiple users by calling `authenticate` (or `auth`) once per signer. Each authentication is tracked separately by pubkey.
-
-```typescript
-await relay.authenticate(aliceSigner);
-await relay.authenticate(bobSigner);
-
-relay.isAuthenticated(alice); // true
-relay.isAuthenticated([alice, bob]); // true, all pubkeys authenticated
-```
-
-The `waitForAuth` option on `req`, `subscription`, `request`, and `publish` accepts a pubkey or array of pubkeys to wait for specific users to be authenticated before retrying an `auth-required:` response.
-
-```typescript
-// Only send the REQ once both users are authenticated
-relay.subscription({ kinds: [1059], "#p": [alice, bob] }, { waitForAuth: [alice, bob] });
-```
-
-> [!NOTE]
-> Support for multiple authenticated users on one connection varies between relay implementations; some relays only honor the most recent AUTH.
-
 ## Persistent Subscriptions
 
 The `subscription` method can be used to create persistent subscriptions. It provides two separate options for handling interruptions:
@@ -318,139 +228,12 @@ setTimeout(() => {
 }, 5000);
 ```
 
-## Counting Events
+## Protocol Features
 
-### What it is
-
-`count()` is the COUNT family's high-level Observable API. It emits one validated NIP-45 response and completes; refusals, malformed responses, and timeouts use the error channel.
-
-### How to use it
-
-```typescript
-relay
-  .count({ kinds: [1] }, "my-count", {
-    reconnect: true,
-    retries: 2,
-    timeout: 5_000,
-    onAuthRequired,
-  })
-  .subscribe({ next: console.log, error: console.error });
-```
-
-`timeout` is one whole-request deadline across readiness, retry, and backoff. It defaults to 10 seconds and pauses during active authentication. `false` disables it; `true` selects the relay default. `retries` takes precedence over the `reconnect` alias and accepts boolean, number, or RxJS retry configuration forms.
-
-Responses require a non-negative safe-integer `count`. Optional `approximate` must be boolean and `hll` must be a 512-character hexadecimal NIP-45 sketch, normalized to lowercase. Unknown response fields are preserved for forward compatibility. Invalid replies throw `RelayCountResponseError`; deadline expiry throws `RelayCountTimeoutError`.
-
-### Integration
-
-Use `mergeHllRegisters` and `estimateHllCardinality` when compatible relay responses include HLL sketches. RelayGroup and RelayPool forward the same options and response fields.
-
-### Best Practices
-
-- Supply a stable request ID when correlating logs.
-- Handle the Observable error channel explicitly.
-- Prefer HLL union estimates over summing overlapping relay counts.
-
-The `count` method sends a COUNT request to the relay (NIP-45) and returns an observable that emits a single count response:
-
-```typescript
-relay.count({ kinds: [1], authors: [pubkey] }).subscribe({
-  next: (response) => {
-    console.log(`Found ${response.count} events`);
-  },
-  error: (err) => console.error("Count error:", err),
-});
-
-// Or use with async/await
-import { lastValueFrom } from "rxjs";
-
-const response = await lastValueFrom(relay.count({ kinds: [1] }));
-console.log(`Total events: ${response.count}`);
-```
-
-## Negentropy Synchronization
-
-The relay supports low-level inventory reconciliation and high-level event transfer using Negentropy (NIP-77).
-
-### negentropy() Method
-
-The `negentropy` method emits each `NegentropyRound`. It discovers differences but does not transfer events:
-
-```typescript
-relay.negentropy(eventStore, { kinds: [1] }).subscribe({
-  next: ({ have, need }) => console.log({ have, need }),
-  error: (error) => console.error("Negotiation failed", error),
-});
-```
-
-### sync() Method
-
-The `sync` method is a higher-level wrapper that automatically handles sending and receiving events:
-
-```typescript
-relay.sync(eventStore, { kinds: [1] }).subscribe({
-  next: (message) => {
-    if (message.type === "received") consume(message.event);
-    if (message.type === "sent") uploaded += 1;
-    if (message.type === "send-failed") failures.push(message);
-  },
-  complete: () => console.log("Transfers drained", { uploaded, failures }),
-});
-```
-
-Use `SyncDirection.RECEIVE` or `SyncDirection.SEND` to restrict transfer direction. Sync has no built-in timeout; pass an `AbortSignal` or compose `takeUntil(timer(...))`.
-
-## Relay Information
-
-The `Relay` class keeps track of the relay information and emits it as an observable from the `information$` property.
-
-### Cache information documents
-
-Pass a `RelayInformationCache` to `Relay` or `RelayPool` to reuse NIP-11 documents across relay instances and pools. Use persistent storage in the cache to keep documents across app restarts. The interface has `get(key)` and `set(key, document, ttl)` methods; `ttl` is a relative lifetime in milliseconds. The default lifetime is 24 hours, and `informationCacheMs` overrides it.
-
-```typescript
-import { RelayPool } from "applesauce-relay";
-
-const pool = new RelayPool({ informationCache, informationCacheMs: 60 * 60 * 1000 });
-```
-
-Use the same cache instance with multiple pools to share documents between them. Cache keys are normalized relay URLs. Failed fetches are not stored; cache read or write failures fall back to the fetched document. An existing `Relay` replays its first result, so expiry is checked when a new relay instance requests the document.
-
-`RelayInformationCache` is also compatible with a Keyv instance.
-
-```typescript
-// Get relay information
-relay.information$.subscribe((info) => {
-  if (info) {
-    console.log("Relay name:", info.name);
-    console.log("Supported NIPs:", info.supported_nips);
-    console.log("Software:", info.software);
-
-    if (info.limitation) {
-      console.log("Max message size:", info.limitation.max_message_length);
-    }
-  }
-});
-
-// Display name and icon (fall back to the URL and favicon until NIP-11 loads)
-relay.name$.subscribe((name) => console.log("Relay name:", name));
-relay.icon$.subscribe((icon) => console.log("Relay icon:", icon));
-
-// Check for specific NIP support
-relay.supported$.subscribe((nips) => {
-  if (nips?.includes(77)) {
-    console.log("Relay supports Negentropy (NIP-77)");
-  }
-});
-
-// Get relay limitations
-relay.limitations$.subscribe((limits) => {
-  if (limits) {
-    console.log("Max subscriptions:", limits.max_subscriptions);
-    console.log("Max filters:", limits.max_filters);
-  }
-});
-```
+- [Authentication](./authentication) - respond to auth challenges and `auth-required:` refusals
+- [Counting](./counting) - count events with `count()`
+- [Negentropy Sync](./negentropy) - reconcile and transfer events with `negentropy()` and `sync()`
+- [Relay Information](./relay-information) - read names, icons, supported NIPs and limits from `information$`
 
 ## Observable Properties
 
@@ -470,16 +253,6 @@ relay.attempts$.subscribe((attempts) => {
 // Last connection error
 relay.error$.subscribe((error) => {
   if (error) console.error("Connection error:", error);
-});
-
-// Authentication challenge from relay
-relay.challenge$.subscribe((challenge) => {
-  if (challenge) console.log("Auth challenge:", challenge);
-});
-
-// Authentication state
-relay.authenticated$.subscribe((authenticated) => {
-  console.log("Authenticated:", authenticated);
 });
 
 // All notices from the relay

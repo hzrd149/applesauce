@@ -1,5 +1,5 @@
 ---
-description: Helper methods for working with Nostr events, profiles, zaps, pointers, tags, and more
+description: Helper methods for working with Nostr events, pointers, tags, hidden tags, and more
 ---
 
 # Helpers
@@ -20,16 +20,6 @@ The [`applesauce-core`](https://applesauce.build/typedoc/modules/applesauce-core
 - [`isFromCache`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.isFromCache.html) Checks if an event is marked from cache
 - [`getTagValue`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getTagValue.html) Gets the value of the first tag matching the name
 - [`getIndexableTags`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getIndexableTags.html) Get a `Set` of all indexable tags on the event
-
-### Profiles
-
-- [`getProfileContent`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getProfileContent.html) Returns the parsed profile content for a kind 0 event
-- [`isValidProfile`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.isValidProfile.html) Checks if the content of the kind 0 event is valid JSON
-
-### Mailboxes
-
-- [`getInboxes`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getInboxes.html) Gets the inbox relays from a `10002` event
-- [`getOutboxes`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.getOutboxes.html) Gets the outbox relays from a `10002` event
 
 ### Event relays
 
@@ -84,33 +74,9 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 
 - [`unixNow`](https://applesauce.build/typedoc/functions/applesauce-core.Helpers.unixNow.html) Returns the current unix timestamp
 
-## Common helpers
+## Feature helpers
 
-The [`applesauce-common`](https://applesauce.build/typedoc/modules/applesauce-common.Helpers.html) package exports helpers for NIP-specific event kinds (comments, zaps, lightning, emoji packs, etc).
-
-### Comments (NIP-22)
-
-- [`getCommentRootPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getCommentRootPointer.html) Get the root pointer for a NIP-22 comment
-- [`getCommentReplyPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getCommentReplyPointer.html) Get the reply pointer for a NIP-22 comment
-
-### Zaps (NIP-57)
-
-- [`isValidZap`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.isValidZap.html) Checks if an event is a valid zap and can be parsed
-- [`getZapSender`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapSender.html) Gets the sender's pubkey
-- [`getZapRecipient`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapRecipient.html) Gets the pubkey of the user who received the zap
-- [`getZapPayment`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapPayment.html) Gets the parsed bolt11 invoice
-- [`getZapAddressPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapAddressPointer.html) Gets the address pointer of the zap
-- [`getZapEventPointer`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapEventPointer.html) Gets the event pointer of the zap
-- [`getZapRequest`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getZapRequest.html) Gets the zap request event inside the zap event
-
-### Lightning
-
-- [`parseBolt11`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.parseBolt11.html) Parses a bolt11 lightning invoice
-- [`parseLNURLOrAddress`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.parseLNURLOrAddress.html) Parses a LNURL or lightning address into a LNURLp
-
-### Emoji packs (NIP-30)
-
-- [`getEmojiTag`](https://applesauce.build/typedoc/functions/applesauce-common.Helpers.getEmojiTag.html) Gets an `"emoji"` tag that matches an emoji code
+Helpers for specific event kinds live in [`applesauce-common`](https://applesauce.build/typedoc/modules/applesauce-common.Helpers.html) (and a few in `applesauce-core`) and are documented on the feature pages that use them, such as [Profiles](/features/profiles), [Mailboxes & Outbox](/features/outbox), [Comments](/features/comments), and [Zaps](/features/zaps). Emoji helpers are covered in [Content](/apps/content/).
 
 ## Factory Helpers
 

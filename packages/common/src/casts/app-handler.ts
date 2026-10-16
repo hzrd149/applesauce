@@ -1,12 +1,15 @@
+import "./user.js";
 import { ChainableObservable } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { User } from "applesauce-core/casts/user";
+import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   EventPointer,
   getAddressPointerForEvent,
   ProfilePointer,
 } from "applesauce-core/helpers/pointers";
-import { of } from "rxjs";
+import { getProfileContent, isValidProfile, ProfileContent } from "applesauce-core/helpers/profile";
+import { map, of } from "rxjs";
 import {
   AppHandlerEvent,
   createHandlerLink,
@@ -18,11 +21,13 @@ import {
   getHandlerName,
   getHandlerNextPointer,
   getHandlerPicture,
+  getHandlerPlatforms,
   getHandlerSupportedKinds,
   HandlerLinkPlatform,
   HandlerLinkType,
   isValidAppHandler,
 } from "../helpers/app-handler.js";
+import { UserAppHandlersModel } from "../models/app-handler.js";
 import { AppNsitesModel } from "../models/nsite.js";
 import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
@@ -59,6 +64,10 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
   get description() {
     return getHandlerDescription(this.event);
   }
+  /** The handler's own kind:0-style metadata, or undefined when it uses the author's profile */
+  get metadata(): ProfileContent | undefined {
+    return isValidProfile(this.event) ? getProfileContent(this.event) : undefined;
+  }
   /** The event kinds the handler supports */
   get supportedKinds() {
     return getHandlerSupportedKinds(this.event);
@@ -70,6 +79,11 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
   /** The named nsite the handler is rolling out */
   get nextPointer() {
     return getHandlerNextPointer(this.event);
+  }
+
+  /** The platforms the handler has URL templates for */
+  get platforms() {
+    return getHandlerPlatforms(this.event);
   }
 
   /** Returns all URL templates for a platform */
@@ -85,6 +99,16 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
     return createHandlerLink(this.event, pointer, platform);
   }
 
+  /** Subscribes to the handler's metadata, falling back to the author's kind:0 profile when its content is empty */
+  get metadata$(): ChainableObservable<ProfileContent | undefined> {
+    return this.$$ref("metadata$", (store) =>
+      this.metadata
+        ? of(this.metadata)
+        : store
+            .replaceable({ kind: kinds.Metadata, pubkey: this.event.pubkey })
+            .pipe(map((profile) => (isValidProfile(profile) ? getProfileContent(profile) : undefined))),
+    );
+  }
   /** Subscribes to the named nsite from the `latest` tag */
   get latest$(): ChainableObservable<NamedNsite | undefined> {
     return this.$$ref("latest$", (store) =>
@@ -104,5 +128,22 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
     return this.$$ref("nsites$", (store) =>
       store.model(AppNsitesModel, this.event).pipe(castTimelineStream(Nsite, store)),
     );
+  }
+}
+
+Object.defineProperty(User.prototype, "appHandlers$", {
+  get(this: User) {
+    return this.$$ref("appHandlers$", (store) =>
+      store.model(UserAppHandlersModel, this.pubkey).pipe(castTimelineStream(AppHandler, store)),
+    );
+  },
+  configurable: true,
+  enumerable: false,
+});
+
+declare module "applesauce-core/casts" {
+  interface User {
+    /** Subscribes to the app handlers the user has published */
+    get appHandlers$(): ChainableObservable<AppHandler[]>;
   }
 }

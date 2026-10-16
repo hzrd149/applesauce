@@ -1,4 +1,6 @@
+import "./user.js";
 import { ChainableObservable } from "applesauce-core";
+import { User } from "applesauce-core/casts/user";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { combineLatest, of } from "rxjs";
 import {
@@ -7,7 +9,8 @@ import {
   getRecommendedHandlers,
   isValidAppRecommendation,
 } from "../helpers/app-recommendation.js";
-import { castEventStream } from "../observable/cast-stream.js";
+import { UserAppRecommendationsModel } from "../models/app-handler.js";
+import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
 import { AppHandler } from "./app-handler.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
 
@@ -38,5 +41,22 @@ export class AppRecommendation extends EventCast<AppRecommendationEvent> {
         ? combineLatest(this.handlers.map((h) => store.replaceable(h.pointer).pipe(castEventStream(AppHandler, store))))
         : of([]),
     );
+  }
+}
+
+Object.defineProperty(User.prototype, "appRecommendations$", {
+  get(this: User) {
+    return this.$$ref("appRecommendations$", (store) =>
+      store.model(UserAppRecommendationsModel, this.pubkey).pipe(castTimelineStream(AppRecommendation, store)),
+    );
+  },
+  configurable: true,
+  enumerable: false,
+});
+
+declare module "applesauce-core/casts" {
+  interface User {
+    /** Subscribes to the user's app handler recommendations for every event kind */
+    get appRecommendations$(): ChainableObservable<AppRecommendation[]>;
   }
 }

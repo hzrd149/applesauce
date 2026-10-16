@@ -18,6 +18,8 @@ import {
 } from "../operations/event.js";
 import { modifyHiddenTags, modifyPublicTags, modifyTags } from "../operations/tags.js";
 import { setContentWarning } from "../operations/content.js";
+import { setClient } from "../operations/client.js";
+import { AddressPointer } from "../helpers/pointers.js";
 import { nanoid } from "nanoid";
 
 /** Creates a blank event template with the given kind and random "d" tag if addressable */
@@ -179,6 +181,11 @@ export class EventFactory<
   /** Sets the NIP-36 content-warning tag for the event */
   contentWarning(warning: string | boolean) {
     return this.chain(setContentWarning(warning));
+  }
+
+  /** Sets the NIP-89 client tag for the event, skipping private message kinds */
+  clientTag(name: string, pointer?: Omit<AddressPointer, "kind">) {
+    return this.chain(setClient(name, pointer));
   }
 
   /** Sets the NIP-70 "-" tag for the event */

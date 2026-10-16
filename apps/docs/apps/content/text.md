@@ -197,27 +197,6 @@ import { galleries } from "applesauce-content/text";
 const customGalleries = galleries([".jpg", ".png", ".svg"]);
 ```
 
-**Gallery node structure:**
-
-```typescript
-interface Gallery {
-  type: "gallery";
-  links: string[]; // Array of image URLs
-}
-```
-
-**Customizing image types:**
-
-```ts
-import { galleries } from "applesauce-content/text";
-
-const customGalleries = galleries([".jpg", ".png", ".webp", ".svg"]);
-
-const content = useRenderedContent(event, components, {
-  transformers: [links, customGalleries, nostrMentions],
-});
-```
-
 ## Optional Transformers
 
 Some transformers pull in extra dependencies and are kept out of the default pipeline to keep the bundle lean. Importing the module by its subpath registers the transformer in the default pipeline as a side effect — there's no need to pass it to `getParsedContent` manually.

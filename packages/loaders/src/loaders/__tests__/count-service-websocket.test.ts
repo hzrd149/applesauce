@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 import { RelayPool } from "../../../../relay/src/pool.js";
 import { Relay } from "../../../../relay/src/relay.js";
-import { createCountService, nip85CountSource, relayCountSource } from "../index.js";
+import { createCountService, nip85CountSource } from "../index.js";
 import { FakeUser } from "../../__tests__/fake-user.js";
 
 const pools: RelayPool[] = [];
@@ -19,9 +19,7 @@ it("adapts actual RelayPool COUNT outcomes from a controlled websocket", async (
   const server = new WS("wss://count.test/", { jsonProtocol: true });
   const pool = new RelayPool();
   pools.push(pool);
-  const counts = createCountService({
-    sources: [relayCountSource({ relays: ["wss://count.test/"], count: pool.count.bind(pool) })],
-  });
+  const counts = createCountService(pool, { relays: ["wss://count.test/"] });
   const result = firstValueFrom(
     counts.event({ id: "a".repeat(64), kind: 1, created_at: 0 }).reactions$.pipe(filter((v) => v !== undefined)),
   );
@@ -51,7 +49,7 @@ it("verifies signed NIP-85 events through a finite RelayPool request", async () 
   const counts = createCountService({
     sources: [
       nip85CountSource({
-        request: pool.request.bind(pool),
+        pool,
         providers: () => [
           { kind: 30383, tag: "reaction_cnt", servicePubkey: user.pubkey, relay: "wss://assertions.test/" },
         ],

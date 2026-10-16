@@ -225,40 +225,16 @@ const stopPersisting = persistEventsToCache(
 stopPersisting();
 ```
 
-### Filtering Cached Events
-
-Only cache specific event types:
-
-```ts
-persistEventsToCache(eventStore, async (events) => {
-  // Only cache profiles and contacts
-  const toCache = events.filter((e) => e.kind === 0 || e.kind === 3);
-
-  if (toCache.length > 0) {
-    await nostrIDB.addEvents(toCache);
-  }
-});
-```
-
 ## Best Practices
 
 ### Cache Frequently Accessed Events
 
-Focus on caching events that are accessed frequently:
+Filter the batch so only frequently accessed events like profiles and contact lists reach the cache:
 
 ```ts
-// Cache profiles, contacts, and other replaceable events
 persistEventsToCache(eventStore, async (events) => {
-  const important = events.filter((e) => {
-    return (
-      e.kind === 0 || // Profiles
-      e.kind === 3 || // Contacts
-      isReplaceable(e.kind) // Other replaceable events
-    );
-  });
-
-  if (important.length > 0) {
-    await nostrIDB.addEvents(important);
-  }
+  // Profiles (0), contacts (3), and other replaceable or addressable events
+  const important = events.filter((e) => isReplaceable(e.kind));
+  if (important.length > 0) await nostrIDB.addEvents(important);
 });
 ```

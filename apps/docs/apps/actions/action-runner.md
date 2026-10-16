@@ -286,7 +286,7 @@ export const actions = new ActionRunner(eventStore, signer, publish);
 
 ### Relay Selection Strategy
 
-Let actions determine relay selection based on NIP-65:
+Let actions pick relays from the users' mailboxes (see [Mailboxes & Outbox](/features/outbox)):
 
 ```ts
 await actions.run(SendLegacyMessage, recipientPubkey, "Hello"); // Uses recipient's inboxes
@@ -297,10 +297,10 @@ await actions.run(UpdateProfile, { name: "Alice" }); // Uses your outboxes
 
 ```ts
 try {
-  await actions.run(FollowUser, pubkey);
+  await actions.run(NewContacts, pubkeys);
 } catch (err) {
-  if (err.message.includes("already following")) {
-    console.log("Already following");
+  if (err.message.includes("already exists")) {
+    console.log("User already has a contact list");
   } else {
     showErrorToUser(err.message);
   }
@@ -309,18 +309,18 @@ try {
 
 ### Bulk Operations
 
-```ts
-actions.saveToStore = false; // Disable auto-save
+Running `FollowUser` in a loop signs and publishes a new contacts event for every pubkey. Write a small custom action to apply all changes to one event:
 
-const events = await lastValueFrom(actions.exec(BulkFollow, users).pipe(toArray()));
-for (const event of events) {
-  try {
-    await pool.publish(relays, event);
-    eventStore.add(event);
-  } catch (err) {
-    console.error("Failed:", err);
-  }
+```ts
+function FollowMany(pubkeys: string[]): Action {
+  return async ({ user, signer, publish }) => {
+    const contacts = await user.replaceable(kinds.Contacts).$first(1000, undefined);
+    let factory = contacts ? ContactsFactory.modify(contacts) : ContactsFactory.create();
+    for (const pubkey of pubkeys) factory = factory.addContact(pubkey);
+
+    await publish(await factory.sign(signer), await user.outboxes$.$first(1000, undefined));
+  };
 }
 
-actions.saveToStore = true; // Re-enable
+await actions.run(FollowMany, pubkeys);
 ```

@@ -49,4 +49,15 @@ describe("app recommendation operations", () => {
     expect((await recommendation.removeRecommendedHandler(address)(next)).tags).toEqual([]);
     expect(() => recommendation.addRecommendedHandler(`30023:${PUBKEY}:x`)).toThrow();
   });
+
+  it("removes only the entry without a platform when platform is null", async () => {
+    const address = `31990:${PUBKEY}:app`;
+    const next = draft(31989, [
+      ["a", address],
+      ["a", address, "", "ios"],
+    ]);
+    expect((await recommendation.removeRecommendedHandler(address, null)(next)).tags).toEqual([
+      ["a", address, "", "ios"],
+    ]);
+  });
 });

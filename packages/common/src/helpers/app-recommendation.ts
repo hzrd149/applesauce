@@ -1,5 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import { AddressPointer, getAddressPointerFromATag } from "applesauce-core/helpers/pointers";
 import { processTags } from "applesauce-core/helpers/tags";
 import { APP_HANDLER_KIND, HandlerLinkPlatform } from "./app-handler.js";
@@ -18,6 +19,11 @@ export interface RecommendedHandler {
 }
 
 const HandlersSymbol = Symbol.for("app-recommendation-handlers");
+
+/** Returns a relay filter for recommendations for an event kind, optionally from a set of authors */
+export function getAppRecommendationsFilter(kind: number, authors?: string[]): Filter {
+  return { kinds: [APP_RECOMMENDATION_KIND], "#d": [String(kind)], ...(authors ? { authors } : {}) };
+}
 
 /** Checks if an event is a valid NIP-89 handler recommendation (kind 31989) for a numeric event kind */
 export function isValidAppRecommendation(event?: NostrEvent): event is AppRecommendationEvent {

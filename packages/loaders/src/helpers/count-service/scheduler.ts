@@ -1,3 +1,4 @@
+import type { Debugger } from "applesauce-core";
 import { Observable, Subscriber, Subscription, type SchedulerLike } from "rxjs";
 import type { CountTransportScheduler } from "../../loaders/count-sources/types.js";
 
@@ -15,6 +16,8 @@ export interface TransportOptions {
   perProvider: number;
   /** The maximum pending transports */
   queueCapacity: number;
+  /** The optional transport logger */
+  logger?: Debugger;
   /** The optional activity callback */
   diagnostic?: (event: { type: string; active: number; pending: number }) => void;
 }
@@ -26,7 +29,16 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
   let active = 0;
   let draining = false;
   let scheduled: Subscription | undefined;
-  const report = (type: string) => options.diagnostic?.({ type, active, pending: queue.length });
+  const report = (type: string, resources: readonly string[], queuedAt?: number) => {
+    if (options.logger?.enabled)
+      options.logger("Transport %s", type, {
+        resources,
+        active,
+        pending: queue.length,
+        wait: queuedAt === undefined ? undefined : options.clock.now() - queuedAt,
+      });
+    options.diagnostic?.({ type, active, pending: queue.length });
+  };
   const fits = (resources: string[]) =>
     active < options.concurrency &&
     resources.every((r) => (used.get(r) ?? 0) < (r.startsWith("provider:") ? options.perProvider : options.perRelay));
@@ -59,6 +71,7 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
     run: <T>(resources: readonly string[], transport: () => Observable<T>) =>
       new Observable<T>((subscriber) => {
         const keys = [...new Set(resources)];
+        const queuedAt = options.logger?.enabled ? options.clock.now() : undefined;
         let admitted = false;
         const job = {
           resources: keys,
@@ -67,7 +80,7 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
             admitted = true;
             active++;
             keys.forEach((r) => used.set(r, (used.get(r) ?? 0) + 1));
-            report("start");
+            report("start", keys, queuedAt);
             let subscribing = true;
             let releasePending = false;
             let released = false;
@@ -84,7 +97,7 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
                 if (n) used.set(r, n);
                 else used.delete(r);
               });
-              report("settled");
+              report("settled", keys);
               schedule();
             };
             const upstream = new Subscriber<T>({
@@ -110,7 +123,7 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
             const i = queue.indexOf(job);
             if (i !== -1) {
               queue.splice(i, 1);
-              report("abandoned");
+              report("abandoned", keys, queuedAt);
             }
             if (!queue.length) {
               scheduled?.unsubscribe();
@@ -119,11 +132,11 @@ export function createTransportScheduler(options: TransportOptions): CountTransp
           }
         });
         if (queue.length >= options.queueCapacity) {
-          report("overload");
+          report("overload", keys);
           subscriber.error(new Error("Count queue capacity exceeded"));
         } else {
           queue.push(job);
-          report("queued");
+          report("queued", keys);
           schedule();
         }
       }),

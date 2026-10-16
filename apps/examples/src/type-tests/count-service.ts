@@ -19,6 +19,14 @@ export function countServiceIntegration(pool: RelayPool, user: User, event: Nost
     relayCountSource({ count: pool.count.bind(pool), relays: of(["wss://relay.test/"]) }),
   ];
   const service = createCountService({ sources, ttl: ({ age }) => (age < 3600 ? 30000 : 300000) });
+  const configured = createCountService(pool, {
+    relays: of(["wss://relay.test/"]),
+    providers: (kind, tag) =>
+      user.trustedProviders$.pipe(switchMap((list) => (list ? list.providersFor$(kind, tag) : of([])))),
+  });
+  configured.stop();
+  createCountService(pool.request.bind(pool), { providers: () => [] }).stop();
+  createCountService({ pool, relays: [] }).stop();
   const note = service.event(event);
   note.reactions satisfies ChainableObservable<CountState>;
   note.reactions$ satisfies Observable<number | undefined>;

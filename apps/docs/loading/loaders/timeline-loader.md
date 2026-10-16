@@ -120,26 +120,18 @@ const loader = createTimelineLoader(pool, relays, filter, {
 
 ### Outbox maps
 
-```ts
-import { createOutboxTimelineLoader } from "applesauce-loaders/loaders";
-
-const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore });
-const sub = loader(windows$).subscribe();
-```
-
-Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it.
-
-### Relay liveness
-
-Pass a `RelayLiveness` tracker to report failing relays, and filter the outbox relays with it so they drop out of the map until their backoff ends:
+`createOutboxTimelineLoader` takes an `OutboxMap` (relay → users) or an observable of one. Build it from `ProfilePointer[]` with `createOutboxMap`, filtering relays through a `RelayLiveness` tracker first; pass the same tracker as `liveness` to report failing relays:
 
 ```ts
-const liveness = new RelayLiveness();
-liveness.connectToPool(pool);
-
-const outboxes$ = user.outboxes$.pipe(ignoreUnhealthyRelays(liveness), map(toOutboxMap));
-const loader = createOutboxTimelineLoader(pool, outboxes$, { kinds: [1] }, { eventStore, liveness });
+const outboxMap$ = contacts$.pipe(
+  includeMailboxes(eventStore),
+  ignoreUnhealthyRelaysOnPointers(liveness),
+  map(createOutboxMap),
+);
+const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, liveness });
 ```
+
+Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it. See [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users) for relay selection.
 
 ### Observable operators
 
@@ -167,4 +159,4 @@ Applications own their requested time ranges. A “show older” control can ext
 - Keep live subscriptions separate; historical coverage is not automatically refreshed.
 - Use the default buffer first, then measure request counts and visible loading latency before tuning it.
 - Render as soon as one relay covers a window and let slower relays stream in, rather than waiting for every relay.
-- Filter outbox relays with `ignoreUnhealthyRelays(liveness)` so dead relays leave the relay set instead of being retried.
+- Filter outbox relays with `ignoreUnhealthyRelaysOnPointers(liveness)` so dead relays leave the relay set instead of being retried.

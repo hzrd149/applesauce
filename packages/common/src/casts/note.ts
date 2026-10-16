@@ -7,13 +7,15 @@ import {
   NostrEvent,
   processTags,
 } from "applesauce-core/helpers";
+import { getClientTag } from "../helpers/app-handler.js";
 import { getNip10References } from "../helpers/threading.js";
 import { CommentsModel } from "../models/comments.js";
 import { ReactionsModel } from "../models/reactions.js";
 import { SharesModel } from "../models/shares.js";
 import { RepliesModel } from "../models/thread.js";
 import { EventZapsModel } from "../models/zaps.js";
-import { castTimelineStream } from "../observable/cast-stream.js";
+import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
+import { AppHandler } from "./app-handler.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
 import { Comment } from "./comment.js";
 import { Reaction } from "./reaction.js";
@@ -38,6 +40,18 @@ export class Note extends EventCast<KnownEvent<1>> {
   }
   get isRoot() {
     return !this.references.reply && !this.references.root;
+  }
+
+  /** The NIP-89 client that published the note */
+  get client() {
+    return getClientTag(this.event);
+  }
+  /** Subscribes to the NIP-89 handler referenced by the note's client tag */
+  get client$() {
+    return this.$$ref("client$", (store) => {
+      const pointer = this.client?.pointer;
+      return pointer ? store.replaceable(pointer).pipe(castEventStream(AppHandler, store)) : of(undefined);
+    });
   }
 
   /** An array of events that this note is quoting */

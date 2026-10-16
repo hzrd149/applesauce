@@ -15,7 +15,9 @@ import {
   getHandlerLatestPointer,
   getHandlerLinks,
   getHandlerNextPointer,
+  getHandlerPlatforms,
   getHandlerSupportedKinds,
+  getAppHandlersFilter,
   isValidAppHandler,
 } from "../app-handler.js";
 
@@ -49,6 +51,18 @@ const mockHandler: NostrEvent = user.event({
 describe("getHandlerSupportedKinds", () => {
   it("should return an array of supported kinds", () => {
     expect(getHandlerSupportedKinds(mockHandler)).toEqual([0, 1, 30023]);
+  });
+
+  it("should ignore non-numeric k tags", () => {
+    const event = user.event({
+      kind: kinds.Handlerinformation,
+      tags: [
+        ["d", "x"],
+        ["k", "abc"],
+        ["k", "1"],
+      ],
+    });
+    expect(getHandlerSupportedKinds(event)).toEqual([1]);
   });
 
   it("should return an empty array when no kinds are specified", () => {
@@ -281,6 +295,28 @@ describe("getHandlerLinks", () => {
   it("returns all templates for a platform", () => {
     expect(getHandlerLinks(mockHandler, "ios")).toEqual([{ url: "testhandler://<bech32>", type: undefined }]);
     expect(getHandlerLinks(mockHandler)).toHaveLength(5);
+  });
+});
+
+describe("getHandlerPlatforms", () => {
+  it("returns the platforms with link templates", () => {
+    expect(getHandlerPlatforms(mockHandler)).toEqual(["web", "ios", "android"]);
+    expect(getHandlerPlatforms({ tags: [["android", "app://<bech32>"]] })).toEqual(["android"]);
+  });
+});
+
+describe("link helpers with drafts", () => {
+  it("builds links from an unsigned template", () => {
+    const draft = { tags: [["web", "https://app.com/<bech32>"]] };
+    expect(createHandlerLink(draft, { pubkey: user.pubkey })).toBe(
+      `https://app.com/${nprofileEncode({ pubkey: user.pubkey })}`,
+    );
+  });
+});
+
+describe("getAppHandlersFilter", () => {
+  it("filters handlers by supported kind", () => {
+    expect(getAppHandlersFilter(30023)).toEqual({ kinds: [kinds.Handlerinformation], "#k": ["30023"] });
   });
 });
 

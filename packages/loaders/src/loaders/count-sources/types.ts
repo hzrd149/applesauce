@@ -1,3 +1,4 @@
+import type { Debugger } from "applesauce-core";
 import type { Filter, NostrEvent } from "applesauce-core/helpers";
 import type { Observable, SchedulerLike } from "rxjs";
 
@@ -8,10 +9,13 @@ export type CountList<T> = readonly T[] | Observable<readonly T[]>;
 export interface CountTarget {
   /** The event ID */
   id: string;
+
   /** The event creation time in seconds */
   created_at: number;
+
   /** The event kind */
   kind: number;
+
   /** The stable address when counting an address instead of a revision */
   address?: string;
 }
@@ -20,10 +24,13 @@ export interface CountTarget {
 export interface CountMetric {
   /** The stable semantic identifier, including a version */
   id: string;
+
   /** The unit represented by the value */
   unit: "events" | "sats" | "score";
+
   /** The COUNT filters, or undefined for unsupported targets */
   filters?: (target: CountTarget) => Filter[] | undefined;
+
   /** The NIP-85 metric tag */
   assertionTag?: string;
 }
@@ -32,6 +39,7 @@ export interface CountMetric {
 export interface CountQuery {
   /** The target event or address */
   target: CountTarget;
+
   /** The requested metric */
   metric: CountMetric;
 }
@@ -40,8 +48,10 @@ export interface CountQuery {
 export interface CountOrigin {
   /** The adapter identity */
   adapter: string;
+
   /** The selected relay */
   relay: string;
+
   /** The assertion provider, when applicable */
   provider?: string;
 }
@@ -50,12 +60,16 @@ export interface CountOrigin {
 export interface CountResult {
   /** The nonnegative safe integer value */
   value: number;
+
   /** The semantic metric identifier */
   metric: string;
+
   /** The actual source of the value */
   origin: CountOrigin;
+
   /** Whether the value is approximate */
   approximate?: boolean;
+
   /** The assertion creation time in seconds, separate from fetch time */
   assertedAt?: number;
 }
@@ -70,14 +84,22 @@ export interface CountTransportScheduler {
 export interface CountContext {
   /** The absolute resolution deadline in scheduler milliseconds */
   deadline: number;
+
   /** The transport admission scheduler */
   transport: CountTransportScheduler;
+
   /** The RxJS clock used for deadlines and batching */
   clock: SchedulerLike;
+
   /** The maximum duration of an individual attempt */
   attemptTimeout: number;
+
+  /** The parent logger inherited by source attempts */
+  logger?: Debugger;
+
   /** The optional resolution instrumentation callback */
   diagnostic?: (type: string) => void;
+
   /** Reports a failed candidate while allowing subsequent fallbacks */
   onFailure?: (error: unknown) => void;
 }
@@ -86,8 +108,10 @@ export interface CountContext {
 export interface CountSource {
   /** The stable source identity */
   id: string;
+
   /** Returns a policy identity and keeps observing configuration after settlement */
   policy: (query: CountQuery) => Observable<string>;
+
   /** Returns one result, completes empty when unavailable, or errors */
   count: (query: CountQuery, context: CountContext) => Observable<CountResult>;
 }
@@ -104,6 +128,7 @@ export type CountRequest = (
 export interface CountProvider {
   /** The algorithm-specific signing key */
   pubkey: string;
+
   /** The reactive relay routes, compatible with AssertionProvider */
   relays$: Observable<readonly string[]>;
 }
@@ -115,10 +140,25 @@ export type AssertionRequest = (relays: string[], filters: Filter[]) => Observab
 export interface CountProviderDeclaration {
   /** The trusted assertion kind */
   kind: number;
+
   /** The trusted assertion metric tag */
   tag: string;
+
   /** The algorithm-specific signing key */
   servicePubkey: string;
+
   /** The declared relay hint */
   relay?: string;
 }
+
+/** A structural pool with COUNT and/or finite event request support */
+export interface CountPool {
+  /** The NIP-45 COUNT transport */
+  count?: CountRequest;
+
+  /** The finite event request transport used for NIP-85 assertions */
+  request?: AssertionRequest;
+}
+
+/** A finite event request method or interoperable pool for the count service */
+export type CountUpstream = AssertionRequest | CountPool;

@@ -48,41 +48,20 @@ console.log(first === second); // true
 
 ## Prebuilt Models
 
-There are some common prebuilt models that come with `applesauce-core`
+`applesauce-core` includes a few common models:
 
-- [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a single pubkey's profile (kind 0)
 - [`TimelineModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
-- [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list (kind 3)
-- [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox/outbox relays (kind 10002)
+- [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a user's profile, see [Profiles](/features/profiles)
+- [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list, see [Follows](/features/follows)
+- [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox and outbox relays, see [Mailboxes & Outbox](/features/outbox)
 
-There are many more models in `applesauce-common/models` for common NIPs like replies, reactions, zaps, bookmarks, and more. For example:
+`applesauce-common/models` adds models for specific features, for example:
 
-- [`RepliesModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.RepliesModel.html) subscribes to all NIP-10 and NIP-22 replies to an event
-- [`ReactionsModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.ReactionsModel.html) subscribes to reactions for an event
+- [`RepliesModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.RepliesModel.html) subscribes to direct replies and comments on an event, see [Notes & Threads](/features/notes-and-threads)
+- [`ReactionsModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.ReactionsModel.html) subscribes to reactions for an event, see [Reactions & Reposts](/features/reactions-and-reposts)
+- Git repository, thread, and patch models, see [Git](/features/git)
 
 See the full list in [the API docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html) and [applesauce-common models](https://applesauce.build/typedoc/modules/applesauce-common.Models.html).
-
-## Git Models
-
-Import NIP-34 models from `applesauce-common/models`. Repository models list issues, PRs, and root patches; thread models expose comments and authorized statuses.
-
-```ts
-const issues$ = store.model(GitRepositoryIssuesModel, repoPointer);
-const state$ = store.model(GitPullRequestStateModel, pr);
-const series$ = store.model(GitPatchSeriesModel, patch);
-```
-
-`GitPullRequestUpdatesModel` filters to valid author updates, and `GitPullRequestStateModel` returns their current fetch state. `GitPatchSeriesRootModel`, `GitPatchOriginalRootModel`, and `GitPatchRevisionsModel` resolve patch relationships. `GitPatchStatusModel` applies revision acceptance rules; `GitStatusModel` and `GitStatusEventModel` accept explicit maintainer pubkeys for issues and PRs.
-
-### Integration
-
-[Git casts](/apps/casting/events#git-threads) compose these models with repository maintainer lookups. Use the casts for event-centric UI, or pass maintainers explicitly when consuming status models directly. Populate collection timelines with loaders or relay subscriptions; ancestor lookups use the store's event loader when configured.
-
-### Best Practices
-
-- Use `GitPatchStatusModel` for patches so revisions inherit the original status
-- Subscribe to `GitPullRequestStateModel` for a coherent fetch state
-- Reuse one EventStore for thread events, repository announcements, and related data
 
 ## Custom Models
 

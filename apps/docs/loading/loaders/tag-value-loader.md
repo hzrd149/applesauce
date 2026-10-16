@@ -1,5 +1,5 @@
 ---
-description: Load events by tag values with support for NIP-65 relay routing
+description: Batch, cache, and deduplicate requests for events that reference a tag value
 ---
 
 # Tag Value Loader
@@ -41,12 +41,9 @@ The `createTagValueLoader` function accepts these options:
 - `authors`: Restrict queries to specific authors
 - `since`: Restrict queries since timestamp
 - `cacheRequest`: A method used to load events from a local cache
-- `extraRelays`: An array of relays to always fetch from
-- `eventStore`: An event store used to deduplicate events
-
-:::warning
-If an event store is not provided, the loader will not be able to deduplicate events.
-:::
+- `extraRelays`: An array (or observable array) of relays to always fetch from
+- `eventStore`: An event store used to deduplicate events (defaults to an in-memory store, pass `null` to disable)
+- `signal`: An `AbortSignal` that tears down the loader when aborted
 
 ## Working with Relay Pools
 
@@ -123,53 +120,9 @@ eTagLoader({ value: "event_id" }).subscribe((event) => {
 });
 ```
 
-## Creating Specialized Loaders
+## Specialized Loaders
 
-The Tag Value Loader can be used to create specialized loaders for specific use cases:
-
-### Reactions Loader
-
-```ts
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { kinds } from "nostr-tools";
-import { getReplaceableAddress, isReplaceable, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-
-function createReactionsLoader(pool, options) {
-  // Create tag value loaders for both events and addressable events
-  const eventLoader = createTagValueLoader(pool, "e", { ...options, kinds: [kinds.Reaction] });
-  const addressableLoader = createTagValueLoader(pool, "a", { ...options, kinds: [kinds.Reaction] });
-
-  // Return a function that uses the appropriate loader based on event type
-  return (event, relays) => {
-    // Use addressable loader for replaceable events, otherwise use event loader
-    return isReplaceable(event.kind)
-      ? addressableLoader({ value: getReplaceableAddress(event), relays })
-      : eventLoader({ value: event.id, relays });
-  };
-}
-```
-
-### Zaps Loader
-
-```ts
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { kinds } from "nostr-tools";
-import { getReplaceableAddress, isReplaceable, getSeenRelays, mergeRelaySets } from "applesauce-core/helpers";
-
-function createZapsLoader(pool, options) {
-  // Create tag value loaders for both events and addressable events
-  const eventLoader = createTagValueLoader(pool, "e", { ...options, kinds: [kinds.Zap] });
-  const addressableLoader = createTagValueLoader(pool, "a", { ...options, kinds: [kinds.Zap] });
-
-  // Return a function that uses the appropriate loader based on event type
-  return (event, relays) => {
-    // Use addressable loader for replaceable events, otherwise use event loader
-    return isReplaceable(event.kind)
-      ? addressableLoader({ value: getReplaceableAddress(event), relays })
-      : eventLoader({ value: event.id, relays });
-  };
-}
-```
+For reactions and zaps on an event, use the prebuilt [Reactions Loader](/loading/loaders/reactions-loader) and [Zaps Loader](/loading/loaders/zaps-loader), which wrap tag value loaders for the `e` and `a` tags.
 
 ## Real-World Example
 
@@ -221,8 +174,8 @@ function RepliesComponent({ noteId, relays }) {
 
 The Tag Value Loader follows this sequence when loading events:
 
-1. Attempt to load from cache (if configured)
-2. Fetch from specified relays and any additional relays
-3. Deduplicate events (if an event store is configured)
+1. Buffer requests and batch them into one filter per relay
+2. Load from the cache (if configured) and from the pointer relays plus `extraRelays` in parallel
+3. Deduplicate events through the event store (or an in-memory store by default)
 
 This approach ensures efficient event loading with minimal network requests.

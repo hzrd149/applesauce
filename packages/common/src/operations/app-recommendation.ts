@@ -39,15 +39,14 @@ export function addRecommendedHandler(
   ]);
 }
 /**
- * Removes a recommended handler, optionally only for one platform
+ * Removes a recommended handler for every platform, one platform, or only the entry without a platform when `null`
  * @throws if the address is not a handler information event (kind 31990)
  */
 export function removeRecommendedHandler(
   handler: AddressPointer | string,
-  platform?: HandlerLinkPlatform,
+  platform?: HandlerLinkPlatform | null,
 ): EventOperation {
   const address = getReplaceableAddressFromPointer(handlerPointer(handler));
-  return modifyPublicTags((tags) =>
-    tags.filter((t) => !(t[0] === "a" && t[1] === address && (platform === undefined || t[3] === platform))),
-  );
+  const matches = (t: string[]) => (platform === undefined ? true : platform === null ? !t[3] : t[3] === platform);
+  return modifyPublicTags((tags) => tags.filter((t) => !(t[0] === "a" && t[1] === address && matches(t))));
 }
