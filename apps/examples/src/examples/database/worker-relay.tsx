@@ -589,7 +589,7 @@ function WorkerRelaySearch() {
               <option value="10006">Public Chats List (10006)</option>
               <option value="10007">App-specific Data (10007)</option>
               <option value="10015">Interests List (10015)</option>
-              <option value="10030">User Status (10030)</option>
+              <option value="10030">User Emoji List (10030)</option>
               <option value="1063">File Metadata (1063)</option>
               <option value="30000">Follow Sets (30000)</option>
               <option value="30001">Communities (30001)</option>
@@ -604,7 +604,7 @@ function WorkerRelaySearch() {
               <option value="30030">Emoji Sets (30030)</option>
               <option value="30078">Application-specific Data (30078)</option>
               <option value="30311">Classified Listing (30311)</option>
-              <option value="30315">Live Event (30315)</option>
+              <option value="30315">User Status (30315)</option>
               <option value="30315">Live Event Messages (30315)</option>
               <option value="30402">Community Post Approval (30402)</option>
               <option value="30403">Community Post (30403)</option>

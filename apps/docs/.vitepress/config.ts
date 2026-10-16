@@ -202,6 +202,11 @@ export default defineConfig({
         ],
       },
       {
+        text: "Features",
+        collapsed: false,
+        items: [{ text: "User Statuses", link: "/features/user-statuses" }],
+      },
+      {
         text: "Storing events",
         collapsed: false,
         link: "/storage",

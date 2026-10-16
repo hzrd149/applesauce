@@ -41,6 +41,7 @@ export * as ProfileBadges from "./profile-badges.js";
 export * as Stream from "./stream.js";
 export * as StreamChat from "./stream-chat.js";
 export * as Torrent from "./torrent.js";
+export * as UserStatus from "./user-status.js";
 export * as WrappedMessage from "./wrapped-message.js";
 export * as Zap from "./zap.js";
 export * as ZapGoal from "./zap-goal.js";
