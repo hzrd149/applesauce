@@ -4,24 +4,18 @@
  * @related app-handlers/recommendations, app-handlers/publisher
  */
 import { AppHandler, castUser } from "applesauce-common/casts";
-import {
-  APP_HANDLER_KIND,
-  APP_RECOMMENDATION_KIND,
-  getRecommendedHandlers,
-  HandlerLinkPlatform,
-} from "applesauce-common/helpers";
-import { AppHandlersModel, AppRecommendationsModel, RecommendedAppHandlersModel } from "applesauce-common/models";
+import { getAppHandlersFilter, getAppRecommendationsFilter, HandlerLinkPlatform } from "applesauce-common/helpers";
+import { AppHandlersModel, RecommendedAppHandlersModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore } from "applesauce-core";
+import { castEvent } from "applesauce-core/casts";
 import {
   AddressPointer,
   decodePointer,
   encodePointer,
   EventPointer,
-  Filter,
   getAddressPointerForEvent,
   getEventPointerForEvent,
-  getReplaceableAddressFromPointer,
   getTagValue,
   isAddressableKind,
   isAddressPointer,
@@ -34,7 +28,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useMemo, useRef, useState } from "react";
-import { catchError, endWith, ignoreElements, map, Observable, of, startWith } from "rxjs";
+import { catchError, distinctUntilChanged, endWith, ignoreElements, map, Observable, of, startWith } from "rxjs";
 import LoginView from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
 import { relayTimeline } from "../../extra/relay-timeline";
@@ -84,10 +78,7 @@ function pointerKind$(pointer: Pointer): Observable<number | undefined> {
 
 /** Requests handlers and recommendations for a kind into the store and reports the request status */
 function loadHandlers(relay: string, kind: number, authors?: string[]): Observable<LoadState> {
-  const filters: Filter[] = [
-    { kinds: [APP_HANDLER_KIND], "#k": [String(kind)] },
-    { kinds: [APP_RECOMMENDATION_KIND], "#d": [String(kind)], ...(authors ? { authors } : {}) },
-  ];
+  const filters = [getAppHandlersFilter(kind), getAppRecommendationsFilter(kind, authors)];
   return pool.request([relay], filters).pipe(
     mapEventsToStore(eventStore),
     ignoreElements(),
@@ -154,7 +145,7 @@ function HandlerRow({
   const metadata = use$(handler.metadata$);
   const name = metadata?.display_name || metadata?.name || handler.name;
   const link = handler.link(pointer, platform);
-  const usingWebFallback = !!link && platform !== "web" && handler.links(platform).length === 0;
+  const usingWebFallback = !!link && !handler.platforms.includes(platform);
 
   return (
     <div className="flex gap-3 p-3 border-b border-base-300">
@@ -188,28 +179,39 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
   const [platform, setPlatform] = useState<HandlerLinkPlatform>("web");
   const kind = use$(() => pointerKind$(pointer), [pointer]);
 
-  // The user and their follows; undefined means trust recommendations from anyone on the relay
-  const authors = use$(
+  // The user and their follows, joined into a string so the streams below only resubscribe when the set changes.
+  // An empty key means trust recommendations from anyone on the relay
+  const authorsKey = use$(
     () =>
       pubkey
-        ? castUser(pubkey, eventStore).contacts$.pipe(map((users) => [pubkey, ...users.map((u) => u.pubkey)]))
-        : of(undefined),
+        ? castUser(pubkey, eventStore).contacts$.pipe(
+            map((users) => [pubkey, ...users.map((u) => u.pubkey)].sort().join(",")),
+            distinctUntilChanged(),
+          )
+        : of(""),
     [pubkey],
   );
+  const authors = useMemo(() => (authorsKey ? authorsKey.split(",") : undefined), [authorsKey]);
 
   const state = use$(
     () => (kind === undefined ? undefined : loadHandlers(relay, kind, authors)),
     [relay, kind, authors],
   );
-  const recommendations = use$(
-    () => (kind === undefined ? undefined : eventStore.model(AppRecommendationsModel, kind, authors)),
-    [kind, authors],
-  );
+  // Handlers ranked by how many of the authors recommend each
   const recommended = use$(
     () =>
       kind === undefined
         ? undefined
-        : eventStore.model(RecommendedAppHandlersModel, kind, authors).pipe(castTimelineStream(AppHandler, eventStore)),
+        : eventStore
+            .model(RecommendedAppHandlersModel, kind, authors)
+            .pipe(
+              map((ranked) =>
+                ranked.map((r) => ({
+                  handler: castEvent(r.handler, AppHandler, eventStore),
+                  count: r.recommenders.length,
+                })),
+              ),
+            ),
     [kind, authors],
   );
   const all = use$(
@@ -220,20 +222,10 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
     [kind],
   );
 
-  // Count the recommendations that list each handler address
-  const counts = useMemo(() => {
-    const result = new Map<string, number>();
-    for (const rec of recommendations ?? []) {
-      const addresses = new Set(getRecommendedHandlers(rec).map((h) => getReplaceableAddressFromPointer(h.pointer)));
-      for (const address of addresses) result.set(address, (result.get(address) ?? 0) + 1);
-    }
-    return result;
-  }, [recommendations]);
-
-  const others = useMemo(
-    () => all?.filter((h) => !counts.has(getReplaceableAddressFromPointer(h.pointer))),
-    [all, counts],
-  );
+  const others = useMemo(() => {
+    const ranked = new Set(recommended?.map((r) => r.handler.uid));
+    return all?.filter((h) => !ranked.has(h.uid));
+  }, [all, recommended]);
 
   if (kind === undefined) return <p className="p-3">Loading the event to find its kind...</p>;
 
@@ -261,14 +253,8 @@ function Handlers({ pointer, relay, pubkey }: { pointer: Pointer; relay: string;
           {pubkey ? "Recommended by you and your follows" : "Recommended by anyone on this relay"}
         </h3>
         {recommended?.length ? (
-          recommended.map((h) => (
-            <HandlerRow
-              key={h.uid}
-              handler={h}
-              pointer={pointer}
-              platform={platform}
-              count={counts.get(getReplaceableAddressFromPointer(h.pointer))}
-            />
+          recommended.map(({ handler, count }) => (
+            <HandlerRow key={handler.uid} handler={handler} pointer={pointer} platform={platform} count={count} />
           ))
         ) : (
           <p className="p-3 text-base-content/60">

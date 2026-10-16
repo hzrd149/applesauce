@@ -25,11 +25,11 @@ export function RecommendAppHandler(
   };
 }
 
-/** An action that removes a NIP-89 handler from the user's 31989 recommendation for an event kind */
+/** An action that removes a NIP-89 handler from the user's 31989 recommendation, with `null` removing only the entry without a platform */
 export function RemoveAppHandlerRecommendation(
   kind: number,
   handler: AddressPointer | string,
-  platform?: HandlerLinkPlatform,
+  platform?: HandlerLinkPlatform | null,
 ): Action {
   return async (context) => {
     const [event, outboxes] = await getRecommendation(context, kind);

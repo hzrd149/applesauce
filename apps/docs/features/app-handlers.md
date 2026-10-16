@@ -11,13 +11,11 @@ App handlers let your app send users to another app when it can't display someth
 `RecommendedAppHandlersModel` returns the handlers a set of authors recommend for a kind, ranked by how many recommend each. Pass the user's follows so suggestions come from people they trust.
 
 ```ts
-const handlers = use$(
-  () => store.model(RecommendedAppHandlersModel, kind, follows).pipe(castTimelineStream(AppHandler, store)),
-  [kind, follows],
-);
+const ranked = use$(() => store.model(RecommendedAppHandlersModel, kind, follows), [kind, follows]);
+// [{ handler, recommenders: [pubkey, ...] }, ...]
 ```
 
-`AppHandlersModel(kind)` returns every handler that supports a kind, whoever published it.
+`AppHandlersModel(kind)` returns every handler that supports a kind, whoever published it. Load both from relays with the `getAppHandlersFilter(kind)` and `getAppRecommendationsFilter(kind, follows)` filters.
 
 ## Opening content in another app
 
@@ -28,7 +26,7 @@ const url = handler.link(pointer, "ios");
 const metadata = use$(handler.metadata$); // name, picture, about
 ```
 
-`metadata$` falls back to the author's profile when the handler has no metadata of its own.
+`metadata$` falls back to the author's profile when the handler has no metadata of its own, and `handler.platforms` lists the platforms with their own templates. The link helpers like `createHandlerLink` only read tags, so they also work on an unsigned draft.
 
 ## Recommending apps
 
@@ -36,10 +34,10 @@ The `RecommendAppHandler` and `RemoveAppHandlerRecommendation` actions update th
 
 ```ts
 await actions.run(RecommendAppHandler, kind, handlerAddress, "web");
-await actions.run(RemoveAppHandlerRecommendation, kind, handlerAddress);
+await actions.run(RemoveAppHandlerRecommendation, kind, handlerAddress, null); // only the entry without a platform
 ```
 
-Read a recommendation with the `AppRecommendation` cast, whose `handlers$` loads each recommended handler in order.
+Omit the platform to remove the handler for every platform. `user.appRecommendations$` lists a user's recommendations for every kind as `AppRecommendation` casts, whose `handlers$` loads each recommended handler in order. `user.appHandlers$` lists the handlers a user has published.
 
 ## Identifying your client
 

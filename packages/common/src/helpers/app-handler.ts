@@ -1,5 +1,6 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { getReplaceableIdentifier, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
+import { Filter } from "applesauce-core/helpers/filter";
 import {
   AddressPointer,
   DecodeResult,
@@ -72,11 +73,26 @@ export function getHandlerNextPointer(handler: NostrEvent): AddressPointer | und
   return getOrComputeCachedValue(handler, NextSymbol, () => nsiteTagPointer(handler, "next"));
 }
 
+/** An event or draft with tags, for helpers that only read handler link tags */
+export type HandlerTags = Pick<NostrEvent, "tags">;
+
+const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
+
+/** Returns a relay filter for handlers that support an event kind */
+export function getAppHandlersFilter(kind: number): Filter {
+  return { kinds: [APP_HANDLER_KIND], "#k": [String(kind)] };
+}
+
 /** Returns all URL templates the handler advertises for a platform */
-export function getHandlerLinks(handler: NostrEvent, platform: HandlerLinkPlatform = "web"): HandlerLink[] {
+export function getHandlerLinks(handler: HandlerTags, platform: HandlerLinkPlatform = "web"): HandlerLink[] {
   return processTags(handler.tags, (t) =>
     t[0] === platform && t[1] ? { url: t[1], type: (t[2] || undefined) as HandlerLinkType | undefined } : undefined,
   );
+}
+
+/** Returns the platforms the handler has at least one URL template for */
+export function getHandlerPlatforms(handler: HandlerTags): HandlerLinkPlatform[] {
+  return PLATFORMS.filter((platform) => handler.tags.some((t) => t[0] === platform && t[1]));
 }
 
 /** Returns the NIP-89 `client` tag of an event */
@@ -113,7 +129,7 @@ export function getHandlerDescription(handler: NostrEvent): string | undefined {
 
 /** Returns the web link template for a handler and type */
 export function getHandlerLinkTemplate(
-  handler: NostrEvent,
+  handler: HandlerTags,
   platform: HandlerLinkPlatform = "web",
   type?: HandlerLinkType,
 ) {
@@ -127,7 +143,7 @@ export function getHandlerLinkTemplate(
 
 /** Returns a link for a Profile Pointer */
 export function createHandlerProfileLink(
-  handler: NostrEvent,
+  handler: HandlerTags,
   pointer: ProfilePointer,
   platform: HandlerLinkPlatform = "web",
 ): string | undefined {
@@ -141,7 +157,7 @@ export function createHandlerProfileLink(
 
 /** Returns a link for an Event Pointer */
 export function createHandlerEventLink(
-  handler: NostrEvent,
+  handler: HandlerTags,
   pointer: EventPointer,
   platform: HandlerLinkPlatform = "web",
 ): string | undefined {
@@ -155,7 +171,7 @@ export function createHandlerEventLink(
 
 /** Returns a link for an Address Pointer */
 export function createHandlerAddressLink(
-  handler: NostrEvent,
+  handler: HandlerTags,
   pointer: AddressPointer,
   platform: HandlerLinkPlatform = "web",
 ): string | undefined {
@@ -168,7 +184,7 @@ export function createHandlerAddressLink(
 
 /** Creates a handler link for a pointer and optionally fallsback to a web link */
 export function createHandlerLink(
-  handler: NostrEvent,
+  handler: HandlerTags,
   pointer: AddressPointer | EventPointer | ProfilePointer,
   platform?: HandlerLinkPlatform,
   webFallback = true,

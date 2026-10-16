@@ -58,6 +58,17 @@ describe("RemoveAppHandlerRecommendation", () => {
     expect(getRecommendedHandlers(published()).map((h) => h.pointer.identifier)).toEqual(["b"]);
   });
 
+  it("removes only the entry without a platform when platform is null", async () => {
+    const tags = [
+      ["d", "30023"],
+      ["a", a],
+      ["a", a, "", "ios"],
+    ];
+    events.add(user.event({ kind: kinds.Handlerrecommendation, tags, created_at: unixNow() - 10 }));
+    await hub.run(RemoveAppHandlerRecommendation, 30023, a, null);
+    expect(getRecommendedHandlers(published()).map((h) => h.platform)).toEqual(["ios"]);
+  });
+
   it("does nothing without a recommendation", async () => {
     await hub.run(RemoveAppHandlerRecommendation, 30023, a);
     expect(publish).not.toBeCalled();

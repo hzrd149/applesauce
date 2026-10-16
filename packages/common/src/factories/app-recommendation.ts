@@ -31,8 +31,8 @@ export class AppRecommendationFactory extends EventFactory<typeof APP_RECOMMENDA
   handler(handler: AddressPointer | string, platform?: HandlerLinkPlatform) {
     return this.chain(addRecommendedHandler(handler, platform));
   }
-  /** Removes a recommended handler, optionally only for one platform */
-  removeHandler(handler: AddressPointer | string, platform?: HandlerLinkPlatform) {
+  /** Removes a recommended handler for every platform, one platform, or only the entry without a platform when `null` */
+  removeHandler(handler: AddressPointer | string, platform?: HandlerLinkPlatform | null) {
     return this.chain(removeRecommendedHandler(handler, platform));
   }
 }

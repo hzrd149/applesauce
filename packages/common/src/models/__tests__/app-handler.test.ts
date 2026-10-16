@@ -5,7 +5,13 @@ import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { AppHandlerFactory } from "../../factories/app-handler.js";
 import { AppRecommendationFactory } from "../../factories/app-recommendation.js";
-import { AppHandlersModel, AppRecommendationsModel, RecommendedAppHandlersModel } from "../app-handler.js";
+import {
+  AppHandlersModel,
+  AppRecommendationsModel,
+  RecommendedAppHandlersModel,
+  UserAppHandlersModel,
+  UserAppRecommendationsModel,
+} from "../app-handler.js";
 
 const app = new FakeUser();
 const alice = new FakeUser();
@@ -38,12 +44,32 @@ describe("app handler models", () => {
     );
     store.add(await AppRecommendationFactory.create(30023).handler(pb).sign(bob));
 
-    const handlers = await firstValueFrom(store.model(RecommendedAppHandlersModel, 30023, [alice.pubkey, bob.pubkey]));
-    expect(handlers.map((e) => e.id)).toEqual([b.id, a.id]);
+    const ranked = await firstValueFrom(store.model(RecommendedAppHandlersModel, 30023, [alice.pubkey, bob.pubkey]));
+    expect(ranked.map((e) => e.handler.id)).toEqual([b.id, a.id]);
+    expect(ranked.map((e) => e.recommenders.sort())).toEqual([[alice.pubkey, bob.pubkey].sort(), [alice.pubkey]]);
+  });
+
+  it("skips recommended handlers that are not loaded", async () => {
+    const store = new EventStore();
+    store.add(await AppRecommendationFactory.create(1).handler(`31990:${app.pubkey}:missing`).sign(alice));
+    expect(await firstValueFrom(store.model(RecommendedAppHandlersModel, 1))).toEqual([]);
   });
 
   it("emits an empty array without recommendations", async () => {
     const store = new EventStore();
     expect(await firstValueFrom(store.model(RecommendedAppHandlersModel, 30023))).toEqual([]);
+  });
+
+  it("returns a user's handlers and recommendations across kinds", async () => {
+    const store = new EventStore();
+    const handler = await AppHandlerFactory.create("a").kind(1).sign(app);
+    const notes = await AppRecommendationFactory.create(1).handler(getAddressPointerForEvent(handler)!).sign(alice);
+    const articles = await AppRecommendationFactory.create(30023).sign(alice);
+    [handler, notes, articles].forEach((e) => store.add(e));
+
+    expect((await firstValueFrom(store.model(UserAppHandlersModel, app.pubkey))).map((e) => e.id)).toEqual([
+      handler.id,
+    ]);
+    expect((await firstValueFrom(store.model(UserAppRecommendationsModel, alice.pubkey))).length).toBe(2);
   });
 });

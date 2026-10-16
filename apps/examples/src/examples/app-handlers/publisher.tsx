@@ -6,16 +6,24 @@
 import { ProxySigner } from "applesauce-accounts";
 import { AppHandler, castUser, User } from "applesauce-common/casts";
 import { AppHandlerFactory } from "applesauce-common/factories";
-import { APP_HANDLER_KIND, createHandlerLink, HandlerLinkPlatform, HandlerLinkType } from "applesauce-common/helpers";
-import { castTimelineStream } from "applesauce-common/observable";
+import {
+  APP_HANDLER_KIND,
+  createHandlerLink,
+  getHandlerPlatforms,
+  HandlerLinkPlatform,
+  HandlerLinkType,
+  isNsiteAddressPointer,
+  NSITE_KIND,
+} from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
-import { getEventHash, NostrEvent } from "applesauce-core/helpers/event";
+import { EventTemplate, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   decodePointer,
   EventPointer,
   getReplaceableAddressForEvent,
   getReplaceableAddressFromPointer,
+  parseReplaceableAddress,
   ProfilePointer,
 } from "applesauce-core/helpers/pointers";
 import { ProfileContent } from "applesauce-core/helpers/profile";
@@ -24,7 +32,7 @@ import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, catchError, from, map, of } from "rxjs";
+import { BehaviorSubject, from, of } from "rxjs";
 import JsonBlock from "../../components/json-block";
 import LoginView from "../../components/login-view";
 import { publishEvent } from "../../extra/publish";
@@ -114,6 +122,13 @@ function buildFactory(form: Form, existing?: AppHandler): AppHandlerFactory {
   if (form.next.trim() !== initial.next) factory = factory.next(form.next.trim() || null);
 
   return factory;
+}
+
+/** Checks that a site field is empty or a named site address */
+function isNamedSiteAddress(value: string): boolean {
+  if (!value.trim()) return true;
+  const pointer = parseReplaceableAddress(value.trim());
+  return !!pointer && pointer.kind === NSITE_KIND && isNsiteAddressPointer(pointer);
 }
 
 /** Parses a NIP-19 entity into a pointer for testing link templates */
@@ -261,9 +276,10 @@ function LinksField({ links, onChange }: { links: Form["links"]; onChange: (link
   );
 }
 
-function MetadataPreview({ draft }: { draft: AppHandler }) {
-  // metadata$ falls back to the author's kind:0 profile when the handler content is empty
-  const metadata = use$(draft.metadata$);
+function MetadataPreview({ user, own }: { user: User; own?: ProfileContent }) {
+  // Published handlers expose this fallback as `handler.metadata$`; the draft previews it from the author's profile
+  const profile = use$(user.profile$);
+  const metadata = own ?? profile?.metadata;
 
   return (
     <div className="flex items-center gap-3 border border-base-300 p-3">
@@ -276,7 +292,7 @@ function MetadataPreview({ draft }: { draft: AppHandler }) {
   );
 }
 
-function LinkTester({ draft }: { draft: AppHandler }) {
+function LinkTester({ draft }: { draft: EventTemplate }) {
   const [input, setInput] = useState("");
   const pointer = useMemo(() => parsePointer(input), [input]);
 
@@ -292,15 +308,15 @@ function LinkTester({ draft }: { draft: AppHandler }) {
       {input && !pointer && <p className="text-sm text-error">Not a supported NIP-19 entity</p>}
       {pointer &&
         PLATFORMS.map((platform) => {
-          // The cast falls back to the web template when a platform has no matching template
-          const link = draft.link(pointer, platform);
-          const direct = createHandlerLink(draft.event, pointer, platform, false);
+          // The link helpers read only tags, so they work on the unsigned draft and fall back to web templates
+          const link = createHandlerLink(draft, pointer, platform);
+          const fallback = !getHandlerPlatforms(draft).includes(platform);
           return (
             <div key={platform} className="flex gap-2 text-sm">
               <span className="w-16 font-semibold">{platform}</span>
               {link ? (
                 <span className="break-all">
-                  {link} {!direct && <span className="opacity-70">(web fallback)</span>}
+                  {link} {fallback && <span className="opacity-70">(web fallback)</span>}
                 </span>
               ) : (
                 <span className="text-error">No template</span>
@@ -332,34 +348,15 @@ function HandlerEditor({
 
   const update = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
 
-  // Building the factory throws when an nsite address is invalid, so surface that as a validation error
+  // Validate the site addresses before building, since `.latest()` and `.next()` throw on anything but a named site
   const built = useMemo(() => {
-    try {
-      return { factory: buildFactory(form, existing), error: null };
-    } catch (err) {
-      return { factory: null, error: err instanceof Error ? err.message : String(err) };
-    }
+    const invalid = (["latest", "next"] as const).find((field) => !isNamedSiteAddress(form[field]));
+    if (invalid) return { factory: null, error: `The ${invalid} site must be a named site address` };
+    return { factory: buildFactory(form, existing), error: null };
   }, [form, existing]);
 
-  // Cast the unsigned draft so the preview uses the same cast APIs as published handlers
-  const draft = use$(
-    () =>
-      built.factory
-        ? from(built.factory).pipe(
-            map((template) => {
-              const rumor = {
-                ...template,
-                pubkey: user.pubkey,
-                id: getEventHash({ ...template, pubkey: user.pubkey }),
-              };
-              // Casts accept unsigned rumors, but the AppHandler constructor is typed for signed events
-              return new AppHandler(rumor as unknown as NostrEvent, eventStore);
-            }),
-            catchError(() => of(undefined)),
-          )
-        : of(undefined),
-    [built, user.pubkey],
-  );
+  // Resolve the unsigned draft template for the link tester
+  const draft = use$(() => (built.factory ? from(built.factory) : of(undefined)), [built]);
 
   const publish = async () => {
     if (!built.factory) return;
@@ -420,7 +417,10 @@ function HandlerEditor({
               onChange={(e) => update({ metadata: { ...form.metadata, [field]: e.target.value } })}
             />
           ))}
-        {draft && <MetadataPreview draft={draft} />}
+        <MetadataPreview
+          user={user}
+          own={form.useProfile || !Object.values(form.metadata).some((v) => v?.trim()) ? undefined : form.metadata}
+        />
       </fieldset>
 
       <fieldset className="fieldset">
@@ -470,13 +470,7 @@ function Publisher({ user }: { user: User }) {
   // Kept here because publishing a new handler selects it, which re-mounts the editor
   const [result, setResult] = useState<PublishResult | null>(null);
   // Render from the store so new revisions replace old ones
-  const handlers = use$(
-    () =>
-      eventStore
-        .timeline({ kinds: [APP_HANDLER_KIND], authors: [user.pubkey] })
-        .pipe(castTimelineStream(AppHandler, eventStore)),
-    [user.pubkey],
-  );
+  const handlers = use$(() => user.appHandlers$, [user]);
   const existing = handlers?.find((h) => h.coordinate === selected);
 
   return (

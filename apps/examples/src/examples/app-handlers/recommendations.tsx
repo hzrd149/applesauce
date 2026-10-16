@@ -10,6 +10,7 @@ import { AppHandler, AppRecommendation, castUser, User } from "applesauce-common
 import {
   APP_HANDLER_KIND,
   APP_RECOMMENDATION_KIND,
+  getAppHandlersFilter,
   HandlerLinkPlatform,
   RecommendedHandler,
 } from "applesauce-common/helpers";
@@ -120,8 +121,9 @@ function RecommendedHandlerRow({
   const { busy, error, run } = useOperation();
   const address = getReplaceableAddressFromPointer(entry.pointer);
 
-  // Passing the platform only removes that platform's entry; entries without one remove every platform
-  const remove = () => run(() => actions.run(RemoveAppHandlerRecommendation, kind, entry.pointer, entry.platform));
+  // Passing the platform only removes that platform's entry, and null only removes the entry without one
+  const remove = () =>
+    run(() => actions.run(RemoveAppHandlerRecommendation, kind, entry.pointer, entry.platform ?? null));
 
   return (
     <li className="flex flex-col gap-2 border-b border-base-300 py-3 last:border-b-0">
@@ -228,8 +230,7 @@ function RecommendForm({ user }: { user: User }) {
 
   // Request handlers for the kind from the selected relay into the store
   const status = use$(
-    () =>
-      kind === undefined ? undefined : requestIntoStore([relay], { kinds: [APP_HANDLER_KIND], "#k": [String(kind)] }),
+    () => (kind === undefined ? undefined : requestIntoStore([relay], getAppHandlersFilter(kind))),
     [kind, relay],
   );
   // Render handlers from the store so they update as they arrive
@@ -393,12 +394,8 @@ function RecommendationsManager({ user }: { user: User }) {
 
   // One replaceable event per kind; the store keeps only the newest revision
   const recommendations = use$(
-    () =>
-      eventStore.timeline({ kinds: [APP_RECOMMENDATION_KIND], authors: [user.pubkey] }).pipe(
-        castTimelineStream(AppRecommendation, eventStore),
-        map((recs) => [...recs].sort((a, b) => a.supportedKind - b.supportedKind)),
-      ),
-    [user.pubkey],
+    () => user.appRecommendations$.pipe(map((recs) => [...recs].sort((a, b) => a.supportedKind - b.supportedKind))),
+    [user],
   );
 
   return (

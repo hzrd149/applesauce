@@ -2,4 +2,4 @@
 "applesauce-common": minor
 ---
 
-Add `RecommendedAppHandlersModel`, which resolves handlers recommended for an event kind and ranks them by how many authors recommend each.
+Add `RecommendedAppHandlersModel`, which ranks the handlers recommended for an event kind and returns each with the pubkeys recommending it.

@@ -1,4 +1,6 @@
+import "./user.js";
 import { ChainableObservable } from "applesauce-core";
+import { User } from "applesauce-core/casts/user";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
@@ -19,11 +21,13 @@ import {
   getHandlerName,
   getHandlerNextPointer,
   getHandlerPicture,
+  getHandlerPlatforms,
   getHandlerSupportedKinds,
   HandlerLinkPlatform,
   HandlerLinkType,
   isValidAppHandler,
 } from "../helpers/app-handler.js";
+import { UserAppHandlersModel } from "../models/app-handler.js";
 import { AppNsitesModel } from "../models/nsite.js";
 import { castEventStream, castTimelineStream } from "../observable/cast-stream.js";
 import { CastRefEventStore, EventCast } from "./cast.js";
@@ -77,6 +81,11 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
     return getHandlerNextPointer(this.event);
   }
 
+  /** The platforms the handler has URL templates for */
+  get platforms() {
+    return getHandlerPlatforms(this.event);
+  }
+
   /** Returns all URL templates for a platform */
   links(platform?: HandlerLinkPlatform) {
     return getHandlerLinks(this.event, platform);
@@ -119,5 +128,22 @@ export class AppHandler extends EventCast<AppHandlerEvent> {
     return this.$$ref("nsites$", (store) =>
       store.model(AppNsitesModel, this.event).pipe(castTimelineStream(Nsite, store)),
     );
+  }
+}
+
+Object.defineProperty(User.prototype, "appHandlers$", {
+  get(this: User) {
+    return this.$$ref("appHandlers$", (store) =>
+      store.model(UserAppHandlersModel, this.pubkey).pipe(castTimelineStream(AppHandler, store)),
+    );
+  },
+  configurable: true,
+  enumerable: false,
+});
+
+declare module "applesauce-core/casts" {
+  interface User {
+    /** Subscribes to the app handlers the user has published */
+    get appHandlers$(): ChainableObservable<AppHandler[]>;
   }
 }
