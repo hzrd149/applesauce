@@ -33,7 +33,10 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 // Create a loader that fetches zap receipts (kind 9735) for any event
-const zapLoader = createZapsLoader(pool, { eventStore });
+const zapLoader = createZapsLoader(pool, {
+  eventStore,
+  onError: (error, source) => console.warn("Partial zap load", source, error),
+});
 
 // The author whose notes we want to display
 const AUTHOR = normalizeToPubkey("npub1dergggklka99wwrs92yz8wdjs952h2ux2ha2ed598ngwu9w7a6fsh9xzpc")!;
@@ -116,7 +119,7 @@ function NoteCard({ note }: { note: Note }) {
               </div>
             </>
           ) : (
-            <div className="text-sm text-gray-500">No zaps yet</div>
+            <div className="text-sm text-gray-500">No zaps loaded</div>
           )}
         </div>
       </div>

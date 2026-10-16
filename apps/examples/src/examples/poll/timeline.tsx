@@ -41,6 +41,7 @@ const signer = new ExtensionSigner();
 const pollResponseLoader = createTagValueLoader(pool, "e", {
   kinds: [POLL_RESPONSE_KIND],
   eventStore,
+  onError: (error, source) => console.warn("Partial poll response load", source, error),
 });
 
 // Create unified event loader for the store
@@ -355,7 +356,7 @@ function PollDetails({ poll, onBack, selectedRelay }: PollDetailsProps) {
           </h2>
 
           {responses.length === 0 && !loadingResponses ? (
-            <div className="text-center py-8 text-base-content/60">No responses yet. Be the first to vote!</div>
+            <div className="text-center py-8 text-base-content/60">No responses loaded.</div>
           ) : (
             <div className="bg-base-50 rounded-lg">
               {/* Poll creation header */}

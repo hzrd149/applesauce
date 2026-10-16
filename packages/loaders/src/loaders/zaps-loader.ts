@@ -8,6 +8,7 @@ import { createTagValueLoader, TagValueLoaderOptions } from "./tag-value-loader.
 /** A loader that takes an event and returns zaps */
 export type ZapsLoader = (event: NostrEvent, relays?: string[]) => Observable<NostrEvent>;
 
+/** Options for loading zap receipt events */
 export type ZapsLoaderOptions = Omit<TagValueLoaderOptions, "kinds"> & {
   /** Whether to request zaps from the relays the event was seen on ( default true ) */
   useSeenRelays?: boolean;

@@ -1,100 +1,55 @@
 ---
-description: Load zap events for a target with validation and relay routing
+description: Fetch actual zaps events with batching and relay hints
 ---
 
 # Zaps Loader
 
-The Zaps Loader is a specialized loader for fetching [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md) zap events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles regular, replaceable, and addressable events.
+The Zaps Loader fetches zap receipt events for inspecting payments and senders. It wraps the [Tag Value Loader](./tag-value-loader.md) and returns finite, partial results rather than a live or complete total.
 
-:::warning
-The observable returned by the Zaps Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
-:::
+## How to use it
 
-## Basic Usage
+Create the loader once and subscribe with a target event:
 
 ```ts
 import { createZapsLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
 
-// Create a relay pool
-const pool = new RelayPool();
+const loader = createZapsLoader(pool, { eventStore });
+const subscription = loader(target, ["wss://relay.example.com"]).subscribe((event) =>
+  console.log(event.pubkey, event.content),
+);
 
-// Create a zaps loader (do this once at the app level)
-const zapsLoader = createZapsLoader(pool);
-
-// Later, use the loader to fetch zaps for any event
-const someEvent = { id: "event_id", kind: 1 /* ... */ };
-
-zapsLoader(someEvent, ["wss://relay.example.com"]).subscribe((zapEvent) => {
-  console.log("Received zap:", zapEvent);
-});
+subscription.unsubscribe();
 ```
 
-## How It Works
+The loader queries kind 9735 using `e` for regular events and `a` for replaceable or addressable events. Relay hints include the target's seen relays by default; set `useSeenRelays: false` to use only explicit hints and configured extra relays.
 
-The Zaps Loader automatically:
+It accepts the [Tag Value Loader options](./tag-value-loader.md#configuration-options) except `kinds`, which is fixed. Each wrapper has separate internal `e` and `a` loaders, so concurrency budgets apply independently to each. Pointer `force` is available through the generic tag value API, not this wrapper's call signature.
 
-- Determines if the target event is replaceable/addressable or a regular event
-- Uses the appropriate tag (`a` for replaceable and addressable events, `e` for regular events) to fetch zaps
-- Merges relay hints from the event's seen relays (if `useSeenRelays` is enabled)
-- Filters results to only return NIP-57 zap events (kind 9735)
+## Integration
 
-## Configuration Options
+Pass the application's EventStore to update its models and casts. An optional `cacheRequest` runs in parallel with relay requests and does not prevent network loading.
 
-The `createZapsLoader` function accepts these options:
+Use the [zap helpers](/features/zaps) to parse and validate receipts before displaying payment details. The loader requests kind 9735 events; it does not itself validate invoices or prove payment authenticity.
 
-- `useSeenRelays`: Whether to include relays where the event was seen (default `true`)
-- All other options from Tag Value Loader: `bufferTime`, `bufferSize`, `authors`, `since`, `cacheRequest`, `extraRelays`, `eventStore`, `signal`
+Use an abort signal to stop both internal loaders:
 
 ```ts
-const zapsLoader = createZapsLoader(pool, {
-  useSeenRelays: true,
-  bufferTime: 500,
+const controller = new AbortController();
+const loader = createZapsLoader(pool, {
   eventStore,
-  cacheRequest,
+  signal: controller.signal,
+  onError: (error, source) => console.warn("Partial zaps load", source, error),
 });
+
+controller.abort();
 ```
 
-## Example with React
+The [count service](./count-service.md) handles supported shared feed metrics, but has no built-in zap count or amount total. Use this loader when receipt details are required, and treat aggregates over its results as partial.
 
-```tsx
-import { createZapsLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
+## Best Practices
 
-// Setup at app level
-const pool = new RelayPool();
-const zapsLoader = createZapsLoader(pool);
-
-function ZapsComponent({ event }) {
-  const [zaps, setZaps] = useState([]);
-
-  useEffect(() => {
-    const subscription = zapsLoader(event).subscribe((zapEvent) => {
-      setZaps((prev) => [...prev, zapEvent]);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [event.id]);
-
-  return (
-    <div>
-      <h3>Zaps ({zaps.length})</h3>
-      {zaps.map((zap) => (
-        <div key={zap.id}>
-          <p>Zap amount: {/* parse zap amount from event */}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-## Replaceable vs Regular Events
-
-The loader picks the tag to query based on the target event's kind:
-
-- **Regular events** (kind 1 notes, etc.): Uses `e` tags with the event id
-- **Replaceable and addressable events** (kinds 0, 3, 10000–19999, and 30000–39999): Uses `a` tags with the event's `kind:pubkey:identifier` address
-
-This abstraction means you don't need to worry about the event type - just pass any event to the loader.
+- Reuse one wrapper for related views to preserve batching and compatible request sharing.
+- Display “No events loaded” rather than interpreting an empty result as proof of absence.
+- Report partial source failures with `onError` while keeping received events visible.
+- Use `signal` for deterministic teardown; the wrapper does not expose `stop()`.
+- Keep the default deadlines or choose finite values appropriate to the view.

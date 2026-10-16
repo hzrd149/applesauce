@@ -4,32 +4,30 @@ description: Batch, cache, and deduplicate requests for events that reference a 
 
 # Tag Value Loader
 
-The Tag Value Loader is a specialized loader for fetching Nostr events by their tag values. It provides an efficient way to batch and deduplicate requests, cache results, and handle relay hints.
+The Tag Value Loader fetches actual events containing a requested tag value, such as reactions, zap receipts, and thread references. It batches nearby requests and returns finite, partial results suitable for detail views.
 
-:::warning
-The observable returned by the Tag Value Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
-:::
+Completion means the sources settled, not that every related event was found. Relay result limits and deadlines can leave targets with few or no results, and the loader does not paginate or retry for completeness. For shared feed metrics without downloading related events, use the [count service](./count-service.md).
 
-## Basic Usage
+## How to use it
+
+Create the loader once and subscribe when events are needed:
 
 ```ts
 import { createTagValueLoader } from "applesauce-loaders/loaders";
 import { RelayPool } from "applesauce-relay";
 
-// Create a relay pool
 const pool = new RelayPool();
-
-// Create a tag value loader for a specific tag (do this once at the app level)
-const eTagLoader = createTagValueLoader(pool, "e");
-
-// Later, use the loader to fetch events by tag value
-eTagLoader({
-  value: "event_id",
+const references = createTagValueLoader(pool, "e", { kinds: [1] });
+const subscription = references({
+  value: "a".repeat(64),
   relays: ["wss://relay.example.com"],
-}).subscribe((event) => {
-  console.log("Loaded event:", event);
-});
+}).subscribe((event) => console.log(event));
+
+subscription.unsubscribe();
+references.stop();
 ```
+
+A tag match establishes a reference; use relationship-specific helpers to distinguish direct replies, reaction targets, and other relationship semantics.
 
 ## Configuration Options
 
@@ -50,7 +48,9 @@ The `createTagValueLoader` function accepts these options:
 - `eventStore`: An event store used to deduplicate events (defaults to an in-memory store, pass `null` to disable)
 - `signal`: An `AbortSignal` that tears down the loader when aborted
 
-Cache and individual relay failures are skipped, including exceptions thrown when starting a request. Events already received remain available, and healthy sources continue until they complete. If every source fails, the loader completes without events; use `onError` to distinguish failures from an empty result. Exceptions thrown by `onError` propagate to subscribers.
+Cache, relay discovery, and individual relay failures are skipped, including exceptions thrown when starting a request. Events already received remain available, and healthy sources continue until they complete. If every source fails, the loader completes without events; use `onError` to distinguish failures from an empty result. Exceptions thrown by `onError` propagate to subscribers.
+
+Concurrency limits must be positive integers or `Infinity`. Timeouts must be positive, at most 2147483647 ms, or `Infinity`; invalid values throw `RangeError` when creating a loader.
 
 With the default limits, one loader runs at most 32 relay requests and four cache requests at once. Relay deadlines start when each request is subscribed, excluding time spent queued. Events do not reset the deadline. A timed-out source is cancelled and reported through `onError`; other sources continue. These limits do not bound the number of queued callers, and observable `extraRelays` discovery uses its own deadline of the same duration.
 
@@ -62,137 +62,28 @@ Set `force: true` on a pointer to skip cache lookup for that caller and receive 
 
 Repeated calls for the same value and force mode join a queued or running request when its relay coverage includes the new caller’s hints. Late joiners receive previously delivered events, and a call after completion starts a new fetch. Sharing applies only to static relay routing; set `shareInflight: false` to request independently. Replay retains matching events until the batch finishes, so high-volume targets can use more memory while running.
 
-## Working with Relay Pools
+## Integration
 
-The Tag Value Loader requires a request method for loading Nostr events from relays. You can provide this in multiple ways:
-
-### Using a RelayPool instance
-
-The simplest approach is to pass a RelayPool instance directly:
+Pass the application's EventStore so fetched events update models and casts. Cache and relay requests run in parallel; cached results do not suppress network requests.
 
 ```ts
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-
-const pool = new RelayPool();
-const eTagLoader = createTagValueLoader(pool, "e", {
+const references = createTagValueLoader(pool, "e", {
   eventStore,
   cacheRequest,
+  onError: (error, source) => console.warn("Partial reference load", source, error),
 });
 ```
 
-### Using a custom request method
+A custom upstream must implement the finite [request contract](./upstream-pool.md), respect filters, and release its transport when unsubscribed. Results are matched locally by tag value; the loader relies on upstream filtering for kinds, authors, and timestamps.
 
-You can also provide a custom request method, such as one from nostr-tools:
+For actual reaction events and zap receipts, use the [Reactions Loader](./reactions-loader.md) and [Zaps Loader](./zaps-loader.md). They select `e` or `a` queries from the target event. Use the [count service](./count-service.md) for its supported shared feed metrics rather than deriving authoritative totals from these partial downloads.
 
-```ts
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { SimplePool } from "nostr-tools";
-import { Observable } from "rxjs";
+## Best Practices
 
-const pool = SimplePool();
-
-// Create a custom request function using nostr-tools
-function customRequest(relays, filters) {
-  return new Observable((observer) => {
-    const sub = pool.subscribeMany(relays, filters, {
-      onevent: (event) => observer.next(event),
-      eose: () => observer.complete(),
-    });
-
-    return () => sub.close();
-  });
-}
-
-// Create tag value loader with custom request
-const eTagLoader = createTagValueLoader(customRequest, "e", options);
-```
-
-## Loading from cache
-
-For improved performance, you can configure the loader to use a local cache:
-
-```ts
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { openDB, getEventsForFilters } from "nostr-idb";
-
-// Setup a local event cache
-const cache = await openDB();
-
-function cacheRequest(filters) {
-  return getEventsForFilters(cache, filters);
-}
-
-const eTagLoader = createTagValueLoader(pool, "e", {
-  cacheRequest,
-  eventStore,
-});
-
-// Events from cache are automatically marked using markFromCache
-eTagLoader({ value: "event_id" }).subscribe((event) => {
-  if (!isFromCache(event)) {
-    // This is a new event from the network
-    addEvents(cache, [event]);
-  }
-});
-```
-
-## Specialized Loaders
-
-For reactions and zaps on an event, use the prebuilt [Reactions Loader](/loading/loaders/reactions-loader) and [Zaps Loader](/loading/loaders/zaps-loader), which wrap tag value loaders for the `e` and `a` tags.
-
-## Real-World Example
-
-Here's how you might use the Tag Value Loader in a React application to fetch replies to a note:
-
-```tsx
-import { EventStore } from "applesauce-core";
-import { createTagValueLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
-
-// Setup at app level
-const eventStore = new EventStore();
-const pool = new RelayPool();
-const eTagLoader = createTagValueLoader(pool, "e", { eventStore });
-
-function RepliesComponent({ noteId, relays }) {
-  const [replies, setReplies] = useState([]);
-
-  // Load replies when component mounts
-  useEffect(() => {
-    const subscription = eTagLoader({
-      value: noteId,
-      relays,
-    }).subscribe((event) => {
-      // Only add replies that reference this note in the root tag
-      if (event.tags.some((tag) => tag[0] === "e" && tag[1] === noteId && tag[3] === "root")) {
-        setReplies((prev) => [...prev, event]);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [noteId]);
-
-  return (
-    <div>
-      <h3>Replies ({replies.length})</h3>
-      {replies.map((reply) => (
-        <div key={reply.id}>
-          <p>{reply.content}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-```
-
-## Loading Sequence
-
-The Tag Value Loader follows this sequence when loading events:
-
-1. Buffer requests and batch them into one filter per relay
-2. Load from the cache (if configured) and from the pointer relays plus `extraRelays` in parallel
-3. Deduplicate events through the event store (or an in-memory store by default)
-
-This approach ensures efficient event loading with minimal network requests.
+- Reuse a loader to batch requests and share compatible in-flight work.
+- Supply explicit relay hints for immediate loading when extra relay discovery is asynchronous.
+- Keep finite deadlines when completing started work after consumers unsubscribe.
+- Use `onError` to report partial failures; an empty result alone cannot establish absence.
+- Keep `onError` callbacks non-throwing so healthy sources can continue.
+- Label downloaded totals as loaded results and use relationship helpers before interpreting them.
+- Set limits for each loader instance; separate instances have separate concurrency budgets.

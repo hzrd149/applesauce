@@ -5,9 +5,10 @@ import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { UpstreamPool } from "../types.js";
 import { createTagValueLoader, TagValueLoaderOptions } from "./tag-value-loader.js";
 
-/** A loader that takes an event and returns zaps */
+/** A loader that takes an event and returns reactions */
 export type ReactionsLoader = (event: NostrEvent, relays?: string[]) => Observable<NostrEvent>;
 
+/** Options for loading reaction events */
 export type ReactionsLoaderOptions = Omit<TagValueLoaderOptions, "kinds"> & {
   /** Whether to request reactions from the relays the event was seen on ( default true ) */
   useSeenRelays?: boolean;

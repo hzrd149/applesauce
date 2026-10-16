@@ -113,7 +113,7 @@ describe("tag value loader", () => {
     const loader = createTagValueLoader(() => source, "e", {
       bufferSize: 1,
       extraRelays: [relay],
-      eventStore: { add },
+      eventStore: { add, remove: () => false, update: () => {} },
     });
     const sub = loader({ value: "a" }).subscribe();
     sub.unsubscribe();
@@ -430,7 +430,7 @@ it("preserves source identity when an asynchronous store returns one canonical e
     bufferSize: 2,
     extraRelays: [relay],
     cacheRequest: () => [a],
-    eventStore: { add },
+    eventStore: { add, remove: async () => false, update: async () => {} },
   });
   const ordinary: NostrEvent[] = [];
   const forced: NostrEvent[] = [];
@@ -505,4 +505,62 @@ describe("tag value loader in-flight sharing", () => {
       loader.stop();
     },
   );
+});
+
+it.each([
+  { maxConcurrentBatches: 0 },
+  { maxConcurrentBatches: NaN },
+  { relayConcurrency: -1 },
+  { relayConcurrency: 1.5 },
+  { requestTimeout: 0 },
+  { requestTimeout: NaN },
+  { requestTimeout: 2147483648 },
+])("rejects invalid execution limits before requests can hang: %j", (opts) => {
+  expect(() => createTagValueLoader(() => EMPTY, "e", opts)).toThrow(RangeError);
+  expect(() => cacheTagValueLoader(() => [], "e", opts)).toThrow(RangeError);
+  expect(() => relaysTagValueLoader(() => EMPTY, "e", opts)).toThrow(RangeError);
+});
+
+it("accepts a relay's clamped partial result without completeness retries", async () => {
+  const request = vi.fn(() => of(event("popular")));
+  const loader = createTagValueLoader(request, "e", { bufferSize: 2, extraRelays: [relay] });
+  const popular: NostrEvent[] = [];
+  const missing: NostrEvent[] = [];
+  let completed = 0;
+  loader({ value: "popular" }).subscribe({
+    next: (e) => popular.push(e),
+    complete: () => {
+      completed++;
+    },
+  });
+  loader({ value: "missing" }).subscribe({
+    next: (e) => missing.push(e),
+    complete: () => {
+      completed++;
+    },
+  });
+  expect(popular).toHaveLength(1);
+  expect(missing).toEqual([]);
+  expect(completed).toBe(2);
+  expect(request).toHaveBeenCalledTimes(1);
+  loader.stop();
+});
+
+it("shares queued requests before their upstream slot becomes available", () => {
+  const source = new Subject<NostrEvent>();
+  const request = vi.fn<() => Observable<NostrEvent>>(() => source);
+  const loader = createTagValueLoader(request, "e", { bufferSize: 1, maxConcurrentBatches: 1, extraRelays: [relay] });
+  loader({ value: "blocking" }).subscribe();
+  const a: NostrEvent[] = [];
+  const b: NostrEvent[] = [];
+  loader({ value: "a" }).subscribe((e) => a.push(e));
+  loader({ value: "a" }).subscribe((e) => b.push(e));
+  expect(request).toHaveBeenCalledTimes(1);
+  // The second request gets a synchronous source after the first slot is released.
+  request.mockReturnValue(of(event("a")));
+  source.complete();
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(a).toEqual([event("a")]);
+  expect(b).toEqual([event("a")]);
+  loader.stop();
 });

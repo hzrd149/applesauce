@@ -35,7 +35,10 @@ createEventLoaderForStore(eventStore, pool, {
 });
 
 // Create a tag value loader for reactions (kind 7 events with "e" tags)
-const reactionLoader = createReactionsLoader(pool, { eventStore });
+const reactionLoader = createReactionsLoader(pool, {
+  eventStore,
+  onError: (error, source) => console.warn("Partial reaction load", source, error),
+});
 
 /** Hook to load and group reactions for a specific event */
 function useReactions(event: NostrEvent) {
@@ -95,7 +98,7 @@ function ReactionCounts({ event }: { event: NostrEvent }) {
   if (loading && !reactionEntries.length) return <p role="status">Loading reactions…</p>;
 
   if (reactionEntries.length === 0) {
-    return <div className="text-sm text-gray-500 mt-2">No reactions yet</div>;
+    return <div className="text-sm text-gray-500 mt-2">No reactions loaded</div>;
   }
 
   return (

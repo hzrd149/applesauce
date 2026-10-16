@@ -79,6 +79,19 @@ export type TagValueLoaderOptions = {
 /** A batched loader for events matching a tag value */
 export type TagValueLoader = Loader<TagValuePointer, NostrEvent>;
 
+function validateOptions(opts?: TagValueLoaderOptions) {
+  for (const [name, value] of [
+    ["maxConcurrentBatches", opts?.maxConcurrentBatches ?? 4],
+    ["relayConcurrency", opts?.relayConcurrency ?? 8],
+  ] as const) {
+    if (value !== Infinity && (!Number.isInteger(value) || value <= 0))
+      throw new RangeError(`${name} must be a positive integer or Infinity`);
+  }
+  const duration = opts?.requestTimeout ?? 10000;
+  if (duration !== Infinity && (!Number.isFinite(duration) || duration <= 0 || duration > 2147483647))
+    throw new RangeError("requestTimeout must be positive and at most 2147483647 ms, or Infinity");
+}
+
 function isolateSource<T>(
   load: () => Observable<T>,
   source: TagValueLoaderErrorSource,
@@ -99,12 +112,16 @@ function isolateSource<T>(
   );
 }
 
-/** Creates a loader that gets tag values from the cache */
+/**
+ * Creates a loader that gets tag values from the cache
+ * @throws {RangeError} If concurrency or timeout options are invalid
+ */
 export function cacheTagValueLoader(
   request: CacheRequest,
   tagName: string,
   opts?: TagValueLoaderOptions,
 ): (pointers: TagValuePointer[]) => Observable<NostrEvent> {
+  validateOptions(opts);
   return (pointers) => {
     pointers = pointers.filter((pointer) => !pointer.force);
     if (pointers.length === 0) return EMPTY;
@@ -121,12 +138,16 @@ export function cacheTagValueLoader(
   };
 }
 
-/** Creates a loader that gets tag values from relays */
+/**
+ * Creates a loader that gets tag values from relays
+ * @throws {RangeError} If concurrency or timeout options are invalid
+ */
 export function relaysTagValueLoader(
   request: NostrRequest,
   tagName: string,
   opts?: TagValueLoaderOptions,
 ): (pointers: TagValuePointer[]) => Observable<NostrEvent> {
+  validateOptions(opts);
   const filterTag: `#${string}` = `#${tagName}`;
 
   return (pointers) =>
@@ -175,15 +196,19 @@ export function relaysTagValueLoader(
     });
 }
 
-/** Create a pre-built tag value loader that supports batching, caching, and relay hints */
+/**
+ * Creates a tag value loader that supports batching, caching, and relay hints
+ * @throws {RangeError} If concurrency or timeout options are invalid
+ */
 export function createTagValueLoader(
   pool: UpstreamPool,
   tagName: string,
   opts?: TagValueLoaderOptions,
 ): TagValueLoader {
+  validateOptions(opts);
   const request = wrapUpstreamPool(pool);
 
-  type Result = { event: NostrEvent; cache: boolean };
+  type Result = { event: NostrEvent; cache: boolean; values?: Set<string> };
   const store = opts?.eventStore === null ? null : (opts?.eventStore ?? new EventMemory<NostrEvent>());
   const loader = batchLoader<TagValuePointer, Result>(
     bufferTime(opts?.bufferTime ?? 1000, undefined, opts?.bufferSize ?? 200),
@@ -200,7 +225,9 @@ export function createTagValueLoader(
       ),
     (pointer, result) =>
       (!pointer.force || !result.cache) &&
-      result.event.tags.some((tag) => tag[0] === tagName && tag[1] === pointer.value),
+      (result.values ??= new Set(result.event.tags.filter((tag) => tag[0] === tagName).map((tag) => tag[1]))).has(
+        pointer.value,
+      ),
     (source) =>
       source.pipe(
         // Preserve arrival provenance even when the store returns the same canonical event.

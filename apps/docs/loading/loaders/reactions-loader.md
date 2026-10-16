@@ -1,161 +1,55 @@
 ---
-description: Load reaction events for a target event with automatic relay routing and filtering
+description: Fetch actual reactions events with batching and relay hints
 ---
 
 # Reactions Loader
 
-The Reactions Loader is a specialized loader for fetching [NIP-25](https://github.com/nostr-protocol/nips/blob/master/25.md) reaction events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles regular, replaceable, and addressable events.
+The Reactions Loader fetches reaction events, including their authors and contents. It wraps the [Tag Value Loader](./tag-value-loader.md) and returns finite, partial results rather than a live or complete total.
 
-:::warning
-The observable returned by the Reactions Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
-:::
+## How to use it
 
-## Basic Usage
+Create the loader once and subscribe with a target event:
 
 ```ts
 import { createReactionsLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
 
-// Create a relay pool
-const pool = new RelayPool();
+const loader = createReactionsLoader(pool, { eventStore });
+const subscription = loader(target, ["wss://relay.example.com"]).subscribe((event) =>
+  console.log(event.pubkey, event.content),
+);
 
-// Create a reactions loader (do this once at the app level)
-const reactionsLoader = createReactionsLoader(pool);
-
-// Later, use the loader to fetch reactions for any event
-const someEvent = { id: "event_id", kind: 1 /* ... */ };
-
-reactionsLoader(someEvent, ["wss://relay.example.com"]).subscribe((reactionEvent) => {
-  console.log("Received reaction:", reactionEvent);
-});
+subscription.unsubscribe();
 ```
 
-## How It Works
+The loader queries kind 7 using `e` for regular events and `a` for replaceable or addressable events. Relay hints include the target's seen relays by default; set `useSeenRelays: false` to use only explicit hints and configured extra relays.
 
-The Reactions Loader automatically:
+It accepts the [Tag Value Loader options](./tag-value-loader.md#configuration-options) except `kinds`, which is fixed. Each wrapper has separate internal `e` and `a` loaders, so concurrency budgets apply independently to each. Pointer `force` is available through the generic tag value API, not this wrapper's call signature.
 
-- Determines if the target event is replaceable/addressable or a regular event
-- Uses the appropriate tag (`a` for replaceable and addressable events, `e` for regular events) to fetch reactions
-- Merges relay hints from the event's seen relays (if `useSeenRelays` is enabled)
-- Filters results to only return NIP-25 reaction events (kind 7)
+## Integration
 
-See [Reactions and Reposts](/features/reactions-and-reposts) for the reaction event format and helpers for reading them.
+Pass the application's EventStore to update its models and casts. An optional `cacheRequest` runs in parallel with relay requests and does not prevent network loading.
 
-## Configuration Options
+Use [reaction helpers](/features/reactions-and-reposts) to interpret reaction content and target semantics. A generic tag reference alone is not a complete semantic validation.
 
-The `createReactionsLoader` function accepts these options:
-
-- `useSeenRelays`: Whether to include relays where the event was seen (default `true`)
-- All other options from Tag Value Loader: `bufferTime`, `bufferSize`, `authors`, `since`, `cacheRequest`, `extraRelays`, `eventStore`, `signal`
+Use an abort signal to stop both internal loaders:
 
 ```ts
-const reactionsLoader = createReactionsLoader(pool, {
-  useSeenRelays: true,
-  bufferTime: 500,
+const controller = new AbortController();
+const loader = createReactionsLoader(pool, {
   eventStore,
-  cacheRequest,
+  signal: controller.signal,
+  onError: (error, source) => console.warn("Partial reactions load", source, error),
 });
+
+controller.abort();
 ```
 
-## Example with React
+For shared, refreshed reaction totals in a feed, use the [count service](./count-service.md). Keep this loader for views that need the actual reaction events.
 
-```tsx
-import { createReactionsLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
+## Best Practices
 
-// Setup at app level
-const pool = new RelayPool();
-const reactionsLoader = createReactionsLoader(pool);
-
-function ReactionsComponent({ event }) {
-  const [reactions, setReactions] = useState([]);
-
-  useEffect(() => {
-    const subscription = reactionsLoader(event).subscribe((reactionEvent) => {
-      setReactions((prev) => [...prev, reactionEvent]);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [event.id]);
-
-  // Group reactions by content
-  const reactionCounts = reactions.reduce((acc, reaction) => {
-    const content = reaction.content || "+";
-    acc[content] = (acc[content] || 0) + 1;
-    return acc;
-  }, {});
-
-  return (
-    <div>
-      <h3>Reactions ({reactions.length})</h3>
-      <div className="reactions-list">
-        {Object.entries(reactionCounts).map(([emoji, count]) => (
-          <span key={emoji} className="reaction-pill">
-            {emoji} {count}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-```
-
-## Replaceable vs Regular Events
-
-The loader picks the tag to query based on the target event's kind:
-
-- **Regular events** (kind 1 notes, etc.): Uses `e` tags with the event id
-- **Replaceable and addressable events** (kinds 0, 3, 10000–19999, and 30000–39999): Uses `a` tags with the event's `kind:pubkey:identifier` address
-
-This abstraction means you don't need to worry about the event type - just pass any event to the loader.
-
-## Advanced Example: Reaction Analytics
-
-```tsx
-import { createReactionsLoader } from "applesauce-loaders/loaders";
-import { RelayPool } from "applesauce-relay";
-import { useEffect, useState } from "react";
-
-const pool = new RelayPool();
-const reactionsLoader = createReactionsLoader(pool);
-
-function ReactionAnalytics({ event }) {
-  const [reactions, setReactions] = useState([]);
-  const [uniqueReactors, setUniqueReactors] = useState(new Set());
-
-  useEffect(() => {
-    const subscription = reactionsLoader(event).subscribe((reaction) => {
-      setReactions((prev) => [...prev, reaction]);
-      setUniqueReactors((prev) => new Set([...prev, reaction.pubkey]));
-    });
-
-    return () => subscription.unsubscribe();
-  }, [event.id]);
-
-  const positiveReactions = reactions.filter((r) => r.content === "+" || r.content === "👍" || r.content === "❤️");
-
-  const negativeReactions = reactions.filter((r) => r.content === "-" || r.content === "👎");
-
-  return (
-    <div>
-      <h3>Reaction Summary</h3>
-      <p>Total reactions: {reactions.length}</p>
-      <p>Unique reactors: {uniqueReactors.size}</p>
-      <p>Positive: {positiveReactions.length}</p>
-      <p>Negative: {negativeReactions.length}</p>
-    </div>
-  );
-}
-```
-
-## Performance Considerations
-
-The Reactions Loader is optimized for performance through:
-
-- **Batching**: Multiple reaction requests are automatically batched together
-- **Deduplication**: Events are deduplicated through the `eventStore`, or an in-memory store by default
-- **Caching**: Local cache integration prevents unnecessary network requests
-- **Relay optimization**: Uses seen relays from the target event for better discovery
-
-For best performance, ensure you provide an `eventStore` and `cacheRequest` when creating the loader.
+- Reuse one wrapper for related views to preserve batching and compatible request sharing.
+- Display “No events loaded” rather than interpreting an empty result as proof of absence.
+- Report partial source failures with `onError` while keeping received events visible.
+- Use `signal` for deterministic teardown; the wrapper does not expose `stop()`.
+- Keep the default deadlines or choose finite values appropriate to the view.

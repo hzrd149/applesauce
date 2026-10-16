@@ -162,3 +162,89 @@ it("shares one running target across 1000 callers and replays 2000 unique events
   expect(state.active).toBe(0);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("parses each arrival's relationship tags once when dispatching to 200 distinct callers", () => {
+  const source = new Subject<NostrEvent>();
+  const loader = createTagValueLoader(() => source, "e", {
+    bufferSize: 200,
+    extraRelays: ["wss://relay.test/"],
+    eventStore: null,
+    shareInflight: false,
+  });
+  let reads = 0;
+  let deliveries = 0;
+  for (let i = 0; i < 200; i++)
+    loader({ value: String(i) }).subscribe(() => {
+      deliveries++;
+    });
+  for (let i = 0; i < 1000; i++)
+    source.next({
+      id: String(i),
+      pubkey: "a".repeat(64),
+      sig: "b".repeat(128),
+      kind: 7,
+      created_at: 1,
+      content: "+",
+      get tags() {
+        reads++;
+        return Array.from({ length: 20 }, (_, j) => ["e", String((i + j) % 200)]);
+      },
+    });
+  expect(reads).toBe(1000);
+  expect(deliveries).toBe(20000);
+  source.complete();
+  loader.stop();
+});
+
+it("skips abandoned queued work during sustained subscription churn", () => {
+  const { state, sources, request } = transport();
+  const loader = createTagValueLoader(request, "e", { bufferSize: 1, maxConcurrentBatches: 1 });
+  loader({ value: "initial", relays: ["wss://relay.test/"] }).subscribe();
+  for (let i = 0; i < 1000; i++)
+    loader({ value: String(i), relays: ["wss://relay.test/"] })
+      .subscribe()
+      .unsubscribe();
+  sources[0].complete();
+  expect(state.starts).toBe(1);
+  expect(state.active).toBe(0);
+  loader.stop();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it("delivers fast cache results before slow relays finish", () => {
+  const relay = new Subject<NostrEvent>();
+  const cache = new Subject<NostrEvent>();
+  const loader = createTagValueLoader(() => relay, "e", {
+    bufferTime: 10,
+    extraRelays: ["wss://relay.test/"],
+    cacheRequest: () => cache,
+  });
+  const started = Date.now();
+  const arrivals: number[] = [];
+  let completed = false;
+  loader({ value: "a" }).subscribe({
+    next: () => arrivals.push(Date.now() - started),
+    complete: () => {
+      completed = true;
+    },
+  });
+  vi.advanceTimersByTime(10);
+  vi.advanceTimersByTime(5);
+  cache.next({
+    id: "cache",
+    pubkey: "a".repeat(64),
+    sig: "b".repeat(128),
+    kind: 7,
+    created_at: 1,
+    content: "+",
+    tags: [["e", "a"]],
+  });
+  cache.complete();
+  expect(arrivals).toEqual([15]);
+  expect(completed).toBe(false);
+  vi.advanceTimersByTime(100);
+  relay.complete();
+  expect(completed).toBe(true);
+  loader.stop();
+  expect(vi.getTimerCount()).toBe(0);
+});
