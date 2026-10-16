@@ -45,21 +45,24 @@ Actions are responsible for publishing their own events using the `publish` func
 
 1. **Actions handle their own publishing** - Unlike the old async generator pattern, actions directly call `publish()` to send events to relays
 2. **Relay selection** - Actions can specify which relays to publish to by passing a `relays` array as the second argument to `publish()`
-3. **Outbox support** - Most actions publish to the user's outboxes (from `user.outboxes$`) when available, ensuring events reach the correct relays according to NIP-65
+3. **Outbox support** - Most actions publish to the user's outboxes (from `user.outboxes$`) when available, ensuring events reach the correct relays (see [Mailboxes & Outbox](/features/outbox))
 
 When using `ActionRunner.run()`, the publish method provided during ActionRunner creation is used. When using `ActionRunner.exec()`, the publish function in the context emits events to the returned Observable instead.
 
 ## Pre-built Actions
 
-The `applesauce-actions` package comes with many pre-built actions for common social client operations. You can find the complete list in the [reference](https://applesauce.build/typedoc/modules/applesauce-actions.Actions.html).
+`applesauce-actions` ships actions for common social client operations, grouped here by the feature page that covers them. The complete list is in the [reference](https://applesauce.build/typedoc/modules/applesauce-actions.Actions.html).
 
-Some examples include:
-
-- `CreateProfile` / `UpdateProfile` - Managing user profiles
-- `FollowUser` / `UnfollowUser` - Managing contact lists
-- `BookmarkEvent` / `UnbookmarkEvent` - Managing bookmarks
-- `MuteUser` / `UnmuteUser` - Managing mute lists
-- `PinNote` / `UnpinNote` - Managing pinned notes
+- [Profiles](/features/profiles) - `CreateProfile`, `UpdateProfile`
+- [Follows](/features/follows) - `FollowUser`, `UnfollowUser`, `NewContacts`, `CreateFollowSet`, `AddUserToFollowSet`, `RemoveUserFromFollowSet`, `UpdateFollowSetInformation`
+- [Mutes & Reports](/features/moderation) - `MuteUser`, `MuteThread`, `MuteWord`, `MuteHashtag` and their `Unmute*` counterparts
+- [Bookmarks](/features/bookmarks) - `BookmarkEvent`, `UnbookmarkEvent`, `CreateBookmarkList`, `CreateBookmarkSet`
+- [Comments](/features/comments) - `CreateComment`
+- [Mailboxes & Outbox](/features/outbox) - `CreateMailboxes`, `AddInboxRelay`, `RemoveInboxRelay`, `AddOutboxRelay`, `RemoveOutboxRelay`
+- [Relay Lists](/features/relay-lists) - favorite, search, blocked, and DM relay actions (`AddFavoriteRelay`, `AddSearchRelay`, `AddBlockedRelay`, `AddDirectMessageRelay`, ...) plus relay sets (`CreateRelaySet`, `AddRelayToRelaySet`, ...)
+- [Blossom Servers](/features/blossom-servers) - `AddBlossomServer`, `RemoveBlossomServer`, `SetDefaultBlossomServer`, `NewBlossomServers`
+- [App Handlers](/features/app-handlers) - `RecommendAppHandler`, `RemoveAppHandlerRecommendation`
+- Other - `PinNote` / `UnpinNote`, `SetListMetadata`, `UpdateAppData`, calendar actions, and direct message actions (`SendWrappedMessage`, `SendLegacyMessage`, ...)
 
 ## Action Patterns
 

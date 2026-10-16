@@ -144,8 +144,6 @@ pnpm install applesauce-loaders
 
 :::
 
-:::
-
 ## Actions
 
 The `applesauce-actions` package provides prebuilt actions that apps can use. [see more](https://applesauce.build/typedoc/modules/applesauce-actions.html)

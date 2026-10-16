@@ -44,7 +44,7 @@ const total = balance ? Object.values(balance).reduce((s, n) => s + n, 0) : 0;
 
 ## WalletToken
 
-Cast for a wallet token event (kind 375). Content (proofs, mint) is hidden until unlocked.
+Cast for a wallet token event (kind 7375). Content (proofs, mint) is hidden until unlocked.
 
 [**WalletToken** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-wallet.Casts.WalletToken.html)
 

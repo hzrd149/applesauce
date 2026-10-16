@@ -237,26 +237,11 @@ const notes$ = eventStore.timeline([{ kinds: [1] }]).pipe(castTimelineStream(Not
 
 ## Available Cast Classes
 
-The casting system provides classes for common Nostr event types:
-
-- **`Note`** - Kind 1 (Short text notes)
-- **`Profile`** - Kind 0 (User metadata)
-- **`User`** - User instance (not an event, but provides user-related observables)
-- **`Reaction`** - Kind 7 (Reactions)
-- **`Zap`** - Kind 9735 (Lightning zaps)
-- **`Comment`** - NIP-22 comments
-- **`Share`** - Kind 6 (Reposts)
-- **`Article`** - Kind 30023 (Long-form articles)
-- **`Mutes`** - Kind 10000 (Mute lists)
-- **`BookmarksList`** - Kind 10003 (Bookmarks)
-- **`Stream`** - Kind 30311 (Live streams)
-- [And more...](https://applesauce.build/typedoc/modules/applesauce-common.Casts.html)
+`applesauce-common` ships cast classes for most common event kinds (`Note`, `Profile`, `Article`, `Zap`, `Reaction`, `Comment`, lists, streams, and more). See [Casting Events](/apps/casting/events) for the full reference, or the feature pages such as [Notes & Threads](/features/notes-and-threads), [Articles](/features/articles), and [Zaps](/features/zaps) for how each one is used.
 
 ## User Class
 
-The `User` class is special - it's not an event cast, but provides a rich interface for working with users:
-
-### Synchronous Properties
+The `User` class is not an event cast. It wraps a pubkey and exposes observables for the user's replaceable events:
 
 ```typescript
 const user = castUser(pubkey, eventStore);
@@ -265,63 +250,11 @@ user.pubkey; // string - User's public key
 user.npub; // string - NIP-19 encoded npub
 user.pointer; // ProfilePointer - Profile pointer with relay hints
 user.nprofile; // string - NIP-19 encoded nprofile
-```
 
-### Observable Properties
-
-```typescript
-// Profile metadata
 user.profile$; // Observable<Profile | undefined>
-
-// Contact list
-user.contacts$; // Observable<User[]>
-
-// Mute list
-user.mutes$; // Observable<Mutes | undefined>
-
-// Relay lists
-user.outboxes$; // Observable<string[] | undefined>
-user.inboxes$; // Observable<string[] | undefined>
-user.favoriteRelays$; // Observable<FavoriteRelays | undefined>
-user.searchRelays$; // Observable<SearchRelays | undefined>
-user.blockedRelays$; // Observable<BlockedRelays | undefined>
-
-// Bookmarks
-user.bookmarks$; // Observable<BookmarksList | undefined>
-
-// Groups (NIP-29)
-user.groups$; // Observable<GroupsList | undefined>
-
-// Live stream
-user.live$; // Observable<Stream | undefined>
 ```
 
-## Example: Contact Manager
-
-Using `castUser` to manage contacts:
-
-```typescript
-import { castUser, User } from "applesauce-common/casts";
-import { use$ } from "applesauce-react/hooks";
-
-function ContactManager({ user }: { user: User }) {
-  // Subscribe to user's contacts
-  const contacts = use$(user.contacts$);
-  const outboxes = use$(user.outboxes$);
-
-  return (
-    <div>
-      <h1>Contacts ({contacts?.length || 0})</h1>
-      {contacts?.map(contact => (
-        <ContactCard key={contact.pubkey} user={contact} />
-      ))}
-    </div>
-  );
-}
-
-// Create a user instance
-const user = castUser(pubkey, eventStore);
-```
+See [Casting Users](/apps/casting/users) for every observable, and [Profiles](/features/profiles), [Follows](/features/follows), and [Mailboxes & Outbox](/features/outbox) for how they are used.
 
 ## Example: Async Code
 

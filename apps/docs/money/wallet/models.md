@@ -22,7 +22,7 @@ import {
 
 ## WalletBalanceModel
 
-Returns the visible balance per mint (sats). Subscribes to wallet token events (kind 375), filters to unlocked tokens, excludes deleted tokens, and sums proofs per mint (ignoring duplicate proofs).
+Returns the visible balance per mint (sats). Subscribes to wallet token events (kind 7375), filters to unlocked tokens, excludes deleted tokens, and sums proofs per mint (ignoring duplicate proofs).
 
 ```typescript
 const balance$ = eventStore.model(WalletBalanceModel, pubkey);
@@ -33,7 +33,7 @@ balance$.subscribe((balance) => {
 
 ## WalletTokensModel
 
-Returns a timeline of wallet token events (kind 375) for a pubkey. Optionally filter by unlocked status. Deleted tokens (per token content) are excluded.
+Returns a timeline of wallet token events (kind 7375) for a pubkey. Optionally filter by unlocked status. Deleted tokens (per token content) are excluded.
 
 ```typescript
 const allTokens$ = eventStore.model(WalletTokensModel, pubkey);
@@ -72,7 +72,7 @@ const receivedIds$ = eventStore.model(ReceivedNutzapsModel, pubkey);
 
 ## EventNutZapzModel
 
-Returns nutzap events (kind 9734) that target a given event (e.g. a note). Uses common event-relation filters so nutzaps that reference the event are included. Only valid nutzap events are returned.
+Returns nutzap events (kind 9321) that target a given event (e.g. a note). Uses common event-relation filters so nutzaps that reference the event are included. Only valid nutzap events are returned.
 
 ```typescript
 const nutzaps$ = eventStore.model(EventNutZapzModel, someEvent);
@@ -80,7 +80,7 @@ const nutzaps$ = eventStore.model(EventNutZapzModel, someEvent);
 
 ## ProfileNutZapzModel
 
-Returns nutzap events (kind 9734) that target a user’s profile (p-tag only; nutzaps targeting specific events are excluded).
+Returns nutzap events (kind 9321) that target a user’s profile (p-tag only; nutzaps targeting specific events are excluded).
 
 ```typescript
 const profileNutzaps$ = eventStore.model(ProfileNutZapzModel, pubkey);

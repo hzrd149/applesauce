@@ -209,7 +209,7 @@ function ArticleViewer({ article }: { article: Article }) {
       .relay(relay)
       .subscription({
         kinds: [1111],
-        "#a": [`30023:${article.pubkey}:${article.id}`],
+        "#a": [getReplaceableAddress(article.event)!],
       })
       .pipe(mapEventsToStore(eventStore));
   }, [article?.id, relay]);
@@ -297,7 +297,7 @@ function ContactCard({ contact }: { contact: User }) {
   return (
     <div>
       <h3>{profile?.displayName}</h3>
-      {nutzapInfo && <div>Can receive zaps</div>}
+      {nutzapInfo && <div>Accepts nutzaps</div>}
       <div>{contacts?.length || 0} contacts</div>
     </div>
   );

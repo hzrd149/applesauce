@@ -170,78 +170,11 @@ pool.subscriptionMap(filterMap).subscribe({
 
 ### Outbox Subscription Method
 
-The `outboxSubscription` method is designed for the outbox model (NIP-65), allowing you to subscribe to events from users using their designated outbox relays:
+The `outboxSubscription` method subscribes to each user's events on their own outbox relays; see [Outbox](/features/outbox).
 
-```typescript
-import { createOutboxMap } from "applesauce-core/helpers/relay-selection";
+### Counting and Sync
 
-// Create an outbox map from user profiles with relay preferences
-const outboxMap = createOutboxMap(usersWithRelays);
-
-pool
-  .outboxSubscription(
-    outboxMap,
-    { kinds: [1], since: unixNow() - 3600 }, // Filter without authors (added automatically)
-  )
-  .subscribe({
-    next: (event) => console.log("Event from outbox:", event),
-  });
-```
-
-### Count Method
-
-The `count` method emits progressive cumulative `RelayOutcome` records as each relay settles:
-
-```typescript
-pool.count(relays, { kinds: [1], authors: ["pubkey"] }).subscribe({
-  next: (outcomes) => {
-    for (const [relay, outcome] of Object.entries(outcomes))
-      console.log(relay, outcome.ok ? outcome.value.count : outcome.error);
-  },
-});
-```
-
-Snapshots are progressive and cumulative; missing entries are still pending. Pool and Group preserve scalar `Relay.count()` policy and isolate each failure by normalized relay URL.
-
-#### Integration
-
-```typescript
-import { estimateHllCardinality, mergeHllRegisters } from "applesauce-relay";
-
-pool.count(relays, filter, "union").subscribe((outcomes) => {
-  const sketches = Object.values(outcomes).flatMap((o) => (o.ok && o.value.hll ? [o.value.hll] : []));
-  if (sketches.length) {
-    const merged = mergeHllRegisters(sketches);
-    console.log(estimateHllCardinality(merged));
-  }
-});
-```
-
-Failures and successful responses without HLL reduce coverage. Never sum overlapping relay counts or treat a missing sketch as zero.
-
-#### Best Practices
-
-- Never sum counts from overlapping relays.
-- Relays without compatible HLL sketches cannot contribute to the HLL union.
-- Treat progressive snapshots as provisional until completion; each relay failure stays isolated, and automatic aggregation remains intentionally absent.
-
-### Sync Method
-
-The `sync` method performs Negentropy synchronization with multiple relays and emits `GroupSyncMessage` values:
-
-```typescript
-pool.sync(relays, eventStore, filter).subscribe({
-  next: (message) => {
-    if (message.type === "received") consume(message.event);
-    if (message.type === "sent") uploaded += 1;
-    if (message.type === "send-failed") failures.push(message);
-    if (message.type === "relay-failed") unavailable.push(message.from);
-  },
-  complete: () => console.log("Transfers drained", { uploaded, failures }),
-});
-```
-
-Completion means all scheduled work drained; inspect `send-failed` and `relay-failed` results before reporting success. For raw rounds, use `pool.relay(url).negentropy(...)` per relay.
+`pool.count()` and `pool.sync()` send COUNT and negentropy requests to several relays and report each relay's result separately. See [Counting](./counting) and [Negentropy Sync](./negentropy#syncing-with-several-relays).
 
 ## Relay Groups
 
@@ -258,7 +191,7 @@ group.req({ kinds: [1] }).subscribe((response) => console.log(response));
 group.event(event).subscribe((response) => console.log(response));
 
 // Use other group methods
-group.publish(event).subscribe((response) => console.log(response));
+const responses = await group.publish(event);
 group.request({ kinds: [1] }).subscribe((event) => console.log(event));
 group.subscription({ kinds: [1] }).subscribe((response) => console.log(response));
 ```
@@ -269,7 +202,7 @@ High-level Group and Pool methods preserve the same `RelayGroupError` instance. 
 
 Dynamic `subscriptionMap()` and `outboxSubscription()` replace the active relay cohort as their maps change. An empty dynamic subscription stays open for future relays, while an empty finite request completes immediately.
 
-Every enabled whole-operation timeout shares the call's authentication gate. Its remaining budget pauses while any relay authenticates and resumes only after overlapping auth phases all finish.
+Pool and group methods forward auth options to every relay; see [Authentication](./authentication#integration).
 
 ## Best Practices
 

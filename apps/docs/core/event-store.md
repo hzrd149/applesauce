@@ -185,7 +185,7 @@ const sub = eventStore.filters({ kinds: [1] }, true).subscribe((event) => {
 });
 ```
 
-#### NIP-91 AND Operator Support
+#### AND Operator
 
 The event store supports [NIP-91](https://github.com/nostr-protocol/nips/pull/1365) AND operators in filters using the `&` prefix for tag filters that require ALL values to match:
 
@@ -238,103 +238,23 @@ const sub = eventStore.addressable({ kind: 30023, pubkey: "...", identifier: "my
 
 ## Helper Subscription Methods
 
-The event store provides convenient helper methods for common subscription patterns:
+The event store has shortcut methods for common subscriptions. Each one accepts a pubkey, pointer, or event and returns an observable:
 
-### Profile
+| Method                 | Returns                              | Feature page                                           |
+| ---------------------- | ------------------------------------ | ------------------------------------------------------ |
+| `profile(user)`        | `ProfileContent \| undefined`        | [Profiles](/features/profiles)                         |
+| `contacts(user)`       | `ProfilePointer[]`                   | [Follows](/features/follows)                           |
+| `mailboxes(user)`      | `{ inboxes, outboxes } \| undefined` | [Mailboxes & Outbox](/features/outbox)                 |
+| `mutes(user)`          | `MutedThings \| undefined`           | [Mutes & Reports](/features/moderation)                |
+| `blossomServers(user)` | `URL[] \| undefined`                 | [Blossom Servers](/features/blossom-servers)           |
+| `reactions(event)`     | `NostrEvent[]`                       | [Reactions & Reposts](/features/reactions-and-reposts) |
+| `thread(root)`         | `Thread`                             | [Notes & Threads](/features/notes-and-threads)         |
+| `comments(event)`      | `NostrEvent[]`                       | [Comments](/features/comments)                         |
 
-Subscribe to a user's profile (kind 0):
-
-```ts
-const sub = eventStore
-  .profile("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
-  .subscribe((profile) => {
-    if (profile) console.log("Profile:", profile);
-  });
-```
-
-### Contacts
-
-Subscribe to a user's contacts (kind 3):
+The `mutes`, `blossomServers`, `reactions`, `thread`, and `comments` methods are registered on the event store when you import `applesauce-common`.
 
 ```ts
-const sub = eventStore
-  .contacts("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
-  .subscribe((contacts) => {
-    console.log("Contacts:", contacts);
-  });
-```
-
-### Mutes
-
-Subscribe to a user's mutes (kind 10000):
-
-```ts
-const sub = eventStore.mutes("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d").subscribe((mutes) => {
-  if (mutes) console.log("Muted users:", mutes);
-});
-```
-
-### Mailboxes
-
-Subscribe to a user's NIP-65 mailboxes (kind 10002):
-
-```ts
-const sub = eventStore
-  .mailboxes("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
-  .subscribe((mailboxes) => {
-    if (mailboxes) {
-      console.log("Inbox relays:", mailboxes.inboxes);
-      console.log("Outbox relays:", mailboxes.outboxes);
-    }
-  });
-```
-
-### Blossom Servers
-
-Subscribe to a user's blossom servers (kind 10063):
-
-```ts
-const sub = eventStore
-  .blossomServers("3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d")
-  .subscribe((servers) => {
-    console.log("Blossom servers:", servers);
-  });
-```
-
-### Reactions
-
-Subscribe to an event's reactions (kind 7):
-
-```ts
-const event = eventStore.getEvent("event-id");
-if (event) {
-  const sub = eventStore.reactions(event).subscribe((reactions) => {
-    console.log("Reactions:", reactions);
-  });
-}
-```
-
-### Thread
-
-Subscribe to a thread of replies:
-
-```ts
-const sub = eventStore.thread("event-id").subscribe((thread) => {
-  console.log("Thread:", thread);
-});
-```
-
-### Comments
-
-Subscribe to an event's comments:
-
-```ts
-const event = eventStore.getEvent("event-id");
-if (event) {
-  const sub = eventStore.comments(event).subscribe((comments) => {
-    console.log("Comments:", comments);
-  });
-}
+eventStore.profile(pubkey).subscribe((profile) => console.log(profile?.name));
 ```
 
 ## Fallback event loaders

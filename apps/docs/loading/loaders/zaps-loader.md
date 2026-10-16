@@ -4,7 +4,7 @@ description: Load zap events for a target with validation and relay routing
 
 # Zaps Loader
 
-The Zaps Loader is a specialized loader for fetching [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md) zap events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles both regular events and addressable events.
+The Zaps Loader is a specialized loader for fetching [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md) zap events for any given Nostr event. It is built on top of the [Tag Value Loader](./tag-value-loader.md) and automatically handles regular, replaceable, and addressable events.
 
 :::warning
 The observable returned by the Zaps Loader MUST be subscribed to in order for the request to be made. No request will be sent until you call `.subscribe()` on the returned observable.
@@ -34,8 +34,8 @@ zapsLoader(someEvent, ["wss://relay.example.com"]).subscribe((zapEvent) => {
 
 The Zaps Loader automatically:
 
-- Determines if the target event is addressable (replaceable) or a regular event
-- Uses the appropriate tag (`a` for addressable events, `e` for regular events) to fetch zaps
+- Determines if the target event is replaceable/addressable or a regular event
+- Uses the appropriate tag (`a` for replaceable and addressable events, `e` for regular events) to fetch zaps
 - Merges relay hints from the event's seen relays (if `useSeenRelays` is enabled)
 - Filters results to only return NIP-57 zap events (kind 9735)
 
@@ -44,7 +44,7 @@ The Zaps Loader automatically:
 The `createZapsLoader` function accepts these options:
 
 - `useSeenRelays`: Whether to include relays where the event was seen (default `true`)
-- All other options from Tag Value Loader: `bufferTime`, `bufferSize`, `authors`, `since`, `cacheRequest`, `extraRelays`, `eventStore`
+- All other options from Tag Value Loader: `bufferTime`, `bufferSize`, `authors`, `since`, `cacheRequest`, `extraRelays`, `eventStore`, `signal`
 
 ```ts
 const zapsLoader = createZapsLoader(pool, {
@@ -90,11 +90,11 @@ function ZapsComponent({ event }) {
 }
 ```
 
-## Addressable vs Regular Events
+## Replaceable vs Regular Events
 
-The loader automatically handles both types of events:
+The loader picks the tag to query based on the target event's kind:
 
-- **Regular events** (kind 0, 1, etc.): Uses `e` tags to find zaps
-- **Addressable events** (kind 30000+): Uses `a` tags with the replaceable address
+- **Regular events** (kind 1 notes, etc.): Uses `e` tags with the event id
+- **Replaceable and addressable events** (kinds 0, 3, 10000–19999, and 30000–39999): Uses `a` tags with the event's `kind:pubkey:identifier` address
 
 This abstraction means you don't need to worry about the event type - just pass any event to the loader.

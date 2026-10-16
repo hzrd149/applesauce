@@ -10,8 +10,10 @@ The `applesauce-relay` package contains a few classes to make connecting to rela
 
 - Simple to setup
 - Automatic connection management
-- NIP-42 auth support
-- Negentropy support
+- [NIP-42 auth support](./authentication)
+- [Negentropy support](./negentropy)
+- [Event counting](./counting)
+- [Relay information documents](./relay-information)
 
 ## Installation
 

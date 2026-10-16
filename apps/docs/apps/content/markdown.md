@@ -176,20 +176,6 @@ function customNostrMentions() {
 }
 ```
 
-## Using with MDX
-
-The transformer works with MDX for interactive documentation:
-
-```tsx
-import { compile } from "@mdx-js/mdx";
-import { remarkNostrMentions } from "applesauce-content/markdown";
-import remarkGfm from "remark-gfm";
-
-const compiled = await compile(mdxContent, {
-  remarkPlugins: [remarkGfm, remarkNostrMentions],
-});
-```
-
 ## Custom Nostr Link Rendering
 
 Customize how nostr links are rendered to integrate with your app:

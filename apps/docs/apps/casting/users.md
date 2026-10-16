@@ -37,203 +37,35 @@ user.nprofile; // NIP-19 encoded nprofile with relay hints
 user.pointer; // ProfilePointer object with relay hints
 ```
 
-### Profile
-
-Get the user's profile metadata (kind 0).
-
-```typescript
-const profile = use$(user.profile$);
-
-if (profile) {
-  const displayName = profile.displayName;
-  const name = profile.name;
-  const about = profile.about;
-  const picture = profile.picture;
-  const banner = profile.banner;
-  const website = profile.website;
-  const nip05 = profile.dnsIdentity;
-  const lud16 = profile.lud16;
-  const lightningAddress = profile.lightningAddress; // lud16 or lud06
-}
-```
-
-See [Profile cast](./events#profile) for more details.
-
-### Contacts
-
-Get the user's contact list (follows).
-
-```typescript
-const contacts = use$(user.contacts$);
-
-// contacts is an array of User objects
-contacts?.forEach((contact) => {
-  const contactProfile = use$(contact.profile$);
-  console.log(contactProfile?.displayName);
-});
-```
-
-**Example:** [Contact Manager](https://applesauce.build/examples#contacts)
-
-### Mutes
-
-Get the user's mute list with public and hidden mutes.
-
-```typescript
-const mutes = use$(user.mutes$);
-
-if (mutes) {
-  // Public mutes
-  const hashtags = mutes.hashtags; // Set<string>
-  const words = mutes.words; // Set<string>
-  const pubkeys = mutes.pubkeys; // Set<string>
-  const threads = mutes.threads; // Set<string>
-
-  // Check for hidden mutes
-  const hasHidden = mutes.hasHidden;
-  const unlocked = mutes.unlocked;
-
-  // Unlock hidden mutes
-  if (hasHidden && !unlocked) {
-    await mutes.unlock(signer);
-  }
-
-  // Access hidden mutes (after unlocking)
-  const hidden = use$(mutes.hidden$);
-}
-```
-
-See [Mutes cast](./events#mutes) for more details.
-
-**Example:** [Mutes Manager](https://applesauce.build/examples#mutes)
-
-### Mailboxes (NIP-65)
-
-Get the user's inbox and outbox relays.
-
-```typescript
-const mailboxes = use$(user.mailboxes$);
-const outboxes = use$(user.outboxes$);
-const inboxes = use$(user.inboxes$);
-
-// Use outboxes for publishing
-if (outboxes && outboxes.length > 0) {
-  await pool.publish(outboxes, event);
-}
-
-// Use inboxes for fetching user's content
-if (inboxes && inboxes.length > 0) {
-  pool.subscription(inboxes, filter, { eventStore });
-}
-```
-
-### Bookmarks
-
-Get the user's bookmark list (kind 10003).
-
-```typescript
-const bookmarks = use$(user.bookmarks$);
-
-if (bookmarks) {
-  // Get resolved events
-  const notes = use$(bookmarks.notes$);
-  const articles = use$(bookmarks.articles$);
-
-  // Check for hidden bookmarks
-  if (bookmarks.hasHidden && !bookmarks.unlocked) {
-    await bookmarks.unlock(signer);
-  }
-
-  // Access hidden bookmarks
-  const hiddenNotes = use$(bookmarks.hiddenNotes$);
-  const hiddenArticles = use$(bookmarks.hiddenArticles$);
-}
-```
-
-See [BookmarksList cast](./events#bookmarkslist) for more details.
-
-**Example:** [Bookmarks Manager](https://applesauce.build/examples#bookmarks)
-
-### Relay Lists
-
-Get the user's various relay lists.
-
-```typescript
-// Favorite relays (kind 10012)
-const favoriteRelays = use$(user.favoriteRelays$);
-const relays = favoriteRelays?.relays; // string[]
-
-// Search relays (kind 10007)
-const searchRelays = use$(user.searchRelays$);
-
-// Blocked relays (kind 10006)
-const blockedRelays = use$(user.blockedRelays$);
-
-// DM relays (kind 10050)
-const dmRelays = use$(user.directMessageRelays$);
-```
-
-All relay lists support hidden relays:
-
-```typescript
-if (favoriteRelays?.hasHidden && !favoriteRelays.unlocked) {
-  await favoriteRelays.unlock(signer);
-}
-
-const hiddenRelays = use$(favoriteRelays.hidden$);
-```
-
-See [Relay Lists casts](./events#relay-lists) for more details.
-
-### Groups
-
-Get the user's NIP-29 group list.
-
-```typescript
-const groupsList = use$(user.groups$);
-
-if (groupsList) {
-  const groups = groupsList.groups; // GroupPointer[]
-
-  // Unlock hidden groups if needed
-  if (groupsList.hasHidden && !groupsList.unlocked) {
-    await groupsList.unlock(signer);
-  }
-
-  const hiddenGroups = use$(groupsList.hidden$);
-}
-```
-
-See [GroupsList cast](./events#groupslist) for more details.
-
-### Live Stream
-
-Get the user's current live stream (kind 30311).
-
-```typescript
-const stream = use$(user.live$);
-
-if (stream) {
-  const title = stream.title;
-  const status = stream.status; // "live" | "ended" | "planned"
-  const viewers = stream.viewers;
-  const chatMessages = use$(stream.chat$);
-}
-```
-
-See [Stream cast](./events#stream) for more details.
-
 ### Request Methods
 
-Request replaceable or addressable events directly from the user.
+Subscribe to replaceable or addressable events published by the user.
 
 ```typescript
-// Request a replaceable event (e.g., kind 30311 with identifier "my-stream")
-const stream$ = user.replaceable(30311, "my-stream", relays);
+// Replaceable event (e.g., the kind 10002 relay list)
+const relayList$ = user.replaceable(10002);
 
-// Request an addressable event (requires identifier)
-const article$ = user.addressable(30023, "my-article", relays);
+// Addressable event (e.g., the kind 30311 live stream with identifier "my-stream")
+const stream$ = user.addressable(30311, "my-stream", relays);
 ```
+
+## Feature observables
+
+`applesauce-common` adds feature observables to `User`. Each feature page covers the cast it returns and how to edit it.
+
+| Observables                                                                                      | Feature                                      |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `profile$`                                                                                       | [Profiles](/features/profiles)               |
+| `contacts$`                                                                                      | [Follows](/features/follows)                 |
+| `mutes$`                                                                                         | [Mutes & Reports](/features/moderation)      |
+| `mailboxes$`, `outboxes$`, `inboxes$`                                                            | [Mailboxes & Outbox](/features/outbox)       |
+| `bookmarks$`                                                                                     | [Bookmarks](/features/bookmarks)             |
+| `favoriteRelays$`, `searchRelays$`, `blockedRelays$`, `lookupRelayList$`, `directMessageRelays$` | [Relay Lists](/features/relay-lists)         |
+| `groups$`                                                                                        | [Groups](/features/groups)                   |
+| `blossomServers$`                                                                                | [Blossom Servers](/features/blossom-servers) |
+| `gitRepositories$`, `gitAuthors$`, `favoriteGitRepos$`, `graspServers$`                          | [Git](/features/git)                         |
+| `nsites$`, `nsite$`, `nsiteSnapshots$`, `napplets$`, `napplet$`                                  | [Sites & Napplets](/features/nostr-sites)    |
+| `appHandlers$`, `appRecommendations$`                                                            | [App Handlers](/features/app-handlers)       |
 
 ## User Cache
 
@@ -250,30 +82,6 @@ To clear the cache (rarely needed):
 
 ```typescript
 User.cache.clear();
-```
-
-## Usage with Actions
-
-Combine users with the action system to modify user data:
-
-```typescript
-import { ActionRunner } from "applesauce-actions";
-import { FollowUser, UnfollowUser, MuteUser } from "applesauce-actions/actions";
-
-const actions = new ActionRunner(eventStore, signer);
-
-// Follow a user
-await actions.exec(FollowUser, contactPubkey).forEach(async (signed) => {
-  await pool.publish(user.outboxes$, signed);
-});
-
-// Unfollow a user
-await actions.exec(UnfollowUser, contactPubkey).forEach(async (signed) => {
-  await pool.publish(user.outboxes$, signed);
-});
-
-// Mute a user
-await actions.run(MuteUser, targetPubkey, false); // false = public mute
 ```
 
 :::tip
