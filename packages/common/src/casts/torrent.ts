@@ -2,6 +2,7 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import {
   getTorrentCategory,
   getTorrentCategoryPath,
+  getTorrentCategoryPathParts,
   getTorrentExternalIdentifiers,
   getTorrentFiles,
   getTorrentInfoHash,
@@ -21,6 +22,7 @@ import { Comment } from "./comment.js";
 import { Reaction } from "./reaction.js";
 import { Zap } from "./zap.js";
 
+/** A cast for NIP-35 torrent events (kind 2003) */
 export class Torrent extends EventCast<TorrentEvent> {
   constructor(event: NostrEvent, store: CastRefEventStore) {
     if (!isValidTorrent(event)) throw new Error("Invalid torrent");
@@ -62,6 +64,11 @@ export class Torrent extends EventCast<TorrentEvent> {
     return getTorrentCategoryPath(this.event);
   }
 
+  /** The category path split into its parts (e.g., ["video", "movie", "4k"]) */
+  get categoryPathParts() {
+    return getTorrentCategoryPathParts(this.event);
+  }
+
   /** All external identifiers from `i` tags (excluding tcat and newznab, which are handled separately) */
   get externalIdentifiers() {
     return getTorrentExternalIdentifiers(this.event);
@@ -79,10 +86,12 @@ export class Torrent extends EventCast<TorrentEvent> {
     );
   }
 
+  /** Gets the zaps on this torrent */
   get zaps$() {
     return this.$$ref("zaps$", (store) => store.model(EventZapsModel, this.event).pipe(castTimelineStream(Zap, store)));
   }
 
+  /** Gets the reactions to this torrent */
   get reactions$() {
     return this.$$ref("reactions$", (store) =>
       store.model(ReactionsModel, this.event).pipe(castTimelineStream(Reaction, store)),
