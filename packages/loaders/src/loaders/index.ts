@@ -7,5 +7,4 @@ export * from "./sync-loader.js";
 export * from "./tag-value-loader.js";
 export * from "./timeline-loader.js";
 export * from "./unified-event-loader.js";
-export * from "./user-lists-loader.js";
 export * from "./zaps-loader.js";

@@ -5,8 +5,6 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
-        "COMMON_LIST_KINDS",
-        "COMMON_SET_KINDS",
         "DnsIdentityLoader",
         "RELAY_AUTH_ERROR_NAMES",
         "addressPointerLoadingSequence",
@@ -24,7 +22,6 @@ describe("exports", () => {
         "createTagValueLoader",
         "createTimelineLoader",
         "createUnifiedEventLoader",
-        "createUserListsLoader",
         "createZapsLoader",
         "eventLoadingSequence",
         "loadBlocksFromCache",

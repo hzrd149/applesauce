@@ -110,7 +110,7 @@ const event = await firstValueFrom(loadEvent({ id: "...", relays: ["wss://..."] 
 
 **Every loader returns a cold `Observable`.** No request fires until you subscribe (or call `firstValueFrom` / `lastValueFrom`). This is by far the most common loader bug.
 
-Loader inventory (`applesauce-loaders/loaders`): `createEventLoader`, `createAddressLoader`, `createUnifiedEventLoader`, `createEventLoaderForStore`, `createTimelineLoader`, `createOutboxTimelineLoader`, `createTagValueLoader`, `createReactionsLoader`, `createZapsLoader`, `createUserListsLoader`, `createSocialGraphLoader`, `dnsIdentityLoader`. There is no profile-specific loader — load kind 0 via `createAddressLoader`.
+Loader inventory (`applesauce-loaders/loaders`): `createEventLoader`, `createAddressLoader`, `createUnifiedEventLoader`, `createEventLoaderForStore`, `createTimelineLoader`, `createOutboxTimelineLoader`, `createTagValueLoader`, `createReactionsLoader`, `createZapsLoader`, `createSyncLoader`, `createSocialGraphLoader`, `dnsIdentityLoader`. There is no profile-specific loader — load kind 0 via `createAddressLoader`.
 
 ## Writes — two routes
 
