@@ -7,11 +7,10 @@ import { Note, User } from "applesauce-common/casts";
 import { UserStatusModel } from "applesauce-common/models";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
-import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
+import { getDisplayName, getProfilePicture, NostrEvent } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "applesauce-core/helpers";
 import { useState } from "react";
 
 import RelayPicker from "../../components/relay-picker";
@@ -26,13 +25,13 @@ createEventLoaderForStore(eventStore, pool, {
 
 const components: ComponentMap = {
   text: ({ node }) => <span>{node.value}</span>,
-  emoji: ({ node }) => <img title={node.raw} src={node.url} className="inline h-4 w-4 align-text-bottom" />,
+  emoji: ({ node }) => <img title={node.raw} src={node.url} className="inline h-5 w-5 align-text-bottom" />,
 };
 
 function StatusText({ event, icon }: { event: NostrEvent; icon: string }) {
   const content = useRenderedContent(event, components);
   return (
-    <div className="truncate text-xs text-base-content/60">
+    <div className="truncate text-sm opacity-70">
       {icon} {content}
     </div>
   );
@@ -91,23 +90,27 @@ export default function StatusTimeline() {
   );
 
   return (
-    <div className="container mx-auto flex max-w-2xl flex-col gap-2 p-4">
-      <div className="flex items-center gap-2">
-        <RelayPicker value={relay} onChange={setRelay} />
-        <label className="label cursor-pointer gap-2">
-          <input
-            type="checkbox"
-            className="checkbox checkbox-sm"
-            checked={showMusic}
-            onChange={(e) => setShowMusic(e.target.checked)}
-          />
-          <span className="text-sm">Music</span>
-        </label>
-      </div>
-      <div className="flex flex-col border border-base-300">
-        {notes?.map((note) => (
-          <NoteItem key={note.id} note={note} showMusic={showMusic} />
-        ))}
+    <div className="flex min-h-0 grow flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-2 p-4">
+        <div className="flex items-center gap-2">
+          <RelayPicker value={relay} onChange={setRelay} />
+          <label className="label cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={showMusic}
+              onChange={(e) => setShowMusic(e.target.checked)}
+            />
+            <span className="text-sm">Music</span>
+          </label>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-base-300">
+          {!notes && <div className="p-4 text-sm opacity-60">Loading notes...</div>}
+          {notes?.length === 0 && <div className="p-4 text-sm opacity-60">No notes yet</div>}
+          {notes?.map((note) => (
+            <NoteItem key={note.id} note={note} showMusic={showMusic} />
+          ))}
+        </div>
       </div>
     </div>
   );

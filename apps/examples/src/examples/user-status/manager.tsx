@@ -15,12 +15,12 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
-import { useEffect, useMemo, useState } from "react";
-import { BehaviorSubject, combineLatest, EMPTY, map, of, switchMap } from "rxjs";
+import { useMemo, useState } from "react";
+import { BehaviorSubject, combineLatest, ignoreElements, map, merge, of, share, switchMap, timer } from "rxjs";
 
 import LoginView from "../../components/login-view";
 
-const DEFAULT_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
 const DURATIONS: Record<string, number | undefined> = {
   Never: undefined,
@@ -40,28 +40,31 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-// Publish to the user's outboxes, falling back to the default relays
+// Publish to the relays the action picked (the user's outboxes), falling back when there are none
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
-  await pool.publish(relays?.length ? relays : DEFAULT_RELAYS, event);
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error(responses[0]?.message ?? "No relay accepted the status");
 });
 
-// Load the statuses of the user and everyone they follow
-user$
-  .pipe(
-    switchMap((user) => {
-      if (!user) return EMPTY;
-      return combineLatest([user.contacts$, user.outboxes$]).pipe(
-        switchMap(([contacts, outboxes]) =>
-          pool.subscription([...DEFAULT_RELAYS, ...(outboxes ?? [])], {
-            kinds: [kinds.UserStatuses],
-            authors: [user.pubkey, ...contacts.map((c) => c.pubkey)],
-          }),
-        ),
-        mapEventsToStore(eventStore),
-      );
-    }),
-  )
-  .subscribe();
+// A shared clock for expiration countdowns
+const now$ = timer(0, 1000).pipe(
+  map(() => unixNow()),
+  share(),
+);
+
+/** Loads the statuses of a user and everyone they follow into the store */
+function loadStatuses(user: User) {
+  return combineLatest([user.contacts$, user.outboxes$]).pipe(
+    switchMap(([contacts, outboxes]) =>
+      pool.subscription([...FALLBACK_RELAYS, ...(outboxes ?? [])], {
+        kinds: [kinds.UserStatuses],
+        authors: [user.pubkey, ...contacts.map((c) => c.pubkey)],
+      }),
+    ),
+    mapEventsToStore(eventStore),
+    ignoreElements(),
+  );
+}
 
 /** Parses a URL or a nostr: / bech32 string into a status link */
 function parseLink(input: string): string | UserStatusPointer | undefined {
@@ -85,42 +88,33 @@ const components: ComponentMap = {
 
 const TYPE_ICONS: Record<string, string> = { general: "💬", music: "🎵" };
 
-/** Seconds until a unix timestamp, updated every second */
-function useCountdown(timestamp?: number) {
-  const [now, setNow] = useState(unixNow());
-  useEffect(() => {
-    if (!timestamp) return;
-    const id = setInterval(() => setNow(unixNow()), 1000);
-    return () => clearInterval(id);
-  }, [timestamp]);
-  return timestamp ? Math.max(0, timestamp - now) : undefined;
-}
-
 function LinkedUser({ user }: { user: User }) {
   const profile = use$(user.profile$);
-  return <span className="text-primary">@{getDisplayName(profile, user.pubkey.slice(0, 8))}</span>;
+  return <span className="text-sm text-primary">@{getDisplayName(profile, user.pubkey.slice(0, 8))}</span>;
+}
+
+function Expiration({ expiration }: { expiration: number }) {
+  const now = use$(now$) ?? unixNow();
+  return <span className="text-sm opacity-60">Expires in {Math.max(0, expiration - now)}s</span>;
 }
 
 function StatusLine({ status }: { status: UserStatus }) {
   const content = useRenderedContent(status.event, components);
   const linked = use$(status.linkedEvent$);
-  const remaining = useCountdown(status.expiration);
 
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <div className="text-sm">
+      <div>
         {TYPE_ICONS[status.type] ?? "🏷️"} {content}
       </div>
       {status.url && (
-        <a href={status.url} target="_blank" className="link truncate text-xs">
+        <a href={status.url} target="_blank" className="link truncate text-sm">
           {status.url}
         </a>
       )}
       {status.user && <LinkedUser user={status.user} />}
-      {linked && (
-        <div className="truncate border-l-2 border-base-300 pl-2 text-xs text-base-content/60">{linked.content}</div>
-      )}
-      {remaining !== undefined && <span className="text-xs text-base-content/50">Expires in {remaining}s</span>}
+      {linked && <div className="truncate border-l-2 border-base-300 pl-2 text-sm opacity-60">{linked.content}</div>}
+      {status.expiration && <Expiration expiration={status.expiration} />}
     </div>
   );
 }
@@ -140,7 +134,7 @@ function EmojiPicker({ user, onPick }: { user: User; onPick: (emoji: Emoji) => v
         <button
           key={emoji.shortcode + emoji.url}
           type="button"
-          className="btn btn-ghost btn-xs"
+          className="btn btn-ghost btn-sm"
           title={`:${emoji.shortcode}:`}
           onClick={() => onPick(emoji)}
         >
@@ -159,6 +153,7 @@ function StatusForm({ user }: { user: User }) {
   const [duration, setDuration] = useState("Never");
   const [emojis, setEmojis] = useState<Emoji[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [error, setError] = useState<string>();
 
   const pickEmoji = (emoji: Emoji) => {
     setContent((c) => `${c}:${emoji.shortcode}:`);
@@ -168,6 +163,7 @@ function StatusForm({ user }: { user: User }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPublishing(true);
+    setError(undefined);
     try {
       const seconds = DURATIONS[duration];
       await actions.run(SetUserStatus, content, {
@@ -179,6 +175,8 @@ function StatusForm({ user }: { user: User }) {
       setContent("");
       setLink("");
       setEmojis([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to publish status");
     } finally {
       setPublishing(false);
     }
@@ -225,6 +223,7 @@ function StatusForm({ user }: { user: User }) {
           ))}
         </select>
       </div>
+      {error && <div className="text-sm text-error">{error}</div>}
       <button className="btn btn-primary" disabled={publishing}>
         {publishing ? "Publishing..." : "Set status"}
       </button>
@@ -232,22 +231,36 @@ function StatusForm({ user }: { user: User }) {
   );
 }
 
+function MyStatusRow({ status }: { status: UserStatus }) {
+  const [error, setError] = useState<string>();
+
+  const clear = () =>
+    actions
+      .run(ClearUserStatus, status.type)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+
+  return (
+    <div className="flex items-start justify-between gap-2 border-b border-base-300 p-3 last:border-b-0">
+      <StatusLine status={status} />
+      <div className="flex flex-col items-end gap-1">
+        <button className="btn btn-ghost btn-sm" onClick={clear}>
+          Clear
+        </button>
+        {error && <span className="text-sm text-error">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
 function MyStatuses({ user }: { user: User }) {
   const statuses = use$(user.statuses$);
 
-  if (!statuses?.length) return <div className="border border-base-300 p-3 text-sm opacity-50">No status set</div>;
+  if (!statuses) return <div className="border border-base-300 p-3 text-sm opacity-60">Loading...</div>;
+  if (statuses.length === 0) return <div className="border border-base-300 p-3 text-sm opacity-60">No status set</div>;
   return (
     <div className="flex flex-col border border-base-300">
       {statuses.map((status) => (
-        <div
-          key={status.type}
-          className="flex items-start justify-between gap-2 border-b border-base-300 p-3 last:border-b-0"
-        >
-          <StatusLine status={status} />
-          <button className="btn btn-ghost btn-sm" onClick={() => actions.run(ClearUserStatus, status.type)}>
-            Clear
-          </button>
-        </div>
+        <MyStatusRow key={status.type} status={status} />
       ))}
     </div>
   );
@@ -274,20 +287,29 @@ function FollowingRow({ user }: { user: User }) {
   );
 }
 
-function StatusManager({ user }: { user: User }) {
-  const contacts = use$(() => user.contacts$.pipe(map((contacts) => contacts.slice(0, 500))), [user]);
+function Following({ user }: { user: User }) {
+  // Keep the status subscription open while this list is mounted
+  const contacts = use$(() => merge(loadStatuses(user), user.contacts$), [user]);
 
+  if (!contacts) return <div className="text-sm opacity-60">Loading contacts...</div>;
   return (
-    <div className="container mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <h1 className="text-2xl font-bold">User Statuses</h1>
-      <StatusForm user={user} />
-      <h2 className="text-lg font-semibold">My statuses</h2>
-      <MyStatuses user={user} />
-      <h2 className="text-lg font-semibold">Following</h2>
-      <div className="flex flex-col">
-        {contacts?.map((contact) => (
-          <FollowingRow key={contact.pubkey} user={contact} />
-        ))}
+    <div className="flex flex-col">
+      {contacts.map((contact) => (
+        <FollowingRow key={contact.pubkey} user={contact} />
+      ))}
+    </div>
+  );
+}
+
+function StatusManager({ user }: { user: User }) {
+  return (
+    <div className="flex min-h-0 grow flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <StatusForm user={user} />
+        <h2 className="text-lg font-semibold">My statuses</h2>
+        <MyStatuses user={user} />
+        <h2 className="text-lg font-semibold">Following</h2>
+        <Following user={user} />
       </div>
     </div>
   );

@@ -10,8 +10,8 @@ import { getDisplayName, getProfilePicture, kinds, unixNow } from "applesauce-co
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { useEffect, useMemo, useState } from "react";
-import { map } from "rxjs";
+import { useMemo, useState } from "react";
+import { ignoreElements, map, merge, share, timer } from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
 
@@ -22,11 +22,26 @@ createEventLoaderForStore(eventStore, pool, {
   lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
 });
 
-// Read statuses from the store so expired ones disappear when the store removes them
-const statuses$ = eventStore.timeline({ kinds: [kinds.UserStatuses] }).pipe(
-  castTimelineStream(UserStatus, eventStore),
-  map((statuses) => statuses.filter((s) => !s.cleared)),
+// A shared clock for ages and expiration countdowns
+const now$ = timer(0, 1000).pipe(
+  map(() => unixNow()),
+  share(),
 );
+
+/** Loads statuses from a relay into the store and renders them from the store, so expired ones disappear */
+function relayStatuses(relay: string) {
+  const load$ = pool
+    .relay(relay)
+    .subscription({ kinds: [kinds.UserStatuses], limit: 200 })
+    .pipe(mapEventsToStore(eventStore), ignoreElements());
+
+  const statuses$ = eventStore.timeline({ kinds: [kinds.UserStatuses] }).pipe(
+    castTimelineStream(UserStatus, eventStore),
+    map((statuses) => statuses.filter((s) => !s.cleared)),
+  );
+
+  return merge(load$, statuses$);
+}
 
 const TABS = ["all", "general", "music", "other"] as const;
 type Tab = (typeof TABS)[number];
@@ -42,8 +57,8 @@ const components: ComponentMap = {
   emoji: ({ node }) => <img title={node.raw} src={node.url} className="inline h-5 w-5 align-text-bottom" />,
 };
 
-function timeAgo(seconds: number) {
-  const diff = unixNow() - seconds;
+function timeAgo(seconds: number, now: number) {
+  const diff = now - seconds;
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -52,7 +67,7 @@ function timeAgo(seconds: number) {
 
 function LinkedUser({ user }: { user: User }) {
   const profile = use$(user.profile$);
-  return <span className="text-primary">@{getDisplayName(profile, user.pubkey.slice(0, 8))}</span>;
+  return <span className="text-sm text-primary">@{getDisplayName(profile, user.pubkey.slice(0, 8))}</span>;
 }
 
 function StatusLink({ status }: { status: UserStatus }) {
@@ -60,19 +75,20 @@ function StatusLink({ status }: { status: UserStatus }) {
 
   if (status.url)
     return (
-      <a href={status.url} target="_blank" className="link truncate text-xs">
+      <a href={status.url} target="_blank" className="link truncate text-sm">
         {status.url}
       </a>
     );
   if (status.user) return <LinkedUser user={status.user} />;
   if (linked)
-    return <div className="truncate border-l-2 border-base-300 pl-2 text-xs opacity-60">{linked.content}</div>;
+    return <div className="truncate border-l-2 border-base-300 pl-2 text-sm opacity-60">{linked.content}</div>;
   return null;
 }
 
-function StatusRow({ status, now }: { status: UserStatus; now: number }) {
+function StatusRow({ status }: { status: UserStatus }) {
   const profile = use$(status.author.profile$);
   const content = useRenderedContent(status.event, components);
+  const now = use$(now$) ?? unixNow();
 
   return (
     <div className="flex gap-3 border-b border-base-300 p-3 last:border-b-0">
@@ -81,12 +97,12 @@ function StatusRow({ status, now }: { status: UserStatus; now: number }) {
         className="h-10 w-10 shrink-0 rounded-full"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold">{getDisplayName(profile, status.author.pubkey.slice(0, 8))}</span>
-          <span className="badge badge-outline badge-sm">{status.type}</span>
-          <span className="opacity-50">{timeAgo(status.event.created_at)}</span>
+          <span className="badge badge-outline">{status.type}</span>
+          <span className="opacity-60">{timeAgo(status.event.created_at, now)}</span>
           {status.expiration && (
-            <span className="ml-auto text-xs opacity-50">expires in {Math.max(0, status.expiration - now)}s</span>
+            <span className="ml-auto opacity-60">expires in {Math.max(0, status.expiration - now)}s</span>
           )}
         </div>
         <div>{content}</div>
@@ -99,23 +115,7 @@ function StatusRow({ status, now }: { status: UserStatus; now: number }) {
 export default function StatusExplorer() {
   const [relay, setRelay] = useState("wss://relay.damus.io/");
   const [tab, setTab] = useState<Tab>("all");
-  const [now, setNow] = useState(unixNow());
-  const statuses = use$(statuses$);
-
-  // Load recent statuses from the relay into the store
-  useEffect(() => {
-    const sub = pool
-      .relay(relay)
-      .subscription({ kinds: [kinds.UserStatuses], limit: 200 })
-      .pipe(mapEventsToStore(eventStore))
-      .subscribe();
-    return () => sub.unsubscribe();
-  }, [relay]);
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(unixNow()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const statuses = use$(() => relayStatuses(relay), [relay]);
 
   const counts = useMemo(
     () => Object.fromEntries(TABS.map((t) => [t, statuses?.filter((s) => matchesTab(s, t)).length ?? 0])),
@@ -124,22 +124,26 @@ export default function StatusExplorer() {
   const visible = statuses?.filter((s) => matchesTab(s, tab));
 
   return (
-    <div className="container mx-auto flex max-w-2xl flex-col gap-3 p-4">
-      <RelayPicker value={relay} onChange={setRelay} />
-      <div role="tablist" className="tabs tabs-bordered">
-        {TABS.map((t) => (
-          <button key={t} role="tab" className={`tab ${tab === t ? "tab-active" : ""}`} onClick={() => setTab(t)}>
-            {t} ({counts[t]})
-          </button>
-        ))}
-      </div>
-      <p className="text-xs opacity-50">
-        Statuses with an expiration are removed from the event store when they expire.
-      </p>
-      <div className="flex flex-col border border-base-300">
-        {visible?.map((status) => (
-          <StatusRow key={status.id} status={status} now={now} />
-        ))}
+    <div className="flex min-h-0 grow flex-col">
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 p-4">
+        <RelayPicker value={relay} onChange={setRelay} />
+        <div role="tablist" className="tabs tabs-bordered">
+          {TABS.map((t) => (
+            <button key={t} role="tab" className={`tab ${tab === t ? "tab-active" : ""}`} onClick={() => setTab(t)}>
+              {t} ({counts[t]})
+            </button>
+          ))}
+        </div>
+        <p className="text-sm opacity-60">
+          Statuses with an expiration are removed from the event store when they expire.
+        </p>
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-base-300">
+          {!statuses && <div className="p-3 text-sm opacity-60">Loading statuses...</div>}
+          {visible?.length === 0 && <div className="p-3 text-sm opacity-60">No statuses</div>}
+          {visible?.map((status) => (
+            <StatusRow key={status.id} status={status} />
+          ))}
+        </div>
       </div>
     </div>
   );
