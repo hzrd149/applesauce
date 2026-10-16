@@ -19,9 +19,9 @@ import {
   BehaviorSubject,
   catchError,
   defer,
-  endWith,
+  distinctUntilChanged,
+  concatWith,
   finalize,
-  ignoreElements,
   map,
   merge,
   Observable,
@@ -131,35 +131,61 @@ function FeedNote({
       ),
     [note],
   );
+  type LoadState = {
+    state: "loading" | "settled" | "paused" | "failed";
+    elapsed: number;
+    first?: number;
+    error?: string;
+  };
   const status = use$(
     () =>
       paused
-        ? of("paused")
-        : merge(
-            loadReactions(note.id, relay, refresh > mountedAt.current),
-            // A second consumer asks for the same pointer; the loader still batches/deduplicates the relay query.
-            duplicate ? loadReactions(note.id, relay, refresh > mountedAt.current) : of(),
-          ).pipe(
-            ignoreElements(),
-            endWith("settled"),
-            startWith("loading"),
-            catchError((error) => of(String(error))),
-          ),
+        ? of<LoadState>({ state: "paused", elapsed: 0 })
+        : defer(() => {
+            const started = performance.now();
+            let first: number | undefined;
+            const snapshot = (state: LoadState["state"], error?: string): LoadState => ({
+              state,
+              elapsed: Math.round(performance.now() - started),
+              first,
+              error,
+            });
+            return merge(
+              loadReactions(note.id, relay, refresh > mountedAt.current),
+              // A second consumer shares the same batched pointer.
+              duplicate ? loadReactions(note.id, relay, refresh > mountedAt.current) : of(),
+            ).pipe(
+              map(() => {
+                first ??= Math.round(performance.now() - started);
+                return snapshot("loading");
+              }),
+              distinctUntilChanged((previous, next) => previous.first === next.first),
+              concatWith(defer(() => of(snapshot("settled")))),
+              startWith(snapshot("loading")),
+              catchError((error) => of(snapshot("failed", String(error)))),
+            );
+          }),
     [note.id, relay, refresh, paused, duplicate],
   );
 
-  const loading = !status || status === "loading";
-  const finished = status === "settled";
+  const loading = !status || status.state === "loading";
+  const finished = status?.state === "settled";
+  const empty = finished && groups?.total === 0;
   const stateColor = loading
     ? "text-primary border-primary/40"
     : finished
-      ? "text-success border-success/40"
-      : status === "paused"
+      ? empty
+        ? "text-base-content/50 border-transparent"
+        : "text-success border-success/40"
+      : status?.state === "paused"
         ? "text-base-content/70 border-base-300"
         : "text-error border-error/40";
 
   return (
-    <article className="min-w-0 border-b border-r border-base-300 px-3 py-1" style={{ height: ROW_HEIGHT }}>
+    <article
+      className={`min-w-0 border-b border-r border-base-300 px-3 py-1 transition-opacity duration-300 motion-reduce:transition-none ${empty ? "opacity-35 hover:opacity-75 focus-within:opacity-100" : "opacity-100"}`}
+      style={{ height: ROW_HEIGHT }}
+    >
       <div className="flex h-7 items-center justify-between gap-2" aria-label="Loaded reactions">
         <span className="min-w-0 truncate">
           <strong className="text-lg tabular-nums">{groups?.total ?? "—"}</strong>
@@ -168,10 +194,24 @@ function FeedNote({
         <span
           className={`flex shrink-0 items-center gap-1 rounded border px-1.5 text-sm font-semibold ${stateColor}`}
           role="status"
-          title={status}
+          title={
+            status?.error ??
+            (status?.first !== undefined
+              ? `First reaction in ${status.first} ms; elapsed ${status.elapsed} ms (including batching)`
+              : "Elapsed time includes batching")
+          }
         >
           {loading && <span className="loading loading-spinner h-3 w-3" aria-hidden="true" />}
-          {loading ? "Loading" : finished ? "Loaded" : status === "paused" ? "Paused" : "Failed"}
+          {loading
+            ? "Loading"
+            : finished
+              ? empty
+                ? "Empty"
+                : "Loaded"
+              : status?.state === "paused"
+                ? "Paused"
+                : "Failed"}
+          {finished && <span className="font-normal tabular-nums">{status.elapsed} ms</span>}
         </span>
       </div>
       <div className="flex h-5 items-center gap-3 overflow-hidden whitespace-nowrap text-sm font-medium">
@@ -180,6 +220,9 @@ function FeedNote({
             {content} <span className="tabular-nums">{count}</span>
           </span>
         ))}
+        {status?.first !== undefined && (
+          <span className="ml-auto shrink-0 text-primary tabular-nums">First {status.first} ms</span>
+        )}
         {!groups?.total && (
           <span className="text-base-content/60">
             {loading ? "Fetching reaction events…" : finished ? "No reactions returned" : "No reactions loaded"}
