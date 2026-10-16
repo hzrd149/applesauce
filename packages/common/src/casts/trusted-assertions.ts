@@ -192,7 +192,8 @@ export class TrustedProviderList extends EventCast<TrustedProviderListEvent> {
     );
   }
 
-  #providersFor$(kind: number, tag: string) {
+  /** Returns providers trusted for one assertion kind and metric tag */
+  providersFor$(kind: number, tag: string) {
     return this.$$ref(`providers:${kind}:${tag}`, (store) =>
       this.#allProviders$().pipe(
         map((all) =>
@@ -209,87 +210,87 @@ export class TrustedProviderList extends EventCast<TrustedProviderListEvent> {
 
   /** Providers trusted for user rank (0–100) */
   get userRank$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "rank");
+    return this.providersFor$(USER_ASSERTION_KIND, "rank");
   }
 
   /** Providers trusted for user follower count */
   get userFollowers$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "followers");
+    return this.providersFor$(USER_ASSERTION_KIND, "followers");
   }
 
   /** Providers trusted for user first post timestamp */
   get userFirstCreatedAt$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "first_created_at");
+    return this.providersFor$(USER_ASSERTION_KIND, "first_created_at");
   }
 
   /** Providers trusted for user post count */
   get userPostCount$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "post_cnt");
+    return this.providersFor$(USER_ASSERTION_KIND, "post_cnt");
   }
 
   /** Providers trusted for user reply count */
   get userReplyCount$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "reply_cnt");
+    return this.providersFor$(USER_ASSERTION_KIND, "reply_cnt");
   }
 
   /** Providers trusted for user reactions count */
   get userReactionsCount$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "reactions_cnt");
+    return this.providersFor$(USER_ASSERTION_KIND, "reactions_cnt");
   }
 
   /** Providers trusted for zap amount received */
   get userZapAmountReceived$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_amt_recd");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_amt_recd");
   }
 
   /** Providers trusted for zap amount sent */
   get userZapAmountSent$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_amt_sent");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_amt_sent");
   }
 
   /** Providers trusted for zap count received */
   get userZapCountReceived$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_cnt_recd");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_cnt_recd");
   }
 
   /** Providers trusted for zap count sent */
   get userZapCountSent$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_cnt_sent");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_cnt_sent");
   }
 
   /** Providers trusted for average daily zap amount received */
   get userZapAvgAmountDayReceived$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_avg_amt_day_recd");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_avg_amt_day_recd");
   }
 
   /** Providers trusted for average daily zap amount sent */
   get userZapAvgAmountDaySent$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "zap_avg_amt_day_sent");
+    return this.providersFor$(USER_ASSERTION_KIND, "zap_avg_amt_day_sent");
   }
 
   /** Providers trusted for reports received count */
   get userReportsReceived$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "reports_cnt_recd");
+    return this.providersFor$(USER_ASSERTION_KIND, "reports_cnt_recd");
   }
 
   /** Providers trusted for reports sent count */
   get userReportsSent$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "reports_cnt_sent");
+    return this.providersFor$(USER_ASSERTION_KIND, "reports_cnt_sent");
   }
 
   /** Providers trusted for user common topics */
   get userTopics$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "t");
+    return this.providersFor$(USER_ASSERTION_KIND, "t");
   }
 
   /** Providers trusted for user activity hours start */
   get userActivityHoursStart$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "active_hours_start");
+    return this.providersFor$(USER_ASSERTION_KIND, "active_hours_start");
   }
 
   /** Providers trusted for user activity hours end */
   get userActivityHoursEnd$() {
-    return this.#providersFor$(USER_ASSERTION_KIND, "active_hours_end");
+    return this.providersFor$(USER_ASSERTION_KIND, "active_hours_end");
   }
 }
 

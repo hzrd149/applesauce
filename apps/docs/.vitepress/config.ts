@@ -80,6 +80,7 @@ export default defineConfig({
               { text: "Zaps Loader", link: "/loading/loaders/zaps-loader" },
               { text: "Reactions Loader", link: "/loading/loaders/reactions-loader" },
               { text: "Tag Value Loader", link: "/loading/loaders/tag-value-loader" },
+              { text: "Event Count Service", link: "/loading/loaders/count-service" },
             ],
           },
         ],
