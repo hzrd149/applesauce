@@ -41,9 +41,12 @@ The `createTagValueLoader` function accepts these options:
 - `authors`: Restrict queries to specific authors
 - `since`: Restrict queries since timestamp
 - `cacheRequest`: A method used to load events from a local cache
+- `onError`: Receives a failed source’s error and `{ source: "cache" }` or `{ source: "relay", relay }` while other sources continue
 - `extraRelays`: An array (or observable array) of relays to always fetch from
 - `eventStore`: An event store used to deduplicate events (defaults to an in-memory store, pass `null` to disable)
 - `signal`: An `AbortSignal` that tears down the loader when aborted
+
+Cache and individual relay failures are skipped, including exceptions thrown when starting a request. Events already received remain available, and healthy sources continue until they complete. If every source fails, the loader completes without events; use `onError` to distinguish failures from an empty result. Exceptions thrown by `onError` propagate to subscribers.
 
 ## Working with Relay Pools
 

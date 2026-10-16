@@ -3,13 +3,14 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
 import { filterDuplicateEvents } from "applesauce-core/observable";
-import { bufferTime, EMPTY, identity, merge, Observable } from "rxjs";
+import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable } from "rxjs";
 import { unique } from "../helpers/array.js";
 import { makeCacheRequest } from "../helpers/cache.js";
 import { batchLoader, Loader, unwrap } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, NostrRequest, UpstreamPool } from "../types.js";
 
+/** A tag value and relay hints to load */
 export type TagValuePointer = {
   /** The value of the tag to load */
   value: string;
@@ -19,6 +20,12 @@ export type TagValuePointer = {
   force?: boolean;
 };
 
+/** The source of a failed tag value request */
+export type TagValueLoaderErrorSource =
+  | { /** The failed cache source */ source: "cache" }
+  | { /** The failed relay source */ source: "relay"; /** The relay URL */ relay: string };
+
+/** Options for batching and fetching events by tag value */
 export type TagValueLoaderOptions = {
   /** Time interval to buffer requests in ms ( default 1000 ) */
   bufferTime?: number;
@@ -32,6 +39,8 @@ export type TagValueLoaderOptions = {
   since?: number;
   /** Method used to load from the cache */
   cacheRequest?: CacheRequest;
+  /** A callback for cache and individual relay failures that are skipped while other sources continue */
+  onError?: (error: unknown, source: TagValueLoaderErrorSource) => void;
   /** An array of relays to always fetch from */
   extraRelays?: string[] | Observable<string[]>;
   /** An event store used to deduplicate events. Set to null to disable deduplication */
@@ -40,7 +49,21 @@ export type TagValueLoaderOptions = {
   signal?: AbortSignal;
 };
 
+/** A batched loader for events matching a tag value */
 export type TagValueLoader = Loader<TagValuePointer, NostrEvent>;
+
+function isolateSource(
+  load: () => Observable<NostrEvent>,
+  source: TagValueLoaderErrorSource,
+  opts?: TagValueLoaderOptions,
+): Observable<NostrEvent> {
+  return defer(load).pipe(
+    catchError((error) => {
+      opts?.onError?.(error, source);
+      return EMPTY;
+    }),
+  );
+}
 
 /** Creates a loader that gets tag values from the cache */
 export function cacheTagValueLoader(
@@ -57,7 +80,7 @@ export function cacheTagValueLoader(
     const filterTag: `#${string}` = `#${tagName}`;
     const filter = { ...baseFilter, [filterTag]: unique(pointers.map((p) => p.value)) };
 
-    return makeCacheRequest(request, [filter]);
+    return isolateSource(() => makeCacheRequest(request, [filter]), { source: "cache" }, opts);
   };
 }
 
@@ -94,7 +117,7 @@ export function relaysTagValueLoader(
 
       const requests = Object.entries(requestMap).map(([relay, filter]) => {
         filter[filterTag] = unique(filter[filterTag]!);
-        return request([relay], [filter]);
+        return isolateSource(() => request([relay], [filter]), { source: "relay", relay }, opts);
       });
 
       return merge(...requests);

@@ -1,5 +1,5 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
-import { EMPTY, Observable, of, Subject } from "rxjs";
+import { EMPTY, Observable, of, Subject, throwError } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cacheTagValueLoader, createTagValueLoader, relaysTagValueLoader } from "../tag-value-loader.js";
 
@@ -120,6 +120,77 @@ describe("tag value loader", () => {
     source.next(event("a"));
     expect(add).toHaveBeenCalledTimes(1);
     source.complete();
+    loader.stop();
+  });
+});
+
+describe("tag value loader source failures", () => {
+  it.each(["sync", "async"])("keeps healthy relays running after a %s relay failure", (mode) => {
+    const failure = new Error("relay unavailable");
+    const healthy = new Subject<NostrEvent>();
+    const onError = vi.fn();
+    const loader = createTagValueLoader(
+      (relays) => {
+        if (relays[0] === relay) {
+          if (mode === "sync") throw failure;
+          return throwError(() => failure);
+        }
+        return healthy;
+      },
+      "e",
+      { bufferSize: 1, onError },
+    );
+    const values: NostrEvent[] = [];
+    let complete = false;
+    loader({ value: "a", relays: [relay, other] }).subscribe({
+      next: (e) => values.push(e),
+      complete: () => {
+        complete = true;
+      },
+    });
+    expect(complete).toBe(false);
+    healthy.next(event("a"));
+    healthy.complete();
+    expect(values).toEqual([event("a")]);
+    expect(complete).toBe(true);
+    expect(onError).toHaveBeenCalledWith(failure, { source: "relay", relay });
+    loader.stop();
+  });
+
+  it.each(["sync", "async"])("still queries relays after a %s cache failure", (mode) => {
+    const failure = new Error("cache unavailable");
+    const onError = vi.fn();
+    const loader = createTagValueLoader(() => of(event("a")), "e", {
+      bufferSize: 1,
+      extraRelays: [relay],
+      onError,
+      cacheRequest: () => {
+        if (mode === "sync") throw failure;
+        return throwError(() => failure);
+      },
+    });
+    const values: NostrEvent[] = [];
+    loader({ value: "a" }).subscribe((e) => values.push(e));
+    expect(values).toEqual([event("a")]);
+    expect(onError).toHaveBeenCalledWith(failure, { source: "cache" });
+    loader.stop();
+  });
+
+  it("reports all failed sources and completes without events", () => {
+    const onError = vi.fn();
+    const loader = createTagValueLoader(() => throwError(() => new Error("offline")), "e", {
+      bufferSize: 1,
+      extraRelays: [relay, other],
+      onError,
+    });
+    let complete = false;
+    loader({ value: "a" }).subscribe({
+      complete: () => {
+        complete = true;
+      },
+    });
+    expect(complete).toBe(true);
+    expect(onError).toHaveBeenCalledTimes(2);
     loader.stop();
   });
 });
