@@ -1,186 +1,345 @@
 /**
- * Display reactions (likes, reposts) with loading states and user information
- * @tags nip-25, feed, reactions, loading
- * @related feed/reactions-timeline
+ * Stress-test batched reaction event loading for a dense, virtualized relay feed
+ * @tags nip-25, feed, reactions, loading, stress
+ * @related loader/event-counts, feed/reactions-timeline
  */
-import { Note, castEvent } from "applesauce-common/casts";
-import NoteContent from "../../components/note-content";
-import { paginatedTimeline } from "../../extra/pagination";
-
-import { EventStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Note } from "applesauce-common/casts";
 import { ReactionsModel } from "applesauce-common/models";
-import { createEventLoaderForStore, createReactionsLoader, createTimelineLoader } from "applesauce-loaders/loaders";
+import { castTimelineStream } from "applesauce-common/observable";
+import { EventStore } from "applesauce-core";
+import { getDisplayName } from "applesauce-core/helpers";
+import { createEventLoaderForStore, createTagValueLoader } from "applesauce-loaders/loaders";
+import type { NostrRequest } from "applesauce-loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { NostrEvent } from "applesauce-core/helpers/event";
-
-import { useMemo, useState } from "react";
-import { map, Subject, materialize, scan, startWith } from "rxjs";
+import { useRef, useState } from "react";
+import {
+  auditTime,
+  BehaviorSubject,
+  catchError,
+  defer,
+  endWith,
+  finalize,
+  ignoreElements,
+  map,
+  merge,
+  Observable,
+  of,
+  startWith,
+  tap,
+} from "rxjs";
 
 import RelayPicker from "../../components/relay-picker";
+import NoteContent from "../../components/note-content";
+import { relayTimeline } from "../../extra/relay-timeline";
 import { lookupRelays$ } from "../../settings";
 
-// Create an event store for all events
+const NOTES = { kinds: [1] };
+const ROW_HEIGHT = 76;
 const eventStore = new EventStore();
-
-// Create a relay pool to make relay connections
 const pool = new RelayPool();
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
-// Create unified event loader for the store
-// This will be called if the event store doesn't have the requested event
-createEventLoaderForStore(eventStore, pool, {
-  // Fallback to lookup relays if profiles cant be found
-  lookupRelays: lookupRelays$,
+const stats$ = new BehaviorSubject({
+  requests: 0,
+  active: 0,
+  peak: 0,
+  values: 0,
+  arrivals: 0,
+  cacheQueries: 0,
+  cacheEvents: 0,
+  consumers: 0,
+  failures: 0,
+  lastError: "",
 });
+function record(patch: Partial<typeof stats$.value>) {
+  stats$.next({ ...stats$.value, ...patch });
+}
 
-// Create a tag value loader for reactions (kind 7 events with "e" tags)
-const reactionLoader = createReactionsLoader(pool, {
+// Instrument the actual transport, not the number of callers entering the batching queue.
+const request: NostrRequest = (relays, filters) =>
+  defer(() => {
+    const active = stats$.value.active + 1;
+    record({
+      requests: stats$.value.requests + 1,
+      active,
+      peak: Math.max(stats$.value.peak, active),
+      values: stats$.value.values + filters.reduce((sum, filter) => sum + (filter["#e"]?.length ?? 0), 0),
+    });
+    return defer(() => pool.request(relays, filters)).pipe(
+      tap(() => record({ arrivals: stats$.value.arrivals + 1 })),
+      finalize(() => record({ active: stats$.value.active - 1 })),
+    );
+  });
+
+// Use the generic loader here to demonstrate force and cache provenance for kind 7 events.
+const reactions = createTagValueLoader(request, "e", {
+  kinds: [7],
   eventStore,
-  onError: (error, source) => console.warn("Partial reaction load", source, error),
+  bufferTime: 150,
+  bufferSize: 200,
+  maxConcurrentBatches: 4,
+  relayConcurrency: 8,
+  requestTimeout: 5000,
+  cacheRequest: (filters) => {
+    const events = eventStore.getByFilters(filters);
+    record({ cacheQueries: stats$.value.cacheQueries + 1, cacheEvents: stats$.value.cacheEvents + events.length });
+    return events;
+  },
+  onError: (error, source) =>
+    record({
+      failures: stats$.value.failures + 1,
+      lastError: `${source.source === "relay" ? source.relay : source.source}: ${String(error)}`,
+    }),
 });
 
-/** Hook to load and group reactions for a specific event */
-function useReactions(event: NostrEvent) {
-  const reactions = use$(
-    () =>
-      eventStore.model(ReactionsModel, event).pipe(
-        map((reactions) =>
-          reactions.reduce(
-            (acc, reaction) => {
-              const content = reaction.content || "+";
-              acc[content] = (acc[content] || 0) + 1;
-              return acc;
-            },
-            {} as Record<string, number>,
-          ),
-        ),
-      ),
-    [event],
-  );
+function loadReactions(id: string, relay: string, force: boolean) {
+  return defer(() => {
+    record({ consumers: stats$.value.consumers + 1 });
+    return reactions({ value: id, relays: [relay], force }).pipe(
+      finalize(() => record({ consumers: stats$.value.consumers - 1 })),
+    );
+  });
+}
 
-  // Load reactions when component mounts
+function FeedNote({
+  note,
+  relay,
+  refresh,
+  paused,
+  duplicate,
+}: {
+  note: Note;
+  relay: string;
+  refresh: number;
+  paused: boolean;
+  duplicate: boolean;
+}) {
+  const mountedAt = useRef(refresh);
+  const profile = use$(note.author.profile$);
+  // Rendering comes from the store; every cache and network arrival reaches it before UI throttling.
+  const groups = use$(
+    () =>
+      eventStore.model(ReactionsModel, note.event).pipe(
+        map((events) => {
+          const counts = new Map<string, number>();
+          for (const event of events) counts.set(event.content || "+", (counts.get(event.content || "+") ?? 0) + 1);
+          return { total: events.length, entries: [...counts].sort((a, b) => b[1] - a[1]) };
+        }),
+        auditTime(100),
+      ),
+    [note],
+  );
   const status = use$(
     () =>
-      reactionLoader(event).pipe(
-        materialize(),
-        scan(
-          (state, notification) =>
-            notification.kind === "E"
-              ? {
-                  loading: false,
-                  error: String(notification.error?.message ?? notification.error) as string | undefined,
-                }
-              : notification.kind === "C"
-                ? { ...state, loading: false }
-                : state,
-          { loading: true, error: undefined as string | undefined },
-        ),
-        startWith({ loading: true, error: undefined as string | undefined }),
-      ),
-    [event],
+      paused
+        ? of("paused")
+        : merge(
+            loadReactions(note.id, relay, refresh > mountedAt.current),
+            // A second consumer asks for the same pointer; the loader still batches/deduplicates the relay query.
+            duplicate ? loadReactions(note.id, relay, refresh > mountedAt.current) : of(),
+          ).pipe(
+            ignoreElements(),
+            endWith("settled"),
+            startWith("loading"),
+            catchError((error) => of(String(error))),
+          ),
+    [note.id, relay, refresh, paused, duplicate],
   );
 
-  return { reactions: reactions ?? {}, loading: status?.loading ?? true, error: status?.error };
+  return (
+    <article className="min-w-0 border-b border-r border-base-300 px-3 py-1" style={{ height: ROW_HEIGHT }}>
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className="truncate font-semibold">{getDisplayName(profile, note.author.pubkey.slice(0, 12))}</span>
+        <time className="shrink-0 text-base-content/60">
+          {new Date(note.event.created_at * 1000).toLocaleTimeString()}
+        </time>
+      </div>
+      <div className="h-6 overflow-hidden" title={note.event.content}>
+        <NoteContent event={note.event} maxLength={200} className="line-clamp-1 break-all" />
+      </div>
+      <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-sm" aria-label="Loaded reactions">
+        <span className="shrink-0 text-base-content/60">{groups?.total ?? 0} loaded</span>
+        {groups?.entries.slice(0, 4).map(([content, count]) => (
+          <span key={content} className="max-w-20 truncate" title={content}>
+            {content} {count}
+          </span>
+        ))}
+        <span className="ml-auto shrink-0 text-base-content/60" role="status">
+          {status ?? "loading"}
+        </span>
+      </div>
+    </article>
+  );
 }
 
-/** Component to display reaction counts */
-function ReactionCounts({ event }: { event: NostrEvent }) {
-  const { reactions, loading, error } = useReactions(event);
-
-  const reactionEntries = Object.entries(reactions);
-  if (error)
-    return (
-      <p role="alert" className="text-error">
-        {error}
-      </p>
-    );
-  if (loading && !reactionEntries.length) return <p role="status">Loading reactions…</p>;
-
-  if (reactionEntries.length === 0) {
-    return <div className="text-sm text-gray-500 mt-2">No reactions loaded</div>;
-  }
+function Feed({
+  relay,
+  paused,
+  duplicate,
+  refresh,
+}: {
+  relay: string;
+  paused: boolean;
+  duplicate: boolean;
+  refresh: number;
+}) {
+  const [limit, setLimit] = useState(500);
+  const feed = use$(() => relayTimeline(eventStore, pool, [relay], { ...NOTES, limit }), [relay, limit]);
+  const notes = use$(() => of(feed?.events ?? []).pipe(castTimelineStream(Note, eventStore)), [feed?.events]) ?? [];
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const columns =
+    use$(
+      () =>
+        new Observable<number>((observer) => {
+          if (!scroller) {
+            observer.next(1);
+            return;
+          }
+          const measure = () => observer.next(Math.max(1, Math.floor(scroller.clientWidth / 320)));
+          const resize = new ResizeObserver(measure);
+          resize.observe(scroller);
+          measure();
+          return () => resize.disconnect();
+        }),
+      [scroller],
+    ) ?? 1;
+  const loading = !feed || feed.status === "loading";
+  const virtualizer = useVirtualizer({
+    count: Math.ceil(notes.length / columns),
+    getScrollElement: () => scroller,
+    getItemKey: (index) => notes[index * columns]?.id ?? index,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 0,
+  });
+  const rows = virtualizer.getVirtualItems();
+  const visible = rows.reduce((sum, row) => sum + Math.min(columns, notes.length - row.index * columns), 0);
 
   return (
-    <div className="flex flex-wrap gap-2 mt-2">
-      {reactionEntries.map(([emoji, count]) => (
-        <div key={emoji} className="badge badge-outline  flex items-center gap-1">
-          <span>{emoji}</span>
-          <span>{count}</span>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-3 border-b border-base-300 px-3 py-2 text-sm">
+        <span>
+          {notes.length} notes · {visible} on screen
+        </span>
+        {loading && <span role="status">Loading notes…</span>}
+        <button className="btn btn-sm ml-auto" disabled={loading} onClick={() => setLimit(limit + 500)}>
+          Load more notes
+        </button>
+      </div>
+      {feed?.errors.map((error) => (
+        <p key={error} role="alert" className="px-3 py-2 text-error">
+          {error}
+        </p>
       ))}
-    </div>
-  );
-}
-
-function NoteItem({ note }: { note: Note }) {
-  const profile = use$(note.author.profile$);
-
-  return (
-    <div className="border border-base-300 bg-base-100 ">
-      <div className="p-4 space-y-3">
-        <div className="flex items-center gap-4">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={getProfilePicture(profile, `https://robohash.org/${note.author.pubkey}.png`)} alt="Profile" />
+      {!loading && notes.length === 0 && (
+        <p className="p-3">No notes loaded. Try loading more notes or another relay.</p>
+      )}
+      <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto">
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className="absolute left-0 top-0 grid w-full"
+              style={{
+                transform: `translateY(${row.start}px)`,
+                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+              }}
+            >
+              {notes.slice(row.index * columns, (row.index + 1) * columns).map((note) => (
+                <FeedNote key={note.id} {...{ note, relay, paused, duplicate, refresh }} />
+              ))}
             </div>
-          </div>
-          <div className="flex flex-col">
-            <h2 className="font-semibold">{getDisplayName(profile)}</h2>
-            <time className="text-sm text-gray-500">{new Date(note.event.created_at * 1000).toLocaleString()}</time>
-          </div>
+          ))}
         </div>
-        <NoteContent event={note.event} className="mt-2" />
-
-        {/* Reaction counts */}
-        <ReactionCounts event={note.event} />
       </div>
     </div>
+  );
+}
+
+function RequestStats() {
+  const stats = use$(() => stats$.pipe(auditTime(100), startWith(stats$.value)), []) ?? stats$.value;
+  const rows = [
+    ["Subscribed consumers", stats.consumers],
+    ["Active relay requests", stats.active],
+    ["Peak relay requests", stats.peak],
+    ["Relay requests started", stats.requests],
+    ["Tag values requested", stats.values],
+    ["Reaction arrivals", stats.arrivals],
+    ["Cache queries", stats.cacheQueries],
+    ["Cached events returned", stats.cacheEvents],
+    ["Source failures", stats.failures],
+  ];
+  return (
+    <details className="border-t border-base-300 p-3" open>
+      <summary className="cursor-pointer font-semibold">
+        Reaction loader activity · {stats.active} active · {stats.requests} requests
+      </summary>
+      <button
+        className="btn btn-sm mt-2"
+        onClick={() =>
+          record({
+            requests: 0,
+            peak: stats$.value.active,
+            values: 0,
+            arrivals: 0,
+            cacheQueries: 0,
+            cacheEvents: 0,
+            failures: 0,
+            lastError: "",
+          })
+        }
+      >
+        Reset totals
+      </button>
+      <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3 lg:grid-cols-5">
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-base-content/60">{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {stats.lastError && (
+        <p role="alert" className="mt-2 break-all text-sm text-warning">
+          Partial results: {stats.lastError}
+        </p>
+      )}
+    </details>
   );
 }
 
 export default function FeedWithReactions() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
-
-  const filter = useMemo(
-    () => ({
-      kinds: [1],
-      authors: ["32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"],
-    }),
-    [],
-  );
-
-  // Create a timeline loader
-  const timeline = useMemo(
-    () => createTimelineLoader(pool, [relay], filter, { eventStore, limit: 20 }),
-    [relay, filter],
-  );
-
-  const pages$ = useMemo(() => new Subject<void>(), []);
-  const page = use$(() => paginatedTimeline(eventStore, timeline, pages$, filter), [timeline]);
-  const feed = page?.events.map((event) => castEvent(event, Note, eventStore));
-
+  const [relay, setRelay] = useState("wss://pyramid.fiatjaf.com/");
+  const [paused, setPaused] = useState(false);
+  const [duplicate, setDuplicate] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   return (
-    <div className="container mx-auto my-8 px-4">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold mb-4">Feed with Reactions</h1>
-        <RelayPicker value={relay} onChange={(value) => setRelay(value)} />
-      </div>
-
-      {page?.error && (
-        <p role="alert" className="text-error">
-          {page.error}
-        </p>
-      )}
-      {page?.loading && <p role="status">Loading events…</p>}
-      <div className="flex flex-col gap-4 py-4">
-        {feed?.map((event) => (
-          <NoteItem key={event.id} note={event} />
-        ))}
-        <button className="btn btn-primary mx-auto" onClick={() => pages$.next()} disabled={page?.loading}>
-          Load More
+    <div className="flex min-h-0 grow flex-col">
+      <div className="flex flex-wrap items-center gap-3 border-b border-base-300 p-2">
+        <RelayPicker value={relay} onChange={setRelay} className="min-w-64 flex-1" />
+        <button className="btn btn-sm" onClick={() => setPaused(!paused)}>
+          {paused ? "Resume reactions" : "Pause new loads"}
         </button>
+        <button className="btn btn-sm" disabled={paused} onClick={() => setRefresh(refresh + 1)}>
+          Refresh visible from relays
+        </button>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-sm"
+            checked={duplicate}
+            onChange={(e) => setDuplicate(e.target.checked)}
+          />
+          Two consumers per note
+        </label>
       </div>
+      <p className="border-b border-base-300 px-3 py-1 text-sm text-base-content/60">
+        Actual reaction events for visible notes. Loaded totals are partial; requests settle after completion or a
+        5-second deadline.
+      </p>
+      <Feed key={relay} {...{ relay, paused, duplicate, refresh }} />
+      <RequestStats />
     </div>
   );
 }
