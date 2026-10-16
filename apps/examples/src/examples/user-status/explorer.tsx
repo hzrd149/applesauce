@@ -1,26 +1,34 @@
 /**
- * Browse recent user statuses on a relay, filter by type, and resolve their links
- * @tags user-status, feed, relay, casts, expiration
- * @related user-status/manager, user-status/timeline, user-status/now-playing
+ * Browse the statuses of a user's contacts loaded from their outboxes, filter by type, and resolve their links
+ * @tags user-status, nip-65, outbox, contacts, casts, expiration
+ * @related user-status/manager, user-status/now-playing
  */
-import { User, UserStatus } from "applesauce-common/casts";
+import { castUser, User, UserStatus } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, kinds, unixNow } from "applesauce-core/helpers";
+import {
+  EventStore,
+  filterOptimalRelays,
+  includeFallbackRelays,
+  includeMailboxes,
+  mapEventsToStore,
+} from "applesauce-core";
+import { createOutboxMap, getDisplayName, getProfilePicture, kinds, unixNow } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useMemo, useState } from "react";
-import { ignoreElements, map, merge, share, timer } from "rxjs";
+import { debounceTime, ignoreElements, map, merge, share, switchMap, timer } from "rxjs";
 
-import RelayPicker from "../../components/relay-picker";
+import PubkeyPicker from "../../components/pubkey-picker";
+import { lookupRelays$ } from "../../settings";
+
+// Used for contacts that have not published a relay list
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
-});
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 // A shared clock for ages and expiration countdowns
 const now$ = timer(0, 1000).pipe(
@@ -28,14 +36,30 @@ const now$ = timer(0, 1000).pipe(
   share(),
 );
 
-/** Loads statuses from a relay into the store and renders them from the store, so expired ones disappear */
-function relayStatuses(relay: string) {
+/** Picks the fewest outbox relays that cover the user and everyone they follow */
+function contactsOutboxMap(user: User) {
+  return user.contacts$.pipe(
+    map((contacts) => [user, ...contacts].map((u) => ({ pubkey: u.pubkey }))),
+    // Add each contact's NIP-65 outboxes as their relay lists load
+    includeMailboxes(eventStore),
+    includeFallbackRelays(FALLBACK_RELAYS),
+    // Relay lists arrive one by one, wait for them to settle before re-picking relays
+    debounceTime(500),
+    filterOptimalRelays(20, 3),
+    map(createOutboxMap),
+  );
+}
+
+/** Loads statuses from the contacts' outboxes into the store and renders them from the store, so expired ones disappear */
+function contactStatuses(user: User) {
   const load$ = pool
-    .relay(relay)
-    .subscription({ kinds: [kinds.UserStatuses], limit: 200 })
+    .outboxSubscription(contactsOutboxMap(user), { kinds: [kinds.UserStatuses] })
     .pipe(mapEventsToStore(eventStore), ignoreElements());
 
-  const statuses$ = eventStore.timeline({ kinds: [kinds.UserStatuses] }).pipe(
+  const statuses$ = user.contacts$.pipe(
+    switchMap((contacts) =>
+      eventStore.timeline({ kinds: [kinds.UserStatuses], authors: [user.pubkey, ...contacts.map((c) => c.pubkey)] }),
+    ),
     castTimelineStream(UserStatus, eventStore),
     map((statuses) => statuses.filter((s) => !s.cleared)),
   );
@@ -58,7 +82,7 @@ const components: ComponentMap = {
 };
 
 function timeAgo(seconds: number, now: number) {
-  const diff = now - seconds;
+  const diff = Math.max(0, now - seconds);
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -112,10 +136,10 @@ function StatusRow({ status }: { status: UserStatus }) {
   );
 }
 
-export default function StatusExplorer() {
-  const [relay, setRelay] = useState("wss://relay.damus.io/");
+function ContactStatuses({ user }: { user: User }) {
   const [tab, setTab] = useState<Tab>("all");
-  const statuses = use$(() => relayStatuses(relay), [relay]);
+  const contacts = use$(user.contacts$);
+  const statuses = use$(() => contactStatuses(user), [user]);
 
   const counts = useMemo(
     () => Object.fromEntries(TABS.map((t) => [t, statuses?.filter((s) => matchesTab(s, t)).length ?? 0])),
@@ -124,26 +148,44 @@ export default function StatusExplorer() {
   const visible = statuses?.filter((s) => matchesTab(s, tab));
 
   return (
+    <>
+      <div role="tablist" className="tabs tabs-bordered">
+        {TABS.map((t) => (
+          <button key={t} role="tab" className={`tab ${tab === t ? "tab-active" : ""}`} onClick={() => setTab(t)}>
+            {t} ({counts[t]})
+          </button>
+        ))}
+      </div>
+      <p className="text-sm opacity-60">
+        Statuses from {contacts?.length ?? 0} contacts, loaded from their outboxes. Statuses with an expiration are
+        removed from the event store when they expire.
+      </p>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-base-300">
+        {!contacts?.length && <div className="p-3 text-sm opacity-60">Waiting for a contact list...</div>}
+        {!!contacts?.length && visible?.length === 0 && (
+          <div className="p-3 text-sm opacity-60">No statuses from contacts yet</div>
+        )}
+        {visible?.map((status) => (
+          <StatusRow key={status.id} status={status} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+export default function StatusExplorer() {
+  const [pubkey, setPubkey] = useState("");
+  const user = useMemo(() => (pubkey ? castUser(pubkey, eventStore) : undefined), [pubkey]);
+
+  return (
     <div className="flex min-h-0 grow flex-col">
       <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-3 p-4">
-        <RelayPicker value={relay} onChange={setRelay} />
-        <div role="tablist" className="tabs tabs-bordered">
-          {TABS.map((t) => (
-            <button key={t} role="tab" className={`tab ${tab === t ? "tab-active" : ""}`} onClick={() => setTab(t)}>
-              {t} ({counts[t]})
-            </button>
-          ))}
-        </div>
-        <p className="text-sm opacity-60">
-          Statuses with an expiration are removed from the event store when they expire.
-        </p>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border border-base-300">
-          {!statuses && <div className="p-3 text-sm opacity-60">Loading statuses...</div>}
-          {visible?.length === 0 && <div className="p-3 text-sm opacity-60">No statuses</div>}
-          {visible?.map((status) => (
-            <StatusRow key={status.id} status={status} />
-          ))}
-        </div>
+        <PubkeyPicker value={pubkey} onChange={setPubkey} placeholder="Enter your npub or nostr identifier..." />
+        {user ? (
+          <ContactStatuses key={user.pubkey} user={user} />
+        ) : (
+          <div className="text-sm opacity-60">Pick a user to see what their contacts are up to</div>
+        )}
       </div>
     </div>
   );

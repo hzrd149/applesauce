@@ -1,24 +1,32 @@
 /**
- * Set, clear, and display user statuses with links, custom emojis, and expiration
- * @tags user-status, actions, casts, emojis, expiration
- * @related user-status/timeline, user-status/now-playing, user-status/explorer
+ * Set and clear your statuses with links, custom emojis, and expiration, and follow your contacts' statuses
+ * @tags user-status, actions, casts, emojis, expiration, nip-65, contacts
+ * @related user-status/now-playing, user-status/explorer
  */
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { ClearUserStatus, SetUserStatus } from "applesauce-actions/actions";
 import { castUser, EmojiPack, User, UserStatus } from "applesauce-common/casts";
 import type { Emoji, UserStatusPointer } from "applesauce-common/helpers";
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture, kinds, unixNow } from "applesauce-core/helpers";
+import { castTimelineStream } from "applesauce-common/observable";
+import {
+  EventStore,
+  filterOptimalRelays,
+  includeFallbackRelays,
+  includeMailboxes,
+  mapEventsToStore,
+} from "applesauce-core";
+import { createOutboxMap, getDisplayName, getProfilePicture, kinds, unixNow } from "applesauce-core/helpers";
 import { decodeAddressPointer, decodeEventPointer, decodeProfilePointer } from "applesauce-core/helpers/pointers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, combineLatest, ignoreElements, map, merge, of, share, switchMap, timer } from "rxjs";
+import { BehaviorSubject, debounceTime, ignoreElements, map, merge, of, share, switchMap, timer } from "rxjs";
 
 import LoginView from "../../components/login-view";
+import { lookupRelays$ } from "../../settings";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
@@ -36,9 +44,7 @@ const user$ = new BehaviorSubject<User | undefined>(undefined);
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: ["wss://purplepag.es/", "wss://index.hzrd149.com/"],
-});
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 // Publish to the relays the action picked (the user's outboxes), falling back when there are none
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
@@ -52,18 +58,35 @@ const now$ = timer(0, 1000).pipe(
   share(),
 );
 
-/** Loads the statuses of a user and everyone they follow into the store */
-function loadStatuses(user: User) {
-  return combineLatest([user.contacts$, user.outboxes$]).pipe(
-    switchMap(([contacts, outboxes]) =>
-      pool.subscription([...FALLBACK_RELAYS, ...(outboxes ?? [])], {
-        kinds: [kinds.UserStatuses],
-        authors: [user.pubkey, ...contacts.map((c) => c.pubkey)],
-      }),
-    ),
-    mapEventsToStore(eventStore),
-    ignoreElements(),
+/** Picks the fewest outbox relays that cover the user and everyone they follow */
+function contactsOutboxMap(user: User) {
+  return user.contacts$.pipe(
+    map((contacts) => [user, ...contacts].map((u) => ({ pubkey: u.pubkey }))),
+    // Add each contact's NIP-65 outboxes as their relay lists load
+    includeMailboxes(eventStore),
+    includeFallbackRelays(FALLBACK_RELAYS),
+    // Relay lists arrive one by one, wait for them to settle before re-picking relays
+    debounceTime(500),
+    filterOptimalRelays(20, 3),
+    map(createOutboxMap),
   );
+}
+
+/** Loads the statuses of the user and their contacts from their outboxes and renders the contacts' statuses */
+function contactStatuses(user: User) {
+  const load$ = pool
+    .outboxSubscription(contactsOutboxMap(user), { kinds: [kinds.UserStatuses] })
+    .pipe(mapEventsToStore(eventStore), ignoreElements());
+
+  const statuses$ = user.contacts$.pipe(
+    switchMap((contacts) =>
+      eventStore.timeline({ kinds: [kinds.UserStatuses], authors: contacts.map((c) => c.pubkey) }),
+    ),
+    castTimelineStream(UserStatus, eventStore),
+    map((statuses) => statuses.filter((s) => !s.cleared)),
+  );
+
+  return merge(load$, statuses$);
 }
 
 /** Parses a URL or a nostr: / bech32 string into a status link */
@@ -266,13 +289,11 @@ function MyStatuses({ user }: { user: User }) {
   );
 }
 
-function FollowingRow({ user }: { user: User }) {
+function FollowingRow({ user, statuses }: { user: User; statuses: UserStatus[] }) {
   const profile = use$(user.profile$);
-  const statuses = use$(user.statuses$);
-  if (!statuses?.length) return null;
 
   return (
-    <div className="flex items-start gap-3 border-b border-base-300 py-3">
+    <div className="flex items-start gap-3 border-b border-base-300 p-3 last:border-b-0">
       <img
         src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)}
         className="h-10 w-10 rounded-full"
@@ -288,14 +309,29 @@ function FollowingRow({ user }: { user: User }) {
 }
 
 function Following({ user }: { user: User }) {
-  // Keep the status subscription open while this list is mounted
-  const contacts = use$(() => merge(loadStatuses(user), user.contacts$), [user]);
+  const contacts = use$(user.contacts$);
+  const statuses = use$(() => contactStatuses(user), [user]);
 
-  if (!contacts) return <div className="text-sm opacity-60">Loading contacts...</div>;
+  // Group the statuses by author, most recently updated first
+  const byAuthor = useMemo(() => {
+    const groups = new Map<string, UserStatus[]>();
+    for (const status of statuses ?? [])
+      groups.set(status.author.pubkey, [...(groups.get(status.author.pubkey) ?? []), status]);
+    return Array.from(groups.values());
+  }, [statuses]);
+
+  if (!contacts?.length)
+    return <div className="border border-base-300 p-3 text-sm opacity-60">Waiting for a contact list...</div>;
+  if (byAuthor.length === 0)
+    return (
+      <div className="border border-base-300 p-3 text-sm opacity-60">
+        None of your {contacts.length} contacts have a status
+      </div>
+    );
   return (
-    <div className="flex flex-col">
-      {contacts.map((contact) => (
-        <FollowingRow key={contact.pubkey} user={contact} />
+    <div className="flex flex-col border border-base-300">
+      {byAuthor.map((group) => (
+        <FollowingRow key={group[0].author.pubkey} user={group[0].author} statuses={group} />
       ))}
     </div>
   );
@@ -307,8 +343,9 @@ function StatusManager({ user }: { user: User }) {
       <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col gap-4 overflow-y-auto p-4">
         <StatusForm user={user} />
         <h2 className="text-lg font-semibold">My statuses</h2>
+        {/* Following keeps the outbox subscription open, which also loads your own statuses */}
         <MyStatuses user={user} />
-        <h2 className="text-lg font-semibold">Following</h2>
+        <h2 className="text-lg font-semibold">Contacts</h2>
         <Following user={user} />
       </div>
     </div>
@@ -319,7 +356,7 @@ export default function App() {
   const signer = use$(signer$);
   const user = use$(user$);
 
-  const handleLogin = async (signer: ISigner, pubkey: string) => {
+  const handleLogin = (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     user$.next(castUser(pubkey, eventStore));
   };
