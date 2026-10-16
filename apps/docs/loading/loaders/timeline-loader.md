@@ -40,17 +40,24 @@ Coverage belongs to the loading subscription. Keep a stream of windows subscribe
 
 ## Options
 
-| Option        | Default         | Purpose                                                 |
-| ------------- | --------------- | ------------------------------------------------------- |
-| `limit`       | `100`           | Maximum events requested per filter in a network batch  |
-| `prefetch`    | `0.5`           | Window duration to buffer on each side                  |
-| `minPrefetch` | `60`            | Minimum buffer duration in seconds                      |
-| `eventStore`  | Internal memory | Store receiving every incoming event                    |
-| `cache`       | None            | Cache request method loaded alongside relays            |
-| `onStatus`    | None            | Callback receiving per-source and filter status changes |
-| `logger`      | Timeline logger | Debug logger                                            |
+| Option            | Default         | Purpose                                                        |
+| ----------------- | --------------- | -------------------------------------------------------------- |
+| `limit`           | `100`           | Maximum events requested per filter in a network batch         |
+| `prefetch`        | `limit`         | Events to buffer past each side of the window per source       |
+| `retryDelay`      | `5000`          | First retry delay in ms after a failure, doubled up to 5 min   |
+| `responseTimeout` | `10000`         | Time in ms a source may stay silent before it counts as failed |
+| `liveness`        | None            | Tracker receiving relay failures and successes                 |
+| `eventStore`      | Internal memory | Store receiving every incoming event                           |
+| `cache`           | None            | Cache request method loaded alongside relays                   |
+| `onStatus`        | None            | Callback receiving per-source and filter status changes        |
+| `logger`          | Timeline logger | Debug logger                                                   |
 
-Setting `prefetch: 0` disables buffering, including `minPrefetch`. Otherwise, each side uses the greater of `minPrefetch` and the window duration multiplied by `prefetch`. The buffer is anchored until half of it is consumed, and never extends beyond now. It is a loading target rather than a strict response boundary: a full batch may include older events beyond the buffer, even with `prefetch: 0`.
+The buffer is a number of events, not a duration, so it stays the same size as the window grows, shrinks, or moves through busy and quiet periods. Setting `prefetch: 0` disables it. Buffering starts once the visible window is covered.
+
+The two sides load differently because NIP-01 returns newest events first:
+
+- **Older**: each request below the buffer is an exact page, so the loader keeps paging until `prefetch` events sit below the window.
+- **Newer**: relays cannot page forward, so the loader estimates how long the next `prefetch` events take from the density of loaded events near the edge, then fills that range newest first. The estimate is reused until half of it scrolls into view, and never reaches past the newest time the app has requested.
 
 ## Loading and coverage
 
@@ -61,7 +68,7 @@ const statusSub = loader.status$.subscribe((statuses) => {
 });
 ```
 
-Each status identifies a source, filter, and current visible window:
+Each status identifies a source, filter, and current visible window. Its `buffer` is the visible window plus the prefetch buffer for that source, growing as older pages arrive, which is useful for visualizing prefetch:
 
 - `loading`: visible ranges still need requests
 - `covered`: the visible range is covered and no background request is active
@@ -69,7 +76,7 @@ Each status identifies a source, filter, and current visible window:
 - `incomplete`: a request failed or a timestamp boundary could not be fully paged; `reason` distinguishes `request` failures from `boundary` uncertainty, and `error` explains why
 - `removed`: an outbox source was removed or changed; emitted to `onStatus` and removed from `status$`
 
-Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the outbox map is still unknown or has no sources. Failures do not stop healthy relays, and a new window emission retries failed sources without discarding their completed coverage.
+Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the outbox map is still unknown or has no sources. Failures do not stop healthy relays. A failed range is retried after `retryDelay`, doubling for each consecutive failure up to five minutes, and window changes don't retry it sooner. A source that sends nothing for `responseTimeout` counts as failed even when window changes keep cancelling its requests, so a hanging relay is backed off too.
 
 The loader combines adjoining visible and buffered gaps instead of issuing separate requests at viewport edges. Requests use newest-first ordering and a batch limit:
 
@@ -78,10 +85,10 @@ The loader combines adjoining visible and buffered gaps instead of issuing separ
 - A jump starts at the new target's upper edge and stops once the target is covered, without draining every event between the old and new windows.
 - An empty unbounded response establishes older exhaustion; a nonempty response only establishes coverage above its oldest boundary second.
 
-One request runs at a time per relay. Window updates reuse in-flight work that still serves the visible range, rather than cancelling it just because it started as prefetch. It retains inclusive boundary seconds to avoid skipping events cut off by a relay limit, and only commits coverage after a request completes. Short responses are not treated as exhaustion because relays may apply smaller limits.
+One request runs at a time per relay. Window updates reuse in-flight work that still serves the visible range, rather than cancelling it just because it started as prefetch. It retains inclusive boundary seconds to avoid skipping events cut off by a relay limit, and only commits coverage after a request completes. A response that only repeats known events counts as exhaustion when it is smaller than a page the source has already returned. Otherwise the source may be applying a smaller limit.
 
 :::warning
-Repeated boundary-only responses cannot prove that every event in that second was returned. This can happen even with an ordinary boundary event when a relay applies an unknown limit. The loader continues past the second but reports incomplete coverage for windows containing it, rather than claiming certainty or looping.
+Repeated boundary-only responses as large as the relay's biggest page cannot prove that every event in that second was returned. This can happen when a relay applies an unknown limit. The loader continues past the second but reports incomplete coverage for windows containing it, rather than claiming certainty or looping.
 :::
 
 Large jumps query the new window directly. Previously covered intervals remain reusable; the loader does not crawl the time between disconnected windows. Coverage is a snapshot of completed requests, not a live guarantee about events subsequently published or backfilled into those ranges.
@@ -122,6 +129,18 @@ const sub = loader(windows$).subscribe();
 
 Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it.
 
+### Relay liveness
+
+Pass a `RelayLiveness` tracker to report failing relays, and filter the outbox relays with it so they drop out of the map until their backoff ends:
+
+```ts
+const liveness = new RelayLiveness();
+liveness.connectToPool(pool);
+
+const outboxes$ = user.outboxes$.pipe(ignoreUnhealthyRelays(liveness), map(toOutboxMap));
+const loader = createOutboxTimelineLoader(pool, outboxes$, { kinds: [1] }, { eventStore, liveness });
+```
+
 ### Observable operators
 
 Use the operators directly when composing your own store and status handling:
@@ -147,3 +166,5 @@ Applications own their requested time ranges. A “show older” control can ext
 - Check visible loading status instead of waiting for a long-lived stream to complete.
 - Keep live subscriptions separate; historical coverage is not automatically refreshed.
 - Use the default buffer first, then measure request counts and visible loading latency before tuning it.
+- Render as soon as one relay covers a window and let slower relays stream in, rather than waiting for every relay.
+- Filter outbox relays with `ignoreUnhealthyRelays(liveness)` so dead relays leave the relay set instead of being retried.

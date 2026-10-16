@@ -35,10 +35,12 @@ import {
   scan,
   share,
   startWith,
+  Subject,
   switchMap,
   takeUntil,
   takeWhile,
   tap,
+  timeout,
   timer,
 } from "rxjs";
 import { makeCacheRequest } from "../helpers/cache.js";
@@ -61,6 +63,8 @@ export interface TimelineStatus {
   filter: TimelessFilter;
   /** The current visible range */
   window: TimelineWindow;
+  /** The visible window plus its prefetch buffer, growing as older pages arrive */
+  buffer: TimelineWindow;
   /** The visible coverage or background loading state */
   state: "loading" | "covered" | "prefetching" | "incomplete" | "removed";
   /** The reason visible coverage is incomplete */
@@ -77,14 +81,26 @@ export interface TimelineLoader {
   status$: Observable<TimelineStatus[]>;
 }
 
+/** A tracker that records relay request outcomes, such as `RelayLiveness` from applesauce-relay */
+export interface TimelineLivenessTracker {
+  /** Records a failed request to a relay */
+  recordFailure(relay: string): void;
+  /** Records a completed request to a relay */
+  recordSuccess(relay: string): void;
+}
+
 /** Options for loading and buffering timeline windows */
 export interface CommonTimelineLoaderOptions {
   /** The maximum events requested per filter in one network batch, default 100 */
   limit?: number;
-  /** The window duration to prefetch on each side, default 0.5; zero disables prefetch */
+  /** The number of events to buffer past each side of the visible window per source and filter, default the limit; zero disables prefetch */
   prefetch?: number;
-  /** The minimum prefetch duration in seconds, default 60 */
-  minPrefetch?: number;
+  /** The delay in milliseconds before retrying a failed range, doubled for each consecutive failure up to five minutes, default 5000 */
+  retryDelay?: number;
+  /** The time in milliseconds a source may stay silent across requests before it is treated as failing, default 10000 */
+  responseTimeout?: number;
+  /** A tracker receiving relay request failures and successes, so failing relays can be removed from the relay set */
+  liveness?: TimelineLivenessTracker;
   /** The logger to extend */
   logger?: Debugger;
   /** A callback receiving coverage changes for each source and filter */
@@ -108,8 +124,18 @@ type FilterState = {
   covered: Range[];
   boundaries: Map<number, Set<string>>;
   blocked: Set<number>;
-  failures: { range: Range; error: unknown }[];
+  failures: { range: Range; error: unknown; retryAt: number }[];
+  // Sorted timestamps of every received event, used to count the events buffered past the visible window.
+  ids: Set<string>;
+  times: number[];
+  // The estimated newer buffer, relays cannot page forward to find its edge exactly.
+  ahead?: Range;
 };
+
+type Tracker = { success(): void; failure(): void };
+
+// The longest delay between retries of a failing source
+const MAX_RETRY_DELAY = 5 * 60_000;
 
 type FilterChange = { relay: string; filters?: TimelessFilter | TimelessFilter[] };
 
@@ -121,12 +147,34 @@ function overlaps(a: Range, b: Range) {
 
 function options(opts?: CommonTimelineLoaderOptions) {
   const limit = opts?.limit ?? 100;
-  const prefetch = opts?.prefetch ?? 0.5;
-  const minPrefetch = opts?.minPrefetch ?? 60;
+  const prefetch = opts?.prefetch ?? limit;
+  const retryDelay = opts?.retryDelay ?? 5000;
+  const responseTimeout = opts?.responseTimeout ?? 10_000;
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error("Timeline limit must be a positive integer");
-  if (!Number.isFinite(prefetch) || prefetch < 0 || !Number.isFinite(minPrefetch) || minPrefetch < 0)
-    throw new Error("Timeline prefetch options must be finite and non-negative");
-  return { limit, prefetch, minPrefetch };
+  if (!Number.isSafeInteger(prefetch) || prefetch < 0)
+    throw new Error("Timeline prefetch must be a non-negative integer");
+  if (!Number.isFinite(retryDelay) || retryDelay <= 0) throw new Error("Timeline retry delay must be positive");
+  if (!Number.isFinite(responseTimeout) || responseTimeout <= 0)
+    throw new Error("Timeline response timeout must be positive");
+  return { limit, prefetch, retryDelay, responseTimeout };
+}
+
+/** Returns the index of the first timestamp greater than or equal to t */
+function lowerBound(times: number[], t: number) {
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function record(state: FilterState, event: NostrEvent) {
+  if (state.ids.has(event.id)) return;
+  state.ids.add(event.id);
+  state.times.splice(lowerBound(state.times, event.created_at), 0, event.created_at);
 }
 
 function normalize(window: TimelineWindow): Range {
@@ -171,6 +219,7 @@ function loadWindows(
   filters: TimelessFilter[],
   sourceName: string,
   opts?: CommonTimelineLoaderOptions,
+  tracker?: Tracker,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   const config = options(opts);
   return (source) =>
@@ -182,11 +231,62 @@ function loadWindows(
         boundaries: new Map<number, Set<string>>(),
         blocked: new Set<number>(),
         failures: [],
+        ids: new Set<string>(),
+        times: [],
       }));
       let visible: Range | undefined;
-      let target: Range | undefined;
-      let padding = 0;
+      // The newest time requested so far; the newer buffer never reaches past it, or every second would need a request.
+      let horizon = unixNow();
       let active: ActiveRequest | undefined;
+      // Consecutive failed requests, reset by any completed request.
+      let failures = 0;
+      // When the source started waiting for a response, kept across cancelled requests so a silent source still fails.
+      let waiting: number | undefined;
+      // The most events this source has returned for one request, a smaller page shows it was not capped.
+      let largest = 0;
+      const retries$ = new Subject<number>();
+
+      // Buffers a fixed number of events past each visible edge, so the buffer doesn't change with event density.
+      const targetFor = (state: FilterState, window: Range): Range => {
+        // Load the visible window before anything speculative.
+        const part = state.covered.find((p) => p.since <= window.since && p.until >= window.until);
+        if (config.prefetch === 0 || !part) return window;
+        const { times } = state;
+        const n = config.prefetch;
+
+        // NIP-01 returns newest first, so each request below the buffer is an exact page of older events.
+        const below = lowerBound(times, window.since);
+        const since = below - lowerBound(times, part.since) >= n ? times[below - n] : 0;
+
+        // Relays cannot page forward, so estimate how long the next events take from the density near the edge.
+        const above = lowerBound(times, window.until + 1);
+        const top = lowerBound(times, part.until + 1);
+        let until: number;
+        if (top - above >= n) until = times[above + n - 1];
+        else if (part.until >= horizon) until = horizon;
+        else {
+          if (!state.ahead) {
+            const from = Math.max(lowerBound(times, part.since), top - n);
+            const known = top - from;
+            // Without enough events to measure density, buffer one window duration
+            const estimate = Math.max(
+              60,
+              known > 1 ? Math.ceil(((part.until - times[from]) * n) / known) : window.until - window.since,
+            );
+            state.ahead = { since: part.until, until: part.until + estimate };
+          }
+          until = Math.min(horizon, Math.max(part.until, state.ahead.until));
+        }
+        return { since: Math.min(since, window.since), until: Math.max(until, window.until) };
+      };
+
+      const target = (window: Range): Range => {
+        const ranges = states.map((state) => targetFor(state, window));
+        return {
+          since: Math.min(...ranges.map((r) => r.since)),
+          until: Math.max(...ranges.map((r) => r.until)),
+        };
+      };
 
       const report = () => {
         const window = visible;
@@ -196,10 +296,14 @@ function loadWindows(
           const blocked = [...state.blocked].some((t) => t >= window.since && t <= window.until);
           const failure = state.failures.find(({ range }) => overlaps(range, window));
           const gaps = missing(window, state.covered);
+          // The older target is unbounded while pages are still being found, so report how far they reach so far
+          const target = targetFor(state, window);
+          const part = state.covered.find((p) => p.since <= window.since && p.until >= window.until);
           const status: TimelineStatus = {
             source: sourceName,
             filter: state.filter,
             window: { ...window },
+            buffer: { since: target.since === 0 && part ? part.since : target.since, until: target.until },
             state: "covered",
           };
 
@@ -221,11 +325,11 @@ function loadWindows(
         }
       };
 
-      const pending = (range: Range) =>
+      const pending = (window: Range) =>
         states.flatMap((state) => {
-          let gaps = missing(range, state.covered);
+          let gaps = missing(targetFor(state, window), state.covered);
 
-          // Leave failed ranges for the next window emission, but keep loading unrelated gaps.
+          // Leave failed ranges until their retry time, but keep loading unrelated gaps.
           for (const failure of state.failures) {
             gaps = gaps.flatMap((gap) => missing(gap, [failure.range]));
           }
@@ -235,18 +339,23 @@ function loadWindows(
 
       const loadNext = () =>
         defer(() => {
-          if (active || !visible || !target) return of(null);
+          if (active || !visible) return of(null);
           const window = visible;
 
           // Keep adjoining buffer and visible gaps together, prioritizing gaps that intersect the viewport.
-          const gaps = pending(target);
+          const gaps = pending(window);
           const visibleGaps = gaps.filter(({ range }) => overlaps(range, window));
           const speculative = visibleGaps.length === 0;
           const work = speculative
             ? gaps.filter(({ state }) => missing(window, state.covered).length === 0)
             : visibleGaps;
 
-          const next = work[work.length - 1];
+          // Fill the top of the viewport first. Buffer older events before newer ones, since feeds usually scroll down.
+          const sorted = [...work].sort((a, b) => a.range.since - b.range.since);
+          const next = speculative
+            ? (sorted.filter(({ range }) => range.until < window.since).at(-1) ??
+              sorted.find(({ range }) => range.since > window.until))
+            : sorted[sorted.length - 1];
           if (!next) {
             report();
             return of(null);
@@ -274,6 +383,9 @@ function loadWindows(
           active = job;
           report();
 
+          // A source that never answers fails, even when window changes keep cancelling its requests.
+          const silentSince = (waiting ??= Date.now());
+          let returned = 0;
           return defer(() =>
             request(
               pages.map(({ state, query }) => ({
@@ -283,11 +395,20 @@ function loadWindows(
               })),
             ),
           ).pipe(
+            timeout({ first: new Date(silentSince + config.responseTimeout) }),
+            tap({
+              next: () => {
+                waiting = undefined;
+                returned++;
+              },
+              complete: () => (waiting = undefined),
+            }),
             filter((event) => {
               let matches = false;
               for (const page of pages) {
                 if (!matchFilter({ ...page.state.filter, ...page.query }, event)) continue;
                 matches = true;
+                record(page.state, event);
                 if (!page.boundary.has(event.id)) page.fresh = true;
                 if (page.oldest === undefined || event.created_at < page.oldest) {
                   page.oldest = event.created_at;
@@ -300,10 +421,15 @@ function loadWindows(
             tap({
               complete: () => {
                 if (active !== job) return;
+                failures = 0;
+                tracker?.success();
+                const capped = returned >= largest;
+                largest = Math.max(largest, returned);
                 // Commit only completed pages. Keep the inclusive oldest second for the next request.
                 for (const { state, query, oldest, fresh, ids, boundary } of pages) {
                   state.boundaries.delete(range.until);
-                  if (oldest === undefined) cover(state.covered, query);
+                  // Nothing new in a page smaller than one this source has already returned means the range is exhausted.
+                  if (oldest === undefined || (!fresh && !capped)) cover(state.covered, query);
                   else if (!fresh) {
                     // A relay can cap below our limit; repeated boundary-only pages cannot prove that second complete.
                     state.blocked.add(range.until);
@@ -317,8 +443,13 @@ function loadWindows(
               },
             }),
             catchError((error) => {
-              for (const { state } of pages) state.failures.push({ range: { ...range }, error });
+              // Back off a failing source exponentially instead of retrying it on every window change.
+              const retryAt = Date.now() + Math.min(config.retryDelay * 2 ** failures++, MAX_RETRY_DELAY);
+              waiting = undefined;
+              for (const { state } of pages) state.failures.push({ range: { ...range }, error, retryAt });
               opts?.logger?.("Timeline request failed", error);
+              tracker?.failure();
+              retries$.next(retryAt);
               return EMPTY;
             }),
             // Keep this after the completion tap: cancellation must not commit coverage.
@@ -331,53 +462,61 @@ function loadWindows(
           );
         });
 
+      // Drop failures whose backoff has passed so their ranges load again.
+      const expire = () => {
+        const now = Date.now();
+        for (const state of states) state.failures = state.failures.filter((failure) => failure.retryAt > now);
+      };
+
       return source.pipe(
         map(normalize),
-        tap({
-          next: (window) => {
-            visible = window;
+        connect((windows) =>
+          merge(
+            windows.pipe(
+              tap({
+                next: (window) => {
+                  // Re-estimate the newer buffer once half of it has scrolled into view, not on every small change.
+                  for (const state of states) {
+                    if (state.ahead && window.until > (state.ahead.since + state.ahead.until) / 2)
+                      state.ahead = undefined;
+                  }
+                  visible = window;
+                  horizon = Math.max(horizon, window.until);
+                  expire();
 
-            for (const state of states) state.failures = [];
-            if (visible.since > visible.until) {
-              target = { ...visible };
-              active?.cancel$.next();
-              report();
-              return;
-            }
-            const nextPadding =
-              config.prefetch === 0
-                ? 0
-                : Math.min(
-                    Number.MAX_SAFE_INTEGER,
-                    Math.ceil(Math.max(config.minPrefetch, (visible.until - visible.since) * config.prefetch)),
-                  );
-            // Anchor the buffer until half of it is consumed; its edge must not follow every pixel of scrolling.
-            if (
-              !target ||
-              (target.since > 0 && visible.since < target.since + padding / 2) ||
-              (target.until < unixNow() && visible.until > target.until - padding / 2) ||
-              (nextPadding !== padding && (nextPadding >= padding * 2 || nextPadding <= padding / 2))
-            ) {
-              padding = nextPadding;
-              target = {
-                since: Math.max(0, visible.since - padding),
-                until: Math.min(unixNow(), visible.until + padding),
-              };
-            }
-            const current = active;
-            if (current) {
-              const outsideTarget = !overlaps(current.range, target);
-              const visibleWorkElsewhere =
-                current.prefetch &&
-                states.some((state) => missing(window, state.covered).some((gap) => !overlaps(gap, current.range)));
+                  if (visible.since > visible.until) {
+                    active?.cancel$.next();
+                    report();
+                    return;
+                  }
+                  const current = active;
+                  if (current) {
+                    const outsideTarget = !overlaps(current.range, target(window));
+                    const visibleWorkElsewhere =
+                      current.prefetch &&
+                      states.some((state) =>
+                        missing(window, state.covered).some((gap) => !overlaps(gap, current.range)),
+                      );
 
-              if (outsideTarget || visibleWorkElsewhere) {
-                current.cancel$.next();
-              }
-            }
-            report();
-          },
-        }),
+                    if (outsideTarget || visibleWorkElsewhere) {
+                      current.cancel$.next();
+                    }
+                  }
+                  report();
+                },
+              }),
+            ),
+            // Wake up when a backoff ends, but only while windows can still arrive.
+            retries$.pipe(
+              mergeMap((retryAt) => timer(Math.max(0, retryAt - Date.now()))),
+              tap(() => {
+                expire();
+                report();
+              }),
+              takeUntil(windows.pipe(ignoreElements(), endWith(null))),
+            ),
+          ),
+        ),
         // Coalesce viewport updates, retaining the latest target while a batch is loading.
         auditTime(0, asapScheduler),
         exhaustMap(() =>
@@ -420,7 +559,18 @@ export function loadBlocksFromRelay(
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   const request = wrapUpstreamPool(pool);
-  return loadWindows((filters) => request([relay], filters), Array.isArray(filters) ? filters : [filters], relay, opts);
+  const liveness = opts?.liveness;
+  const tracker = liveness && {
+    success: () => liveness.recordSuccess(relay),
+    failure: () => liveness.recordFailure(relay),
+  };
+  return loadWindows(
+    (filters) => request([relay], filters),
+    Array.isArray(filters) ? filters : [filters],
+    relay,
+    opts,
+    tracker,
+  );
 }
 
 /** Loads finite timeline windows independently from multiple relays */

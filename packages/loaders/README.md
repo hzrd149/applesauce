@@ -157,7 +157,7 @@ loader.status$.subscribe((statuses) => console.log(statuses));
 sub.unsubscribe();
 ```
 
-Defaults are `limit: 100`, `prefetch: 0.5` window durations per side, and `minPrefetch: 60` seconds. Set `prefetch: 0` to disable buffering. Visible gaps and adjoining buffer ranges share requests. Older loads omit `since` when no older coverage provides a stopping point, so a full capped batch can also supply events beyond the buffer. Forward loads remain bounded, and jumps stop once their new target is covered.
+Defaults are `limit: 100` and `prefetch: 100` events buffered past each side of the window. Set `prefetch: 0` to disable buffering. Older events are buffered with exact newest-first pages; newer events use a range estimated from the density of loaded events, since relays cannot page forward. Failed ranges retry with exponential backoff, and a `liveness` tracker such as `RelayLiveness` can receive relay failures so dead relays leave the relay set.
 
 Keep the window stream subscribed to reuse coverage. A single finite `{ since, until }` is also accepted and completes when visible and buffer requests settle. Inspect `status$` to distinguish coverage from request failures or unpageable boundary seconds; completion alone does not guarantee coverage.
 

@@ -79,23 +79,77 @@ describe("reactive timeline windows", () => {
     sub.unsubscribe();
   });
 
-  it("combines visible and buffer loading and reuses an anchored buffer", async () => {
+  it("loads the visible window before a newer buffer and reuses the buffer until half of it is consumed", async () => {
     const request = relay({});
     const windows = new Subject<TimelineWindow>();
     const sub = createTimelineLoader(request, ["a"], {})(windows).subscribe();
     windows.next(window(1000, 1100));
     await flush();
-    expect(request.mock.calls[0][1][0]).toEqual({ until: 1160, limit: 100 });
-    expect(request).toHaveBeenCalledTimes(1);
-    const count = request.mock.calls.length;
+    expect(request.mock.calls.map(([, filters]) => filters[0])).toEqual([
+      { until: 1100, limit: 100 },
+      { since: 1101, until: 1200, limit: 100 },
+    ]);
     windows.next(window(1005, 1105));
     await flush();
     windows.next(window(995, 1095));
     await flush();
-    expect(request).toHaveBeenCalledTimes(count);
-    windows.next(window(1040, 1140));
+    expect(request).toHaveBeenCalledTimes(2);
+    windows.next(window(1060, 1160));
     await flush();
-    expect(request.mock.calls.length).toBeGreaterThan(count);
+    expect(request.mock.calls[2][1][0]).toMatchObject({ since: 1201 });
+    sub.unsubscribe();
+  });
+
+  it("reports the prefetch buffer around the visible window", async () => {
+    const events = Array.from({ length: 50 }, (_, i) => event(1000 + i * 100));
+    const statuses: TimelineStatus[] = [];
+    await lastValueFrom(
+      createTimelineLoader(
+        relay({ a: events }),
+        ["a"],
+        {},
+        { prefetch: 10, onStatus: (status) => statuses.push(status) },
+      )(window(4000, 4100)).pipe(toArray()),
+    );
+    const last = statuses.at(-1)!;
+    expect(last.window).toEqual(window(4000, 4100));
+    // Ten events below the window, the oldest at 3000
+    expect(last.buffer.since).toBe(3000);
+    expect(last.buffer.until).toBeGreaterThan(4100);
+
+    const unbuffered: TimelineStatus[] = [];
+    await lastValueFrom(
+      createTimelineLoader(
+        relay({ a: events }),
+        ["a"],
+        {},
+        { prefetch: 0, onStatus: (status) => unbuffered.push(status) },
+      )(window(4000, 4100)).pipe(toArray()),
+    );
+    expect(unbuffered.at(-1)!.buffer).toEqual(window(4000, 4100));
+  });
+
+  it("buffers a fixed number of older events regardless of the window duration", async () => {
+    const events = Array.from({ length: 50 }, (_, i) => event(1000 + i * 100));
+    const request = relay({ a: events }, 5);
+    const windows = new Subject<TimelineWindow>();
+    const received = new Set<number>();
+    const sub = createTimelineLoader(
+      request,
+      ["a"],
+      {},
+      { prefetch: 10 },
+    )(windows).subscribe((e) => received.add(e.created_at));
+    windows.next(window(4000, 4100));
+    await flush();
+    // The buffer holds the ten events below the window, however much time they span
+    for (let t = 3000; t < 4000; t += 100) expect(received.has(t)).toBe(true);
+    expect(Math.min(...received)).toBeGreaterThan(2000);
+    const count = request.mock.calls.length;
+    // A narrower window over the same events needs no more requests
+    windows.next(window(4050, 4100));
+    await flush();
+    expect(request).toHaveBeenCalledTimes(count);
     sub.unsubscribe();
   });
 
@@ -175,7 +229,8 @@ describe("reactive timeline windows", () => {
     sub.unsubscribe();
   });
 
-  it("keeps healthy relays running and retries failed ranges on the next window", async () => {
+  it("keeps healthy relays running and retries failed ranges after a backoff", async () => {
+    vi.useFakeTimers({ now: 1000_000 });
     let fail = true;
     const request = vi.fn((relays: string[]) =>
       relays[0] === "a" && fail ? throwError(() => new Error("offline")) : of(),
@@ -193,10 +248,76 @@ describe("reactive timeline windows", () => {
     expect(statuses.some((s) => s.source === "a" && s.state === "incomplete")).toBe(true);
     expect(statuses.some((s) => s.source === "b" && s.state === "covered")).toBe(true);
     fail = false;
+    // Window changes don't retry a failing relay before its backoff ends
     windows.next(window(100, 200));
+    await flush();
+    expect(request.mock.calls.filter(([r]) => r[0] === "a")).toHaveLength(1);
+    vi.advanceTimersByTime(5000);
     await flush();
     expect(request.mock.calls.filter(([r]) => r[0] === "a")).toHaveLength(2);
     expect(request.mock.calls.filter(([r]) => r[0] === "b")).toHaveLength(1);
+    expect(statuses.filter((s) => s.source === "a").at(-1)?.state).toBe("covered");
+    sub.unsubscribe();
+  });
+
+  it("treats a short boundary-only page as exhausted instead of an unpageable second", async () => {
+    const events = Array.from({ length: 150 }, (_, i) => event(1000 + i));
+    const statuses: TimelineStatus[] = [];
+    await lastValueFrom(
+      createTimelineLoader(
+        relay({ a: events }),
+        ["a"],
+        {},
+        { prefetch: 0, onStatus: (status) => statuses.push(status) },
+      )(window(1000, 1200)).pipe(toArray()),
+    );
+    // The last page only repeats the event at 1000, but it is smaller than earlier pages so the relay wasn't capped
+    expect(statuses.at(-1)?.state).toBe("covered");
+  });
+
+  it("fails a silent relay even when window changes keep cancelling its requests", async () => {
+    vi.useFakeTimers({ now: 1_000_000_000 });
+    const request = vi.fn(() => new Subject<NostrEvent>());
+    const liveness = { recordFailure: vi.fn(), recordSuccess: vi.fn() };
+    const windows = new Subject<TimelineWindow>();
+    const sub = createTimelineLoader(request, ["a"], {}, { prefetch: 0, liveness })(windows).subscribe();
+    for (let i = 0; i < 12; i++) {
+      // Each window is far from the last, so the pending request is cancelled
+      windows.next(window(100_000 - i * 1000, 100_100 - i * 1000));
+      await flush();
+      vi.advanceTimersByTime(1000);
+      await flush();
+    }
+    expect(request.mock.calls.length).toBeGreaterThan(5);
+    expect(liveness.recordFailure).toHaveBeenCalledWith("a");
+    sub.unsubscribe();
+  });
+
+  it("doubles the backoff and reports outcomes to a liveness tracker", async () => {
+    vi.useFakeTimers({ now: 1000_000 });
+    let fail = true;
+    const request = vi.fn(() => (fail ? throwError(() => new Error("offline")) : of()));
+    const liveness = { recordFailure: vi.fn(), recordSuccess: vi.fn() };
+    const sub = createTimelineLoader(
+      request,
+      ["a"],
+      {},
+      { prefetch: 0, liveness },
+    )(new BehaviorSubject(window(100, 200))).subscribe();
+    await flush();
+    vi.advanceTimersByTime(5000);
+    await flush();
+    expect(request).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(5000);
+    await flush();
+    expect(request).toHaveBeenCalledTimes(2);
+    fail = false;
+    vi.advanceTimersByTime(5000);
+    await flush();
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(liveness.recordFailure).toHaveBeenCalledTimes(2);
+    expect(liveness.recordFailure).toHaveBeenCalledWith("a");
+    expect(liveness.recordSuccess).toHaveBeenCalledWith("a");
     sub.unsubscribe();
   });
 
@@ -328,7 +449,7 @@ describe("reactive timeline windows", () => {
     windows.next(window(1040, 1140));
     await flush();
     expect(prefetch.observed).toBe(false);
-    expect(request.mock.calls[2][1][0]).toMatchObject({ since: 1161, until: 1200 });
+    expect(request.mock.calls[2][1][0]).toMatchObject({ since: 1101, until: 1140 });
     sub.unsubscribe();
   });
 
@@ -376,7 +497,8 @@ describe("reactive timeline windows", () => {
       await flush();
     }
     expect(request).toHaveBeenCalledTimes(initial);
-    expect(initial).toBe(2);
+    // One visible and one newer buffer request per relay
+    expect(initial).toBe(4);
     sub.unsubscribe();
   });
 
@@ -438,7 +560,8 @@ describe("reactive timeline windows", () => {
       .mockReturnValueOnce(of(event(950)))
       .mockImplementation(() => throwError(() => new Error("offline")));
     await lastValueFrom(createTimelineLoader(request, ["a"], {})(window(1000, 1100)).pipe(toArray()));
-    expect(request).toHaveBeenCalledTimes(2);
+    // One visible request and one failed request for each buffer side, finite windows never retry
+    expect(request).toHaveBeenCalledTimes(3);
   });
   it("does not let a sparse filter advance a dense filter's coverage", async () => {
     const events = [...Array.from({ length: 40 }, (_, i) => event(100 + i)), event(105, 2), event(135, 2)];
@@ -467,12 +590,14 @@ describe("reactive timeline windows", () => {
     const request = relay({ a: events });
     const result = await lastValueFrom(createTimelineLoader(request, ["a"], {})(window(1000, 1100)).pipe(toArray()));
     expect(request.mock.calls.map(([, filters]) => filters[0])).toEqual([
-      { until: 1160, limit: 100 },
+      { until: 1100, limit: 100 },
       { until: 1001, limit: 100 },
+      // Older pages continue until the buffer holds the default 100 events below the window
+      { until: 902, limit: 100 },
+      { until: 900, limit: 100 },
+      { since: 1101, until: 1199, limit: 100 },
     ]);
-    expect(result).toHaveLength(199); // The inclusive boundary event is deduplicated.
-    for (const event of events.filter((event) => event.created_at >= 940))
-      expect(result.some((loaded) => loaded.id === event.id)).toBe(true);
+    expect(result).toHaveLength(201);
   });
 
   it("keeps a useful speculative request alive when scrolling into its range", async () => {
