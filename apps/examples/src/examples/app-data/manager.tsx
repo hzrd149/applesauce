@@ -1,7 +1,7 @@
 /**
  * Sync, inspect, edit and delete all of a user's NIP-78 app-specific data using the NIP-77 sync loader
  * @tags misc, app-data, nip-78, storage, nip-77, sync
- * @related misc/nip-19-links, loader/sync-loader
+ * @related app-handlers/open-with, loader/sync-loader
  */
 import { publishEvent } from "../../extra/publish";
 
