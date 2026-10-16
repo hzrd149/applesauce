@@ -11,6 +11,11 @@ const ACCOUNTS_STORAGE_KEY = "accounts";
 const ACTIVE_STORAGE_KEY = "active";
 const DEFAULT_QR_RELAY = "wss://bucket.coracle.social";
 
+/** Forgets the active account so the next login view does not sign back in automatically */
+export function forgetActiveAccount() {
+  localStorage.removeItem(ACTIVE_STORAGE_KEY);
+}
+
 function createPoolBackedSigner(account: NostrConnectAccount, pool: RelayPool) {
   const signer = account.signer;
 
