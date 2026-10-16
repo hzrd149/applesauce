@@ -1,20 +1,22 @@
 /**
- * Discover relays from user contact lists and recommendations
- * @tags nip-65, nip-66, relay-discovery, contacts, relays
- * @related relay-discovery/attributes, relay-discovery/monitor-feed
+ * Graph a user's contacts connected to the outbox relays they publish to
+ * @tags nip-65, nip-66, relay-discovery, contacts, relays, force-graph, visualization
+ * @related relay-discovery/attributes, relay-discovery/monitor-feed, relay-discovery/relay-directory
  */
-import { timer, of, combineLatest, map } from "rxjs";
+import { combineLatest, defer, map, of, startWith, switchMap, timer } from "rxjs";
 
-import { castUser, RelayMonitor, User } from "applesauce-common/casts";
+import { castUser, RelayDiscovery, RelayMonitor } from "applesauce-common/casts";
 import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
-import { EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { combineLatestByValue, EventStore, mapEventsToStore, mapEventsToTimeline } from "applesauce-core";
+import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import Keyv from "keyv";
 import { KeyvIndexedDB } from "keyv-browser";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from "react-force-graph-2d";
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayPicker from "../../components/relay-picker";
@@ -37,106 +39,39 @@ const DEFAULT_DISCOVERY_RELAY = "wss://relay.nostr.watch/";
 
 type RelayStatus = "online" | "offline" | "unknown";
 
-interface RelayWithUsers {
-  url: string;
-  users: User[];
-  status: RelayStatus;
-  lastChecked: Date | null;
+const STATUS_COLORS: Record<RelayStatus, string> = {
+  online: "#22c55e",
+  offline: "#ef4444",
+  unknown: "#a3a3a3",
+};
+
+type UserNode = { kind: "user"; id: string; name: string; picture?: string; image?: HTMLImageElement };
+type RelayNode = { kind: "relay"; id: string; users: number };
+type GraphNode = NodeObject<UserNode | RelayNode>;
+type GraphLink = LinkObject<GraphNode> & { source: string | GraphNode; target: string | GraphNode };
+
+/** Relay nodes grow with the number of contacts publishing to them */
+function nodeRadius(node: GraphNode): number {
+  return node.kind === "user" ? 6 : 4 + Math.sqrt(node.users) * 2;
 }
 
-function RelayStatusBadge({ status }: { status: RelayStatus }) {
-  const statusConfig = {
-    online: { label: "Online", className: "badge-success" },
-    offline: { label: "Offline", className: "badge-error" },
-    unknown: { label: "Unknown", className: "badge-warning" },
-  };
-
-  const config = statusConfig[status];
-
-  return <span className={`badge ${config.className}`}>{config.label}</span>;
+/** Strips the protocol and trailing slash from a relay URL for labels */
+function short(url: string): string {
+  return url.replace(/^wss?:\/\//, "").replace(/\/$/, "");
 }
 
-function RelayListItem({ relay, monitor }: { relay: RelayWithUsers; monitor: RelayMonitor | undefined }) {
-  // Get relay discovery status from monitor
-  const discovery = use$(() => (monitor ? monitor.relayStatus(relay.url) : undefined), [monitor, relay.url]);
-
-  // Determine status based on discovery event
-  const status =
-    use$(
-      () =>
-        timer(0, 1000).pipe(
-          map(() => {
-            if (!discovery || !monitor) return "unknown" as RelayStatus;
-
-            const frequency = monitor.frequency;
-            if (!frequency) return "unknown" as RelayStatus;
-
-            const eventTime = discovery.event.created_at * 1000; // Convert to milliseconds
-            const now = Date.now();
-            const age = (now - eventTime) / 1000; // Age in seconds
-
-            // If the event is older than the monitor's frequency, consider it offline
-            if (age > frequency) {
-              return "offline" as RelayStatus;
-            }
-
-            return "online" as RelayStatus;
-          }),
-        ),
-      [discovery, monitor],
-    ) ?? "unknown";
-
-  const lastChecked = useMemo(() => {
-    if (!discovery) return null;
-    return new Date(discovery.event.created_at * 1000);
-  }, [discovery]);
-
-  // Get favicon URL (from NIP-11 or fallback to /favicon.ico)
-  const faviconUrl = use$(() => pool.relay(relay.url).icon$, [relay.url]);
-
-  return (
-    <div className="flex items-center gap-3 p-3 border-b border-base-300 hover:bg-base-200 transition-colors">
-      <div className="avatar shrink-0">
-        <div className="w-10 h-10 rounded-full border-2 border-base-300">
-          <img
-            src={faviconUrl}
-            alt="Relay favicon"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              // Fallback to a simple circle icon
-              const target = e.target as HTMLImageElement;
-              target.style.display = "none";
-              if (!target.parentElement) return;
-              target.parentElement.innerHTML = `
-                <div style="width: 100%; height: 100%; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px;">
-                  ${relay.url.slice(0, 1).toUpperCase()}
-                </div>
-              `;
-            }}
-          />
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-mono text-sm font-medium truncate">{relay.url}</div>
-        <div className="flex gap-4 text-sm text-base-content/60 mt-1">
-          <RelayStatusBadge status={status} />
-          <span>
-            {relay.users.length} {relay.users.length === 1 ? "user" : "users"}
-          </span>
-        </div>
-      </div>
-      {lastChecked && <div className="text-sm text-base-content/50 shrink-0">{lastChecked.toLocaleTimeString()}</div>}
-    </div>
-  );
+/** Online when the monitor's latest discovery event is newer than its publish frequency */
+function getRelayStatus(monitor: RelayMonitor | undefined, discovery: RelayDiscovery | undefined): RelayStatus {
+  const frequency = monitor?.frequency;
+  if (!discovery || !frequency) return "unknown";
+  return Date.now() / 1000 - discovery.event.created_at > frequency ? "offline" : "online";
 }
 
 function MonitorOption({ monitor }: { monitor: RelayMonitor }) {
   const profile = use$(() => monitor.author.profile$, [monitor.author.pubkey]);
 
   return (
-    <option key={monitor.id} value={monitor.author.pubkey}>
-      {profile?.displayName ?? monitor.author.pubkey.slice(0, 8) + "..."}
-    </option>
+    <option value={monitor.author.pubkey}>{profile?.displayName ?? monitor.author.pubkey.slice(0, 8) + "..."}</option>
   );
 }
 
@@ -151,7 +86,7 @@ function MonitorPicker({
 }) {
   return (
     <select className="select select-bordered" value={value} onChange={(e) => onChange(e.target.value)}>
-      {monitors?.map((m) => (
+      {monitors.map((m) => (
         <MonitorOption key={m.uid} monitor={m} />
       ))}
     </select>
@@ -160,12 +95,12 @@ function MonitorPicker({
 
 export default function ContactsRelays() {
   const [relay, setRelay] = useState<string>(DEFAULT_DISCOVERY_RELAY);
-
   const [selectedMonitor, setSelectedMonitor] = useState<string>(DEFAULT_DISCOVERY_MONITOR);
-
   const [selectedPubkey, setSelectedPubkey] = useState<string>("");
+  const [hovered, setHovered] = useState<GraphNode | null>(null);
+  const [size, setSize] = useState({ width: 800, height: 600 });
 
-  // Get the monitor's announcement event
+  // Get the monitor announcements from the discovery relay
   const monitors = use$(
     () =>
       pool
@@ -175,120 +110,226 @@ export default function ContactsRelays() {
     [relay],
   );
 
-  // Get the selected monitor
   const monitor = useMemo(
-    () => (selectedMonitor && monitors ? monitors.find((m) => m.author.pubkey === selectedMonitor) : undefined),
+    () => monitors?.find((m) => m.author.pubkey === selectedMonitor),
     [monitors, selectedMonitor],
   );
 
-  // Cast the selected pubkey to a User
-  const user = useMemo(() => (selectedPubkey ? castUser(selectedPubkey, eventStore) : undefined), [selectedPubkey]);
+  // Build the graph from each contact's outboxes and profile, reusing node objects so positions survive updates
+  const graph = use$(() => {
+    if (!selectedPubkey) return undefined;
 
-  // Get user's contacts
-  const contacts = use$(() => (user ? user.contacts$ : undefined), [user?.pubkey]);
+    return defer(() => {
+      const nodes = new Map<string, GraphNode>();
 
-  // Get outbox relays for each contact
-  const contactsWithOutboxes = use$(
+      return castUser(selectedPubkey, eventStore).contacts$.pipe(
+        map((contacts) => contacts ?? []),
+        combineLatestByValue((contact) =>
+          combineLatest([contact.outboxes$.pipe(startWith(undefined)), contact.profile$.pipe(startWith(undefined))]),
+        ),
+        map((contacts) => {
+          const links: GraphLink[] = [];
+          const relayUsers = new Map<string, number>();
+
+          for (const [contact, [outboxes, profile]] of contacts) {
+            if (!outboxes?.length) continue;
+
+            let user = nodes.get(contact.pubkey) as UserNode | undefined;
+            if (!user) {
+              user = { kind: "user", id: contact.pubkey, name: contact.pubkey.slice(0, 8) };
+              nodes.set(contact.pubkey, user);
+            }
+            user.name = getDisplayName(profile, contact.pubkey.slice(0, 8));
+
+            const picture = getProfilePicture(profile, `https://robohash.org/${contact.pubkey}.png?size=64x64`);
+            if (picture !== user.picture) {
+              user.picture = picture;
+              user.image = new Image();
+              user.image.referrerPolicy = "no-referrer";
+              user.image.src = picture;
+            }
+
+            for (const url of new Set(outboxes)) {
+              links.push({ source: contact.pubkey, target: url });
+              relayUsers.set(url, (relayUsers.get(url) ?? 0) + 1);
+            }
+          }
+
+          for (const [url, users] of relayUsers) {
+            const node = nodes.get(url) as RelayNode | undefined;
+            if (node) node.users = users;
+            else nodes.set(url, { kind: "relay", id: url, users });
+          }
+
+          const linked = new Set([...links.map((l) => l.source as string), ...relayUsers.keys()]);
+          return { nodes: [...nodes.values()].filter((n) => linked.has(n.id)), links, contacts: contacts.size };
+        }),
+      );
+    });
+  }, [selectedPubkey]);
+
+  // Join relay URLs into a stable key so status subscriptions only change when the relay set does
+  const relayKey = useMemo(
     () =>
-      contacts?.length
-        ? combineLatest(contacts.map((contact) => contact.outboxes$.pipe(map((outboxes) => ({ contact, outboxes })))))
-        : of([]),
-    [contacts?.map((c) => c.pubkey).join(",")],
+      graph?.nodes
+        .filter((n) => n.kind === "relay")
+        .map((n) => n.id)
+        .sort()
+        .join(",") ?? "",
+    [graph],
   );
 
-  // Aggregate relays by popularity
-  const relaysByPopularity = useMemo(() => {
-    if (!contactsWithOutboxes) return [];
+  // Resolve each relay's status from the selected monitor, re-checking ages every 10 seconds
+  const statuses = use$(() => {
+    const urls = relayKey ? relayKey.split(",") : [];
+    if (!monitor || urls.length === 0) return of(new Map<string, RelayStatus>());
 
-    const relayMap = new Map<string, User[]>();
+    return of(urls).pipe(
+      combineLatestByValue((url) => monitor.relayStatus(url).pipe(startWith(undefined))),
+      switchMap((discoveries) =>
+        timer(0, 10_000).pipe(
+          map(() => new Map([...discoveries].map(([url, d]) => [url, getRelayStatus(monitor, d)] as const))),
+        ),
+      ),
+    );
+  }, [monitor, relayKey]);
 
-    for (const { contact, outboxes } of contactsWithOutboxes) {
-      if (!outboxes) continue;
+  // Highlight the hovered node and its direct neighbors
+  const neighbors = useMemo(() => {
+    if (!hovered || !graph) return null;
+    const ids = new Set([hovered.id]);
+    for (const link of graph.links) {
+      const source = typeof link.source === "string" ? link.source : link.source.id;
+      const target = typeof link.target === "string" ? link.target : link.target.id;
+      if (source === hovered.id) ids.add(target);
+      if (target === hovered.id) ids.add(source);
+    }
+    return ids;
+  }, [hovered, graph]);
 
-      for (const relayUrl of outboxes) {
-        if (!relayMap.has(relayUrl)) {
-          relayMap.set(relayUrl, []);
-        }
-        const users = relayMap.get(relayUrl)!;
-        if (!users.find((u) => u.pubkey === contact.pubkey)) {
-          users.push(contact);
-        }
+  // Read the latest render state from refs so the canvas painters stay stable
+  const statusRef = useRef(statuses);
+  statusRef.current = statuses;
+  const neighborsRef = useRef(neighbors);
+  neighborsRef.current = neighbors;
+
+  // Follow the container size, React 19 runs the returned cleanup on unmount
+  const measure = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const observer = new ResizeObserver(() => setSize({ width: el.clientWidth, height: el.clientHeight }));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Push relays apart harder than users so each relay gets its own cluster
+  const tune = useCallback((fg: ForceGraphMethods<GraphNode, GraphLink> | null) => {
+    if (!fg) return;
+    fg.d3Force("charge")?.strength((n: GraphNode) => (n.kind === "relay" ? -120 : -30));
+  }, []);
+
+  const paintNode = useCallback((node: GraphNode, ctx: CanvasRenderingContext2D, scale: number) => {
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    const r = nodeRadius(node);
+    ctx.globalAlpha = !neighborsRef.current || neighborsRef.current.has(node.id) ? 1 : 0.15;
+
+    if (node.kind === "user") {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.clip();
+      if (node.image?.complete && node.image.naturalWidth > 0) ctx.drawImage(node.image, x - r, y - r, r * 2, r * 2);
+      else {
+        ctx.fillStyle = "#737373";
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      const status = statusRef.current?.get(node.id) ?? "unknown";
+      ctx.fillStyle = STATUS_COLORS[status];
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Label relays once they are large enough or zoomed in
+      if (r * scale > 8) {
+        ctx.font = `${12 / scale}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#a3a3a3";
+        ctx.fillText(short(node.id), x, y + r + 12 / scale);
       }
     }
 
-    // Convert to array and sort by popularity (number of users)
-    const relays: RelayWithUsers[] = Array.from(relayMap.entries())
-      .map(([url, users]) => ({
-        url,
-        users,
-        status: "unknown" as RelayStatus,
-        lastChecked: null,
-      }))
-      .sort((a, b) => b.users.length - a.users.length);
+    ctx.globalAlpha = 1;
+  }, []);
 
-    return relays;
-  }, [contactsWithOutboxes]);
+  const paintPointerArea = useCallback((node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(node.x ?? 0, node.y ?? 0, nodeRadius(node), 0, 2 * Math.PI);
+    ctx.fill();
+  }, []);
+
+  const linkColor = useCallback((link: GraphLink) => {
+    const ids = neighborsRef.current;
+    if (!ids) return "rgba(127,127,127,0.2)";
+    const source = typeof link.source === "string" ? link.source : link.source.id;
+    const target = typeof link.target === "string" ? link.target : link.target.id;
+    return ids.has(source) && ids.has(target) ? "rgba(127,127,127,0.8)" : "rgba(127,127,127,0.05)";
+  }, []);
+
+  const relayCount = graph?.nodes.filter((n) => n.kind === "relay").length ?? 0;
+  const userCount = (graph?.nodes.length ?? 0) - relayCount;
 
   return (
-    <div className="space-y-4 h-full overflow-hidden flex flex-col">
-      <div className="p-4 flex flex-col gap-2">
-        <h2 className="font-semibold">Contacts' Outbox Relays</h2>
-        <p className="text-sm text-base-content/70">
-          Select a monitor and a user to view their contacts' outbox relays aggregated by popularity. Each relay shows
-          which users are using it and its latest status from the monitor.
-        </p>
-
-        <div className="flex gap-2">
-          <RelayPicker value={relay} onChange={(next: string) => setRelay(next)} />
-          {monitors && (
-            <MonitorPicker
-              monitors={monitors}
-              onChange={(next: string) => setSelectedMonitor(next)}
-              value={selectedMonitor}
-            />
-          )}
+    <div className="flex min-h-0 grow flex-col">
+      <div className="flex flex-col gap-2 border-b border-base-300 p-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-64 flex-1">
+            <PubkeyPicker value={selectedPubkey} onChange={setSelectedPubkey} />
+          </div>
+          <RelayPicker value={relay} onChange={setRelay} />
+          {monitors && <MonitorPicker monitors={monitors} onChange={setSelectedMonitor} value={selectedMonitor} />}
         </div>
 
-        <PubkeyPicker value={selectedPubkey} onChange={(next: string) => setSelectedPubkey(next)} />
-
-        {!monitor && <div className="text-sm text-base-content/70">Select a monitor to view relay discovery data</div>}
-
-        {selectedPubkey && !contacts && <div className="text-sm text-base-content/70">Loading contacts...</div>}
-
-        {selectedPubkey && contacts && contacts.length === 0 && (
-          <div className="alert alert-warning">
-            <span>This user has no contacts.</span>
-          </div>
-        )}
-
-        {selectedPubkey && contacts && contacts.length > 0 && (
-          <div className="text-sm text-base-content/70">
-            Found {contacts.length} {contacts.length === 1 ? "contact" : "contacts"}
-            {relaysByPopularity.length > 0 && ` with ${relaysByPopularity.length} unique outbox relays`}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-x-4 text-sm text-base-content/70">
+          {graph && (
+            <span>
+              {userCount} of {graph.contacts} contacts · {relayCount} outbox relays · {graph.links.length} links
+            </span>
+          )}
+          <span style={{ color: STATUS_COLORS.online }}>online</span>
+          <span style={{ color: STATUS_COLORS.offline }}>offline</span>
+          <span style={{ color: STATUS_COLORS.unknown }}>unknown</span>
+          {!monitor && <span>Select a monitor to color relays by status</span>}
+        </div>
       </div>
 
-      {selectedPubkey && contacts && contacts.length > 0 ? (
-        relaysByPopularity.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {relaysByPopularity.map((relay) => (
-              <RelayListItem key={relay.url} relay={relay} monitor={monitor} />
-            ))}
-          </div>
+      <div ref={measure} className="relative min-h-0 flex-1 overflow-hidden">
+        {graph && graph.nodes.length > 0 ? (
+          <ForceGraph2D<GraphNode, GraphLink>
+            ref={tune as never}
+            graphData={graph}
+            width={size.width}
+            height={size.height}
+            backgroundColor="rgba(0,0,0,0)"
+            nodeCanvasObject={paintNode}
+            nodePointerAreaPaint={paintPointerArea}
+            nodeLabel={(n) => (n.kind === "user" ? n.name : `${n.id} (${n.users} users)`)}
+            linkColor={linkColor}
+            onNodeHover={setHovered}
+            cooldownTime={15_000}
+          />
         ) : (
-          <div className="alert alert-info">
-            <span>No outbox relays found for this user's contacts.</span>
-          </div>
-        )
-      ) : (
-        <div className="flex items-center justify-center h-full text-base-content/50">
-          <div className="text-center">
-            <p className="text-lg mb-2">Select a monitor and user to view their contacts' outbox relays</p>
-            <p className="text-sm">Use the pickers above to get started</p>
-          </div>
-        </div>
-      )}
+          <p className="p-4 text-base-content/60">
+            {!selectedPubkey
+              ? "Pick a user to graph their contacts' outbox relays"
+              : graph?.contacts === 0
+                ? "This user has no contacts"
+                : "Loading contacts and their outbox relays..."}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
