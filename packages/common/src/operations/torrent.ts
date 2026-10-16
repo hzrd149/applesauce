@@ -1,4 +1,4 @@
-import { EventOperation } from "applesauce-core/factories";
+import { EventOperation, TagOperation } from "applesauce-core/factories";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import { modifyPublicTags } from "applesauce-core/operations/tags";
 import {
@@ -20,9 +20,8 @@ export function setTorrentTitle(title: string): EventOperation {
 
 /** Adds a file entry to the torrent */
 export function addTorrentFile(file: TorrentFile): EventOperation {
-  const tag: [string, string, ...string[]] = file.size
-    ? ["file", file.name, file.size.toString()]
-    : ["file", file.name];
+  const tag: [string, string, ...string[]] =
+    file.size !== undefined ? ["file", file.name, file.size.toString()] : ["file", file.name];
   return modifyPublicTags(addNameValueTag(tag, false));
 }
 
@@ -41,14 +40,33 @@ export function removeTorrentTracker(tracker: string): EventOperation {
   return modifyPublicTags(removeNameValueTag(["tracker", tracker]));
 }
 
+// Replaces the first `i` tag with the given prefix and removes the rest, leaving other `i` tags untouched
+function setPrefixedIdentifierTag(prefix: string, value: string): TagOperation {
+  return (tags) => {
+    const tag = ["i", `${prefix}:${value}`];
+    const index = tags.findIndex((t) => t[0] === "i" && t[1]?.startsWith(`${prefix}:`));
+    if (index === -1) return [...tags, tag];
+
+    return tags.flatMap((t, i) => {
+      if (i === index) return [tag];
+      return t[0] === "i" && t[1]?.startsWith(`${prefix}:`) ? [] : [t];
+    });
+  };
+}
+
+// Removes every `i` tag with the given prefix
+function removePrefixedIdentifierTags(prefix: string): TagOperation {
+  return (tags) => tags.filter((t) => !(t[0] === "i" && t[1]?.startsWith(`${prefix}:`)));
+}
+
 /** Sets the newznab category ID (replaces any existing newznab category) */
 export function setTorrentCategory(categoryId: number): EventOperation {
-  return modifyPublicTags(setSingletonTag(["i", `newznab:${categoryId}`]));
+  return modifyPublicTags(setPrefixedIdentifierTag("newznab", String(categoryId)));
 }
 
 /** Removes the newznab category ID */
 export function removeTorrentCategory(): EventOperation {
-  return modifyPublicTags((tags) => tags.filter((t) => !(t[0] === "i" && t[1]?.startsWith("newznab:"))));
+  return modifyPublicTags(removePrefixedIdentifierTags("newznab"));
 }
 
 /** Adds a search tag (for searchability) */
@@ -63,12 +81,12 @@ export function removeTorrentSearchTag(tag: string): EventOperation {
 
 /** Sets the category path (tcat) */
 export function setTorrentCategoryPath(categoryPath: string): EventOperation {
-  return modifyPublicTags(setSingletonTag(["i", `tcat:${categoryPath}`]));
+  return modifyPublicTags(setPrefixedIdentifierTag("tcat", categoryPath));
 }
 
 /** Removes the category path (tcat) */
 export function removeTorrentCategoryPath(): EventOperation {
-  return modifyPublicTags((tags) => tags.filter((t) => !(t[0] === "i" && t[1]?.startsWith("tcat:"))));
+  return modifyPublicTags(removePrefixedIdentifierTags("tcat"));
 }
 
 /** Adds an external identifier */
@@ -76,10 +94,7 @@ export function addTorrentExternalIdentifier(identifier: TorrentExternalIdentifi
   return modifyPublicTags(addNameValueTag(["i", identifier.identifier], false));
 }
 
-/**
- * Adds an external identifier using prefix, id, and optional mediaType
- * Convenience function that creates the identifier object automatically
- */
+/** Adds an external identifier built from a prefix, id, and optional media type */
 export function addTorrentExternalIdentifierByParts(
   prefix: TorrentExternalIdentifierPrefix,
   id: string,

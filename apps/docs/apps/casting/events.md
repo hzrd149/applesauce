@@ -450,38 +450,6 @@ chatMessages.forEach((message) => {
 });
 ```
 
-## Torrent
-
-Cast for a torrent event (kind 2003). Provides BitTorrent metadata, files, trackers, and magnet link.
-
-[**Torrent** — TypeDoc](https://applesauce.build/typedoc/classes/applesauce-common.Casts.Torrent.html)
-
-```typescript
-const torrents = use$(() => eventStore.timeline({ kinds: [2003] }).pipe(castTimelineStream(Torrent, eventStore)), []);
-
-torrents.forEach((torrent) => {
-  // Torrent metadata
-  const infoHash = torrent.infoHash; // BitTorrent info hash
-  const title = torrent.title;
-  const files = torrent.files; // File entries
-  const trackers = torrent.trackers; // Tracker URLs
-  const magnetLink = torrent.magnetLink; // magnet: URI
-
-  // Categories and tags
-  const category = torrent.category; // Newznab category ID
-  const categoryPath = torrent.categoryPath; // Category path array
-  const searchTags = torrent.searchTags; // Search tags
-  const externalIds = torrent.externalIdentifiers; // IMDB, TMDB, etc.
-});
-
-// Get engagement
-const comments = use$(torrent.comments$);
-const zaps = use$(torrent.zaps$);
-const reactions = use$(torrent.reactions$);
-```
-
-**Example:** [Torrent Feed](https://applesauce.build/examples#torrent-feed)
-
 ## RelayMonitor
 
 Cast for a relay monitor announcement (kind 10166). Provides monitor metadata and relay status lookups.
