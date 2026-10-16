@@ -559,7 +559,7 @@ function MessageContent({ message, self, onReply }: { message: NostrEvent; self:
 
   if (content !== undefined)
     return (
-      <div className="chat-bubble whitespace-pre-wrap break-words">
+      <div className="chat-bubble whitespace-pre-wrap wrap-break-words">
         {content}
         {signer && (
           <button
