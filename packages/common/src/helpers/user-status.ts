@@ -1,5 +1,5 @@
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
-import { NostrEvent } from "applesauce-core/helpers/event";
+import { getReplaceableIdentifier, kinds, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import {
   AddressPointer,
   EventPointer,
@@ -8,6 +8,15 @@ import {
   getProfilePointerFromPTag,
   ProfilePointer,
 } from "applesauce-core/helpers/pointers";
+
+/** The event kind for NIP-38 user statuses */
+export const USER_STATUS_KIND = kinds.UserStatuses;
+
+/** A NIP-38 user status event */
+export type UserStatusEvent = KnownEvent<typeof kinds.UserStatuses>;
+
+/** The type of a user status, `general` and `music` are defined by NIP-38 */
+export type UserStatusType = "general" | "music" | (string & {});
 
 export const UserStatusPointerSymbol = Symbol.for("user-status-pointer");
 
@@ -40,6 +49,21 @@ function getStatusPointer(status: NostrEvent): UserStatusPointer | null {
   if (rTag) return { type: "url", data: rTag[1] };
 
   return null;
+}
+
+/** Checks if an event is a valid NIP-38 user status */
+export function isValidUserStatus(event?: NostrEvent): event is UserStatusEvent {
+  return !!event && event.kind === kinds.UserStatuses && event.tags.some((t) => t[0] === "d");
+}
+
+/** Gets the status type (the "d" tag) of a user status event */
+export function getUserStatusType(status: NostrEvent): UserStatusType {
+  return getReplaceableIdentifier(status);
+}
+
+/** Checks if a user status has been cleared (empty content) */
+export function isUserStatusCleared(status: NostrEvent): boolean {
+  return status.content.trim() === "";
 }
 
 /** Gets the {@link UserStatusPointer} for a status event */

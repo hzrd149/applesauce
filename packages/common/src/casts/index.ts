@@ -24,6 +24,7 @@ export * from "./share.js";
 export * from "./stream.js";
 export * from "./torrent.js";
 export * from "./user.js";
+export * from "./user-status.js";
 export * from "./badge.js";
 export * from "./badge-award.js";
 export * from "./zap.js";

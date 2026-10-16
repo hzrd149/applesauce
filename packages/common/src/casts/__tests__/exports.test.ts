@@ -45,6 +45,7 @@ describe("exports", () => {
         "TrustedProviderList",
         "User",
         "UserAssertion",
+        "UserStatus",
         "Zap",
         "ZapGoal",
         "castEvent",
