@@ -1188,7 +1188,7 @@ export class Relay {
     );
   }
 
-  /** Create a COUNT observable that emits a single count response */
+  /** Creates a one-shot NIP-45 COUNT request that emits a single response */
   count(filters: Filter | Filter[], id = nanoid(), opts?: RelayCountOptions): Observable<RelayCountResponse> {
     // D-04: count owns both the auth operator and its own clock in this one method, unlike
     // request()/req() — nothing needs threading via AUTH_PHASE_GATE. Call-scoped: one gate spans every
@@ -1224,10 +1224,6 @@ export class Relay {
       // always reaches a live listen chain instead of rejoining one that already terminated (mirrors
       // event()'s 13-05 and req()'s 13-09 send/listen splits).
 
-      // Track whether the relay already sent CLOSED so we skip the redundant client CLOSE.
-      // Attempt-scoped (CR-03): a stale value from a prior attempt would send a redundant CLOSE for a
-      // COUNT the relay already closed.
-      let relayClosedSub = false;
       let transportClose: CloseEvent | undefined;
       const closeSubscription = this.close$.subscribe((event) => (transportClose = event));
 
@@ -1242,7 +1238,6 @@ export class Relay {
         map<any, RelayCountResponse>((m) => {
           if (m[0] === "COUNT") return parseRelayCountResponse(m[2]);
 
-          relayClosedSub = true;
           const reason = m[2] ?? "";
 
           if (reason.startsWith(AUTH_REQUIRED_PREFIX)) {
@@ -1261,17 +1256,13 @@ export class Relay {
       // Send the COUNT message and listen for response. Per-attempt: this send side effect always
       // re-runs when this defer's factory runs, independent of any share() reset timing — the fix for
       // CR-03's "resend never reaches a live listen chain" symptom.
+      // NIP-45 queries do not create live subscriptions, so teardown needs no CLOSE message.
       const control = defer(() => {
         // Send the COUNT message when subscription starts
         this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
 
         return messages;
-      }).pipe(
-        // Send CLOSE when unsubscribed, but not if relay already sent CLOSED
-        finalize(() => {
-          if (!relayClosedSub) this.socket.next(["CLOSE", id]);
-        }),
-      );
+      });
 
       const countObservable = merge(this.watchTower, control).pipe(
         // Complete when the socket stops delivering this COUNT's messages, since the watch tower never completes

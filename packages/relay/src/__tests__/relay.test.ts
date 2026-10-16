@@ -2508,6 +2508,27 @@ describe("multi-user authentication", () => {
 });
 
 describe("count", () => {
+  it.each(["response", "unsubscribe", "timeout", "refusal", "invalid response"])(
+    "should not send CLOSE after %s",
+    async (outcome) => {
+      const spy = subscribeSpyTo(relay.count({ kinds: [1] }, "count1", { timeout: 50 }), {
+        expectErrors: true,
+      });
+      await expect(server).toReceiveMessage(["COUNT", "count1", { kinds: [1] }]);
+
+      if (outcome === "response") server.send(["COUNT", "count1", { count: 42 }]);
+      else if (outcome === "unsubscribe") spy.unsubscribe();
+      else if (outcome === "refusal") server.send(["CLOSED", "count1", "restricted: denied"]);
+      else if (outcome === "invalid response") server.send(["COUNT", "count1", { count: -1 }]);
+
+      if (outcome === "response") await spy.onComplete();
+      else if (outcome !== "unsubscribe") await spy.onError();
+      // Allow outbound WebSocket frames to reach the mock server before checking teardown.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(server.messages).toEqual([["COUNT", "count1", { kinds: [1] }]]);
+    },
+  );
+
   it("should trigger connection to relay", async () => {
     const spy = subscribeSpyTo(relay.count([{ kinds: [1] }], "count1"));
 
@@ -2648,7 +2669,6 @@ describe("count", () => {
     await expect(server).toReceiveMessage(["COUNT", "malformed", { kinds: [1] }]);
     server.send(["COUNT", "malformed", { count: -1 }]);
     await malformed.onError();
-    await expect(server).toReceiveMessage(["CLOSE", "malformed"]);
 
     const closed = subscribeSpyTo(relay.count({ kinds: [1] }, "closed", { retries: 3, timeout: false }), {
       expectErrors: true,
@@ -3036,19 +3056,12 @@ describe("operation-scoped COUNT auth gap closure (13-10, CR-03)", () => {
 
     await spy.onComplete();
 
-    // The final attempt's take(1) completion sends a CLOSE frame; wait for the mock server to actually
-    // receive it before asserting the exact frame count below.
-    await expect(server).toReceiveMessage(["CLOSE", "count1"]);
-
     expect(spy.getValues()).toEqual([{ count: 7 }]);
     expect(onAuthRequired).toHaveBeenCalledTimes(1);
 
-    // Pins CR-03's redundant-CLOSE regression: the first attempt's auth-required CLOSED already marks
-    // that attempt's own relayClosedSub, so its finalize skips the CLOSE frame; only the second
-    // (successful) attempt's clean take(1) completion sends one. Against the pre-fix code the verifier
-    // observed 2 CLOSE frames (one redundant) alongside the never-observed reply.
+    // Neither the refused attempt nor the successful one needs a client CLOSE.
     const closeFrames = server.messages.filter((m: any) => m[0] === "CLOSE" && m[1] === "count1");
-    expect(closeFrames).toHaveLength(1);
+    expect(closeFrames).toHaveLength(0);
   });
 });
 
