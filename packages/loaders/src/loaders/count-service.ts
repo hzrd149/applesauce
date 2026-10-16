@@ -12,6 +12,7 @@ import {
   expand,
   filter,
   finalize,
+  from,
   map,
   merge,
   NEVER,
@@ -27,6 +28,7 @@ import {
   timer,
   type SchedulerLike,
 } from "rxjs";
+import { createPersistentCountCache } from "../helpers/count-service/cache.js";
 import { createTransportScheduler } from "../helpers/count-service/scheduler.js";
 import { fallbackCountSource } from "./count-sources/fallback.js";
 import { nip85CountSource, type Nip85CountSourceOptions } from "./count-sources/nip85.js";
@@ -92,10 +94,41 @@ export interface CountDiagnostic {
   latency?: number;
 }
 
+/** A Keyv-compatible persistent store dedicated to count cache records and invalidation markers */
+export interface CountCache {
+  /** Gets a stored record or invalidation marker */
+  get(key: string): Promise<unknown>;
+  /** Stores a value with a relative lifetime in milliseconds, where zero disables expiry */
+  set(key: string, value: CountCacheRecord | string, ttl?: number): Promise<unknown>;
+}
+
+/** A versioned successful count with absolute expiry deadlines */
+export interface CountCacheRecord {
+  /** The serialization format version */
+  version: 1;
+  /** The effective source policy */
+  policy: string;
+  /** The successful count state */
+  state: CountState;
+  /** The absolute freshness deadline, or null for unlimited freshness */
+  freshUntil: number | null;
+  /** The absolute retention deadline, or null for unlimited retention */
+  retainUntil: number | null;
+}
+
 /** Options for demand-driven event metric counts */
 export interface CountServiceOptions {
   /** The explicit ordered hierarchy, overriding automatic source creation */
   sources?: readonly CountSource[];
+
+  /** The optional Keyv-compatible persistent count cache; use a dedicated namespace */
+  cache?: CountCache;
+
+  /** The persistent retention lifetime in milliseconds, default 24 hours */
+  cacheRetention?: number;
+
+  /** The maximum cache operation duration in milliseconds, default 1000 */
+  cacheTimeout?: number;
 
   /** The structural upstream pool used by automatic sources */
   pool?: CountPool;
@@ -112,7 +145,7 @@ export interface CountServiceOptions {
   /** The metric-scoped providers for automatic NIP-85 counts before relay fallback */
   providers?: Nip85CountSourceOptions["providers"];
 
-  /** The freshness curve, receiving event age in seconds and returning milliseconds */
+  /** The freshness curve receiving event age in seconds and returning milliseconds, defaulting to 1 minute through 6 hours */
   ttl?: (context: { age: number; query: CountQuery }) => number;
 
   /** The maximum inactive cached result and cooldown entries, default 1000 */
@@ -184,8 +217,11 @@ export interface CountService {
   /** Creates a lazy event metric handle */
   event(target: CountTarget): EventCountHandle;
 
-  /** Invalidates retained results for one target or all targets */
-  invalidate(target?: CountTarget): void;
+  /**
+   * Invalidates retained results immediately and resolves after persistent invalidation completes
+   * @throws if persistent invalidation fails or times out
+   */
+  invalidate(target?: CountTarget): Promise<void>;
 
   /** Cancels all active work and prevents future loading */
   stop(): void;
@@ -214,6 +250,14 @@ export const rootCommentCountMetric: CountMetric = {
   filters: (target) =>
     target.address ? [{ kinds: [1111], "#A": [target.address] }] : [{ kinds: [1111], "#E": [target.id] }],
 };
+
+function defaultCountTTL(age: number): number {
+  if (age < 6 * 60 * 60) return 60_000;
+  if (age < 24 * 60 * 60) return 5 * 60_000;
+  if (age < 7 * 24 * 60 * 60) return 30 * 60_000;
+  if (age < 30 * 24 * 60 * 60) return 2 * 60 * 60_000;
+  return 6 * 60 * 60_000;
+}
 
 /**
  * Creates a lazy shared count service with ordered sources and age-based freshness
@@ -258,6 +302,10 @@ export function createCountService(
   const retry = positive("retryDelay", options.retryDelay ?? 10000);
   const deadline = positive("resolutionTimeout", options.resolutionTimeout ?? 15000);
   const attempt = positive("attemptTimeout", options.attemptTimeout ?? 5000);
+  const cacheTimeout = positive("cacheTimeout", options.cacheTimeout ?? 1000);
+  if (options.cacheRetention !== undefined && options.cacheRetention !== Infinity)
+    positive("cacheRetention", options.cacheRetention);
+  const persistent = options.cache && createPersistentCountCache(options.cache, clock, cacheTimeout);
   const capacity = options.cacheCapacity ?? 1000;
   if (!Number.isInteger(capacity) || capacity < 0) throw new Error("cacheCapacity must be a nonnegative integer");
 
@@ -297,7 +345,16 @@ export function createCountService(
   let stopped = false;
 
   // Retain values and cooldowns separately from the registry of currently observed streams.
-  const cache = new Map<string, { policy: string; state: CountState; retryAt?: number }>();
+  const cache = new Map<
+    string,
+    {
+      policy: string;
+      state: CountState;
+      retryAt?: number;
+      freshUntil?: number | null;
+      write?: (record: CountCacheRecord) => Promise<void>;
+    }
+  >();
   const registry = new Map<string, Observable<CountState>>();
 
   const targetKey = (target: CountTarget) => (target.address ? `a:${target.address}` : `e:${target.id}`);
@@ -314,7 +371,7 @@ export function createCountService(
     const age = Number.isFinite(query.target.created_at)
       ? Math.max(0, clock.now() / 1000 - query.target.created_at)
       : 0;
-    const value = options.ttl?.({ age, query }) ?? (age < 3600 ? 30000 : 300000);
+    const value = options.ttl?.({ age, query }) ?? defaultCountTTL(age);
 
     return value === Infinity ? Infinity : Math.max(minimum, Number.isFinite(value) ? value : minimum);
   };
@@ -355,7 +412,7 @@ export function createCountService(
                 ),
               ),
             ).pipe(
-              map((value) => JSON.stringify(value)),
+              map((value) => JSON.stringify(value.map((policy, index) => [sources[index].id, policy]))),
               distinctUntilChanged(),
             )
           : of("[]");
@@ -370,140 +427,211 @@ export function createCountService(
               invalidated$.pipe(filter((target) => target === undefined || target === targetKey(query.target))),
             ).pipe(
               switchMap(() => {
-                let retained = cache.get(key);
+                const memory = cache.get(key);
+                const load =
+                  memory?.policy === policy && memory.write
+                    ? of({ record: undefined, write: memory.write })
+                    : persistent
+                      ? from(persistent.read(targetKey(query.target), query.metric.id, policy)).pipe(
+                          catchError((error) => {
+                            log("Cache read failed", key, error);
+                            return of(undefined);
+                          }),
+                        )
+                      : of(undefined);
+                return load.pipe(
+                  switchMap((stored) => {
+                    const record = stored?.record as CountCacheRecord | undefined;
+                    if (
+                      (!cache.has(key) || cache.get(key)?.policy !== policy) &&
+                      record &&
+                      record.version === 1 &&
+                      record.policy === policy &&
+                      record.state &&
+                      Number.isSafeInteger(record.state.value) &&
+                      record.state.value! >= 0 &&
+                      Number.isFinite(record.state.observedAt) &&
+                      record.state.observedAt! <= clock.now() &&
+                      record.state.failure === undefined &&
+                      record.state.origin &&
+                      typeof record.state.origin.adapter === "string" &&
+                      typeof record.state.origin.relay === "string" &&
+                      (record.freshUntil === null || Number.isFinite(record.freshUntil)) &&
+                      (record.retainUntil === null ||
+                        (Number.isFinite(record.retainUntil) && record.retainUntil > clock.now()))
+                    ) {
+                      cache.set(key, {
+                        policy,
+                        state: record.state,
+                        freshUntil: record.freshUntil,
+                        write: stored?.write,
+                      });
+                      diagnostic("persistent-cache-hit");
+                    }
+                    let retained = cache.get(key);
 
-                // Reject cached acceptance from an old policy before exposing any retained value.
-                if (retained?.policy !== policy) {
-                  if (retained) log("Cached policy revoked", key);
-                  cache.delete(key);
-                  retained = undefined;
-                }
+                    // Reject cached acceptance from an old policy before exposing any retained value.
+                    if (retained?.policy !== policy) {
+                      if (retained) log("Cached policy revoked", key);
+                      cache.delete(key);
+                      retained = undefined;
+                    }
 
-                // Touch retained entries to preserve insertion order for inactive eviction.
-                if (retained) {
-                  cache.delete(key);
-                  cache.set(key, retained);
-                }
+                    // Touch retained entries to preserve insertion order for inactive eviction.
+                    if (retained) {
+                      cache.delete(key);
+                      cache.set(key, retained);
+                    }
 
-                const old = retained?.state;
-                const fresh =
-                  !old?.failure && old?.observedAt !== undefined && clock.now() - old.observedAt < ttl(query);
-                const coolingDown = retained?.retryAt !== undefined && retained.retryAt > clock.now();
-                let retryAt = retained?.retryAt;
-                diagnostic(fresh ? "cache-hit" : "cache-miss");
-                log("Cache %s", fresh ? "hit" : "miss", key, "cooldown", coolingDown);
+                    const old = retained?.state;
+                    const fresh =
+                      !old?.failure &&
+                      old?.observedAt !== undefined &&
+                      clock.now() - old.observedAt < ttl(query) &&
+                      (retained?.freshUntil === undefined ||
+                        retained.freshUntil === null ||
+                        clock.now() < retained.freshUntil);
+                    const coolingDown = retained?.retryAt !== undefined && retained.retryAt > clock.now();
+                    let retryAt = retained?.retryAt;
+                    diagnostic(fresh ? "cache-hit" : "cache-miss");
+                    log("Cache %s", fresh ? "hit" : "miss", key, "cooldown", coolingDown);
 
-                // Expose retained data immediately; freshness and retry cooldown decide whether to fetch now.
-                const initial: CountState = old
-                  ? { ...old, fresh, refreshing: !fresh && !coolingDown }
-                  : {
-                      value: undefined,
-                      fresh: false,
-                      refreshing: true,
-                      origin: undefined,
-                      approximate: undefined,
-                      observedAt: undefined,
-                      assertedAt: undefined,
-                      failure: undefined,
+                    // Expose retained data immediately; freshness and retry cooldown decide whether to fetch now.
+                    const initial: CountState = old
+                      ? { ...old, fresh, refreshing: !fresh && !coolingDown }
+                      : {
+                          value: undefined,
+                          fresh: false,
+                          refreshing: true,
+                          origin: undefined,
+                          approximate: undefined,
+                          observedAt: undefined,
+                          assertedAt: undefined,
+                          failure: undefined,
+                        };
+
+                    let failures = old?.failure ? 1 : 0;
+
+                    // Back off failed resolutions with bounded jitter instead of retrying each revisit immediately.
+                    const retryInterval = () => {
+                      const random = (options.random ?? Math.random)();
+                      const jitter = Number.isFinite(random) ? Math.max(0, Math.min(1, random)) : 0.5;
+
+                      return (
+                        Math.min(60000, retry * 2 ** Math.min(5, Math.max(0, failures - 1))) * (0.8 + 0.4 * jitter)
+                      );
                     };
 
-                let failures = old?.failure ? 1 : 0;
+                    // Each resolution settles once; failures preserve the previous successful value and provenance.
+                    const resolve = (previous: CountState): Observable<CountState> =>
+                      defer(() => {
+                        let failure: unknown = new Error("No count source answered");
+                        log("Resolution started", key, "timeout", deadline);
 
-                // Back off failed resolutions with bounded jitter instead of retrying each revisit immediately.
-                const retryInterval = () => {
-                  const random = (options.random ?? Math.random)();
-                  const jitter = Number.isFinite(random) ? Math.max(0, Math.min(1, random)) : 0.5;
+                        return resolver
+                          .count(query, {
+                            deadline: clock.now() + deadline,
+                            transport,
+                            clock,
+                            attemptTimeout: attempt,
+                            logger: sourceLog,
+                            diagnostic,
+                            onFailure: (error) => {
+                              failure = error;
+                              log("Source attempt failed", key, error);
+                            },
+                          })
+                          .pipe(
+                            // Bound the entire hierarchy, including queue time and individual source attempts.
+                            timeout({ first: deadline, scheduler: clock }),
+                            map((result): CountState => ({
+                              value: result.value,
+                              origin: result.origin,
+                              approximate: result.approximate,
+                              assertedAt: result.assertedAt,
+                              failure: undefined,
+                              fresh: true,
+                              refreshing: false,
+                              observedAt: clock.now(),
+                            })),
 
-                  return Math.min(60000, retry * 2 ** Math.min(5, Math.max(0, failures - 1))) * (0.8 + 0.4 * jitter);
-                };
+                            catchError((error) => {
+                              failure = error;
+                              log("Resolution failed", key, error);
 
-                // Each resolution settles once; failures preserve the previous successful value and provenance.
-                const resolve = (previous: CountState): Observable<CountState> =>
-                  defer(() => {
-                    let failure: unknown = new Error("No count source answered");
-                    log("Resolution started", key, "timeout", deadline);
+                              return EMPTY;
+                            }),
 
-                    return resolver
-                      .count(query, {
-                        deadline: clock.now() + deadline,
-                        transport,
-                        clock,
-                        attemptTimeout: attempt,
-                        logger: sourceLog,
-                        diagnostic,
-                        onFailure: (error) => {
-                          failure = error;
-                          log("Source attempt failed", key, error);
-                        },
-                      })
-                      .pipe(
-                        // Bound the entire hierarchy, including queue time and individual source attempts.
-                        timeout({ first: deadline, scheduler: clock }),
-                        map((result): CountState => ({
-                          value: result.value,
-                          origin: result.origin,
-                          approximate: result.approximate,
-                          assertedAt: result.assertedAt,
-                          failure: undefined,
-                          fresh: true,
-                          refreshing: false,
-                          observedAt: clock.now(),
-                        })),
+                            // Empty completion is a missing result, never a fabricated count of zero.
+                            defaultIfEmpty(undefined),
+                            map((state) => state ?? { ...previous, fresh: false, refreshing: false, failure }),
 
-                        catchError((error) => {
-                          failure = error;
-                          log("Resolution failed", key, error);
+                            // Persist cooldown deadlines as well as results so unmounting does not reset retry pressure.
+                            tap((state) => {
+                              if (log.enabled)
+                                log(state.failure ? "Resolution unavailable" : "Resolution succeeded", key, {
+                                  value: state.value,
+                                  origin: state.origin,
+                                  failure: state.failure,
+                                });
 
-                          return EMPTY;
-                        }),
+                              if (retained) retained.freshUntil = undefined;
+                              failures = state.failure ? failures + 1 : 0;
+                              retryAt = state.failure ? clock.now() + retryInterval() : undefined;
+                              cache.delete(key);
+                              cache.set(key, { policy, state, retryAt, write: stored?.write });
+                              if (!state.failure && persistent) {
+                                const lifetime = ttl(query);
+                                const retention = options.cacheRetention ?? 24 * 60 * 60_000;
+                                const record: CountCacheRecord = {
+                                  version: 1,
+                                  policy,
+                                  state,
+                                  freshUntil: lifetime === Infinity ? null : state.observedAt! + lifetime,
+                                  retainUntil: retention === Infinity ? null : state.observedAt! + retention,
+                                };
+                                // Keep the epoch captured before resolution so invalidation fences delayed writes.
+                                if (stored)
+                                  void stored.write(record).catch((error) => log("Cache write failed", key, error));
+                              }
+                              trim();
+                            }),
+                          );
+                      });
 
-                        // Empty completion is a missing result, never a fabricated count of zero.
-                        defaultIfEmpty(undefined),
-                        map((state) => state ?? { ...previous, fresh: false, refreshing: false, failure }),
+                    // Only an observed metric schedules its next TTL refresh or failed-attempt retry.
+                    const cycle = (state: CountState): Observable<CountState> => {
+                      const delay = state.failure
+                        ? Math.max(1, (retryAt ?? clock.now() + retryInterval()) - clock.now())
+                        : Math.max(
+                            minimum,
+                            Math.min(
+                              ttl(query) - (clock.now() - (state.observedAt ?? clock.now())),
+                              retained?.freshUntil == null ? Infinity : retained.freshUntil - clock.now(),
+                            ),
+                          );
 
-                        // Persist cooldown deadlines as well as results so unmounting does not reset retry pressure.
-                        tap((state) => {
-                          if (log.enabled)
-                            log(state.failure ? "Resolution unavailable" : "Resolution succeeded", key, {
-                              value: state.value,
-                              origin: state.origin,
-                              failure: state.failure,
-                            });
+                      // An infinite successful TTL keeps the lifecycle open without allocating a timer.
+                      if (delay === Infinity) {
+                        log("Automatic refresh disabled", key);
+                        return NEVER;
+                      }
 
-                          failures = state.failure ? failures + 1 : 0;
-                          retryAt = state.failure ? clock.now() + retryInterval() : undefined;
-                          cache.delete(key);
-                          cache.set(key, { policy, state, retryAt });
-                          trim();
-                        }),
+                      log(state.failure ? "Retry scheduled" : "Refresh scheduled", key, "delay", delay);
+
+                      return timer(delay, clock).pipe(
+                        switchMap(() => concat(of({ ...state, fresh: false, refreshing: true }), resolve(state))),
                       );
-                  });
+                    };
 
-                // Only an observed metric schedules its next TTL refresh or failed-attempt retry.
-                const cycle = (state: CountState): Observable<CountState> => {
-                  const delay = state.failure
-                    ? Math.max(1, (retryAt ?? clock.now() + retryInterval()) - clock.now())
-                    : Math.max(minimum, ttl(query) - (clock.now() - (state.observedAt ?? clock.now())));
+                    const settled$ = fresh || coolingDown ? of(initial) : resolve(initial);
 
-                  // An infinite successful TTL keeps the lifecycle open without allocating a timer.
-                  if (delay === Infinity) {
-                    log("Automatic refresh disabled", key);
-                    return NEVER;
-                  }
-
-                  log(state.failure ? "Retry scheduled" : "Refresh scheduled", key, "delay", delay);
-
-                  return timer(delay, clock).pipe(
-                    switchMap(() => concat(of({ ...state, fresh: false, refreshing: true }), resolve(state))),
-                  );
-                };
-
-                const settled$ = fresh || coolingDown ? of(initial) : resolve(initial);
-
-                // Emit cache state synchronously, then drive subsequent cycles from settled states only.
-                return concat(
-                  of(initial),
-                  settled$.pipe(expand((state) => (state.refreshing ? EMPTY : cycle(state)), 1)),
+                    // Emit cache state synchronously, then drive subsequent cycles from settled states only.
+                    return concat(
+                      of(initial),
+                      settled$.pipe(expand((state) => (state.refreshing ? EMPTY : cycle(state)), 1)),
+                    );
+                  }),
                 );
               }),
             ),
@@ -573,8 +701,13 @@ export function createCountService(
 
       for (const key of cache.keys()) if (!identity || JSON.parse(key)[0] === identity) cache.delete(key);
 
-      // Observed targets restart immediately; unobserved targets load on their next subscription.
+      // Queue the persistent epoch change before active subscriptions hydrate again.
+      const deletion = persistent?.invalidate(identity) ?? Promise.resolve();
       invalidated$.next(identity);
+      return deletion.catch((error) => {
+        log("Cache invalidation failed", error);
+        throw error;
+      });
     },
 
     stop: () => {

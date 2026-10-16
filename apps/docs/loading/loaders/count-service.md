@@ -74,26 +74,70 @@ NIP-85 batches demanded subjects by provider, relay, and assertion kind. It veri
 
 ### Cache and scheduling options
 
-| Option                    | Default                                                           | Behavior                                                                       |
-| ------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `ttl`                     | 30 seconds for targets younger than one hour; 5 minutes otherwise | Receives target `age` in seconds and returns freshness milliseconds            |
-| `cacheCapacity`           | 1000                                                              | Maximum inactive retained result/cooldown entries; active entries are pinned   |
-| `concurrency`             | 8                                                                 | Global active transport limit                                                  |
-| `perRelay`, `perProvider` | 2 each                                                            | Additional atomic resource limits                                              |
-| `admissionWindow`         | 0 ms (next scheduler turn)                                        | Absorbs synchronous subscription probes before dispatch                        |
-| `queueCapacity`           | 256                                                               | Pending transport bound; overflow retries with other failures                  |
-| `resolutionTimeout`       | 15000 ms                                                          | Bound for the full hierarchy, including queue time                             |
-| `attemptTimeout`          | 5000 ms                                                           | Bound for an individual source/relay attempt                                   |
-| `minimumRefresh`          | 1000 ms                                                           | Floor for finite freshness intervals                                           |
-| `retryDelay`              | 10000 ms                                                          | Initial failure retry interval, with bounded exponential backoff and jitter    |
-| `signal`                  | —                                                                 | Aborts the service                                                             |
-| `diagnostic`              | —                                                                 | Receives bounded transport activity snapshots and cache/fallback notifications |
+| Option                    | Default                                         | Behavior                                                                       |
+| ------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `ttl`                     | Age-based: 1 minute through 6 hours (see below) | Receives target `age` in seconds and returns freshness milliseconds            |
+| `cache`                   | —                                               | Optional Keyv-compatible persistent store                                      |
+| `cacheRetention`          | 24 hours                                        | Persistent retention in milliseconds; Infinity retains without expiry          |
+| `cacheTimeout`            | 1000 ms                                         | Maximum duration of each persistent cache operation                            |
+| `cacheCapacity`           | 1000                                            | Maximum inactive retained result/cooldown entries; active entries are pinned   |
+| `concurrency`             | 8                                               | Global active transport limit                                                  |
+| `perRelay`, `perProvider` | 2 each                                          | Additional atomic resource limits                                              |
+| `admissionWindow`         | 0 ms (next scheduler turn)                      | Absorbs synchronous subscription probes before dispatch                        |
+| `queueCapacity`           | 256                                             | Pending transport bound; overflow retries with other failures                  |
+| `resolutionTimeout`       | 15000 ms                                        | Bound for the full hierarchy, including queue time                             |
+| `attemptTimeout`          | 5000 ms                                         | Bound for an individual source/relay attempt                                   |
+| `minimumRefresh`          | 1000 ms                                         | Floor for finite freshness intervals                                           |
+| `retryDelay`              | 10000 ms                                        | Initial failure retry interval, with bounded exponential backoff and jitter    |
+| `signal`                  | —                                               | Aborts the service                                                             |
+| `diagnostic`              | —                                               | Receives bounded transport activity snapshots and cache/fallback notifications |
+
+The default freshness curve uses the target event's age, independently of metric type:
+
+| Target age              | Freshness TTL |
+| ----------------------- | ------------- |
+| Under 6 hours           | 1 minute      |
+| 6 hours to under 1 day  | 5 minutes     |
+| 1 day to under 7 days   | 30 minutes    |
+| 7 days to under 30 days | 2 hours       |
+| 30 days and older       | 6 hours       |
+
+Age is reevaluated on observation and after each resolution; the next refresh uses the current age bracket. Only observed metrics schedule refreshes. A custom `ttl` replaces this curve and still respects `minimumRefresh`. Default successful refresh intervals are at least 60 seconds; use live relay subscriptions when an application needs live updates. Persistent retention defaults to 24 hours regardless of the freshness bracket.
 
 Future target timestamps have age zero. Invalid finite TTL values use the minimum interval; Infinity disables automatic successful refresh. Failed attempts retain a separate retry deadline across unmounts and revisits. Retained data can outlive freshness; stale revisits emit immediately when effective policy is available. A change to effective relay/provider content or priority conservatively clears affected accepted values, cancels obsolete work, and resolves again. Equivalent configuration emissions cause no refresh. Empty lists remain observed so later account/provider updates can activate loading.
 
-`counts.invalidate(event)` clears one target; `counts.invalidate()` clears all retained values. Observed metrics refresh immediately. `counts.stop()` cancels the whole service and makes subsequent subscriptions complete without loading. Adapter instances can be shared across services; transport capacity and value caches belong to each service.
+`counts.invalidate(event)` clears one target; `counts.invalidate()` clears all retained values. Both clear memory immediately and return a promise that resolves after persistent invalidation; await it when storage completion matters. Observed metrics refresh immediately. `counts.stop()` cancels the whole service and makes subsequent subscriptions complete without loading. Adapter instances can be shared across services; transport capacity and value caches belong to each service.
 
 ## Integration
+
+### Persistent counts with Keyv
+
+Pass a Keyv instance as `cache` to reuse counts across service instances and reloads. Keyv's default store is memory; use a persistent adapter such as IndexedDB in the browser:
+
+```ts
+import Keyv from "keyv";
+import { KeyvIndexedDB } from "keyv-browser";
+
+const cache = new Keyv({
+  store: new KeyvIndexedDB({ dbName: "my-client", storeName: "counts" }),
+});
+const counts = createCountService(pool, {
+  relays: trustedRelays$,
+  cache,
+  ttl: () => 5 * 60_000,
+  cacheRetention: 24 * 60 * 60_000,
+});
+```
+
+Here counts remain fresh for five minutes and available as stale results for up to one day. Reloading preserves the original deadlines: a fresh count skips the relay request, while a stale count appears during refresh. Retention defaults to 24 hours independently of freshness; each successful fetch starts a new retention period, while cache reads preserve the original deadline. `Infinity` disables the corresponding expiry. Existing in-memory retention still follows `cacheCapacity` and may outlive persistent retention.
+
+Use a dedicated store or namespace with an untyped Keyv instance: the cache stores successful count records and string invalidation markers. Its structural `CountCache` interface needs only asynchronous `get` and `set`; `set` accepts a relative TTL in milliseconds, with zero disabling expiry. Loaders has no runtime dependency on Keyv.
+
+Hydration waits for the effective source policy, and only accepts compatible records. Ordered source IDs, policy identities, target identity, and metric IDs scope persisted counts. Cache reads and writes are bounded by `cacheTimeout`; storage errors fall back to normal loading and are logged. Failures and retry cooldowns remain in memory. With persistence enabled, the initial state waits for hydration or its timeout.
+
+Invalidation changes persistent markers without clearing unrelated keys; superseded records remain until their retention expires. `await counts.invalidate()` invalidates previous sessions too. Active metrics reload immediately, and `counts.stop()` leaves persisted data intact. Writes are asynchronous, so allow storage operations to finish before closing an application that has just fetched counts. Invalidation markers have no expiry; entries configured with infinite retention require application-managed storage cleanup.
+
+Custom sources must change their policy identity when count acceptance changes. Use stable versioned metric IDs and source IDs across sessions, and change them when semantics change.
 
 ### Common trusted provider casts
 

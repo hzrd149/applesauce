@@ -43,6 +43,7 @@ describe("exports", () => {
         "relaysEventsLoader",
         "relaysTagValueLoader",
         "rootCommentCountMetric",
+        "roundRobinCountSource",
       ]
     `);
   });

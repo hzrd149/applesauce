@@ -387,3 +387,50 @@ it("retains completed configuration lists across ref-counted reconnects", () => 
   service.stop();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it.each([
+  [-60, 60000],
+  [0, 60000],
+  [1799, 60000],
+  [1800, 60000],
+  [3599, 60000],
+  [3600, 60000],
+  [21599, 60000],
+  [21600, 300000],
+  [86399, 300000],
+  [86400, 1800000],
+  [604799, 1800000],
+  [604800, 7200000],
+  [2591999, 7200000],
+  [2592000, 21600000],
+  [365 * 86400, 21600000],
+])("refreshes a target aged %s seconds after %s milliseconds by default", (age, interval) => {
+  vi.useFakeTimers();
+  const s = source(5);
+  s.count = vi.fn(s.count);
+  const service = createCountService({ sources: [s] });
+  const sub = service.event({ ...target, created_at: Date.now() / 1000 - age }).reactions$.subscribe();
+  expect(s.count).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(interval - 1);
+  expect(s.count).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(1);
+  expect(s.count).toHaveBeenCalledTimes(2);
+  sub.unsubscribe();
+  service.stop();
+});
+
+it("uses the older age bracket when scheduling after a refresh crosses a boundary", () => {
+  vi.useFakeTimers();
+  const s = source(5);
+  s.count = vi.fn(s.count);
+  const service = createCountService({ sources: [s] });
+  const sub = service.event({ ...target, created_at: Date.now() / 1000 - 21599 }).reactions$.subscribe();
+  vi.advanceTimersByTime(60000);
+  expect(s.count).toHaveBeenCalledTimes(2);
+  vi.advanceTimersByTime(299999);
+  expect(s.count).toHaveBeenCalledTimes(2);
+  vi.advanceTimersByTime(1);
+  expect(s.count).toHaveBeenCalledTimes(3);
+  sub.unsubscribe();
+  service.stop();
+});

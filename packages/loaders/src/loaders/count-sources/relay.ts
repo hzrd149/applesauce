@@ -15,6 +15,9 @@ export interface RelayCountSourceOptions {
   /** The ordered trusted relay list */
   relays: CountList<string>;
 
+  /** The relay selection order, default priority */
+  selection?: "priority" | "round-robin";
+
   /** The parent logger, overriding the service logger for this source */
   logger?: Debugger;
 
@@ -34,6 +37,7 @@ export function relayCountSource(options: RelayCountSourceOptions): CountSource 
   const routes$ = listStream(options.relays).pipe(map(relays));
   const id = options.id ?? "nip45";
   const loggerFor = createCountSourceLogger("relay", options.logger);
+  let cursor = 0;
 
   return {
     id,
@@ -61,8 +65,16 @@ export function relayCountSource(options: RelayCountSourceOptions): CountSource 
           take(1),
           tap((routes) => log("Relay candidates", id, query.metric.id, target, "count", routes.length)),
 
-          switchMap((routes) =>
-            from(routes).pipe(
+          switchMap((routes) => {
+            // Advance only subscribed, supported resolutions; rotation is not a policy revision.
+            const start = options.selection === "round-robin" && routes.length ? cursor++ % routes.length : 0;
+            const ordered = [...routes.slice(start), ...routes.slice(0, start)];
+            // Leave room for other candidates within the enclosing source timeout.
+            const relayTimeout =
+              options.selection === "round-robin"
+                ? context.attemptTimeout / (routes.length + 1)
+                : context.attemptTimeout;
+            return from(ordered).pipe(
               // Query in priority order rather than opening all relay transports at once.
               concatMap((relay) =>
                 // Admission stays lazy and cancellable while waiting for shared capacity.
@@ -79,7 +91,7 @@ export function relayCountSource(options: RelayCountSourceOptions): CountSource 
                   )
                   .pipe(
                     timeout({
-                      first: Math.max(1, Math.min(context.attemptTimeout, context.deadline - context.clock.now())),
+                      first: Math.max(1, Math.min(relayTimeout, context.deadline - context.clock.now())),
                       scheduler: context.clock,
                     }),
 
@@ -131,9 +143,17 @@ export function relayCountSource(options: RelayCountSourceOptions): CountSource 
 
               // Stop at one usable total; counts from different relays are never added.
               take(1),
-            ),
-          ),
+            );
+          }),
         );
       }),
   };
+}
+
+/**
+ * Creates a relay source that rotates the first candidate across subscribed resolutions
+ * @throws if neither count nor pool.count is available
+ */
+export function roundRobinCountSource(options: Omit<RelayCountSourceOptions, "selection">): CountSource {
+  return relayCountSource({ ...options, id: options.id ?? "nip45-round-robin", selection: "round-robin" });
 }
