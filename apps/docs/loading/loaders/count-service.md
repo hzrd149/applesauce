@@ -157,5 +157,3 @@ That instance logs under `applesauce:timeline:count-service:*` and `applesauce:t
 - Keep recent-event TTLs short and older-event TTLs longer.
 - Keep provider calculation semantics visible through provenance.
 - Set relay capacity alongside the global limit; one relay with limit two can only run two transports.
-- Compare COUNT, assertions, and related-event downloads in the **loader/count-service** example using the same seed and controls.
-- Run stress scenarios in simulation; live mode requires explicit relay and event selection.

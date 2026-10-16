@@ -43,13 +43,11 @@ import {
   combineLatest,
   concatWith,
   defer,
-  distinct,
   distinctUntilChanged,
   EMPTY,
   ignoreElements,
   map,
   merge,
-  mergeMap,
   type Observable,
   of,
   scan,
@@ -145,15 +143,6 @@ function load(key: string, request: SyncLoadRequest): Observable<LoadMessage> {
   );
 }
 
-/** Syncs a filter on each relay the moment it is discovered */
-function perRelay(relays$: Observable<string[]>, filter: Filter, prefix: string): Observable<LoadMessage> {
-  return relays$.pipe(
-    mergeMap((relays) => relays),
-    distinct(),
-    mergeMap((relay) => load(`${prefix}:${relay}`, { relays: [relay], filter })),
-  );
-}
-
 /** Reduces the messages of many loads into a single summary of relays, negentropy support and synced events */
 function summarize(messages$: Observable<LoadMessage>): Observable<SyncSummary> {
   return messages$.pipe(
@@ -196,13 +185,14 @@ const responsesFilter = (pubkey: string): Filter => ({ kinds: RESPONSE_KINDS, au
 
 /** Syncs the zaps from the user's inboxes and popular relays, and the user's responses from their outboxes */
 function dashboardSync$(user: User, range: Range): Observable<SyncSummary> {
-  const inboxes$ = merge(of(EXTRA_RELAYS), user.inboxes$.pipe(defined()));
+  const inboxes$ = user.inboxes$.pipe(map((inboxes) => relaySet(EXTRA_RELAYS, inboxes)));
   const outboxes$ = user.outboxes$.pipe(defined());
   return defer(() =>
     summarize(
       merge(
-        perRelay(inboxes$, inRange(zapsFilter(user.pubkey), range), "zaps"),
-        perRelay(outboxes$, inRange(responsesFilter(user.pubkey), range), "responses"),
+        // The loader starts each relay as the inboxes and outboxes load, without restarting the others
+        load("zaps", { relays: inboxes$, filter: inRange(zapsFilter(user.pubkey), range) }),
+        load("responses", { relays: outboxes$, filter: inRange(responsesFilter(user.pubkey), range) }),
       ),
     ),
   );

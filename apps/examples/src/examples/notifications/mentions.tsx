@@ -13,7 +13,7 @@ import {
   getNip10References,
   type CommentPointer,
 } from "applesauce-common/helpers";
-import { defined, EventStore } from "applesauce-core";
+import { combineLatestByValue, defined, EventStore } from "applesauce-core";
 import {
   createReplaceableAddress,
   fakeVerifyEvent,
@@ -47,18 +47,17 @@ import {
   auditTime,
   BehaviorSubject,
   catchError,
+  combineLatest,
   concatWith,
   defer,
-  distinct,
   EMPTY,
   ignoreElements,
   map,
   merge,
-  mergeMap,
   type Observable,
-  of,
   scan,
   shareReplay,
+  startWith,
   switchMap,
   tap,
 } from "rxjs";
@@ -149,13 +148,9 @@ function load(key: string, request: SyncLoadRequest): Observable<LoadMessage> {
   );
 }
 
-/** Syncs every filter on each relay the moment it is discovered, so new relays add loads instead of restarting them */
-function perRelay(relays$: Observable<string[]>, filters: Filter[]): Observable<LoadMessage> {
-  return relays$.pipe(
-    mergeMap((relays) => relays),
-    distinct(),
-    mergeMap((relay) => merge(...filters.map((filter, i) => load(`${i}:${relay}`, { relays: [relay], filter })))),
-  );
+/** Syncs every filter from a growing relay list, the loader starts new relays without restarting the others */
+function syncFilters(relays$: Observable<string[]>, filters: Filter[]): Observable<LoadMessage> {
+  return merge(...filters.map((filter, i) => load(`${i}`, { relays: relays$, filter })));
 }
 
 /** Reduces the messages of many loads into a single summary of relays, negentropy support and synced events */
@@ -203,8 +198,9 @@ function mentionsFilter(pubkey: string, { since, until }: Range): Filter {
 
 /** Syncs the mentions from the user's inboxes and the extra relays */
 function mentionsSync$(user: User, range: Range): Observable<SyncSummary> {
-  const relays$ = merge(of(EXTRA_RELAYS), user.inboxes$.pipe(defined()));
-  return summarize(perRelay(relays$, [mentionsFilter(user.pubkey, range)]));
+  // Each emission is the full relay list, so the extra relays are kept when the inboxes load
+  const relays$ = user.inboxes$.pipe(map((inboxes) => relaySet(EXTRA_RELAYS, inboxes)));
+  return summarize(syncFilters(relays$, [mentionsFilter(user.pubkey, range)]));
 }
 
 /** Subscribes to new mentions while the range is open-ended */
@@ -351,18 +347,22 @@ function getThread(event: NostrEvent): Thread {
 function threadSync$(thread: Thread, event: NostrEvent, user: User): Observable<SyncSummary> {
   // Pointers often omit the root author, so also read the author from the root event once it is found
   const rootAuthor$ = thread.root ? eventStore.filters(thread.root).pipe(map((root) => root.pubkey)) : EMPTY;
-  const outboxes$ = merge(of(...thread.authors), rootAuthor$).pipe(
-    distinct(),
-    mergeMap((pubkey) => castUser(pubkey, eventStore).outboxes$.pipe(defined())),
+  const authors$ = rootAuthor$.pipe(
+    startWith(undefined),
+    map((root) => [...new Set(root ? [...thread.authors, root] : thread.authors)]),
+  );
+  // One stable outboxes branch per author, so a new root author does not resubscribe the others
+  const outboxes$ = authors$.pipe(
+    combineLatestByValue((pubkey) => castUser(pubkey, eventStore).outboxes$.pipe(map((relays) => relays ?? []))),
   );
 
-  const relays$ = merge(
-    of(relaySet(thread.relays, [...(getSeenRelays(event) ?? [])], EXTRA_RELAYS)),
-    user.inboxes$.pipe(defined()),
-    outboxes$,
+  // Each emission is the full relay list, the loader starts added relays and stops removed ones
+  const hints = relaySet(thread.relays, [...(getSeenRelays(event) ?? [])], EXTRA_RELAYS);
+  const relays$ = combineLatest([user.inboxes$, outboxes$]).pipe(
+    map(([inboxes, outboxes]) => relaySet(hints, inboxes, ...outboxes.values())),
   );
   const filters = thread.root ? [thread.root, ...thread.replies] : thread.replies;
-  return summarize(perRelay(relays$, filters));
+  return summarize(syncFilters(relays$, filters));
 }
 
 /** Returns the key of the event a reply responds to */

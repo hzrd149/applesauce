@@ -1,153 +1,196 @@
 /**
- * Display torrent files shared on Nostr with metadata, download information and NIP-22 comments
+ * Browse torrents from a set of relays with their metadata, reactions, zaps and NIP-22 comments
  * @tags nip-35, nip-22, torrent, feed, files, comments
  * @related torrent/publisher, torrent/search, torrent/manager, comment/feed
  */
-import { CreateComment } from "applesauce-actions/actions";
+import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
-import { Comment, Reaction, Torrent, Zap } from "applesauce-common/casts";
+import { CreateComment } from "applesauce-actions/actions";
+import { type Comment, type Reaction, Torrent, type User, type Zap } from "applesauce-common/casts";
 import { COMMENT_KIND, TORRENT_KIND } from "applesauce-common/helpers";
 import { castTimelineStream } from "applesauce-common/observable";
 import { remarkNostrMentions } from "applesauce-content/markdown";
-import { EventStore, mapEventsToStore } from "applesauce-core";
-import { Filter, NostrEvent, persistEventsToCache, relaySet } from "applesauce-core/helpers";
+import { combineLatestByValue, defined, EventStore, mapEventsToStore } from "applesauce-core";
+import { getSeenRelays, isSafeRelayURL, normalizeURL, relaySet } from "applesauce-core/helpers";
 import { createEventLoaderForStore, createReactionsLoader, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import type { ISigner } from "applesauce-signers";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { BehaviorSubject, map, shareReplay } from "rxjs";
-import { relayTimeline } from "../../extra/relay-timeline";
+import { BehaviorSubject, catchError, filter, map, of, startWith } from "rxjs";
+
 import LoginView from "../../components/login-view";
-import RelayPicker from "../../components/relay-picker";
+import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 
-// Setup event store
+// Torrents are spread across many relays, so the feed reads from a set of them instead of a single one.
+// Shared with the publish method so comments reach the same relays
+const relays$ = new BehaviorSubject(["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"]);
+
+// The signed in account, only needed for commenting
+const signer$ = new BehaviorSubject<ISigner | null>(null);
+
 const eventStore = new EventStore();
-
-// Memoize plugins and components at module level
-const remarkPlugins = [remarkGfm, remarkNostrMentions];
-const markdownComponents = {
-  h1: ({ ...props }: any) => <h1 className="text-3xl font-bold my-4" {...props} />,
-  h2: ({ ...props }: any) => <h2 className="text-2xl font-bold my-3" {...props} />,
-  h3: ({ ...props }: any) => <h3 className="text-xl font-bold my-2" {...props} />,
-  p: ({ ...props }: any) => <p className="my-2" {...props} />,
-  a: ({ ...props }: any) => <a className="link link-primary" target="_blank" {...props} />,
-  ul: ({ ...props }: any) => <ul className="list-disc ml-4 my-2" {...props} />,
-  ol: ({ ...props }: any) => <ol className="list-decimal ml-4 my-2" {...props} />,
-  blockquote: ({ ...props }: any) => <blockquote className="border-l-4 border-primary pl-4 my-2" {...props} />,
-  code: ({ ...props }: any) => <code className="bg-base-300 rounded px-1" {...props} />,
-  pre: ({ ...props }: any) => <pre className="bg-base-300 rounded p-4 my-2 overflow-x-auto" {...props} />,
-  table: ({ ...props }: any) => (
-    <div className="overflow-x-auto my-4">
-      <table className="table table-zebra w-full" {...props} />
-    </div>
-  ),
-  thead: ({ ...props }: any) => <thead className="bg-base-200" {...props} />,
-  tbody: ({ ...props }: any) => <tbody {...props} />,
-  tr: ({ ...props }: any) => <tr {...props} />,
-  th: ({ ...props }: any) => <th {...props} />,
-  td: ({ ...props }: any) => <td {...props} />,
-};
-
-// Create a relay pool for connections
 const pool = new RelayPool();
-
-// Setup a local event cache
-const cache = await openDB();
-function cacheRequest(filters: Filter[]) {
-  return getEventsForFilters<NostrEvent>(cache, filters).then((events) => {
-    console.log("loaded events from cache", events.length);
-    return events;
-  });
-}
-
-// Save all new events to the cache
-persistEventsToCache(eventStore, (events) => addEvents(cache, events));
-
-// Create unified event loader for the store
-createEventLoaderForStore(eventStore, pool, {
-  cacheRequest,
-  lookupRelays: lookupRelays$,
-});
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 const zapLoader = createZapsLoader(pool, { eventStore });
 const reactionLoader = createReactionsLoader(pool, { eventStore });
 
-// BehaviorSubject to store the selected torrent
-const selectedTorrent$ = new BehaviorSubject<Torrent | null>(null);
+// Comments publish to the action's relays (outboxes and the torrent author's inboxes) plus the feed relays
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
+  await publishEvent(pool, relaySet(relays, relays$.value), event);
+});
 
-/** Component to render a single reaction */
-function ReactionItem({ reaction }: { reaction: Reaction }) {
-  const profile = use$(reaction.author.profile$);
-  const displayName = profile?.displayName || reaction.author.npub;
-  const picture = profile?.picture || `https://robohash.org/${reaction.author.pubkey}.png`;
+type RelayStatus = { url: string; loading: boolean; error?: string };
 
+/** Subscribes to torrents on one relay and reports when it has sent its stored events */
+function loadTorrents(url: string) {
+  return pool
+    .relay(url)
+    .subscription({ kinds: [TORRENT_KIND], limit: 100 })
+    .pipe(
+      mapEventsToStore(eventStore),
+      filter((message) => message === "EOSE"),
+      map((): RelayStatus => ({ url, loading: false })),
+      startWith<RelayStatus>({ url, loading: true }),
+      // A failing relay only ends its own subscription
+      catchError((err) =>
+        of<RelayStatus>({ url, loading: false, error: err instanceof Error ? err.message : String(err) }),
+      ),
+    );
+}
+
+// One subscription per relay, so adding or removing a relay leaves the others open
+const statuses$ = relays$.pipe(
+  combineLatestByValue(loadTorrents),
+  map((statuses) => [...statuses.values()]),
+);
+
+/** Parses a relay URL or bare hostname, returning undefined when it isn't a safe websocket URL */
+function parseRelay(input: string) {
+  const value = input.trim();
+  if (!value) return undefined;
+  try {
+    const url = normalizeURL(value.includes("://") ? value : `wss://${value}`);
+    return isSafeRelayURL(url) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+const remarkPlugins = [remarkGfm, remarkNostrMentions];
+const markdownComponents = {
+  h1: (props: any) => <h1 className="my-4 text-2xl font-bold" {...props} />,
+  h2: (props: any) => <h2 className="my-3 text-xl font-bold" {...props} />,
+  h3: (props: any) => <h3 className="my-2 text-lg font-bold" {...props} />,
+  p: (props: any) => <p className="my-2" {...props} />,
+  a: (props: any) => <a className="link link-primary" target="_blank" {...props} />,
+  ul: (props: any) => <ul className="my-2 ms-4 list-disc" {...props} />,
+  ol: (props: any) => <ol className="my-2 ms-4 list-decimal" {...props} />,
+  code: (props: any) => <code className="bg-base-200 px-1" {...props} />,
+  pre: (props: any) => <pre className="my-2 overflow-x-auto border border-base-300 p-4" {...props} />,
+  table: (props: any) => <table className="table my-4" {...props} />,
+};
+
+/** Formats a byte count as a short human readable size */
+function formatSize(bytes?: number) {
+  if (bytes === undefined) return "unknown size";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function UserName({ user }: { user: User }) {
+  const profile = use$(user.profile$);
+  return <span className="truncate font-semibold">{profile?.displayName || user.npub.slice(0, 12)}</span>;
+}
+
+function Avatar({ user, size = "size-8" }: { user: User; size?: string }) {
+  const profile = use$(user.profile$);
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <div className="avatar">
-        <div className="w-6 rounded-full">
-          <img src={picture} alt={displayName} />
-        </div>
-      </div>
-      <span className="font-medium">{displayName}</span>
-      <span className="text-base-content/60">{reaction.content || "+"}</span>
+    <img
+      src={profile?.picture || `https://robohash.org/${user.pubkey}.png`}
+      alt=""
+      className={`${size} shrink-0 rounded-full object-cover`}
+    />
+  );
+}
+
+/** Reaction counts grouped by emoji */
+function ReactionSummary({ reactions }: { reactions?: Reaction[] }) {
+  const groups = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const reaction of reactions ?? []) {
+      const emoji = reaction.content || "+";
+      counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [reactions]);
+
+  if (groups.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {groups.map(([emoji, count]) => (
+        <span key={emoji} className="badge badge-outline tabular-nums">
+          {emoji} {count}
+        </span>
+      ))}
     </div>
   );
 }
 
-/** Component to render a single zap */
-function ZapItem({ zap }: { zap: Zap }) {
-  const profile = use$(zap.sender.profile$);
-  const displayName = profile?.displayName || zap.sender.npub;
-  const picture = profile?.picture || `https://robohash.org/${zap.sender.pubkey}.png`;
-  const amountSats = Math.round(zap.amount / 1000); // Convert msats to sats
-
+/** Total sats zapped and the number of zaps */
+function ZapSummary({ zaps }: { zaps?: Zap[] }) {
+  if (!zaps?.length) return null;
+  const sats = Math.round(zaps.reduce((sum, zap) => sum + zap.amount, 0) / 1000);
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <div className="avatar">
-        <div className="w-6 rounded-full">
-          <img src={picture} alt={displayName} />
-        </div>
-      </div>
-      <span className="font-medium">{displayName}</span>
-      <span className="text-primary">⚡ {amountSats} sats</span>
-    </div>
+    <span className="badge badge-outline tabular-nums">
+      ⚡ {sats} sats · {zaps.length} {zaps.length === 1 ? "zap" : "zaps"}
+    </span>
   );
 }
 
-// Optional signer for posting comments
-const signer$ = new BehaviorSubject<ISigner | null>(null);
+function TorrentRow({ torrent, selected, onSelect }: { torrent: Torrent; selected: boolean; onSelect: () => void }) {
+  const reactions = use$(torrent.reactions$);
+  const zaps = use$(torrent.zaps$);
+
+  // Load zaps and reactions for each visible torrent
+  use$(() => zapLoader(torrent.event), [torrent.id]);
+  use$(() => reactionLoader(torrent.event), [torrent.id]);
+
+  return (
+    <button
+      className={`flex w-full flex-col gap-1 px-4 py-3 text-left hover:bg-base-200 ${selected ? "bg-base-200" : ""}`}
+      onClick={onSelect}
+    >
+      <span className="font-semibold">{torrent.title || "Untitled torrent"}</span>
+      <span className="flex items-center gap-2 text-sm text-base-content/60">
+        <UserName user={torrent.author} /> · {torrent.files.length} files · {torrent.createdAt.toLocaleDateString()}
+      </span>
+      <span className="flex flex-wrap items-center gap-1">
+        <ReactionSummary reactions={reactions} />
+        <ZapSummary zaps={zaps} />
+      </span>
+    </button>
+  );
+}
 
 /** Posts a NIP-22 comment on the torrent with the CreateComment action */
-function CommentBox({ torrent, relay }: { torrent: Torrent; relay: string }) {
+function CommentBox({ torrent, onSignIn }: { torrent: Torrent; onSignIn: () => void }) {
   const signer = use$(signer$);
-  const [showLogin, setShowLogin] = useState(false);
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Publish to the user's outboxes and the parent author's inboxes, plus the relay this feed reads from
-  const actions = useMemo(
-    () =>
-      signer &&
-      new ActionRunner(eventStore, signer, async (event, relays) => {
-        await pool.publish(relaySet(relays ?? [], [relay]), event);
-      }),
-    [signer, relay],
-  );
-
-  if (!actions) {
-    if (showLogin) return <LoginView onLogin={(next) => signer$.next(next)} />;
+  if (!signer)
     return (
-      <button className="btn btn-sm btn-outline" onClick={() => setShowLogin(true)}>
-        Log in to comment
+      <button className="btn btn-sm btn-outline self-start" onClick={onSignIn}>
+        Sign in to comment
       </button>
     );
-  }
 
   const post = async () => {
     setPosting(true);
@@ -156,7 +199,7 @@ function CommentBox({ torrent, relay }: { torrent: Torrent; relay: string }) {
       await actions.run(CreateComment, torrent.event, text.trim());
       setText("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to post comment");
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setPosting(false);
     }
@@ -172,21 +215,18 @@ function CommentBox({ torrent, relay }: { torrent: Torrent; relay: string }) {
         onChange={(e) => setText(e.target.value)}
       />
       <button className="btn btn-sm btn-primary self-end" disabled={posting || !text.trim()} onClick={post}>
-        {posting ? "Posting..." : "Comment"}
+        {posting ? <span className="loading loading-spinner loading-sm" /> : "Comment"}
       </button>
-      {error && <div className="text-error text-sm">{error}</div>}
+      {error && <p className="text-sm text-error">{error}</p>}
     </div>
   );
 }
 
-/** Component to render a single NIP-22 comment */
 function CommentItem({ comment }: { comment: Comment }) {
-  const profile = use$(comment.author.profile$);
-
   return (
-    <div className="border-l-2 border-base-300 pl-3">
-      <div className="flex items-center gap-2 text-sm mb-1">
-        <span className="font-medium">{profile?.displayName || comment.author.npub}</span>
+    <div className="flex flex-col gap-1 border-s-2 border-base-300 ps-3">
+      <div className="flex items-center gap-2 text-sm">
+        <UserName user={comment.author} />
         <time className="text-base-content/60">{comment.createdAt.toLocaleString()}</time>
       </div>
       <p className="whitespace-pre-wrap">{comment.event.content}</p>
@@ -194,419 +234,221 @@ function CommentItem({ comment }: { comment: Comment }) {
   );
 }
 
-/** Component to render a single torrent with reactions and zaps */
-function TorrentItem({ torrent }: { torrent: Torrent }) {
-  const profile = use$(torrent.author.profile$);
-  const reactions = use$(torrent.reactions$);
-  const zaps = use$(torrent.zaps$);
-
-  const displayName = profile?.displayName || torrent.author.npub;
-  const picture = profile?.picture || `https://robohash.org/${torrent.author.pubkey}.png`;
-
-  // load zaps and reactions
-  use$(() => zapLoader(torrent.event), [torrent.id]);
-  use$(() => reactionLoader(torrent.event), [torrent.id]);
-
-  // Group reactions by emoji
-  const reactionGroups = reactions?.reduce(
-    (acc, reaction) => {
-      const emoji = reaction.content || "+";
-      if (!acc[emoji]) {
-        acc[emoji] = [];
-      }
-      acc[emoji].push(reaction);
-      return acc;
-    },
-    {} as Record<string, Reaction[]>,
-  );
-
-  const totalZapAmount = zaps?.reduce((sum, zap) => sum + zap.amount, 0) || 0;
-  const totalZapSats = Math.round(totalZapAmount / 1000);
-
-  return (
-    <div
-      className="border border-base-300 bg-base-100  cursor-pointer  "
-      onClick={() => selectedTorrent$.next(torrent)}
-    >
-      <div className="p-4">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={picture} alt={displayName} />
-            </div>
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold">{displayName}</h3>
-            <p className="text-sm text-base-content/60">{torrent.author.npub}</p>
-          </div>
-          <time className="text-sm text-base-content/60">{torrent.createdAt.toLocaleString()}</time>
-        </div>
-
-        {/* Torrent Info */}
-        <div className="mb-3">
-          <h4 className="font-bold text-lg mb-2">{torrent.title || "Untitled Torrent"}</h4>
-          <div className="space-y-1 text-sm">
-            <div>
-              <span className="font-medium">Info Hash: </span>
-              <code className="text-sm bg-base-200 px-1 py-0.5 rounded">{torrent.infoHash}</code>
-            </div>
-            {torrent.category && (
-              <div>
-                <span className="font-medium">Category: </span>
-                <span>{torrent.category}</span>
-              </div>
-            )}
-            {torrent.categoryPath && (
-              <div>
-                <span className="font-medium">Category Path: </span>
-                <span>{torrent.categoryPath}</span>
-              </div>
-            )}
-            {torrent.files && torrent.files.length > 0 && (
-              <div>
-                <span className="font-medium">Files: </span>
-                <span>{torrent.files.length}</span>
-              </div>
-            )}
-            {torrent.trackers && torrent.trackers.length > 0 && (
-              <div>
-                <span className="font-medium">Trackers: </span>
-                <span>{torrent.trackers.length}</span>
-              </div>
-            )}
-            {torrent.magnetLink && (
-              <div>
-                <a
-                  href={torrent.magnetLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary btn-sm"
-                >
-                  Open Magnet Link
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Reactions */}
-        {reactionGroups && Object.keys(reactionGroups).length > 0 && (
-          <div className="mt-2 pt-2 border-t border-base-300/50">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">👍</span>
-              <span className="font-semibold">
-                {reactions?.length || 0} reaction{reactions?.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(reactionGroups).map(([emoji, reactionList]) => (
-                <div key={emoji} className="flex flex-col gap-1">
-                  <div className="badge badge-outline">
-                    {emoji} {reactionList.length}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {reactionList.slice(0, 5).map((reaction) => (
-                      <ReactionItem key={reaction.uid} reaction={reaction} />
-                    ))}
-                    {reactionList.length > 5 && (
-                      <span className="text-sm text-base-content/60">+{reactionList.length - 5} more</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Zaps */}
-        {zaps && zaps.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-base-300/50">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-lg">⚡</span>
-              <span className="font-semibold">
-                {zaps.length} zap{zaps.length !== 1 ? "s" : ""} • {totalZapSats} sats total
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {zaps.map((zap) => (
-                <ZapItem key={zap.uid} zap={zap} />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Component for the full torrent view */
-function TorrentView({ torrent, relay, onBack }: { torrent: Torrent; relay: string; onBack: () => void }) {
-  const profile = use$(torrent.author.profile$);
+function TorrentDetail({ torrent, onSignIn }: { torrent: Torrent; onSignIn: () => void }) {
+  const relays = use$(relays$);
   const reactions = use$(torrent.reactions$);
   const zaps = use$(torrent.zaps$);
   const comments = use$(torrent.comments$);
 
-  // Load NIP-22 comments that reply directly to this torrent
+  // Load NIP-22 comments from the feed relays and every relay the torrent was seen on
   use$(
     () =>
       pool
-        .relay(relay)
-        .subscription({ kinds: [COMMENT_KIND], "#e": [torrent.id] })
+        .subscription(relaySet(relays, getSeenRelays(torrent.event)), { kinds: [COMMENT_KIND], "#e": [torrent.id] })
         .pipe(mapEventsToStore(eventStore)),
-    [relay, torrent.id],
+    [relays, torrent.id],
   );
-
-  const displayName = profile?.displayName || torrent.author.npub;
-  const picture = profile?.picture || `https://robohash.org/${torrent.author.pubkey}.png`;
-
-  // Group reactions by emoji
-  const reactionGroups = reactions?.reduce(
-    (acc, reaction) => {
-      const emoji = reaction.content || "+";
-      if (!acc[emoji]) {
-        acc[emoji] = [];
-      }
-      acc[emoji].push(reaction);
-      return acc;
-    },
-    {} as Record<string, Reaction[]>,
-  );
-
-  const totalZapAmount = zaps?.reduce((sum, zap) => sum + zap.amount, 0) || 0;
-  const totalZapSats = Math.round(totalZapAmount / 1000);
 
   return (
-    <div className="container mx-auto my-8 max-w-6xl px-4 w-full">
-      <div className="py-4">
-        <button className="btn btn-ghost gap-2 mb-4" onClick={onBack}>
-          Back to Feed
-        </button>
-
-        <div className="border border-base-300 bg-base-100 ">
-          <div className="p-4">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="avatar">
-                <div className="w-12 rounded-full">
-                  <img src={picture} alt={displayName} />
-                </div>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg">{displayName}</h3>
-                <p className="text-sm text-base-content/60">{torrent.author.npub}</p>
-              </div>
-              <time className="text-sm text-base-content/60">{torrent.createdAt.toLocaleString()}</time>
-            </div>
-
-            <h1 className="text-4xl font-bold mb-4">{torrent.title || "Untitled Torrent"}</h1>
-
-            {/* Torrent Info */}
-            <div className="mb-6 p-4 border border-base-300 rounded-box">
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="font-medium">Info Hash: </span>
-                  <code className="text-sm bg-base-300 px-2 py-1 rounded">{torrent.infoHash}</code>
-                </div>
-                {torrent.category && (
-                  <div>
-                    <span className="font-medium">Category: </span>
-                    <span>{torrent.category}</span>
-                  </div>
-                )}
-                {torrent.categoryPathParts.length > 0 && (
-                  <div>
-                    <span className="font-medium">Category Path: </span>
-                    <span>{torrent.categoryPathParts.join(" › ")}</span>
-                  </div>
-                )}
-                {torrent.externalIdentifiers.length > 0 && (
-                  <div>
-                    <span className="font-medium">External IDs: </span>
-                    <span>{torrent.externalIdentifiers.map((id) => id.identifier).join(", ")}</span>
-                  </div>
-                )}
-                {torrent.searchTags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {torrent.searchTags.map((tag) => (
-                      <span key={tag} className="badge badge-outline">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {torrent.files && torrent.files.length > 0 && (
-                  <div>
-                    <span className="font-medium">Files: </span>
-                    <span>{torrent.files.length}</span>
-                    <ul className="list-disc list-inside mt-1 ml-4">
-                      {torrent.files.slice(0, 10).map((file, idx) => (
-                        <li key={idx} className="text-sm">
-                          {file.name} ({file.size ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "unknown size"})
-                        </li>
-                      ))}
-                      {torrent.files.length > 10 && (
-                        <li className="text-sm">... and {torrent.files.length - 10} more</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                {torrent.trackers && torrent.trackers.length > 0 && (
-                  <div>
-                    <span className="font-medium">Trackers: </span>
-                    <span>{torrent.trackers.length}</span>
-                    <ul className="list-disc list-inside mt-1 ml-4">
-                      {torrent.trackers.slice(0, 5).map((tracker, idx) => (
-                        <li key={idx} className="text-sm">
-                          {tracker}
-                        </li>
-                      ))}
-                      {torrent.trackers.length > 5 && (
-                        <li className="text-sm">... and {torrent.trackers.length - 5} more</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-                {torrent.magnetLink && (
-                  <div className="mt-3">
-                    <a
-                      href={torrent.magnetLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-primary btn-sm"
-                    >
-                      Open Magnet Link
-                    </a>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Markdown Content */}
-            {torrent.event.content && (
-              <div className="prose prose-lg max-w-none mb-6">
-                <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
-                  {torrent.event.content}
-                </ReactMarkdown>
-              </div>
-            )}
-
-            {/* Reactions */}
-            {reactionGroups && Object.keys(reactionGroups).length > 0 && (
-              <div className="mt-6 pt-6 border-t border-base-300/50">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">👍</span>
-                  <span className="font-semibold">
-                    {reactions?.length || 0} reaction{reactions?.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(reactionGroups).map(([emoji, reactionList]) => (
-                    <div key={emoji} className="flex flex-col gap-1">
-                      <div className="badge badge-outline">
-                        {emoji} {reactionList.length}
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {reactionList.slice(0, 5).map((reaction) => (
-                          <ReactionItem key={reaction.uid} reaction={reaction} />
-                        ))}
-                        {reactionList.length > 5 && (
-                          <span className="text-sm text-base-content/60">+{reactionList.length - 5} more</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Zaps */}
-            {zaps && zaps.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-base-300/50">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">⚡</span>
-                  <span className="font-semibold">
-                    {zaps.length} zap{zaps.length !== 1 ? "s" : ""} • {totalZapSats} sats total
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {zaps.map((zap) => (
-                    <ZapItem key={zap.uid} zap={zap} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* NIP-22 Comments */}
-            <div className="mt-6 pt-6 border-t border-base-300/50">
-              <h2 className="font-semibold mb-3">Comments ({comments?.length ?? 0})</h2>
-              <CommentBox torrent={torrent} relay={relay} />
-              <div className="flex flex-col gap-3 mt-4">
-                {comments?.map((comment) => (
-                  <CommentItem key={comment.id} comment={comment} />
-                ))}
-              </div>
-            </div>
-          </div>
+    <div className="flex flex-col gap-6 p-4">
+      <div className="flex items-center gap-3">
+        <Avatar user={torrent.author} size="size-10" />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <UserName user={torrent.author} />
+          <time className="text-sm text-base-content/60">{torrent.createdAt.toLocaleString()}</time>
         </div>
+        {torrent.magnetLink && (
+          <a className="btn btn-primary btn-sm" href={torrent.magnetLink}>
+            Open magnet link
+          </a>
+        )}
+      </div>
+
+      <h1 className="text-2xl font-bold">{torrent.title || "Untitled torrent"}</h1>
+
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-base-content/60">Info hash</dt>
+        <dd className="truncate font-mono">{torrent.infoHash}</dd>
+        {torrent.categoryPathParts.length > 0 && (
+          <>
+            <dt className="text-base-content/60">Category</dt>
+            <dd>{torrent.categoryPathParts.join(" › ")}</dd>
+          </>
+        )}
+        {torrent.externalIdentifiers.length > 0 && (
+          <>
+            <dt className="text-base-content/60">External IDs</dt>
+            <dd>{torrent.externalIdentifiers.map((id) => id.identifier).join(", ")}</dd>
+          </>
+        )}
+        {torrent.searchTags.length > 0 && (
+          <>
+            <dt className="text-base-content/60">Tags</dt>
+            <dd>{torrent.searchTags.map((tag) => `#${tag}`).join(" ")}</dd>
+          </>
+        )}
+      </dl>
+
+      <div className="flex flex-wrap items-center gap-1">
+        <ReactionSummary reactions={reactions} />
+        <ZapSummary zaps={zaps} />
+      </div>
+
+      {torrent.event.content && (
+        <div className="max-w-none">
+          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>
+            {torrent.event.content}
+          </ReactMarkdown>
+        </div>
+      )}
+
+      <section className="flex flex-col gap-1">
+        <h2 className="font-semibold">Files ({torrent.files.length})</h2>
+        <ul className="max-h-64 divide-y divide-base-300 overflow-y-auto border border-base-300 text-sm">
+          {torrent.files.map((file) => (
+            <li key={file.name} className="flex justify-between gap-4 px-3 py-1">
+              <span className="truncate font-mono">{file.name}</span>
+              <span className="shrink-0 tabular-nums text-base-content/60">{formatSize(file.size)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {torrent.trackers.length > 0 && (
+        <section className="flex flex-col gap-1">
+          <h2 className="font-semibold">Trackers ({torrent.trackers.length})</h2>
+          {torrent.trackers.map((tracker) => (
+            <p key={tracker} className="truncate font-mono text-sm">
+              {tracker}
+            </p>
+          ))}
+        </section>
+      )}
+
+      <section className="flex flex-col gap-3 border-t border-base-300 pt-4">
+        <h2 className="font-semibold">Comments ({comments?.length ?? 0})</h2>
+        <CommentBox torrent={torrent} onSignIn={onSignIn} />
+        {comments?.map((comment) => (
+          <CommentItem key={comment.id} comment={comment} />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+/** The relays the feed reads from, as removable chips with an input to add more */
+function RelayList({ relays }: { relays: string[] }) {
+  const [input, setInput] = useState("");
+  const url = parseRelay(input);
+
+  const add = () => {
+    if (!url) return;
+    if (!relays.includes(url)) relays$.next([...relays, url]);
+    setInput("");
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {relays.map((relay) => (
+        <button
+          key={relay}
+          className="badge badge-outline gap-1 font-mono"
+          onClick={() => relays$.next(relays.filter((r) => r !== relay))}
+        >
+          {new URL(relay).host} ✕
+        </button>
+      ))}
+      <div className="join">
+        <input
+          className={`input input-sm join-item w-48 ${input && !url ? "input-error" : ""}`}
+          placeholder="relay.example.com"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button className="btn btn-sm join-item" disabled={!url} onClick={add}>
+          Add relay
+        </button>
       </div>
     </div>
   );
 }
 
 export default function TorrentFeed() {
-  const [relay, setRelay] = useState("wss://relay.primal.net/");
+  const relays = use$(relays$);
+  const signer = use$(signer$);
+  const [selected, setSelected] = useState<string | null>(null);
+  const login = useRef<HTMLDialogElement>(null);
 
-  const selectedTorrent = use$(selectedTorrent$);
-
-  const feed$ = useMemo(
-    () =>
-      relayTimeline(eventStore, pool, [relay], { kinds: [TORRENT_KIND] }).pipe(
-        shareReplay({ bufferSize: 1, refCount: true }),
-      ),
-    [relay],
-  );
-  const feed = use$(feed$);
+  // Subscribe to the relays and render every torrent in the store
+  const statuses = use$(statuses$);
   const torrents = use$(
-    () =>
-      feed$.pipe(
-        map((state) => state.events),
-        castTimelineStream(Torrent, eventStore),
-      ),
-    [feed$],
+    () => eventStore.timeline({ kinds: [TORRENT_KIND] }).pipe(castTimelineStream(Torrent, eventStore)),
+    [],
   );
-
-  if (selectedTorrent) {
-    return <TorrentView torrent={selectedTorrent} relay={relay} onBack={() => selectedTorrent$.next(null)} />;
-  }
+  const torrent = torrents?.find((t) => t.id === selected);
+  const loading = !statuses || statuses.some((s) => s.loading);
 
   return (
-    <div className="max-w-6xl w-full mx-auto my-8 px-4">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-4">Torrent Feed</h1>
-        <p className="text-base-content/60 mb-4">
-          A social feed of BitTorrent torrents (NIP-35) with reactions and zaps
-        </p>
-        {feed?.status === "loading" && <p role="status">Loading…</p>}
-        {feed?.errors.map((error) => (
-          <p key={error} role="alert" className="text-error">
-            {error}
-          </p>
-        ))}
-        <RelayPicker value={relay} onChange={setRelay} />
-      </div>
-
-      <div className="flex flex-col gap-4">
-        {torrents === undefined ? (
-          <div className="flex justify-center my-8">
-            <span className="loading loading-spinner loading-lg"></span>
-          </div>
-        ) : torrents.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-base-content/60">No torrents found. Try a different relay.</p>
-          </div>
+    <div className="flex min-h-0 grow flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-base-300 p-3">
+        <RelayList relays={relays} />
+        {loading && <span className="loading loading-spinner loading-sm" />}
+        <span className="ms-auto text-sm text-base-content/60">{torrents?.length ?? 0} torrents</span>
+        {signer ? (
+          <button className="btn btn-sm btn-ghost" onClick={() => signer$.next(null)}>
+            Sign out
+          </button>
         ) : (
-          torrents.map((torrent) => <TorrentItem key={torrent.id} torrent={torrent} />)
+          <button className="btn btn-sm" onClick={() => login.current?.showModal()}>
+            Sign in
+          </button>
         )}
       </div>
+      {statuses?.map(
+        (s) =>
+          s.error && (
+            <p key={s.url} className="border-b border-base-300 px-3 py-1 text-sm text-error">
+              {new URL(s.url).host}: {s.error}
+            </p>
+          ),
+      )}
+
+      <div className="flex min-h-0 grow">
+        <aside className="w-96 shrink-0 divide-y divide-base-300 overflow-y-auto border-e border-base-300">
+          {torrents?.length ? (
+            torrents.map((t) => (
+              <TorrentRow key={t.id} torrent={t} selected={t.id === selected} onSelect={() => setSelected(t.id)} />
+            ))
+          ) : (
+            <p className="p-8 text-center text-base-content/60">
+              {loading ? "Loading torrents…" : "No torrents found. Try adding another relay."}
+            </p>
+          )}
+        </aside>
+
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+          {torrent ? (
+            <TorrentDetail key={torrent.id} torrent={torrent} onSignIn={() => login.current?.showModal()} />
+          ) : (
+            <p className="p-8 text-center text-base-content/60">Select a torrent to see its files and comments.</p>
+          )}
+        </main>
+      </div>
+
+      <dialog className="modal" ref={login}>
+        <div className="modal-box">
+          <LoginView
+            onLogin={(next) => {
+              signer$.next(next);
+              login.current?.close();
+            }}
+          />
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button>close</button>
+        </form>
+      </dialog>
     </div>
   );
 }

@@ -55,15 +55,12 @@ import {
   catchError,
   concatWith,
   defer,
-  distinct,
   EMPTY,
   first,
   ignoreElements,
   map,
   merge,
-  mergeMap,
   type Observable,
-  of,
   scan,
   shareReplay,
   switchMap,
@@ -165,15 +162,9 @@ function load(key: string, request: SyncLoadRequest): Observable<LoadMessage> {
   );
 }
 
-/** Syncs every filter on each relay the moment it is discovered, so new relays add loads instead of restarting them */
-function perRelay(relays$: Observable<string[]>, filters: Filter[], prefix: string): Observable<LoadMessage> {
-  return relays$.pipe(
-    mergeMap((relays) => relays),
-    distinct(),
-    mergeMap((relay) =>
-      merge(...filters.map((filter, i) => load(`${prefix}:${i}:${relay}`, { relays: [relay], filter }))),
-    ),
-  );
+/** Syncs every filter from a growing relay list, the loader starts new relays without restarting the others */
+function syncFilters(relays$: Observable<string[]>, filters: Filter[], prefix: string): Observable<LoadMessage> {
+  return merge(...filters.map((filter, i) => load(`${prefix}:${i}`, { relays: relays$, filter })));
 }
 
 /** Reduces the messages of many loads into a per-relay summary with timings */
@@ -238,13 +229,14 @@ const inboundFilter = (pubkey: string): Filter => ({ kinds: THREAD_KINDS, "#p": 
 
 /** Step 1: syncs the user's own notes and comments from their outboxes */
 function mineSync$(user: User, range: Range): Observable<SyncSummary> {
-  return summarize(perRelay(user.outboxes$.pipe(defined()), [inRange(mineFilter(user.pubkey), range)], "mine"));
+  return summarize(syncFilters(user.outboxes$.pipe(defined()), [inRange(mineFilter(user.pubkey), range)], "mine"));
 }
 
 /** Step 2: syncs everything that tags the user from their inboxes and the extra relays */
 function inboundSync$(user: User, range: Range): Observable<SyncSummary> {
-  const relays$ = merge(of(EXTRA_RELAYS), user.inboxes$.pipe(defined()));
-  return summarize(perRelay(relays$, [inRange(inboundFilter(user.pubkey), range)], "inbound"));
+  // Each emission is the full relay list, so the extra relays are kept when the inboxes load
+  const relays$ = user.inboxes$.pipe(map((inboxes) => relaySet(EXTRA_RELAYS, inboxes)));
+  return summarize(syncFilters(relays$, [inRange(inboundFilter(user.pubkey), range)], "inbound"));
 }
 
 /** Subscribes to new notes and comments from the user and to the user */
@@ -417,8 +409,8 @@ function threadFilters(root: Root): Filter[] {
 function threadSync$(thread: ThreadActivity, user: User): Observable<SyncSummary> {
   const hints = thread.root.type === "external" ? [] : (thread.root.pointer.relays ?? []);
   const seen = thread.events.flatMap((e) => [...(getSeenRelays(e) ?? [])]);
-  const relays$ = merge(of(relaySet(hints, seen, EXTRA_RELAYS)), user.inboxes$.pipe(defined()));
-  return summarize(perRelay(relays$, threadFilters(thread.root), `thread:${thread.key}`));
+  const relays$ = user.inboxes$.pipe(map((inboxes) => relaySet(hints, seen, EXTRA_RELAYS, inboxes)));
+  return summarize(syncFilters(relays$, threadFilters(thread.root), `thread:${thread.key}`));
 }
 
 /** Groups the thread events by parent, attaching replies to missing events to the root so nothing is hidden */
