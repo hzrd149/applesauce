@@ -6,3 +6,7 @@ allowBuilds:
   "@swc/core": true
   better-sqlite3: true
   esbuild: true
+overrides:
+  # Keep the Turso WASM runtime on the emnapi version its wasm binary was built with
+  "@napi-rs/wasm-runtime@1.0.7>@emnapi/core": 1.8.1
+  "@napi-rs/wasm-runtime@1.0.7>@emnapi/runtime": 1.8.1

@@ -23,7 +23,7 @@
     "@tiptap/core": "^3.22.1",
     "@tiptap/react": "^3.22.1",
     "@tiptap/starter-kit": "^3.22.1",
-    "@tursodatabase/database-wasm": "^0.2.2",
+    "@tursodatabase/database-wasm": "^0.8.3",
     "@types/qrcode-terminal": "^0.12.2",
     "applesauce-accounts": "^6.2.0",
     "applesauce-actions": "^6.2.0",

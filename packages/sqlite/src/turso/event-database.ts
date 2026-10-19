@@ -1,8 +1,7 @@
 import type { SyncPair } from "applesauce-core";
 import { connect, Database } from "@tursodatabase/database";
 import { IAsyncEventDatabase, logger } from "applesauce-core";
-import { NostrEvent } from "applesauce-core/helpers";
-import { enhancedSearchContentFormatter, FilterWithSearch, SearchContentFormatter } from "../helpers/search.js";
+import { Filter, NostrEvent } from "applesauce-core/helpers";
 import {
   createTables,
   deleteEvent,
@@ -15,30 +14,18 @@ import {
   hasEvent,
   hasReplaceable,
   insertEvent,
-  rebuildSearchIndex,
 } from "./methods.js";
 
 const log = logger.extend("TursoEventDatabase");
 
 /** Options for the {@link TursoEventDatabase} */
-export type TursoEventDatabaseOptions = {
-  search?: boolean;
-  searchContentFormatter?: SearchContentFormatter;
-};
+export type TursoEventDatabaseOptions = {};
 
 export class TursoEventDatabase implements IAsyncEventDatabase {
   db: Database;
 
-  /** If search is enabled */
-  private search: boolean;
-  /** The search content formatter */
-  private searchContentFormatter: SearchContentFormatter;
-
-  constructor(database: Database, options?: TursoEventDatabaseOptions) {
+  constructor(database: Database, _options?: TursoEventDatabaseOptions) {
     this.db = database;
-
-    this.search = options?.search ?? false;
-    this.searchContentFormatter = options?.searchContentFormatter ?? enhancedSearchContentFormatter;
   }
 
   /** Create a TursoEventDatabase from a database and initialize it */
@@ -55,14 +42,14 @@ export class TursoEventDatabase implements IAsyncEventDatabase {
 
   /** Initialize the database by creating tables and indexes */
   async initialize(): Promise<this> {
-    await createTables(this.db, this.search);
+    await createTables(this.db);
     return this;
   }
 
   /** Store a Nostr event in the database */
   async add(event: NostrEvent): Promise<NostrEvent> {
     try {
-      await insertEvent(this.db, event, this.search ? this.searchContentFormatter : undefined);
+      await insertEvent(this.db, event);
       return event;
     } catch (error) {
       log("Error inserting event:", error);
@@ -80,11 +67,7 @@ export class TursoEventDatabase implements IAsyncEventDatabase {
   }
 
   /** Remove multiple events that match the given filters */
-  async removeByFilters(filters: FilterWithSearch | FilterWithSearch[]): Promise<number> {
-    // If search is disabled, remove the search field from the filters
-    if (this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
-      throw new Error("Cannot delete with search");
-
+  async removeByFilters(filters: Filter | Filter[]): Promise<number> {
     return await deleteEventsByFilters(this.db, filters);
   }
 
@@ -115,10 +98,9 @@ export class TursoEventDatabase implements IAsyncEventDatabase {
   }
 
   /** Get all events that match the filters (supports NIP-50 search field) */
-  async getByFilters(filters: FilterWithSearch | FilterWithSearch[]): Promise<NostrEvent[]> {
-    // If search is disabled, remove the search field from the filters
-    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
-      throw new Error("Search is disabled");
+  async getByFilters(filters: Filter | Filter[]): Promise<NostrEvent[]> {
+    if (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters)
+      throw new Error("Search is not supported");
 
     return await getEventsByFilters(this.db, filters);
   }
@@ -126,36 +108,19 @@ export class TursoEventDatabase implements IAsyncEventDatabase {
    * Gets matching sync pairs without reading full events
    * @throws If the filters request search when it is unavailable
    */
-  async getSyncPairs(filters: FilterWithSearch | FilterWithSearch[]): Promise<SyncPair[]> {
-    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
-      throw new Error("Search is disabled");
+  async getSyncPairs(filters: Filter | Filter[]): Promise<SyncPair[]> {
+    if (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters)
+      throw new Error("Search is not supported");
 
     return await getSyncPairs(this.db, filters);
   }
 
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
-  async getTimeline(filters: FilterWithSearch | FilterWithSearch[]): Promise<NostrEvent[]> {
+  async getTimeline(filters: Filter | Filter[]): Promise<NostrEvent[]> {
     // No need to sort since query defaults to created_at descending order
     return await this.getByFilters(filters);
   }
 
-  /** Set the search content formatter */
-  setSearchContentFormatter(formatter: SearchContentFormatter): void {
-    this.searchContentFormatter = formatter;
-  }
-
-  /** Get the current search content formatter */
-  getSearchContentFormatter(): SearchContentFormatter {
-    return this.searchContentFormatter;
-  }
-
-  /** Rebuild the search index for all events */
-  async rebuildSearchIndex(): Promise<void> {
-    if (!this.search) throw new Error("Search is disabled");
-
-    await rebuildSearchIndex(this.db, this.searchContentFormatter);
-    log("Search index rebuilt successfully");
-  }
 
   /** Close the database connection */
   async close(): Promise<void> {
