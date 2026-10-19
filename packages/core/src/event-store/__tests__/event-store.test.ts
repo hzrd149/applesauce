@@ -634,7 +634,7 @@ describe("timeline", () => {
 
     eventStore.add(newer);
 
-    expect(spy.getValues()).toEqual([[profile], [newer], [newer]]);
+    expect(spy.getValues()).toEqual([[profile], [newer]]);
   });
 
   it("should keep old replaceable versions when requested", () => {

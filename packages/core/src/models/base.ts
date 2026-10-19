@@ -93,7 +93,8 @@ function loadEventUsingFallback<E extends StoreEvent = NostrEvent>(
 // Single-event models route store updates by key, so each insert or remove reaches only its own models
 const eventId = (event: StoreEvent) => event.id;
 const kindAuthor = (event: StoreEvent) => event.kind + ":" + event.pubkey;
-const byId = <E extends StoreEvent>(source: Observable<E>, id: string) => getKeyedRouter(source, "id", eventId).route(id);
+const byId = <E extends StoreEvent>(source: Observable<E>, id: string) =>
+  getKeyedRouter(source, "id", eventId).route(id);
 const byKindAuthor = <E extends StoreEvent>(source: Observable<E>, kind: number, pubkey: string) =>
   getKeyedRouter(source, "kind:pubkey", kindAuthor).route(kind + ":" + pubkey);
 
@@ -227,12 +228,15 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
           // Forget the removed event so the seen map does not grow unbounded on long-lived
           // feeds. Only forget when the seen entry is the event being removed (not a newer
           // replaceable version that happens to share a UID).
-          const removed = timeline.find((e) => e.id === event);
-          if (removed) {
-            const uid = getTimelineUID(removed);
-            if (seen.get(uid)?.id === event) seen.delete(uid);
-          }
-          return timeline.filter((e) => e.id !== event);
+          const index = timeline.findIndex((e) => e.id === event);
+          // Keep the same array when the event is not in the timeline, such as a replaced version
+          if (index === -1) return timeline;
+
+          const uid = getTimelineUID(timeline[index]);
+          if (seen.get(uid)?.id === event) seen.delete(uid);
+          const newTimeline = [...timeline];
+          newTimeline.splice(index, 1);
+          return newTimeline;
         }
 
         // initial timeline array
@@ -251,7 +255,8 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
           existing &&
           (!isReplaceable(event.kind) || (!includeOldVersion && event.created_at < existing.created_at))
         ) {
-          return [...timeline];
+          // Keep the same array so distinctUntilChanged skips the emission
+          return timeline;
         }
 
         // Copy only after checking whether the incoming event will be ignored.

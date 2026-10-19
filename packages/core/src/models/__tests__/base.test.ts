@@ -255,6 +255,28 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       expect(values.at(-1)?.map((event) => event.id)).toEqual([middle.id, older.id]);
       sub.unsubscribe();
     });
+
+    it("emits once when a replaceable event is updated", async () => {
+      const testStore = setup();
+      const first = makeEvent({ kind: kinds.Metadata, created_at: 1, content: "first" });
+      const second = makeEvent({ kind: kinds.Metadata, created_at: 2, content: "second" });
+      await testStore.add(first);
+
+      const values: StoreEvent[][] = [];
+      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.Metadata] })(testStore.store as any).subscribe((value) =>
+        values.push(value),
+      );
+      await flush();
+      const before = values.length;
+
+      // The store removes the old version after the timeline already replaced it
+      await testStore.add(second);
+      await flush();
+
+      expect(values.length).toBe(before + 1);
+      expect(values.at(-1)?.map((event) => event.id)).toEqual([second.id]);
+      sub.unsubscribe();
+    });
   });
 
   describe("FiltersModel", () => {
