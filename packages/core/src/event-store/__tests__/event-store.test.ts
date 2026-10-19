@@ -679,3 +679,35 @@ describe("timeline", () => {
     expect(spy.getLastValue()).toEqual([profile]);
   });
 });
+
+describe("filters", () => {
+  it("emits every stored match to each subscriber, not just the first", () => {
+    const a = user.note("a");
+    const b = user.note("b");
+    eventStore.add(a);
+    eventStore.add(b);
+
+    const first = subscribeSpyTo(eventStore.filters({ kinds: [kinds.ShortTextNote] }));
+    const second = subscribeSpyTo(eventStore.filters({ kinds: [kinds.ShortTextNote] }));
+
+    expect(first.getValues()).toHaveLength(2);
+    expect(second.getValues()).toHaveLength(2);
+  });
+
+  it("emits every stored match after an earlier subscriber unsubscribed", () => {
+    eventStore.add(user.note("a"));
+    subscribeSpyTo(eventStore.filters({ kinds: [kinds.ShortTextNote] })).unsubscribe();
+    eventStore.add(user.note("b"));
+
+    const later = subscribeSpyTo(eventStore.filters({ kinds: [kinds.ShortTextNote] }));
+    expect(later.getValues()).toHaveLength(2);
+  });
+
+  it("only emits new events when onlyNew is set", () => {
+    eventStore.add(user.note("a"));
+    const spy = subscribeSpyTo(eventStore.filters({ kinds: [kinds.ShortTextNote] }, true));
+    const b = user.note("b");
+    eventStore.add(b);
+    expect(spy.getValues()).toEqual([b]);
+  });
+});

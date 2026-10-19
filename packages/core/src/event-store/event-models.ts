@@ -103,10 +103,12 @@ export class EventModels<
    */
   filters(filters: Filter | Filter[], onlyNew = false): Observable<E> {
     if (!Array.isArray(filters)) filters = [filters];
+    // Not cached like other models: this streams individual events, so a shared replay would hand a late
+    // subscriber only the last event instead of every stored match. Each subscriber reads the store itself.
     // Explicit type argument pins FiltersModel's E to the class's own E — without it, a bare
     // generic function reference passed here infers E from its constraint (StoreEvent) rather
     // than its default (NostrEvent) (Phase 1 WR-02/deferred-items Pitfall 3).
-    return this.model(FiltersModel<E>, filters, onlyNew);
+    return FiltersModel<E>(filters, onlyNew)(this as any).pipe(takeUntil(this.destroy$));
   }
 
   /** Subscribe to an event by pointer */
