@@ -123,8 +123,9 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
   output?: MonoTypeOperatorFunction<Output>,
   options?: BatchLoaderOptions<Input>,
 ): Loader<Input, Output> {
-  type Batch = { inputs: Input[]; results: Subject<Output> };
-  type Running = { input: Input; batch: Batch; delivered: Output[] };
+  type Running = { key: string; input: Input; batch: Batch; delivered: Output[] };
+  // Each batch keeps the running entries it owns so per-output bookkeeping only scans its own inputs
+  type Batch = { inputs: Input[]; results: Subject<Output>; running: Running[] };
 
   const queue = new Subject<Input>();
   // Fires when the loader is torn down, completing the engine and dropping in-flight upstream requests
@@ -144,17 +145,18 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
     if (!inflight) return;
     for (const input of batch.inputs) {
       const key = inflight.key(input);
-      if (!running.has(key)) running.set(key, { input, batch, delivered: [] });
+      if (running.has(key)) continue;
+      const entry: Running = { key, input, batch, delivered: [] };
+      running.set(key, entry);
+      batch.running.push(entry);
     }
   };
   const forget = (batch: Batch) => {
-    if (!inflight) return;
-    for (const [key, entry] of running) if (entry.batch === batch) running.delete(key);
+    for (const entry of batch.running) if (running.get(entry.key) === entry) running.delete(entry.key);
+    batch.running = [];
   };
   const record = (batch: Batch, value: Output) => {
-    if (!inflight) return;
-    for (const entry of running.values())
-      if (entry.batch === batch && matcher(entry.input, value)) entry.delivered.push(value);
+    for (const entry of batch.running) if (matcher(entry.input, value)) entry.delivered.push(value);
   };
 
   const start = (batch: Batch) => {
@@ -216,7 +218,7 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
       )
       .subscribe({
         next: (inputs) => {
-          const batch: Batch = { inputs, results: new Subject<Output>() };
+          const batch: Batch = { inputs, results: new Subject<Output>(), running: [] };
           track(batch);
 
           // Hand the batch to every waiting consumer before the request starts so synchronous results reach all of them
