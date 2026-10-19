@@ -3,6 +3,7 @@
  * @tags nip-65, outbox, feed, social
  * @related outbox/relay-selection, feed/relay-timeline
  */
+import { useVirtualizer } from "@tanstack/react-virtual";
 import NoteContent from "../../components/note-content";
 
 import { castUser, Note as NoteCast, castEvent } from "applesauce-common/casts";
@@ -70,6 +71,7 @@ const pool = new RelayPool({
   informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
 });
 const eventStore = new EventStore();
+
 
 // Setup a local event cache
 const cache = await openDB();
@@ -166,29 +168,6 @@ const liveError$ = live$.pipe(
 // Start with an explicit day of history
 const cursor$ = new BehaviorSubject(unixNow() - 86400);
 
-// Elements with a `data-created-at` timestamp that are currently on screen
-const visible = new Set<HTMLElement>();
-const scrollObserver = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    const el = entry.target as HTMLElement;
-    if (entry.isIntersecting) visible.add(el);
-    else visible.delete(el);
-  }
-
-  // Move the cursor to the oldest visible timestamp
-  if (visible.size > 0) cursor$.next(Math.min(...Array.from(visible, (el) => Number(el.dataset.createdAt))));
-});
-
-/** Ref callback that tracks an element with a `data-created-at` timestamp as the feed scrolls */
-function trackScroll(el: HTMLElement | null) {
-  if (!el) return;
-  scrollObserver.observe(el);
-  return () => {
-    visible.delete(el);
-    scrollObserver.unobserve(el);
-  };
-}
-
 // Create a timeline loader and add events to the event store
 const timeline$ = cursor$.pipe(
   // Throttle how fast the cursor changes while scrolling
@@ -206,6 +185,23 @@ const timeline$ = cursor$.pipe(
   ),
   // Add events to the event store
   mapEventsToStore(eventStore),
+);
+
+/** The notes from the selected authors, re-queried only when the author list changes */
+const feed$ = selection$.pipe(
+  map((selection) => selection.map((user) => user.pubkey)),
+  distinctUntilChanged((a, b) => a.join() === b.join()),
+  switchMap((authors) =>
+    eventStore
+      .timeline({ kinds: [1], authors })
+      // Events are already stored, so batch renders while blocks of events are arriving
+      .pipe(throttleTime(250, undefined, { leading: true, trailing: true })),
+  ),
+);
+
+/** The relays selected for each pubkey */
+const relaysByPubkey$ = selection$.pipe(
+  map((selection) => Object.fromEntries(selection.map((user) => [user.pubkey, user.relays ?? []]))),
 );
 
 // Track the connection state and number of open requests for the relays selected for the feed
@@ -275,23 +271,13 @@ function RelativeTime({ timestamp }: { timestamp: number }) {
 }
 
 function NoteRelay({ relay }: { relay: string }) {
-  const icon = use$(() => pool.relay(relay).icon$, [relay]);
   const name = use$(() => pool.relay(relay).name$, [relay]);
   const color = useMemo(() => pastellify(relay, { toCSS: true }), [relay]);
 
   return (
-    <div
-      className="w-32 gap-2 relative flex items-end overflow-y-visible overflow-x-hidden border-b-1 pb-1"
-      style={{ borderBottomColor: color }}
-    >
-      <div className="avatar">
-        <div className="w-5 h-5 rounded-full">
-          <img src={icon} className="w-full h-full object-cover" />
-        </div>
-      </div>
-
-      <div className="truncate text-sm">{name}</div>
-    </div>
+    <span className="max-w-32 truncate text-sm" style={{ color }} title={relay}>
+      {name}
+    </span>
   );
 }
 
@@ -317,12 +303,7 @@ const Note = memo(function Note({ note, selection }: { note: NostrEvent; selecti
   );
 
   return (
-    <div
-      ref={trackScroll}
-      data-created-at={note.created_at}
-      // Skip layout and paint for notes that are off screen
-      className="border-b border-base-300 px-2 py-4 [content-visibility:auto] [contain-intrinsic-size:auto_200px]"
-    >
+    <div className="border-b border-base-300 px-2 py-4">
       <div className="flex items-start gap-3">
         <div className="avatar">
           <div className="w-12 h-12 rounded-full">
@@ -342,7 +323,7 @@ const Note = memo(function Note({ note, selection }: { note: NostrEvent; selecti
           <NoteContent event={note} />
         </div>
       </div>
-      <div className="flex gap-4 mt-4">
+      <div className="flex flex-wrap gap-x-3 mt-2">
         {relays?.map((relay) => (
           <NoteRelay key={relay} relay={relay} />
         ))}
@@ -429,13 +410,9 @@ function UserAvatar({ user }: { user: ProfilePointer }) {
 }
 
 // User Issues Component for sidebar
-function UserIssuesSection({
-  selection,
-  contacts,
-}: {
-  selection: any[] | null | undefined;
-  contacts: any[] | null | undefined;
-}) {
+function UserIssuesSection() {
+  const selection = use$(selection$);
+  const contacts = use$(contactsWithOutboxes$);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Calculate missing relays users - users who never had any relays (no NIP-65 relay list)
@@ -554,8 +531,9 @@ function UserIssuesSection({
 }
 
 // User Preview Modal Component
-function UserPreviewModal({ selection }: { selection?: ProfilePointer[] }) {
+function UserPreviewModal() {
   const previewUser = use$(preview$);
+  const selection = use$(selection$);
 
   const profile = use$(() => (previewUser ? castUser(previewUser, eventStore).profile$ : undefined), [previewUser]);
   const mailboxes = use$(() => (previewUser ? castUser(previewUser, eventStore).mailboxes$ : undefined), [previewUser]);
@@ -839,123 +817,239 @@ function UnhealthyRelay({ relay }: { relay: string }) {
   );
 }
 
-// Main Social Feed Component
-export default function SocialFeedExample() {
-  const pubkey = use$(pubkey$);
-  const maxConnections = use$(maxConnections$);
-  const maxRelaysPerUser = use$(maxRelaysPerUser$);
-  const live = use$(live$);
-
-  // Start live and timeline subscriptions on mount (and stop them on unmount)
+// Virtualized feed that only renders the notes on screen
+function Feed() {
+  // Start live and timeline subscriptions while the feed is mounted
   const liveError = use$(liveError$);
   use$(timeline$);
 
-  // Select the best relays for the contacts
-  const outboxes = use$(contactsWithOutboxes$);
-  const selection = use$(() => selection$, [selection$]);
-  const outboxMap = use$(() => selection$.pipe(map(createOutboxMap)), [selection$]);
+  const events = use$(feed$);
+  const relaysByPubkey = use$(relaysByPubkey$);
 
-  const byPubkey = useMemo(
-    () =>
-      selection?.reduce(
-        (acc, user) => {
-          acc[user.pubkey] = user.relays || [];
-          return acc;
-        },
-        {} as Record<string, string[]>,
-      ),
-    [selection],
-  );
-
-  // Sort relays by popularity (number of users) in descending order
-  const sortedRelays = outboxMap ? Object.entries(outboxMap).sort(([, a], [, b]) => b.length - a.length) : [];
-
-  const fallbacks = use$(fallbacks$);
-
-  // Get unhealthy relays from liveness tracker
-  const unhealthyRelays = use$(liveness.unhealthy$);
-
-  // Get the timeline from the event store
-  const feedEvents = use$(
-    () =>
-      selection
-        ? eventStore
-            .timeline({ kinds: [1], authors: selection.map((s) => s.pubkey) })
-            // Events are already stored, so batch renders while blocks of events are arriving
-            .pipe(throttleTime(250, undefined, { leading: true, trailing: true }))
-        : of([]),
-    [selection],
-  );
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const count = events?.length ?? 0;
+  const virtualizer = useVirtualizer({
+    // One extra row for the loading indicator at the bottom
+    count: count > 0 ? count + 1 : 0,
+    getScrollElement: () => scroller,
+    getItemKey: (index) => events?.[index]?.id ?? "loader",
+    estimateSize: () => 160,
+    overscan: 4,
+    // Move the timeline cursor to the bottom-most note on screen, or past the last note when the loader is visible
+    onChange: (instance) => {
+      if (!events || !instance.range) return;
+      const last = events[events.length - 1];
+      cursor$.next(events[instance.range.endIndex]?.created_at ?? last.created_at - 1);
+    },
+  });
 
   return (
-    <div className="flex min-h-0 grow">
-      {/* User Preview Modal */}
-      <UserPreviewModal selection={selection} />
+    <>
+      {liveError && <div className="alert alert-warning m-2">Live updates unavailable: {liveError.message}</div>}
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 min-w-0 flex-col bg-base-50">
-        {/* Relay Activity */}
-        <RelayStatusBar />
-
-        {/* Scrollable Feed */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto">
-            {pubkey ? (
-              <div>
-                {liveError && (
-                  <div className="alert alert-warning m-2">Live updates unavailable: {liveError.message}</div>
-                )}
-
-                {/* Feed Content */}
-                <div className="bg-base-100 border border-base-300 rounded-lg">
-                  {feedEvents && feedEvents.length > 0 ? (
-                    <div className="divide-y divide-base-300">
-                      {feedEvents.map((event) => (
-                        <Note key={event.id} note={event} selection={byPubkey?.[event.pubkey]} />
-                      ))}
-                      {/* Scrolling past the last note moves the cursor beyond it, keyed so it re-triggers after each block */}
-                      <div
-                        key={feedEvents[feedEvents.length - 1].created_at}
-                        ref={trackScroll}
-                        data-created-at={feedEvents[feedEvents.length - 1].created_at - 1}
-                        className="flex justify-center py-4"
-                      >
-                        <span className="loading loading-dots loading-md" />
-                      </div>
-                    </div>
+      <div ref={setScroller} className="min-h-0 flex-1 overflow-y-auto">
+        {count === 0 ? (
+          <div className="text-center py-12 text-base-content/60">
+            {events === undefined ? (
+              <div className="flex flex-col items-center gap-2">
+                <div className="loading loading-spinner loading-md"></div>
+                <span>Loading feed...</span>
+              </div>
+            ) : (
+              "No posts found. Try adjusting your relay settings or wait for new posts."
+            )}
+          </div>
+        ) : (
+          <div
+            className="relative max-w-2xl mx-auto border-x border-base-300 bg-base-100"
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((item) => {
+              const event = events![item.index];
+              return (
+                <div
+                  key={item.key}
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute inset-x-0 top-0"
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  {event ? (
+                    <Note note={event} selection={relaysByPubkey?.[event.pubkey]} />
                   ) : (
-                    <div className="text-center py-12">
-                      <div className="text-base-content/60 mb-4">
-                        {feedEvents === undefined ? (
-                          <div className="flex flex-col items-center gap-2">
-                            <div className="loading loading-spinner loading-md"></div>
-                            <span>Loading feed...</span>
-                          </div>
-                        ) : (
-                          "No posts found. Try adjusting your relay settings or wait for new posts."
-                        )}
-                      </div>
+                    <div className="flex justify-center py-4">
+                      <span className="loading loading-dots loading-md" />
                     </div>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-20">
-                <h1 className="text-3xl font-bold mb-4">Welcome to Social Feed</h1>
-                <p className="text-base-content/60 text-lg">Enter your npub in the sidebar to get started</p>
-              </div>
-            )}
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function RelaySettings() {
+  const live = use$(live$);
+  const maxConnections = use$(maxConnections$);
+  const maxRelaysPerUser = use$(maxRelaysPerUser$);
+
+  return (
+    <div className="p-4 border-b border-base-300">
+      <h3 className="text-lg font-semibold mb-4">Relay Settings</h3>
+
+      <div className="space-y-4">
+        {/* Live subscription */}
+        <label className="label cursor-pointer justify-between w-full">
+          <span className="label-text">Live updates</span>
+          <input
+            type="checkbox"
+            className="toggle toggle-primary"
+            checked={live}
+            onChange={(e) => live$.next(e.target.checked)}
+          />
+        </label>
+
+        {/* Max Connections */}
+        <div>
+          <label className="label">
+            <span className="label-text">Max connections</span>
+            <span className="label-text-alt">{maxConnections}</span>
+          </label>
+          <input
+            type="range"
+            min="1"
+            max="200"
+            step="1"
+            value={maxConnections}
+            onChange={(e) => maxConnections$.next(Number(e.target.value))}
+            className="range range-primary range-sm"
+          />
+          <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
+            <span>1</span>
+            <span>100</span>
+            <span>200</span>
           </div>
         </div>
+
+        {/* Max Relays per User */}
+        <div>
+          <label className="label">
+            <span className="label-text">Max per user</span>
+            <span className="label-text-alt">{maxRelaysPerUser}</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="30"
+            value={maxRelaysPerUser}
+            onChange={(e) => maxRelaysPerUser$.next(Number(e.target.value))}
+            className="range range-primary range-sm"
+          />
+          <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
+            <span>0</span>
+            <span>15</span>
+            <span>30</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectedRelays({ pubkey }: { pubkey: string | null }) {
+  const outboxMap = use$(outboxMap$);
+  const selection = use$(selection$);
+
+  // Sort relays by popularity (number of users) in descending order
+  const sortedRelays = useMemo(
+    () => (outboxMap ? Object.entries(outboxMap).sort(([, a], [, b]) => b.length - a.length) : []),
+    [outboxMap],
+  );
+
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Selected Relays</h3>
+        <div className="badge badge-outline">{sortedRelays.length}</div>
+      </div>
+
+      <div className="space-y-1 max-h-96 overflow-y-auto">
+        {sortedRelays.length === 0 ? (
+          <div className="text-center py-4 text-base-content/60">
+            {pubkey ? "Loading relays..." : "Enter your npub to view relays"}
+          </div>
+        ) : (
+          sortedRelays.map(([relay, pubkeys]) => (
+            <RelayConnection key={relay} relay={relay} userCount={pubkeys.length} totalUsers={selection?.length || 0} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FallbackRelays() {
+  const fallbacks = use$(fallbacks$);
+
+  return (
+    <div className="p-4">
+      <h3 className="text-lg font-semibold mb-4">Fallback Relays</h3>
+      <p className="text-base-content/60 text-sm mb-4">Used when no relays are available for a user</p>
+      <RelayManager relays={fallbacks} onChange={(relays) => fallbacks$.next(relays)} />
+    </div>
+  );
+}
+
+function UnhealthyRelays() {
+  const unhealthyRelays = use$(liveness.unhealthy$);
+  if (!unhealthyRelays || unhealthyRelays.length === 0) return null;
+
+  return (
+    <div className="p-4 border-b border-base-300">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-error">Unhealthy Relays</h3>
+        <div className="badge badge-error">{unhealthyRelays.length}</div>
+      </div>
+
+      <div className="space-y-1 max-h-96 overflow-y-auto">
+        {unhealthyRelays.map((relay) => (
+          <UnhealthyRelay key={relay} relay={relay} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Main Social Feed Component, split into sections so each one only re-renders for the streams it uses
+export default function SocialFeedExample() {
+  const pubkey = use$(pubkey$);
+
+  return (
+    <div className="flex min-h-0 grow">
+      <UserPreviewModal />
+
+      {/* Main Content Area */}
+      <div className="flex flex-1 min-w-0 flex-col bg-base-50">
+        <RelayStatusBar />
+
+        {pubkey ? (
+          <Feed />
+        ) : (
+          <div className="text-center py-20">
+            <h1 className="text-3xl font-bold mb-4">Welcome to Social Feed</h1>
+            <p className="text-base-content/60 text-lg">Enter your npub in the sidebar to get started</p>
+          </div>
+        )}
       </div>
 
       {/* Sidebar */}
       <div className="w-80 shrink-0 bg-base-100 border-l border-base-300 flex flex-col overflow-y-auto">
-        {/* Header */}
         <div className="p-4 border-b border-base-300">
           <h2 className="text-xl font-bold mb-4">Social Feed</h2>
 
-          {/* Pubkey Picker */}
           <div className="mb-4">
             <label className="label">
               <span className="label-text">Your npub</span>
@@ -968,117 +1062,11 @@ export default function SocialFeedExample() {
           </div>
         </div>
 
-        {/* Relay Selection Controls */}
-        <div className="p-4 border-b border-base-300">
-          <h3 className="text-lg font-semibold mb-4">Relay Settings</h3>
-
-          <div className="space-y-4">
-            {/* Live subscription */}
-            <label className="label cursor-pointer justify-between w-full">
-              <span className="label-text">Live updates</span>
-              <input
-                type="checkbox"
-                className="toggle toggle-primary"
-                checked={live}
-                onChange={(e) => live$.next(e.target.checked)}
-              />
-            </label>
-
-            {/* Max Connections */}
-            <div>
-              <label className="label">
-                <span className="label-text">Max connections</span>
-                <span className="label-text-alt">{maxConnections}</span>
-              </label>
-              <input
-                type="range"
-                min="1"
-                max="200"
-                step="1"
-                value={maxConnections}
-                onChange={(e) => maxConnections$.next(Number(e.target.value))}
-                className="range range-primary range-sm"
-              />
-              <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
-                <span>1</span>
-                <span>100</span>
-                <span>200</span>
-              </div>
-            </div>
-
-            {/* Max Relays per User */}
-            <div>
-              <label className="label">
-                <span className="label-text">Max per user</span>
-                <span className="label-text-alt">{maxRelaysPerUser}</span>
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="30"
-                value={maxRelaysPerUser}
-                onChange={(e) => maxRelaysPerUser$.next(Number(e.target.value))}
-                className="range range-primary range-sm"
-              />
-              <div className="w-full flex justify-between text-sm px-2 text-base-content/60">
-                <span>0</span>
-                <span>15</span>
-                <span>30</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* User Issues Section */}
-        <UserIssuesSection selection={selection} contacts={outboxes} />
-
-        {/* Selected Relays */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Selected Relays</h3>
-            <div className="badge badge-outline">{sortedRelays.length}</div>
-          </div>
-
-          <div className="space-y-1 max-h-96 overflow-y-auto">
-            {sortedRelays.length === 0 ? (
-              <div className="text-center py-4 text-base-content/60">
-                {pubkey ? "Loading relays..." : "Enter your npub to view relays"}
-              </div>
-            ) : (
-              sortedRelays.map(([relay, pubkeys]) => (
-                <RelayConnection
-                  key={relay}
-                  relay={relay}
-                  userCount={pubkeys.length}
-                  totalUsers={selection?.length || 0}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Extra relays */}
-        <div className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Fallback Relays</h3>
-          <p className="text-base-content/60 text-sm mb-4">Used when no relays are available for a user</p>
-          <RelayManager relays={fallbacks} onChange={(relays) => fallbacks$.next(relays)} />
-        </div>
-
-        {/* Unhealthy Relays Section */}
-        {unhealthyRelays && unhealthyRelays.length > 0 && (
-          <div className="p-4 border-b border-base-300">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-error">Unhealthy Relays</h3>
-              <div className="badge badge-error">{unhealthyRelays.length}</div>
-            </div>
-
-            <div className="space-y-1 max-h-96 overflow-y-auto">
-              {unhealthyRelays.map((relay) => (
-                <UnhealthyRelay key={relay} relay={relay} />
-              ))}
-            </div>
-          </div>
-        )}
+        <RelaySettings />
+        <UserIssuesSection />
+        <SelectedRelays pubkey={pubkey} />
+        <FallbackRelays />
+        <UnhealthyRelays />
       </div>
     </div>
   );
