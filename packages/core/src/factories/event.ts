@@ -3,7 +3,7 @@ import { EventSigner } from "./types.js";
 import type { EventOperation } from "./types.js";
 import { EncryptionMethod } from "../helpers/encrypted-content.js";
 import { setCachedValue } from "../helpers/cache.js";
-import { KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
+import { isReplaceable, KnownEvent, KnownEventTemplate, KnownUnsignedEvent } from "../helpers/event.js";
 import { PRESERVE_EVENT_SYMBOLS } from "../helpers/pipeline.js";
 import { unixNow } from "../helpers/time.js";
 import { setEncryptedContent } from "../operations/encrypted-content.js";
@@ -32,7 +32,8 @@ export function blankEventTemplate<K extends number = number>(kind: K): KnownEve
 export function toEventTemplate<K extends number>(event: KnownEvent<K>): KnownEventTemplate<K> {
   return {
     kind: event.kind,
-    created_at: unixNow(),
+    // A replacement must be newer than the event it replaces, or edits within the same second can lose the tie-break
+    created_at: isReplaceable(event.kind) ? Math.max(unixNow(), event.created_at + 1) : unixNow(),
     tags: Array.from(event.tags),
     content: event.content,
   };
