@@ -76,4 +76,37 @@ describe("requestIdentity", () => {
     expect(cache.load).toHaveBeenCalledWith("_@hzrd149.com");
     expect(loader.fetch).toHaveBeenCalled();
   });
+
+  it("should reuse a recent failure", async () => {
+    loader.fetch = vi.fn().mockRejectedValue(new Error("offline"));
+
+    await expect(loader.requestIdentity("_", "example.com")).resolves.toMatchObject({ status: IdentityStatus.Error });
+    await loader.requestIdentity("_", "example.com");
+    expect(loader.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("should retry a failure after the error expiration", async () => {
+    loader.errorExpiration = -1;
+    loader.fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(new Response(JSON.stringify({ names: { _: "pubkey" } }), { status: 200 }));
+
+    await expect(loader.requestIdentity("_", "example.com")).resolves.toMatchObject({ status: IdentityStatus.Error });
+    await expect(loader.requestIdentity("_", "example.com")).resolves.toMatchObject({
+      status: IdentityStatus.Found,
+      pubkey: "pubkey",
+    });
+  });
+
+  it("should refetch an identity after it expires", async () => {
+    loader.fetch = vi
+      .fn()
+      .mockImplementation(async () => new Response(JSON.stringify({ names: { _: "pubkey" } }), { status: 200 }));
+
+    await loader.requestIdentity("_", "example.com");
+    loader.expiration = -1;
+    await loader.requestIdentity("_", "example.com");
+    expect(loader.fetch).toHaveBeenCalledTimes(2);
+  });
 });

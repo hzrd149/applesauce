@@ -23,7 +23,19 @@ export class DnsIdentityLoader {
   /** How long an identity should be kept until its considered expired (in seconds) defaults to 1 week */
   expiration = 60 * 60 * 24 * 7;
 
+  /** How long a failed lookup should be kept before retrying (in seconds) defaults to 5 minutes */
+  errorExpiration = 60 * 5;
+
+  /** Identities that were not found, kept so repeated requests do not refetch them */
+  private failures = new Map<string, Identity>();
+
   constructor(public cache?: AsyncIdentityCache) {}
+
+  /** Checks if an identity is older than its expiration */
+  private isExpired(identity: Identity): boolean {
+    const expiration = identity.status === IdentityStatus.Error ? this.errorExpiration : this.expiration;
+    return unixNow() - identity.checked > expiration;
+  }
 
   /** Makes an http request to fetch an identity */
   async fetchIdentity(name: string, domain: string): Promise<Identity> {
@@ -57,7 +69,7 @@ export class DnsIdentityLoader {
     if (this.cache) identity = await this.cache.load(name + "@" + domain);
 
     // fetch the identity if its not in cache, or if its expired
-    if (!identity || unixNow() - identity.checked > this.expiration) return await this.fetchIdentity(name, domain);
+    if (!identity || this.isExpired(identity)) return await this.fetchIdentity(name, domain);
     else return identity;
   }
 
@@ -66,12 +78,23 @@ export class DnsIdentityLoader {
   requestIdentity(name: string, domain: string): Promise<Identity> {
     const key = name + "@" + domain;
 
-    let existing = this.identities.get(key);
-    if (existing) return Promise.resolve(existing);
+    // An expired identity can sit next to a fresh failure from the retry, so check both
+    for (const existing of [this.identities.get(key), this.failures.get(key)]) {
+      if (existing && !this.isExpired(existing)) return Promise.resolve(existing);
+    }
 
     let ongoing = this.requesting.get(key);
     if (!ongoing) {
-      ongoing = this.loadIdentity(name, domain);
+      ongoing = this.loadIdentity(name, domain)
+        .then((identity) => {
+          if (identity.status === IdentityStatus.Found) {
+            this.identities.set(key, identity);
+            this.failures.delete(key);
+          } else this.failures.set(key, identity);
+          return identity;
+        })
+        // Forget the request once it settles so expired and failed identities are fetched again
+        .finally(() => this.requesting.delete(key));
       this.requesting.set(key, ongoing);
     }
 
