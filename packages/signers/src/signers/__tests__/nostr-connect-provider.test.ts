@@ -486,6 +486,42 @@ describe("ping", () => {
   });
 });
 
+describe("seen requests", () => {
+  it("should forget old request ids but still ignore replays of them", async () => {
+    const max = NostrConnectProvider.MAX_SEEN;
+    NostrConnectProvider.MAX_SEEN = 2;
+    try {
+      const client = new FakeUser();
+      const signer = new FakeUser();
+      const provider = new NostrConnectProvider({ upstream: user, signer, relays: ["wss://relay.nsec.app"] });
+      await provider.start();
+
+      const request = async (method: NostrConnectMethod, params: string[], created_at: number) =>
+        client.event({
+          kind: kinds.NostrConnect,
+          created_at,
+          content: await client.nip44.encrypt(signer.pubkey, JSON.stringify({ id: nanoid(), method, params })),
+        });
+
+      const connect = await request(NostrConnectMethod.Connect, [signer.pubkey], 100);
+      await provider.handleEvent(connect);
+      await provider.handleEvent(await request(NostrConnectMethod.Ping, [], 101));
+      await provider.handleEvent(await request(NostrConnectMethod.Ping, [], 102));
+      expect(pool.publish).toHaveBeenCalledTimes(3);
+      expect(provider["seen"].size).toBe(2);
+
+      // The connect id was forgotten, but a relay replaying it is still ignored
+      await provider.handleEvent(connect);
+      expect(pool.publish).toHaveBeenCalledTimes(3);
+
+      await provider.handleEvent(await request(NostrConnectMethod.Ping, [], 103));
+      expect(pool.publish).toHaveBeenCalledTimes(4);
+    } finally {
+      NostrConnectProvider.MAX_SEEN = max;
+    }
+  });
+});
+
 describe("switch_relays", () => {
   it("should return null by default", async () => {
     const client = new FakeUser();

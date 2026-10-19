@@ -86,8 +86,13 @@ export class NostrConnectProvider implements ProviderAuthorization {
   /** Internal logger */
   protected log: Debugger = logger.extend("NostrConnectProvider");
 
-  /** A set of nostr requests that have been seen */
-  protected seen = new Set<string>();
+  /** The most request ids remembered before the oldest are forgotten */
+  static MAX_SEEN = 1000;
+
+  /** The timestamps of recently seen requests by id */
+  protected seen = new Map<string, number>();
+  /** Requests at or before this timestamp are treated as seen, since their ids may have been forgotten */
+  protected seenUntil = 0;
 
   /** The main signer for the actual signing operations */
   public upstream: ISigner;
@@ -245,6 +250,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
 
     // Forget all seen requests
     this.seen.clear();
+    this.seenUntil = 0;
 
     this.client = undefined;
     this.connected = false;
@@ -277,8 +283,15 @@ export class NostrConnectProvider implements ProviderAuthorization {
     if (!verifyEvent(event)) return;
 
     // Do nothing if this request has already been seen
-    if (this.seen.has(event.id)) return;
-    this.seen.add(event.id);
+    if (this.seen.has(event.id) || event.created_at <= this.seenUntil) return;
+    this.seen.set(event.id, event.created_at);
+
+    // Forget the oldest request but keep ignoring anything as old, so relays can't replay it
+    if (this.seen.size > NostrConnectProvider.MAX_SEEN) {
+      const [id, created_at] = this.seen.entries().next().value!;
+      this.seen.delete(id);
+      this.seenUntil = Math.max(this.seenUntil, created_at);
+    }
 
     try {
       const content =
