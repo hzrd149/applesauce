@@ -276,7 +276,7 @@ export class NostrConnectSigner implements ISigner {
       // Handle the remote signer connecting from a nostrconnect:// URI
       if (!this.remote) {
         // The secret must be validated to prevent connection spoofing, so "ack" is not accepted here
-        if (response.result !== this.connectSecret) return;
+        if (response.error || response.result !== this.connectSecret) return;
 
         this.log("Got connect response from", event.pubkey);
         this.isConnected = true;
