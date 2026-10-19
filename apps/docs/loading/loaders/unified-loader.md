@@ -96,7 +96,7 @@ The `createUnifiedEventLoader` function accepts all options from both `EventPoin
 
 ### Common Options
 
-- `bufferTime`: Time interval to buffer requests in ms (default 1000)
+- `bufferTime`: Time interval to buffer requests in ms (default 200)
 - `bufferSize`: Max buffer size (default 200)
 - `eventStore`: An event store used to deduplicate events (defaults to an internal `EventMemory`, `null` disables deduplication)
 - `cacheRequest`: A method used to load events from a local cache

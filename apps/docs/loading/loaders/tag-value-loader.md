@@ -33,7 +33,7 @@ A tag match establishes a reference; use relationship-specific helpers to distin
 
 The `createTagValueLoader` function accepts these options:
 
-- `bufferTime`: Time interval to buffer requests in ms (default 1000)
+- `bufferTime`: Time interval to buffer requests in ms (default 200)
 - `bufferSize`: Max buffer size (default 200)
 - `shareInflight`: Shares compatible queued or running requests (default true, disabled automatically for observable `extraRelays`)
 - `maxConcurrentBatches`: Maximum running batches (default 4, `Infinity` disables the limit)

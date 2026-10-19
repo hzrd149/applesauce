@@ -167,7 +167,7 @@ export function consolidateAddressPointers(pointers: LoadableAddressPointer[]): 
 }
 
 export type AddressLoaderOptions = Partial<{
-  /** Time interval to buffer requests in ms ( default 1000 ) */
+  /** Time interval to buffer requests in ms ( default 200 ) */
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
@@ -197,7 +197,7 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
 
   return batchLoader(
     // buffer requests by time or size
-    bufferTime(opts?.bufferTime ?? 1000, undefined, opts?.bufferSize ?? 200),
+    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
     // Create a loader for batching
     addressPointerLoadingSequence(
       // Step 1. load from cache if available

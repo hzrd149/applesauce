@@ -46,7 +46,7 @@ export type TagValueLoaderErrorSource =
 
 /** Options for batching and fetching events by tag value */
 export type TagValueLoaderOptions = {
-  /** Time interval to buffer requests in ms ( default 1000 ) */
+  /** Time interval to buffer requests in ms ( default 200 ) */
   bufferTime?: number;
   /** Max buffer size ( default 200 ) */
   bufferSize?: number;
@@ -211,7 +211,7 @@ export function createTagValueLoader(
   type Result = { event: NostrEvent; cache: boolean; values?: Set<string> };
   const store = opts?.eventStore === null ? null : (opts?.eventStore ?? new EventMemory<NostrEvent>());
   const loader = batchLoader<TagValuePointer, Result>(
-    bufferTime(opts?.bufferTime ?? 1000, undefined, opts?.bufferSize ?? 200),
+    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
     (pointers) =>
       merge(
         opts?.cacheRequest

@@ -125,7 +125,7 @@ export function eventLoadingSequence(...loaders: (createEventLoader | undefined)
 }
 
 export type EventPointerLoaderOptions = Partial<{
-  /** Time interval to buffer requests in ms ( default 1000 ) */
+  /** Time interval to buffer requests in ms ( default 200 ) */
   bufferTime: number;
   /** Max buffer size ( default 200 ) */
   bufferSize: number;
@@ -154,7 +154,7 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
   return batchLoader(
     // Create batching sequence
     // buffer requests by time or size
-    bufferTime(opts?.bufferTime ?? 1000, undefined, opts?.bufferSize ?? 200),
+    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
     // Create a loader for batching
     eventLoadingSequence(
       // Step 1. load from cache if available
