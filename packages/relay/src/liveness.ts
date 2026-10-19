@@ -317,12 +317,25 @@ export class RelayLiveness {
     // Log transition if it's not the first time we've seen the relay
     if (newState !== state?.state) this.log(`Relay ${relay} transitioned ${state?.state} -> ${newState}`);
 
-    // Set a timeout that will clear the backoff period
-    setTimeout(() => {
-      const state = this.getState(relay);
-      if (!state || state.backoffUntil === undefined) return;
-      this.updateRelayState(relay, { ...state, backoffUntil: undefined });
-    }, backoffDelay);
+    this.scheduleBackoffEnd(relay, backoffDelay);
+  }
+
+  // Pending timers that clear a relay's backoff once it ends
+  private backoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Clears the relay's backoff once it ends so state subscribers see the relay become available */
+  private scheduleBackoffEnd(relay: string, delay: number): void {
+    clearTimeout(this.backoffTimers.get(relay));
+    this.backoffTimers.set(
+      relay,
+      setTimeout(() => {
+        this.backoffTimers.delete(relay);
+        const state = this.getState(relay);
+        // Only clear a backoff that has ended, a newer failure may have extended it
+        if (!state || state.backoffUntil === undefined || state.backoffUntil > Date.now()) return;
+        this.updateRelayState(relay, { ...state, backoffUntil: undefined });
+      }, delay),
+    );
   }
 
   /**
