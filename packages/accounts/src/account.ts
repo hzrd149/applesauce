@@ -11,17 +11,20 @@ function wrapInSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
     let done = false;
 
     // reject promise if abort signal is triggered
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       if (!done) rej(signal.reason || undefined);
       done = true;
-    });
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
 
     return promise.then(
       (v) => {
+        signal.removeEventListener("abort", onAbort);
         if (!done) res(v);
         done = true;
       },
       (err) => {
+        signal.removeEventListener("abort", onAbort);
         if (!done) rej(err);
         done = true;
       },

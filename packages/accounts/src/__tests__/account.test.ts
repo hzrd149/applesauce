@@ -12,6 +12,26 @@ beforeEach(() => {
 });
 
 describe("request queue", () => {
+  it.each([false, true])("releases abort listeners after settlement (reject=%s)", async (reject) => {
+    const pubkey = await signer.getPublicKey();
+    const account = new BaseAccount(pubkey, signer);
+    let settle!: () => void;
+    vi.spyOn(signer, "getPublicKey").mockImplementationOnce(
+      () =>
+        new Promise((resolve, fail) => {
+          settle = () => (reject ? fail(new Error("failed")) : resolve(pubkey));
+        }),
+    );
+    const operation = account.getPublicKey();
+    const controller = Reflect.get(account, "abort") as AbortController;
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const result = reject ? expect(operation).rejects.toThrow("failed") : expect(operation).resolves.toBe(pubkey);
+    settle();
+    await result;
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+    await expect(account.getPublicKey()).resolves.toBe(pubkey);
+  });
+
   it("should queue signing requests by default", async () => {
     const account = new BaseAccount(await signer.getPublicKey(), signer);
 
