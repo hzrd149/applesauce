@@ -1,6 +1,6 @@
 import { generateSecretKey, getPublicKey, nip04, nip44 } from "nostr-tools";
 import { describe, expect, it } from "vitest";
-import { isNIP04Encrypted } from "../encryption.js";
+import { getCachedConversationKey, isNIP04Encrypted } from "../encryption.js";
 import { bytesToHex } from "nostr-tools/utils";
 import crypto from "node:crypto";
 
@@ -48,5 +48,23 @@ describe("nip44 plaintext ceiling", () => {
     const ciphertext = nip44.encrypt(plaintext, conversationKey);
     const decrypted = nip44.decrypt(ciphertext, conversationKey);
     expect(decrypted).toBe(plaintext);
+  });
+});
+
+describe("getCachedConversationKey", () => {
+  it("should match the uncached conversation key", () => {
+    const key = generateSecretKey();
+    const pubkey = getPublicKey(generateSecretKey());
+
+    expect(getCachedConversationKey(key, pubkey)).toEqual(nip44.v2.utils.getConversationKey(key, pubkey));
+  });
+
+  it("should reuse the key for the same pair and separate different secret keys", () => {
+    const pubkey = getPublicKey(generateSecretKey());
+    const a = generateSecretKey();
+    const b = generateSecretKey();
+
+    expect(getCachedConversationKey(a, pubkey)).toBe(getCachedConversationKey(a, pubkey));
+    expect(getCachedConversationKey(b, pubkey)).not.toEqual(getCachedConversationKey(a, pubkey));
   });
 });

@@ -1,5 +1,5 @@
 import { normalizeToSecretKey } from "applesauce-core/helpers";
-import { nip04, nip44 } from "applesauce-core/helpers/encryption";
+import { getCachedConversationKey, nip04, nip44 } from "applesauce-core/helpers/encryption";
 import { EventTemplate, finalizeEvent } from "applesauce-core/helpers/event";
 import { decryptSecretKey, encryptSecretKey, getPublicKey } from "applesauce-core/helpers/keys";
 import { createDefer, Deferred } from "applesauce-core/promise";
@@ -101,11 +101,11 @@ export class PasswordSigner implements ISigner {
   // NIP-44
   async nip44Encrypt(pubkey: string, plaintext: string) {
     await this.requestUnlock();
-    return nip44.v2.encrypt(plaintext, nip44.v2.utils.getConversationKey(this.key!, pubkey));
+    return nip44.v2.encrypt(plaintext, getCachedConversationKey(this.key!, pubkey));
   }
   async nip44Decrypt(pubkey: string, ciphertext: string) {
     await this.requestUnlock();
-    return nip44.v2.decrypt(ciphertext, nip44.v2.utils.getConversationKey(this.key!, pubkey));
+    return nip44.v2.decrypt(ciphertext, getCachedConversationKey(this.key!, pubkey));
   }
 
   /** Creates a PasswordSigner from a hex private key or NIP-19 nsec and password */

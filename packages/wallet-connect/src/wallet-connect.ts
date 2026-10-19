@@ -3,7 +3,7 @@ import { simpleTimeout } from "applesauce-core";
 import { EncryptionMethod } from "applesauce-core/helpers";
 import { EventSigner } from "applesauce-core";
 import { finalizeEvent, getPublicKey, NostrEvent, verifyEvent } from "applesauce-core/helpers";
-import { nip04, nip44 } from "applesauce-core/helpers/encryption";
+import { getCachedConversationKey, nip04, nip44 } from "applesauce-core/helpers/encryption";
 import {
   BehaviorSubject,
   combineLatest,
@@ -183,8 +183,8 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
         decrypt: async (pubkey, ciphertext) => nip04.decrypt(this.secret, pubkey, ciphertext),
       },
       nip44: {
-        encrypt: async (pubkey, plaintext) => nip44.encrypt(plaintext, nip44.getConversationKey(this.secret, pubkey)),
-        decrypt: async (pubkey, ciphertext) => nip44.decrypt(ciphertext, nip44.getConversationKey(this.secret, pubkey)),
+        encrypt: async (pubkey, plaintext) => nip44.encrypt(plaintext, getCachedConversationKey(this.secret, pubkey)),
+        decrypt: async (pubkey, ciphertext) => nip44.decrypt(ciphertext, getCachedConversationKey(this.secret, pubkey)),
       },
     };
 
