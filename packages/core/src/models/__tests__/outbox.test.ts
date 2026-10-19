@@ -23,6 +23,34 @@ describe("OutboxModel", () => {
   });
 });
 
+describe("OutboxModel relay lists", () => {
+  it("should keep contacts without a relay list and select relays for the rest", () => {
+    const store = new EventStore();
+    const user = new FakeUser();
+    const [missing, published, later] = [new FakeUser(), new FakeUser(), new FakeUser()];
+
+    store.add(user.event({ kind: kinds.Contacts, tags: [missing, published, later].map((c) => ["p", c.pubkey]) }));
+    store.add(published.event({ kind: kinds.RelayList, tags: [["r", "wss://published.example.com/"]] }));
+
+    let selection: { pubkey: string; relays?: string[] }[] | undefined;
+    store.model(OutboxModel, user.pubkey, { maxConnections: 10 }).subscribe((v) => (selection = v));
+
+    expect(selection).toEqual([
+      { pubkey: missing.pubkey },
+      { pubkey: published.pubkey, relays: ["wss://published.example.com/"] },
+      { pubkey: later.pubkey },
+    ]);
+
+    // A relay list that loads later updates only that contact
+    store.add(later.event({ kind: kinds.RelayList, tags: [["r", "wss://later.example.com/"]] }));
+    expect(selection?.map((c) => c.relays)).toEqual([
+      undefined,
+      ["wss://published.example.com/"],
+      ["wss://later.example.com/"],
+    ]);
+  });
+});
+
 describe("OutboxModel.getKey", () => {
   const base = { maxConnections: 10, maxRelaysPerUser: 2 };
 
