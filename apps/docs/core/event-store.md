@@ -667,6 +667,23 @@ eventStore.remove$.subscribe((event) => {
 
 ## Integration
 
+### Watching Event Updates
+
+Use `watchEventsUpdates` (also exported as `watchTimelineUpdates`) to re-emit a timeline when one of its event objects updates, such as when encrypted content is unlocked:
+
+```ts
+import { watchEventsUpdates } from "applesauce-core/observable";
+
+const subscription = eventStore
+  .timeline({ kinds: [1] })
+  .pipe(watchEventsUpdates(eventStore))
+  .subscribe(console.log);
+```
+
+The operator indexes membership by object identity on every source emission. It re-emits the original array when a matching event updates; a different object with the same ID does not match. Each subscription maintains its own index.
+
+For custom array sources, emit again after adding, removing, or replacing events, even if you reuse the same array instance. **Migration:** silently mutating an emitted array no longer refreshes membership; emit the updated array before sending event updates. Changes to properties of an existing event object do not require rebuilding membership.
+
 ### With Event Loaders
 
 ```ts
