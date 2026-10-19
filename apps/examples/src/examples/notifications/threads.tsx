@@ -1,7 +1,7 @@
 /**
  * A thread activity dashboard that syncs every NIP-10 and NIP-22 thread the signed in user is part of with NIP-77 and measures how fast each sync step completes
  * @tags nip-77, negentropy, nip-10, nip-22, nip-65, notifications, threads, dashboard, sync, actions
- * @related notifications/mentions, notifications/zaps, loader/sync-loader, threading/note-thread
+ * @related notifications/mentions, notifications/zaps, loader/sync-loader, threading/thread-loading
  */
 import "applesauce-content/text/cashu";
 import "applesauce-content/text/lightning";

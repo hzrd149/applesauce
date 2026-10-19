@@ -14,7 +14,7 @@ const FEATURED = [
   "outbox/social-feed",
   "notes/rendering",
   "notes/composing",
-  "threading/note-thread",
+  "threading/thread-loading",
   "loader/infinite-scroll",
   "signers/accounts",
   "simple/profile-editor",

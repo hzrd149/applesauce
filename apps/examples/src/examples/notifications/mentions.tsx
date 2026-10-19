@@ -1,7 +1,7 @@
 /**
  * A full page notifications view that syncs every note and comment that @ mentions a user with NIP-77, then syncs the full thread of a selected mention
  * @tags nip-77, negentropy, nip-10, nip-22, notifications, mentions, sync, threading
- * @related git/issues-dashboard, loader/sync-loader, negentrapy/mentions, threading/note-thread
+ * @related git/issues-dashboard, loader/sync-loader, negentrapy/mentions, threading/thread-loading
  */
 import "applesauce-content/text/cashu";
 import "applesauce-content/text/lightning";

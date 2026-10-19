@@ -269,5 +269,5 @@ Anchored in `assets/examples/` (indexed in `examples.md`):
 - `zap/timeline.md` — `Zap.sender` / `Zap.recipient` / `Zap.event$` graph walks
 - `articles/blog.md` — `castUser` + `user.outboxes$` + `castTimelineStream(Article)`
 - `bookmarks/manager.md` — `BookmarksList.notes$` / `.articles$` and `castEventStream(Note)` per pointer
-- `threading/note-thread.md` — `note.replies$`, `note.replyingTo$`, full thread graph
+- `threading/thread-loading.md` — `ThreadModel` tree of NIP-10 replies and NIP-22 comments, `castUser` per row, `castTimelineStream(Reaction)` grouped reactions
 - `comment/feed.md` — `Comment.parent$` and `Comment.root$`
