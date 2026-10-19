@@ -76,13 +76,10 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
   /** Gets a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): E[] {
-    const timeline: E[] = [];
-    const events = this.getByFilters(filters);
-    // NOTE: insertEventIntoDescendingList is not in the CORE-04 list and stays NostrEvent-typed;
-    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
-    for (const event of events)
-      insertEventIntoDescendingList(timeline as unknown as NostrEvent[], event as unknown as NostrEvent);
-    return timeline;
+    // Sorted insertion put later encounters first when timestamps match; preserve that tie order.
+    return this.getByFilters(filters)
+      .reverse()
+      .sort((a, b) => b.created_at - a.created_at);
   }
 
   /** Inserts an event into the database and notifies all subscriptions */

@@ -598,6 +598,20 @@ describe("EventMemory - Query Filters", () => {
 });
 
 describe("EventMemory - Timeline", () => {
+  it("should put later encounters first when timestamps match without changing query order", () => {
+    const events = [
+      user1.note("first", { created_at: 2000 }),
+      user1.note("older", { created_at: 1000 }),
+      user1.note("second", { created_at: 2000 }),
+      user1.note("third", { created_at: 2000 }),
+    ];
+    events.forEach((event) => eventMemory.add(event));
+
+    expect(eventMemory.getTimeline({})).toEqual([events[3], events[2], events[0], events[1]]);
+    expect(eventMemory.getByFilters({})).toEqual(events);
+    expect(eventMemory.getTimeline({ authors: [user1.pubkey] })).toEqual([events[3], events[2], events[0], events[1]]);
+  });
+
   it("should return events sorted by created_at descending", () => {
     const events = [
       user1.note("1", { created_at: 3000 }),

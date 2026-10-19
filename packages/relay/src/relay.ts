@@ -1712,8 +1712,10 @@ export class Relay {
     const fromRelay = normalizeURL(this.url);
 
     const getEvents = async (ids: string[]) => {
-      if (Array.isArray(store)) return store.filter((event) => ids.includes(event.id));
-      else return store.getByFilters({ ids });
+      if (Array.isArray(store)) {
+        const requested = new Set(ids);
+        return store.filter((event) => requested.has(event.id));
+      } else return store.getByFilters({ ids });
     };
 
     // RAUTH-08: extract the forwarded auth option set once so all three of the relay operations sync()
