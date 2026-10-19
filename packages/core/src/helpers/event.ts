@@ -72,41 +72,38 @@ export const ReplaceableAddressSymbol = Symbol.for("replaceable-address");
 export const FromCacheSymbol = Symbol.for("from-cache");
 export const ReplaceableIdentifierSymbol = Symbol.for("replaceable-identifier");
 
-/** Checks if an object is a Rumor ( unsigned event with a known id ) */
-export function isRumor(event: any): event is Rumor {
+const EVENT_HEX = /^[0-9a-f]{64}$/;
+const SIGNATURE_HEX = /^[0-9a-f]{128}$/;
+
+function hasEventFields(event: any): boolean {
   return (
+    event !== null &&
+    typeof event === "object" &&
     typeof event.id === "string" &&
-    event.id.length === 64 &&
-    event.sig === undefined && // Missing signature ( unsigned )
+    EVENT_HEX.test(event.id) &&
     typeof event.pubkey === "string" &&
-    event.pubkey.length === 64 &&
+    EVENT_HEX.test(event.pubkey) &&
     typeof event.content === "string" &&
     Array.isArray(event.tags) &&
-    typeof event.created_at === "number" &&
-    Number.isInteger(event.created_at) &&
-    event.created_at > 0
+    event.tags.every(
+      (tag: unknown) => Array.isArray(tag) && tag.every((value: unknown) => typeof value === "string"),
+    ) &&
+    Number.isSafeInteger(event.created_at) &&
+    event.created_at > 0 &&
+    Number.isInteger(event.kind) &&
+    event.kind >= 0 &&
+    event.kind <= 65535
   );
 }
 
-/**
- * Checks if an object is a nostr event
- * NOTE: does not validate the signature on the event
- */
-export function isEvent(event: any): event is NostrEvent {
-  if (event === undefined || event === null) return false;
+/** Checks the structure of an unsigned event with a known id without verifying its hash */
+export function isRumor(event: any): event is Rumor {
+  return hasEventFields(event) && event.sig === undefined;
+}
 
-  return (
-    typeof event.id === "string" &&
-    event.id.length === 64 &&
-    typeof event.sig === "string" &&
-    typeof event.pubkey === "string" &&
-    event.pubkey.length === 64 &&
-    typeof event.content === "string" &&
-    Array.isArray(event.tags) &&
-    typeof event.created_at === "number" &&
-    Number.isInteger(event.created_at) &&
-    event.created_at > 0
-  );
+/** Checks the structure of a signed event without verifying its hash or signature */
+export function isEvent(event: any): event is NostrEvent {
+  return hasEventFields(event) && typeof event.sig === "string" && SIGNATURE_HEX.test(event.sig);
 }
 
 /**

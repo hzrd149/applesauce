@@ -25,6 +25,7 @@ describe("exports", () => {
         "Models",
         "Observable",
         "Operations",
+        "OptimisticEventVerifier",
         "ProfileFactory",
         "PubkeyCast",
         "ReplaySubject",

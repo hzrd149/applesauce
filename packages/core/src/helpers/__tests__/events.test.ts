@@ -124,3 +124,35 @@ describe("isRumor", () => {
     expect(isRumor({ ...valid, created_at: Infinity })).toBe(false);
   });
 });
+
+describe.each([isEvent, isRumor])("event field validation", (guard) => {
+  const signed = user.note("valid");
+  const valid = guard === isRumor ? (({ sig, ...rumor }) => rumor)(signed) : signed;
+
+  it.each([
+    { id: "g".repeat(64) },
+    { id: "A".repeat(64) },
+    { id: "a".repeat(63) },
+    { pubkey: "g".repeat(64) },
+    { pubkey: "A".repeat(64) },
+    { created_at: Number.MAX_SAFE_INTEGER + 1 },
+    { kind: -1 },
+    { kind: 65536 },
+    { kind: 1.5 },
+    { kind: undefined },
+    { tags: ["tag"] },
+    { tags: [["p", 123]] },
+  ])("rejects malformed fields %j", (fields) => {
+    expect(guard({ ...valid, ...fields })).toBe(false);
+  });
+
+  it("rejects primitives", () => {
+    for (const value of [null, undefined, false, 1, "event"]) expect(guard(value)).toBe(false);
+  });
+});
+
+describe("signature field validation", () => {
+  it.each(["not-a-signature", "A".repeat(128), "g".repeat(128), "a".repeat(127)])("rejects %s", (sig) => {
+    expect(isEvent({ ...user.note("valid"), sig })).toBe(false);
+  });
+});
