@@ -19,7 +19,8 @@ interface Subscription {
   ws: WebSocket;
 }
 
-const subscriptions = new Map<string, Subscription>();
+// Subscription ids are only unique per connection, so subscriptions are grouped by WebSocket
+const subscriptions = new Map<WebSocket, Map<string, Subscription>>();
 
 // Create HTTP server and WebSocket server
 const server = createServer();
@@ -65,11 +66,7 @@ wss.on("connection", (ws: WebSocket) => {
   ws.on("close", () => {
     console.log("Client disconnected");
     // Clean up subscriptions for this WebSocket
-    for (const [subId, sub] of subscriptions.entries()) {
-      if (sub.ws === ws) {
-        subscriptions.delete(subId);
-      }
-    }
+    subscriptions.delete(ws);
   });
 
   ws.on("error", (error) => {
@@ -116,12 +113,10 @@ async function handleEvent(ws: WebSocket, event: any) {
 // Handle REQ messages
 async function handleReq(ws: WebSocket, subscriptionId: string, filters: FilterWithSearch[]) {
   try {
-    // Store subscription
-    subscriptions.set(subscriptionId, {
-      id: subscriptionId,
-      filters,
-      ws,
-    });
+    // Store subscription, replacing any existing subscription with the same id on this connection
+    let connection = subscriptions.get(ws);
+    if (!connection) subscriptions.set(ws, (connection = new Map()));
+    connection.set(subscriptionId, { id: subscriptionId, filters, ws });
 
     // Get existing events that match filters
     const events = eventStore.getByFilters(filters);
@@ -141,26 +136,24 @@ async function handleReq(ws: WebSocket, subscriptionId: string, filters: FilterW
 
 // Handle CLOSE messages
 function handleClose(ws: WebSocket, subscriptionId: string) {
-  const sub = subscriptions.get(subscriptionId);
-  if (sub && sub.ws === ws) {
-    subscriptions.delete(subscriptionId);
-  }
+  subscriptions.get(ws)?.delete(subscriptionId);
 }
 
 // Broadcast event to all subscribers with matching filters
 function broadcastToSubscribers(event: NostrEvent) {
-  for (const [subId, sub] of subscriptions.entries()) {
-    if (sub.ws.readyState === WebSocket.OPEN) {
+  for (const [ws, connection] of subscriptions) {
+    // Clean up closed connections
+    if (ws.readyState !== WebSocket.OPEN) {
+      subscriptions.delete(ws);
+      continue;
+    }
+
+    for (const [subId, sub] of connection) {
       // Skip this subscription if it has a search filter (cant match search filters)
       if (sub.filters.some((filter) => filter.search)) continue;
 
       // Check if event matches any of the subscription filters
-      const matches = sub.filters.some((filter) => matchFilter(filter, event));
-
-      if (matches) sub.ws.send(JSON.stringify(["EVENT", subId, event]));
-    } else {
-      // Clean up closed connections
-      subscriptions.delete(subId);
+      if (sub.filters.some((filter) => matchFilter(filter, event))) ws.send(JSON.stringify(["EVENT", subId, event]));
     }
   }
 }
