@@ -723,3 +723,129 @@ describe("reactive timeline windows", () => {
     expect(pending.observed).toBe(false);
   });
 });
+
+describe("outbox author changes", () => {
+  const [A, B] = ["a".repeat(64), "b".repeat(64)];
+  const note = (pubkey: string, created_at: number): NostrEvent => ({
+    ...event(created_at),
+    id: `${pubkey[0]}-${created_at}`,
+    pubkey,
+  });
+  const authorsOf = (calls: [string[], Filter[]][]) => calls.flatMap(([, filters]) => filters.map((f) => f.authors));
+
+  it("only requests added authors and keeps the coverage of existing ones", async () => {
+    const request = relay({ r: [note(A, 150), note(B, 160)] });
+    const outboxes = new BehaviorSubject<Record<string, { pubkey: string }[]>>({ r: [{ pubkey: A }] });
+    const loader = createOutboxTimelineLoader(request, outboxes, { kinds: [1] }, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    loader.status$.subscribe((value) => (statuses = value));
+    const received: string[] = [];
+    const sub = loader(new BehaviorSubject(window(100, 200))).subscribe((e) => received.push(e.id));
+    await flush();
+    const before = request.mock.calls.length;
+
+    outboxes.next({ r: [{ pubkey: A }, { pubkey: B }] });
+    await flush();
+
+    // Paging can take more than one request, but none of them reload the existing author
+    const after = authorsOf(request.mock.calls.slice(before) as any);
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.every((authors) => authors?.length === 1 && authors[0] === B)).toBe(true);
+    expect(received.sort()).toEqual(["a-150", "b-160"]);
+    // The groups merge once both are loaded, leaving one status per relay
+    expect(statuses.map((s) => [s.source, s.filter.authors])).toEqual([["r", [A, B]]]);
+    sub.unsubscribe();
+  });
+
+  it("keeps loading when authors are removed and drops their events from requests in flight", async () => {
+    const pending = new Subject<NostrEvent>();
+    const request = vi.fn(() => pending);
+    const outboxes = new BehaviorSubject<Record<string, { pubkey: string }[]>>({
+      r: [{ pubkey: A }, { pubkey: B }],
+    });
+    const loader = createOutboxTimelineLoader(request, outboxes, { kinds: [1] }, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    loader.status$.subscribe((value) => (statuses = value));
+    const received: string[] = [];
+    const sub = loader(new BehaviorSubject(window(100, 200))).subscribe((e) => received.push(e.id));
+    await flush();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    outboxes.next({ r: [{ pubkey: A }] });
+    await flush();
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(pending.observed).toBe(true);
+
+    pending.next(note(B, 160));
+    pending.next(note(A, 150));
+    pending.complete();
+    await flush();
+
+    expect(received).toEqual(["a-150"]);
+    // Later pages only ask for the authors that are left
+    expect(authorsOf(request.mock.calls.slice(1) as any).every((authors) => authors?.join() === A)).toBe(true);
+    expect(statuses.map((s) => [s.filter.authors, s.state])).toEqual([[[A], "covered"]]);
+    sub.unsubscribe();
+  });
+
+  it("keeps each chunk's coverage when a filter function splits authors", async () => {
+    const C = "c".repeat(64);
+    const request = relay({ r: [note(A, 150), note(B, 160), note(C, 170)] });
+    const chunks = (users: { pubkey: string }[]) => users.map((u) => ({ kinds: [1], authors: [u.pubkey] }));
+    const outboxes = new BehaviorSubject<Record<string, { pubkey: string }[]>>({
+      r: [{ pubkey: A }, { pubkey: B }],
+    });
+    const sub = createOutboxTimelineLoader(request, outboxes, chunks, { prefetch: 0 })(
+      new BehaviorSubject(window(100, 200)),
+    ).subscribe();
+    await flush();
+    const before = request.mock.calls.length;
+
+    outboxes.next({ r: [{ pubkey: A }, { pubkey: B }, { pubkey: C }] });
+    await flush();
+
+    const after = authorsOf(request.mock.calls.slice(before) as any);
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.every((authors) => authors?.join() === C)).toBe(true);
+    sub.unsubscribe();
+  });
+
+  it("removes the statuses of relays and authors that are no longer loaded", async () => {
+    const request = relay({ r: [note(A, 150)], s: [note(B, 160)] });
+    const outboxes = new BehaviorSubject<Record<string, { pubkey: string }[]>>({
+      r: [{ pubkey: A }, { pubkey: B }],
+      s: [{ pubkey: B }],
+    });
+    const loader = createOutboxTimelineLoader(request, outboxes, { kinds: [1] }, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    loader.status$.subscribe((value) => (statuses = value));
+    const sub = loader(new BehaviorSubject(window(100, 200))).subscribe();
+    await flush();
+
+    outboxes.next({ r: [{ pubkey: A }] });
+    await flush();
+
+    expect(statuses.map((s) => [s.source, s.filter.authors])).toEqual([["r", [A]]]);
+    sub.unsubscribe();
+  });
+
+  it("cancels a request when every author it loads is removed", async () => {
+    const pending = new Subject<NostrEvent>();
+    const request = vi.fn(() => pending);
+    const outboxes = new BehaviorSubject<Record<string, { pubkey: string }[]>>({ r: [{ pubkey: A }] });
+    const sub = createOutboxTimelineLoader(
+      request,
+      outboxes,
+      { kinds: [1] },
+      { prefetch: 0 },
+    )(new BehaviorSubject(window(100, 200))).subscribe();
+    await flush();
+    expect(pending.observed).toBe(true);
+
+    outboxes.next({ r: [{ pubkey: B }] });
+    await flush();
+
+    expect(authorsOf(request.mock.calls as any)).toEqual([[A], [B]]);
+    sub.unsubscribe();
+  });
+});

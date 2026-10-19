@@ -36,7 +36,6 @@ import {
   share,
   startWith,
   Subject,
-  switchMap,
   takeUntil,
   takeWhile,
   tap,
@@ -122,6 +121,12 @@ type FiltersRequest = (filters: Filter[]) => Observable<NostrEvent>;
 
 type FilterState = {
   filter: TimelessFilter;
+  // The compiled filter, events from authors that were since removed are dropped from in-flight requests
+  match: (event: NostrEvent) => boolean;
+  // Set once the filter is no longer loaded, so in-flight requests don't commit coverage for it
+  removed?: boolean;
+  // The input filter this author group was split from, only groups of the same filter merge back together
+  owner?: object;
   // Sorted, non-overlapping intervals established by completed requests.
   covered: Range[];
   boundaries: Map<number, Set<string>>;
@@ -141,7 +146,7 @@ const MAX_RETRY_DELAY = 5 * 60_000;
 
 type FilterChange = { relay: string; filters?: TimelessFilter | TimelessFilter[] };
 
-type ActiveRequest = { range: Range; prefetch: boolean; cancel$: ReplaySubject<void> };
+type ActiveRequest = { range: Range; prefetch: boolean; states: FilterState[]; cancel$: ReplaySubject<void> };
 
 function overlaps(a: Range, b: Range) {
   return a.since <= b.until && a.until >= b.since;
@@ -216,9 +221,43 @@ function cover(ranges: Range[], range: Range) {
   }
 }
 
+function createState(filter: TimelessFilter): FilterState {
+  return {
+    filter,
+    match: compileFilter(filter),
+    covered: [],
+    boundaries: new Map<number, Set<string>>(),
+    blocked: new Set<number>(),
+    failures: [],
+    ids: new Set<string>(),
+    times: [],
+  };
+}
+
+/** Returns the ranges covered by both lists */
+function intersect(a: Range[], b: Range[]): Range[] {
+  const result: Range[] = [];
+  for (let i = 0, j = 0; i < a.length && j < b.length;) {
+    const since = Math.max(a[i].since, b[j].since);
+    const until = Math.min(a[i].until, b[j].until);
+    if (since <= until) result.push({ since, until });
+    if (a[i].until < b[j].until) i++;
+    else j++;
+  }
+  return result;
+}
+
+/** Checks if two author filters only differ by their authors */
+function sameShape(a: TimelessFilter, b: TimelessFilter) {
+  if (!a.authors || !b.authors) return false;
+  const { authors: _a, ...restA } = a;
+  const { authors: _b, ...restB } = b;
+  return isFilterEqual(restA, restB);
+}
+
 function loadWindows(
   request: FiltersRequest,
-  filters: TimelessFilter[],
+  filters$: Observable<TimelessFilter[]>,
   sourceName: string,
   opts?: CommonTimelineLoaderOptions,
   tracker?: Tracker,
@@ -227,15 +266,7 @@ function loadWindows(
   return (source) =>
     defer(() => {
       // Coverage belongs to this subscription, never to a detached loader or another consumer.
-      const states: FilterState[] = filters.map((filter) => ({
-        filter,
-        covered: [],
-        boundaries: new Map<number, Set<string>>(),
-        blocked: new Set<number>(),
-        failures: [],
-        ids: new Set<string>(),
-        times: [],
-      }));
+      const states: FilterState[] = [];
       let visible: Range | undefined;
       // The newest time requested so far; the newer buffer never reaches past it, or every second would need a request.
       let horizon = unixNow();
@@ -327,6 +358,112 @@ function loadWindows(
         }
       };
 
+      // Tells status consumers a filter is no longer loaded under that key
+      const removeStatus = (filter: TimelessFilter) => {
+        const window = visible ?? { since: 0, until: 0 };
+        opts?.onStatus?.({
+          source: sourceName,
+          filter,
+          window: { ...window },
+          buffer: { ...window },
+          state: "removed",
+        });
+      };
+      const setFilter = (state: FilterState, filter: TimelessFilter) => {
+        removeStatus(state.filter);
+        state.filter = filter;
+        state.match = compileFilter(filter);
+      };
+      const retire = (state: FilterState) => {
+        state.removed = true;
+        removeStatus(state.filter);
+      };
+
+      // Merges author groups once both have loaded their target, keeping the coverage they share
+      const consolidate = () => {
+        const window = visible;
+        if (!window) return;
+        const busy = new Set(active?.states);
+        // Waiting for the whole target keeps the prefetched pages, intersecting earlier would drop and reload them
+        const ready = (state: FilterState) =>
+          !busy.has(state) && !!state.filter.authors && missing(targetFor(state, window), state.covered).length === 0;
+
+        for (let i = 0; i < states.length; i++) {
+          const a = states[i];
+          if (!ready(a)) continue;
+          for (let j = states.length - 1; j > i; j--) {
+            const b = states[j];
+            if (!ready(b) || !a.owner || a.owner !== b.owner) continue;
+
+            setFilter(a, { ...a.filter, authors: [...a.filter.authors!, ...b.filter.authors!] });
+            retire(b);
+            a.covered = intersect(a.covered, b.covered);
+            // Boundary pages are tracked per filter, so the merged filter starts its boundaries fresh
+            a.boundaries = new Map();
+            for (const t of b.blocked) a.blocked.add(t);
+            a.failures.push(...b.failures);
+            for (const id of b.ids) a.ids.add(id);
+            a.times = [...a.times, ...b.times].sort((x, y) => x - y);
+            a.ahead = undefined;
+            states.splice(j, 1);
+          }
+        }
+      };
+
+      // Applies new filters while keeping the coverage of authors that are still loaded
+      const reconcile = (next: TimelessFilter[]) => {
+        const busy = new Set(active?.states);
+        const remaining = new Set(states);
+        const result: FilterState[] = [];
+
+        for (const filter of next) {
+          const same = [...remaining].find((state) => isFilterEqual(state.filter, filter));
+          if (same) {
+            remaining.delete(same);
+            // A fresh owner keeps it from merging with groups that now belong to other filters
+            if (same.filter.authors) same.owner = {};
+            result.push(same);
+            continue;
+          }
+          if (!filter.authors) {
+            result.push(createState(filter));
+            continue;
+          }
+
+          // Coverage stays valid for a subset of authors, so groups only drop the authors that were removed.
+          // A group is claimed by the first filter that still wants some of its authors, the rest retire below.
+          const wanted = new Set(filter.authors);
+          const loaded = new Set<string>();
+          const groups: FilterState[] = [];
+          const owner = {};
+          for (const group of [...remaining].filter((state) => sameShape(state.filter, filter))) {
+            const kept = group.filter.authors!.filter((author) => wanted.has(author) && !loaded.has(author));
+            if (kept.length === 0) continue;
+            remaining.delete(group);
+            for (const author of kept) loaded.add(author);
+            if (kept.length !== group.filter.authors!.length) setFilter(group, { ...group.filter, authors: kept });
+            group.owner = owner;
+            groups.push(group);
+            result.push(group);
+          }
+
+          const added = [...wanted].filter((author) => !loaded.has(author));
+          if (added.length === 0) continue;
+
+          // A group that has not loaded anything yet can take new authors without losing coverage
+          const empty = groups.find((group) => group.covered.length === 0 && !busy.has(group));
+          if (empty) setFilter(empty, { ...empty.filter, authors: [...empty.filter.authors!, ...added] });
+          else result.push({ ...createState({ ...filter, authors: added }), owner });
+        }
+
+        for (const state of remaining) retire(state);
+        states.splice(0, states.length, ...result);
+
+        // Nothing left in the active request is still wanted
+        if (active && active.states.every((state) => state.removed)) active.cancel$.next();
+        consolidate();
+      };
+
       const pending = (window: Range) =>
         states.flatMap((state) => {
           let gaps = missing(targetFor(state, window), state.covered);
@@ -382,7 +519,12 @@ function loadWindows(
             });
 
           // A replayed cancellation also covers reentrant window changes from onStatus callbacks.
-          const job: ActiveRequest = { range, prefetch: speculative, cancel$: new ReplaySubject<void>(1) };
+          const job: ActiveRequest = {
+            range,
+            prefetch: speculative,
+            states: pages.map(({ state }) => state),
+            cancel$: new ReplaySubject<void>(1),
+          };
           active = job;
           report();
 
@@ -409,7 +551,7 @@ function loadWindows(
             filter((event) => {
               let matches = false;
               for (const page of pages) {
-                if (!page.matches(event)) continue;
+                if (!page.matches(event) || page.state.removed || !page.state.match(event)) continue;
                 matches = true;
                 record(page.state, event);
                 if (!page.boundary.has(event.id)) page.fresh = true;
@@ -429,6 +571,7 @@ function loadWindows(
                 largest = Math.max(largest, returned);
                 // Commit only completed pages. Keep the inclusive oldest second for the next request.
                 for (const { state, query, oldest, fresh, ids, boundary } of pages) {
+                  if (state.removed) continue;
                   state.boundaries.delete(range.until);
                   // Nothing new in a page smaller than one this source has already returned means the range is exhausted.
                   if (oldest === undefined || (!fresh && !capped)) cover(state.covered, query);
@@ -460,6 +603,7 @@ function loadWindows(
             finalize(() => {
               if (active === job) active = undefined;
               job.cancel$.complete();
+              consolidate();
               report();
             }),
           );
@@ -475,6 +619,14 @@ function loadWindows(
         map(normalize),
         connect((windows) =>
           merge(
+            // Apply filter changes first so the first window loads them. The filters complete on their own once
+            // they can no longer change, a takeUntil on windows would drop a replayed value after windows ended.
+            filters$.pipe(
+              tap((next) => {
+                reconcile(next);
+                report();
+              }),
+            ),
             windows.pipe(
               tap({
                 next: (window) => {
@@ -543,12 +695,15 @@ export function loadBlocksFromCache(
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
-  return loadWindows(
-    (filters) => makeCacheRequest(request, filters),
-    Array.isArray(filters) ? filters : [filters],
-    "cache",
-    opts,
-  );
+  return loadCacheWindows(request, of(Array.isArray(filters) ? filters : [filters]), opts);
+}
+
+function loadCacheWindows(
+  request: CacheRequest,
+  filters$: Observable<TimelessFilter[]>,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
+  return loadWindows((filters) => makeCacheRequest(request, filters), filters$, "cache", opts);
 }
 
 /**
@@ -561,6 +716,15 @@ export function loadBlocksFromRelay(
   filters: TimelessFilter[] | TimelessFilter,
   opts?: CommonTimelineLoaderOptions,
 ): OperatorFunction<TimelineWindow, NostrEvent> {
+  return loadRelayWindows(pool, relay, of(Array.isArray(filters) ? filters : [filters]), opts);
+}
+
+function loadRelayWindows(
+  pool: UpstreamPool,
+  relay: string,
+  filters$: Observable<TimelessFilter[]>,
+  opts?: CommonTimelineLoaderOptions,
+): OperatorFunction<TimelineWindow, NostrEvent> {
   const request = wrapUpstreamPool(pool);
   const liveness = opts?.liveness;
   const tracker = liveness && {
@@ -570,13 +734,7 @@ export function loadBlocksFromRelay(
       else liveness.recordFailure(relay);
     },
   };
-  return loadWindows(
-    (filters) => request([relay], filters),
-    Array.isArray(filters) ? filters : [filters],
-    relay,
-    opts,
-    tracker,
-  );
+  return loadWindows((filters) => request([relay], filters), filters$, relay, opts, tracker);
 }
 
 /** Loads finite timeline windows independently from multiple relays */
@@ -602,7 +760,7 @@ export function loadBlocksFromFilterMap(
 ): OperatorFunction<TimelineWindow, NostrEvent> {
   return reconcileFilterMap(
     relayMap,
-    (relay, filters, settings) => loadBlocksFromRelay(pool, relay, filters, settings),
+    (relay, filters$, settings) => loadRelayWindows(pool, relay, filters$, settings),
     opts,
   );
 }
@@ -611,7 +769,7 @@ function reconcileFilterMap(
   relayMap: FilterMap | Observable<FilterMap>,
   makeLoader: (
     source: string,
-    filters: TimelessFilter[] | TimelessFilter,
+    filters$: Observable<TimelessFilter[]>,
     opts?: CommonTimelineLoaderOptions,
   ) => OperatorFunction<TimelineWindow, NostrEvent>,
   opts?: CommonTimelineLoaderOptions,
@@ -648,31 +806,20 @@ function reconcileFilterMap(
             ),
             mergeMap(({ changes }) => from(changes)),
             groupBy(({ relay }) => relay),
-            mergeMap((relay$) =>
-              defer(() => {
-                let statuses: TimelineStatus[] = [];
-                // Switch only the changed relay; unchanged keys retain their request and coverage.
-                return relay$.pipe(
-                  switchMap(({ relay, filters }) => {
-                    for (const status of statuses) opts?.onStatus?.({ ...status, state: "removed" });
-                    statuses = [];
-                    if (!filters) return EMPTY;
-
-                    return windows.pipe(
-                      makeLoader(relay, filters, {
-                        ...opts,
-                        onStatus: (status) => {
-                          const index = statuses.findIndex((old) => isFilterEqual(old.filter, status.filter));
-                          if (index < 0) statuses.push(status);
-                          else statuses[index] = status;
-                          opts?.onStatus?.(status);
-                        },
-                      }),
-                    );
-                  }),
-                );
-              }),
-            ),
+            mergeMap((relay$) => {
+              // One loader follows each relay's filters, it keeps coverage for filters and authors that stay.
+              // A removed relay gets no filters, which retires its coverage until it returns.
+              const filters$ = new ReplaySubject<TimelessFilter[]>(1);
+              const sub = relay$.subscribe({
+                next: ({ filters }) => filters$.next(filters ? (Array.isArray(filters) ? filters : [filters]) : []),
+                // The map freezes when windows end, so the filters can no longer change
+                complete: () => filters$.complete(),
+              });
+              return windows.pipe(
+                makeLoader(relay$.key, filters$, opts),
+                finalize(() => sub.unsubscribe()),
+              );
+            }),
           );
         },
         { connector: () => new ReplaySubject<TimelineWindow>(1) },
@@ -722,7 +869,7 @@ export function loadBlocksFromOutboxMapCache(
       };
     }),
   );
-  return reconcileFilterMap(maps, (_source, filters, settings) => loadBlocksFromCache(cache, filters, settings), opts);
+  return reconcileFilterMap(maps, (_source, filters$, settings) => loadCacheWindows(cache, filters$, settings), opts);
 }
 
 function createLoader(
