@@ -63,7 +63,14 @@ export default defineConfig({
             items: [
               { text: "Relays", link: "/loading/relays/relays" },
               { text: "Relay Pool", link: "/loading/relays/pool" },
-              { text: "Liveness", link: "/loading/relays/liveness" },
+              {
+                text: "Liveness",
+                link: "/loading/relays/liveness",
+                items: [
+                  { text: "Client-side Tracking", link: "/loading/relays/local-liveness" },
+                  { text: "Remote Monitors", link: "/loading/relays/remote-monitor-liveness" },
+                ],
+              },
               { text: "Authentication", link: "/loading/relays/authentication" },
               { text: "Relay Information", link: "/loading/relays/relay-information" },
               { text: "Counting", link: "/loading/relays/counting" },

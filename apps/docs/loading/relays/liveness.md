@@ -1,195 +1,84 @@
 ---
-description: Track relay connection health and liveness with automatic reconnection and status monitoring
+description: Choose local or remote monitor evidence and apply relay liveness to subscriptions and outboxes
 ---
 
-# Relay Liveness Tracking
+# Relay Liveness
 
-The `RelayLiveness` class helps you track recent connection states of Nostr relays to enable blacklisting of offline or dead relays. It monitors recent connection failures, implements backoff strategies, and provides observables to filter out unhealthy relays from your applications.
+Relay liveness keeps temporarily unreachable relays from consuming connection slots. Applesauce ships two optional sources; neither is required to use `RelayPool` or the loaders.
 
-**NOTE:** This class is optimized for connecting to relays in a web browser. it has not been tested with less restrictive environments like node.js or bun.
+| Source | Package | Evidence | Guide |
+| --- | --- | --- | --- |
+| `RelayLiveness` | `applesauce-relay` | This client's connections and request outcomes | [Client-side tracking](./local-liveness) |
+| `RemoteMonitorRelayLiveness` | `applesauce-extra` | Signed NIP-66 reports from trusted publishers | [Remote monitors](./remote-monitor-liveness) |
 
-## Key Concepts
+Choose local tracking for the client's own network perspective, or remote monitors to offload health checks. A monitor's reachability does not guarantee that a mobile client can reach the same relay. Both sources keep unknown relays eligible and expire exclusions rather than permanently blacklisting endpoints.
 
-:::info
-The `RelayLiveness` class does **not** prevent connections to unhealthy relays. It only tracks recent connection states and provides tools to blacklist offline or dead relays. You must explicitly use the filtering methods or RxJS operators to avoid connecting to blacklisted relays.
-:::
+## How to use it
 
-### Connection States
+Create one source and attach it to a pool. Local tracking observes that pool's target connections:
 
-Relays can be in one of three connection states based on recent connection attempts:
-
-- **`online`**: Relay is responding normally to recent connection attempts
-- **`offline`**: Relay is experiencing recent failures but may recover
-- **`dead`**: Relay has failed too many times recently and is blacklisted
-
-### Backoff Strategy
-
-When a relay fails, it enters a backoff period where it won't be retried immediately. The backoff duration increases exponentially with each failure, up to a maximum delay.
-
-## Basic Usage
-
-### Creating a Liveness Tracker
-
-```typescript
+```ts
 import { RelayLiveness } from "applesauce-relay";
-import localforage from "localforage";
 
-// Create a liveness tracker with persistent storage
-const liveness = new RelayLiveness({
-  storage: localforage.createInstance({ name: "liveness" }),
-});
-
-// Load previously saved relay states
-await liveness.load();
-
-// Connect to your relay pool to automatically track relay health
+const liveness = new RelayLiveness();
 liveness.connectToPool(pool);
 ```
 
-### Configuration Options
+Alternatively, use the app's existing `EventStore` and explicitly trusted monitor identities:
 
-```typescript
-const liveness = new RelayLiveness({
-  // Maximum failures before marking relay as dead (default: 5)
-  maxFailuresBeforeDead: 5,
+```ts
+import { RemoteMonitorRelayLiveness } from "applesauce-extra";
 
-  // Base delay for backoff in milliseconds (default: 30 seconds)
-  backoffBaseDelay: 30 * 1000,
-
-  // Maximum backoff delay in milliseconds (default: 5 minutes)
-  backoffMaxDelay: 5 * 60 * 1000,
-
-  // Optional storage adapter for persistence
-  storage: localforage.createInstance({ name: "liveness" }),
+const liveness = new RemoteMonitorRelayLiveness(eventStore, {
+  monitors: [{ pubkey: monitorPubkey, relays: monitorRelays }],
 });
+liveness.connectToPool(pool);
 ```
 
-## Observables
+Remote attachment reads monitor events from the configured source relays; it does not probe target relays or record their local failures. Standard NIP-66 reports confirm positive reachability. Offline exclusions require a provider-specific explicit-failure decoder; missing reports alone never exclude a relay. See [monitor observation policy](./remote-monitor-liveness).
 
-The liveness tracker provides several observables to monitor recent relay connection states:
+## Integration
 
-```typescript
-// Subscribe to different relay states
-liveness.online$.subscribe((relays) => {
-  console.log("Online relays:", relays);
-});
+Both sources implement `RelayLivenessSource`, whose `unhealthy$` emits the current exclusions. The operators below work with either implementation. Creating a source alone does not change subscription routing.
 
-liveness.offline$.subscribe((relays) => {
-  console.log("Offline relays:", relays);
-});
+### Subscribe to a relay list
 
-liveness.dead$.subscribe((relays) => {
-  console.log("Dead relays:", relays);
-});
-
-// Most useful: available vs blacklisted relays
-liveness.healthy$.subscribe((relays) => {
-  console.log("Available relays:", relays);
-});
-
-liveness.unhealthy$.subscribe((relays) => {
-  console.log("Blacklisted relays:", relays);
-});
-```
-
-## Filtering Relays
-
-### Using RxJS Operators
-
-The easiest way to filter out blacklisted relays is using the provided RxJS operators
-
-:::info
-All RxJS operators will trigger updates when relays come back online or go offline. this allows you to dynamically filter relays without needing to subscribe to the liveness tracker observables.
-:::
-
-#### Using the `ignoreUnhealthyRelays` operator
-
-```typescript
+```ts
 import { ignoreUnhealthyRelays } from "applesauce-relay/operators";
 
-const relayList$ = of(["wss://relay.example.com", "wss://relay.example.com/2"]);
-
-// Filter unhealthy relays from a simple array
-relayList$.pipe(ignoreUnhealthyRelays(liveness)).subscribe((availableRelays) => {
-  // Only available relays remain
-});
+const eligible$ = relayList$.pipe(ignoreUnhealthyRelays(liveness));
+const subscription = pool.subscription(eligible$, { kinds: [1], limit: 20 })
+  .subscribe((event) => eventStore.add(event));
 ```
 
-#### Using the `ignoreUnhealthyRelaysOnPointers` operator
+`relayList$` emits candidate URL arrays. Filtering reacts to both candidate changes and liveness changes, so a fixed candidate set can use `of(relayUrls)`. Keep the original candidate list: an expired exclusion can then return a relay to the subscription. `liveness.filter(relayUrls)` provides a synchronous snapshot, without future updates.
 
-The `ignoreUnhealthyRelaysOnPointers` operator is useful when you have a list of nip-19 pointers with relays and you want to filter out unhealthy relays.
+### Outbox selection
 
-```typescript
+Filter relay hints before selecting relays so excluded endpoints do not consume connection slots:
+
+```ts
 import { ignoreUnhealthyRelaysOnPointers } from "applesauce-relay/operators";
 
-// Filter unhealthy relays from user mailboxes
-contacts$
-  .pipe(
-    includeMailboxes(eventStore),
-    ignoreUnhealthyRelaysOnPointers(liveness), // Removes unhealthy relays
-  )
-  .subscribe((users) => {
-    // users now have unhealthy relays filtered out
-  });
+const eligibleUsers$ = usersWithRelayHints$.pipe(
+  ignoreUnhealthyRelaysOnPointers(liveness),
+);
 ```
 
-#### Filtering mailboxes
+For the complete selection and subscription pipeline, see [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users). `ignoreUnhealthyMailboxes(liveness)` filters the `inboxes` and `outboxes` of an individual mailbox object. These operators change relay hints without discarding the users or pointers that contain them.
 
-Use `ignoreUnhealthyMailboxes(liveness)` to filter a single `{ inboxes, outboxes }` object. `eventStore.mailboxes()` emits `undefined` until the list loads, so add `defined()` first:
+### Lifecycle and UI
 
-```typescript
-eventStore.mailboxes(pubkey).pipe(defined(), ignoreUnhealthyMailboxes(liveness));
-```
+Use `unhealthy$` to display exclusions and `state(url)` to display source-specific evidence. Eligibility and proof of reachability are different: an unknown relay is eligible, and a local cooldown can expire before a new success is observed.
 
-### Manual Filtering
+Unsubscribe application subscriptions when their owner ends, then call `liveness.destroy()` to release tracking resources. Destroying a source does not close unrelated pool connections. Monitor sources also leave the shared `EventStore` intact.
 
-You can also manually filter relays using the `filter()` method:
-
-```typescript
-// Remove unhealthy relays from a list
-const healthy = liveness.filter(allRelays);
-
-// Or check against the current blacklist
-const available = allRelays.filter((relay) => !liveness.unhealthy.includes(relay));
-```
-
-## Manual Management
-
-### Reviving Blacklisted Relays
-
-If a relay was blacklisted but you want to try it again:
-
-```typescript
-// Manually revive a blacklisted relay
-liveness.revive("wss://relay.example.com");
-```
-
-### Checking Individual Relay State
-
-```typescript
-// Get current state for a specific relay (synchronous)
-const state = liveness.getState("wss://relay.example.com");
-console.log({
-  state: state?.state, // "online", "offline", or "dead"
-  failureCount: state?.failureCount,
-  lastFailureTime: state?.lastFailureTime,
-  backoffUntil: state?.backoffUntil,
-});
-
-// Subscribe to state changes for a specific relay (reactive)
-liveness.state("wss://relay.example.com").subscribe((state) => {
-  console.log("Relay state changed:", state);
-});
-```
+Try the [local liveness example](https://applesauce.build/examples/#/example/relay/local-liveness) to watch cooldowns and recovery, or the [remote monitor example](https://applesauce.build/examples/#/example/relay/remote-monitor-liveness) to use NIP-66 monitor reports instead.
 
 ## Best Practices
 
-1. **Always use filtering**: Filter all relays through the liveness tracker to avoid connecting to dead relays
-2. **Persist state**: Use storage to remember relay blacklist status across sessions
-3. **Connect to pool**: Let the tracker automatically monitor your relay pool
-4. **Monitor observables**: Subscribe to connection state observables to update your UI
-5. **Manual revival**: Provide users a way to manually revive blacklisted relays they know are working
-
-## Using with outbox model
-
-Filter relays through the liveness tracker before selecting relays for many users so dead relays don't take a slot. See [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users) for the full pipeline.
+- Keep unknown relays eligible; absence of evidence is not evidence of failure.
+- Filter candidates before relay selection and preserve the unfiltered input for recovery.
+- Keep authentication, content retention, and event yield separate from reachability.
+- Use one source consistently for routing and its UI state.
+- Handle request errors and reconnection even when using remote monitor health.
