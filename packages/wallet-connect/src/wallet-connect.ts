@@ -319,14 +319,16 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
   ): Observable<Method["response"] | Method["error"]> {
     if (!this.service) throw new Error("WalletConnect is not connected to a service");
 
-    // Create the request event
-    return defer(async () => {
-      // Get the preferred encryption method for the wallet
-      const encryption = await firstValueFrom(this.encryption$);
+    const timeout = options.timeout || this.defaultTimeout;
 
-      // Create and sign the request event
-      return await WalletRequestFactory.create(this.service!, { method, params }, encryption).as(this.signer).sign();
-    }).pipe(
+    // Keep negotiation in the stream so timing out also releases its subscription.
+    return this.encryption$.pipe(
+      // Use the first negotiation result, then release the negotiation subscription
+      take(1),
+      // Create and sign the request event once the encryption method is known
+      switchMap((encryption) =>
+        defer(() => WalletRequestFactory.create(this.service!, { method, params }, encryption).as(this.signer).sign()),
+      ),
       // Then switch to the request observable
       switchMap((requestEvent) => {
         const encryption = getWalletRequestEncryption(requestEvent) === "nip44_v2" ? "nip44" : "nip04";
@@ -339,12 +341,12 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
           filter(isValidWalletResponse),
           filter((response) => getWalletResponseRequestId(response) === requestEvent.id),
           mergeMap((response) => this.handleResponseEvent(response, encryption)),
-          // Set timeout for response events
-          simpleTimeout(options.timeout || this.defaultTimeout),
         );
 
         return merge(request$, responses$);
       }),
+      // Bound negotiation and request creation until the first response; promises already running cannot be cancelled.
+      simpleTimeout(timeout, "WalletConnect request timed out"),
     );
   }
 
@@ -399,6 +401,9 @@ export class WalletConnect<Methods extends TWalletMethod = CommonWalletMethods> 
   /** Wait for the wallet service to connect */
   async waitForService(abortSignal?: AbortSignal): Promise<string> {
     if (this.service) return this.service;
+
+    // fromEvent only observes future aborts.
+    if (abortSignal?.aborted) throw abortSignal.reason ?? new Error("Aborted");
 
     return await firstValueFrom(
       this.waitForService$.pipe(
