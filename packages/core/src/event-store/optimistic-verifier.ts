@@ -41,7 +41,8 @@ export interface OptimisticEventVerifierOptions {
   cacheSize?: number;
 }
 
-type Evidence = { version: 1; days: [number, number][] };
+// `reset` is the time of the last detected invalid event, used to keep resets durable across instances
+type Evidence = { version: 1; days: [number, number][]; reset?: number };
 type RelayState = {
   evidence: Evidence;
   ready: boolean;
@@ -97,6 +98,7 @@ export class OptimisticEventVerifier {
   private readonly storage?: OptimisticVerifierStorage;
   private readonly knownRelays = new BehaviorSubject<readonly string[]>([]);
   private readonly verifications = new Subject<OptimisticVerification>();
+  private readonly dailyCap: number;
 
   /** The URLs of relays encountered or explicitly observed by this instance */
   readonly relays$ = this.knownRelays.asObservable();
@@ -128,6 +130,11 @@ export class OptimisticEventVerifier {
     if (this.options.historyDays < this.options.daysForTrust) {
       throw new RangeError("historyDays must be at least daysForTrust");
     }
+    // Spread volume across the required days so a single burst cannot satisfy the volume requirement.
+    this.dailyCap = Math.max(
+      Math.ceil(this.options.verifiedEventsForTrust / this.options.daysForTrust),
+      this.options.verifiedEventsPerDay,
+    );
     this.verified = new LRU<boolean>(this.options.cacheSize);
     this.credited = new LRU<boolean>(this.options.cacheSize);
   }
@@ -193,6 +200,33 @@ export class OptimisticEventVerifier {
     evidence.days = evidence.days.filter(([d]) => d > day - this.options.historyDays && d <= day);
   }
 
+  private parse(raw: string | null): Evidence | null {
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed?.version !== 1 || !Array.isArray(parsed.days)) return null;
+    const days = parsed.days as [number, number][];
+    const reset = parsed.reset;
+    if (reset !== undefined && !(Number.isSafeInteger(reset) && reset >= 0)) return null;
+    if (
+      !days.every(
+        (b) =>
+          Array.isArray(b) &&
+          b.length === 2 &&
+          Number.isSafeInteger(b[0]) &&
+          Number.isSafeInteger(b[1]) &&
+          b[1] >= 0 &&
+          b[1] <= Number.MAX_SAFE_INTEGER,
+      ) ||
+      new Set(days.map(([d]) => d)).size !== days.length
+    )
+      return null;
+    // Clamp buckets written under older options or by other code to the current daily cap.
+    return {
+      version: 1,
+      days: days.map(([d, n]) => [d, Math.min(n, this.dailyCap)]),
+      ...(reset !== undefined && { reset }),
+    };
+  }
+
   private persist(url: string, state: RelayState) {
     if (!this.storage || !state.ready) return;
     state.dirty = true;
@@ -202,6 +236,17 @@ export class OptimisticEventVerifier {
       try {
         while (state.dirty) {
           state.dirty = false;
+          // Adopt a newer reset from another instance sharing this storage instead of overwriting it.
+          let stored: Evidence | null = null;
+          try {
+            stored = this.parse(await this.storage!.getItem(PREFIX + url));
+          } catch {
+            // Unreadable storage is replaced by local evidence.
+          }
+          if (stored && (stored.reset ?? 0) > (state.evidence.reset ?? 0)) {
+            state.evidence = stored;
+            state.changes.next();
+          }
           await this.storage!.setItem(PREFIX + url, JSON.stringify(state.evidence));
         }
       } catch {
@@ -229,26 +274,9 @@ export class OptimisticEventVerifier {
       // Defer reads as well so synchronous storage exceptions use the same recovery path.
       void Promise.resolve().then(async () => {
         try {
-          const raw = await this.storage!.getItem(PREFIX + url);
-          const parsed = raw ? JSON.parse(raw) : null;
-          if (parsed?.version === 1 && Array.isArray(parsed.days)) {
-            const days = parsed.days as [number, number][];
-            if (
-              days.every(
-                (b) =>
-                  Array.isArray(b) &&
-                  b.length === 2 &&
-                  Number.isSafeInteger(b[0]) &&
-                  Number.isSafeInteger(b[1]) &&
-                  b[1] >= 0 &&
-                  b[1] <= Number.MAX_SAFE_INTEGER,
-              ) &&
-              new Set(days.map(([d]) => d)).size === days.length
-            ) {
-              // A failure observed during hydration takes precedence over stored evidence.
-              if (!current.dirty) current.evidence = { version: 1, days };
-            }
-          }
+          const stored = this.parse(await this.storage!.getItem(PREFIX + url));
+          // A failure observed during hydration takes precedence over stored evidence.
+          if (stored && !current.dirty) current.evidence = stored;
         } catch {
           // Missing, corrupt, or unavailable storage starts with no trust.
         } finally {
@@ -271,7 +299,7 @@ export class OptimisticEventVerifier {
       this.verifications.next({ event, relays: sources.map((s) => s.url), probability, result });
     const fail = () => {
       for (const { url, state } of sources) {
-        state.evidence.days = [];
+        state.evidence = { version: 1, days: [], reset: Date.now() };
         state.dirty = true;
         this.persist(url, state);
         state.changes.next();
@@ -325,10 +353,7 @@ export class OptimisticEventVerifier {
       if (!state.ready) continue;
       let bucket = state.evidence.days.find(([d]) => d === day);
       if (!bucket) state.evidence.days.push((bucket = [day, 0]));
-      bucket[1] = Math.min(
-        Math.max(this.options.verifiedEventsForTrust, this.options.verifiedEventsPerDay),
-        bucket[1] + 1,
-      );
+      bucket[1] = Math.min(this.dailyCap, bucket[1] + 1);
       this.persist(url, state);
       state.changes.next();
     }

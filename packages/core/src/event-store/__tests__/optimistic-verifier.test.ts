@@ -77,6 +77,50 @@ describe("OptimisticEventVerifier", () => {
     }
   });
 
+  it("caps daily credit so volume trust needs several days", async () => {
+    const options = { verifiedEventsForTrust: 10, daysForTrust: 2, verifiedEventsPerDay: 1 };
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+      (array as Uint32Array)[0] = 0;
+      return array;
+    });
+    const verifier = new OptimisticEventVerifier(options);
+    for (let i = 0; i < 8; i++) verifier.verifyEvent(event(`burst ${i}`));
+    expect(verifier.getRelayState(url).verified).toBe(5);
+    expect(verifier.getRelayState(url).trust).toBe(0.5);
+    // Stored buckets above the cap are clamped on load.
+    const raw = JSON.stringify({ version: 1, days: [[day, 1000]] });
+    const stored = new OptimisticEventVerifier({ ...options, storage: { getItem: () => raw, setItem: () => {} } });
+    stored.getRelayState(url);
+    await drain();
+    expect(stored.getRelayState(url).verified).toBe(5);
+  });
+
+  it("keeps a reset written by another instance sharing storage", async () => {
+    const items = new Map([["applesauce:optimistic-verifier:v1:" + url, trusted]]);
+    const storage = { getItem: (key: string) => items.get(key) ?? null, setItem: (k: string, v: string) => items.set(k, v) };
+    const a = new OptimisticEventVerifier({ storage });
+    const b = new OptimisticEventVerifier({ storage });
+    a.getRelayState(url);
+    b.getRelayState(url);
+    await drain();
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+      (array as Uint32Array)[0] = 0;
+      return array;
+    });
+    const bad = event("caught");
+    bad.sig = "0".repeat(128);
+    expect(a.verifyEvent(bad)).toBe(false);
+    await drain();
+    // The other instance writes after crediting a valid event, adopting the newer reset instead of restoring trust.
+    expect(b.verifyEvent(event("stale"))).toBe(true);
+    await drain();
+    expect(b.getRelayState(url).trust).toBe(0);
+    const fresh = new OptimisticEventVerifier({ storage });
+    fresh.getRelayState(url);
+    await drain();
+    expect(fresh.getRelayState(url).trust).toBe(0);
+  });
+
   it("survives storage errors", async () => {
     const verifier = new OptimisticEventVerifier({
       storage: {
