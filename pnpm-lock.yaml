@@ -526,6 +526,9 @@ importers:
         specifier: ^7.8.1
         version: 7.8.2
     devDependencies:
+      '@scure/bip39':
+        specifier: ^2.0.1
+        version: 2.0.1
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3
@@ -886,6 +889,12 @@ importers:
       '@scure/base':
         specifier: ^2.2.0
         version: 2.2.0
+      '@scure/bip32':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@scure/bip39':
+        specifier: ^2.0.1
+        version: 2.0.1
       applesauce-core:
         specifier: ^6.2.0
         version: link:../core

@@ -45,6 +45,20 @@ window.crypto.getRandomValues(key);
 const signer = new PrivateKeySigner(key);
 ```
 
+### Seed Words Signer (NIP-06)
+
+Derives a private key from validated BIP-39 seed words, with the same signing and encryption methods as `PrivateKeySigner`.
+
+```ts
+import { SeedWordsSigner } from "applesauce-signers/signers/seed-words-signer";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
+
+const signer = SeedWordsSigner.fromWords(words, { wordlist, account: 0, passphrase: "" });
+const pubkey = await signer.getPublicKey();
+```
+
+The account defaults to `0` and the passphrase to an empty string. Import the required BIP-39 wordlist explicitly so unused languages stay out of the bundle.
+
 ### Nostr Connect Signer (NIP-46)
 
 A client-side implementation for remote signing using [NIP-46](https://github.com/nostr-protocol/nips/blob/master/46.md).
