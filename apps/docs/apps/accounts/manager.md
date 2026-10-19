@@ -67,6 +67,10 @@ The `AccountManager` class exposes a set of methods to track which account is ac
 
 The account manager exposes two methods that can be used to persist accounts between app reloads. `toJSON` and `fromJSON`
 
+::: warning Serialized accounts contain plaintext secrets
+Depending on the account type, `toJSON` can include **raw private keys** (`PrivateKeyAccount`), bunker client keys and pairing secrets (`NostrConnectAccount`), seed words (`SeedWordsAccount`), or other bearer credentials. Anything you store with it is readable by any script running on the page (XSS, shared browser profiles, synced/unencrypted backups). Prefer [PasswordAccount](https://applesauce.build/typedoc/classes/applesauce-accounts.Accounts.PasswordAccount.html) — which stores an NIP-49-encrypted key — or encrypt the serialized JSON yourself before writing it to storage.
+:::
+
 ```ts
 import { AccountManager } from "applesauce-accounts";
 import { registerCommonAccountTypes } from "applesauce-accounts/accounts";
