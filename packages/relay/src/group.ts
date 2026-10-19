@@ -283,10 +283,19 @@ export class RelayGroup {
             const relaySubscription = defer(() => project(relay)).subscribe({
               next: (message) => {
                 if (settled || !states.has(url)) return;
-                if (message.type === "EVENT") states.set(url, { status: "live" });
-                else if (message.type === "EOSE") states.set(url, { status: mode === "request" ? "eose" : "live" });
+                const status =
+                  message.type === "EVENT"
+                    ? "live"
+                    : message.type === "EOSE"
+                      ? mode === "request"
+                        ? "eose"
+                        : "live"
+                      : undefined;
+                // Settlement only depends on relay statuses, so skip the cohort scan when this relay's status is unchanged
+                const changed = status !== undefined && states.get(url)?.status !== status;
+                if (changed) states.set(url, { status });
                 subscriber.next(message);
-                decide();
+                if (changed) decide();
                 if (!settled) messages.next(message);
               },
               error: (error) => {
