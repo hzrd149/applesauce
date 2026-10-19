@@ -101,8 +101,7 @@ async function handleEvent(ws: WebSocket, event: any) {
       ws.send(JSON.stringify(["OK", event.id, true, "duplicate: event already exists"]));
     }
 
-    // Broadcast to subscribers
-    broadcastToSubscribers(event);
+    // New events are broadcast by the eventStore.insert$ subscription
   } catch (error) {
     console.error("Error handling event:", error);
     if (error instanceof Error) ws.send(JSON.stringify(["OK", event.id, false, error.message]));
