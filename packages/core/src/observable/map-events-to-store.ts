@@ -1,16 +1,4 @@
-import {
-  catchError,
-  distinct,
-  EMPTY,
-  filter,
-  from,
-  identity,
-  mergeMap,
-  mergeWith,
-  MonoTypeOperatorFunction,
-  of,
-  share,
-} from "rxjs";
+import { MonoTypeOperatorFunction, Observable } from "rxjs";
 import { IAsyncEventStoreActions, IEventStoreActions } from "../event-store/interface.js";
 import type { NostrEvent } from "../helpers/event.js";
 
@@ -22,32 +10,56 @@ export function mapEventsToStore<T extends NostrEvent | string>(
   store: IEventStoreActions | IAsyncEventStoreActions,
   removeDuplicates = true,
 ): MonoTypeOperatorFunction<T> {
-  return (source) => {
-    const shared = source.pipe(share());
+  return (source) =>
+    new Observable<T>((observer) => {
+      // The store returns its single instance of each event, so duplicates are found by identity without holding them
+      const seen = removeDuplicates ? new WeakSet<object>() : undefined;
+      let pending = 0;
+      let done = false;
 
-    return shared.pipe(
-      // Map all events to the store
-      // NOTE: mergeMap is used here because we want to return the single instance of the event so that distinct() can be used later
-      mergeMap((event) => {
-        // Ignore strings
-        if (typeof event === "string") return EMPTY;
+      const emit = (event: T | null | undefined) => {
+        // Ignore invalid events
+        if (event === null || event === undefined) return;
+        if (seen && typeof event === "object") {
+          if (seen.has(event)) return;
+          seen.add(event);
+        }
+        observer.next(event);
+      };
 
-        const r = store.add(event) as T | Promise<T>;
+      const sub = source.subscribe({
+        next: (event) => {
+          // Pass strings through
+          if (typeof event === "string") return observer.next(event);
 
-        // Unwrap the promise from the async store
-        if (r instanceof Promise) return from(r);
-        else return of(r);
-      }),
-      // Ignore errors when inserting events into the store
-      catchError(() => of(null)),
-      // Ignore invalid events
-      filter((e) => e !== null),
-      // Remove duplicates if requested
-      removeDuplicates ? distinct() : identity,
-      // Merge the strings back in if there are any
-      mergeWith(shared.pipe(filter((e) => typeof e === "string"))),
-    );
-  };
+          // Skip events the store fails to insert, without ending the stream
+          let result: T | null | Promise<T | null>;
+          try {
+            result = store.add(event) as T | null | Promise<T | null>;
+          } catch {
+            return;
+          }
+
+          if (!(result instanceof Promise)) return emit(result);
+
+          // Unwrap the promise from the async store
+          pending++;
+          result
+            .then(emit, () => {})
+            .finally(() => {
+              pending--;
+              if (done && pending === 0) observer.complete();
+            });
+        },
+        error: (err) => observer.error(err),
+        complete: () => {
+          done = true;
+          if (pending === 0) observer.complete();
+        },
+      });
+
+      return () => sub.unsubscribe();
+    });
 }
 
 /** Alias for {@link mapEventsToStore} */
