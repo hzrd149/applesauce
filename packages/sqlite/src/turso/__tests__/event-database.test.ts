@@ -55,8 +55,23 @@ describe("getByFilters", () => {
     await expect(database.getByFilters({ "#t": ["missing"] })).resolves.toEqual([]);
   });
 
+  it("should combine tag filters with kinds, authors and time ranges", async () => {
+    const match = user.note("match", { tags: [["t", "meme"]], created_at: 1000 });
+    await database.add(match);
+    await database.add(user.note("old", { tags: [["t", "meme"]], created_at: 500 }));
+    await database.add(user.profile({}, { tags: [["t", "meme"]], created_at: 1000 }));
+
+    const filter = { "#t": ["meme"], kinds: [1], authors: [user.pubkey], since: 900, until: 1100 };
+    expect((await database.getByFilters(filter)).map((e) => e.id)).toEqual([match.id]);
+  });
+
   it("should require every value for AND tag filters", async () => {
-    const both = user.note("both", { tags: [["t", "black"], ["t", "white"]] });
+    const both = user.note("both", {
+      tags: [
+        ["t", "black"],
+        ["t", "white"],
+      ],
+    });
     const one = user.note("one", { tags: [["t", "black"]] });
     await database.add(both);
     await database.add(one);

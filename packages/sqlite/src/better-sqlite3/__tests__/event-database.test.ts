@@ -1,6 +1,9 @@
 import { kinds } from "applesauce-core/helpers";
+import BetterSqlite3 from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { buildFiltersQuery } from "../../helpers/sql.js";
+import { GET_REPLACEABLE_STATEMENT } from "../../helpers/statements.js";
 import { BetterSqlite3EventDatabase } from "../event-database.js";
 import { FakeUser } from "../../__tests__/fake-user.js";
 
@@ -280,6 +283,56 @@ describe("getTimeline", () => {
   it("should return empty array when no events match", () => {
     const timeline = database.getTimeline({ kinds: [999] });
     expect(timeline).toEqual([]);
+  });
+});
+
+describe("indexes", () => {
+  const plan = (sql: string, params: unknown[]) =>
+    database.db
+      .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      .all(...params)
+      .map((row: any) => row.detail)
+      .join(" | ");
+
+  it("should replace the single column indexes of older databases", () => {
+    const db = new BetterSqlite3(":memory:");
+    db.exec(`CREATE TABLE events (id TEXT PRIMARY KEY, kind INTEGER, pubkey TEXT, created_at INTEGER, content TEXT,
+      tags TEXT, sig TEXT, identifier TEXT NOT NULL DEFAULT '')`);
+    db.exec(`CREATE INDEX kind_idx ON events(kind)`);
+    db.exec(`CREATE INDEX identifier_idx ON events(identifier)`);
+    new BetterSqlite3EventDatabase(db);
+
+    const names = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`)
+      .all()
+      .map((r: any) => r.name);
+    expect(names).not.toContain("kind_idx");
+    expect(names).not.toContain("identifier_idx");
+    expect(names).toContain("replaceable_idx");
+  });
+
+  it("should look up replaceable events by kind, pubkey and identifier", () => {
+    expect(plan(GET_REPLACEABLE_STATEMENT.sql, [0, user.pubkey, ""])).toContain("replaceable_idx");
+  });
+
+  it("should read timelines in created_at order from the kind index", () => {
+    const query = buildFiltersQuery({ kinds: [1], limit: 20 })!;
+    expect(plan(query.sql, query.params)).toMatch(/kind_created_at_idx[^|]*\| USE TEMP B-TREE FOR LAST TERM/);
+  });
+
+  it("should find tagged events before checking kinds", () => {
+    const query = buildFiltersQuery({ "#e": ["a".repeat(64)], kinds: [7], limit: 20 })!;
+    expect(plan(query.sql, query.params)).toContain("event_tags_name_value_event_idx");
+    expect(plan(query.sql, query.params)).not.toContain("kind_created_at_idx");
+  });
+
+  it("should combine tag filters with kinds, authors and time ranges", () => {
+    const match = database.add(user.note("match", { tags: [["t", "meme"]], created_at: 1000 }));
+    database.add(user.note("old", { tags: [["t", "meme"]], created_at: 500 }));
+    database.add(user.profile({}, { tags: [["t", "meme"]], created_at: 1000 }));
+
+    const filter = { "#t": ["meme"], kinds: [1], authors: [user.pubkey], since: 900, until: 1100 };
+    expect(database.getByFilters(filter).map((e) => e.id)).toEqual([match.id]);
   });
 });
 

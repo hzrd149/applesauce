@@ -32,38 +32,8 @@ export function buildFilterConditions(filter: FilterWithSearch): {
     search = true;
   }
 
-  // Handle IDs filter
-  if (filter.ids && filter.ids.length > 0) {
-    const placeholders = filter.ids.map(() => `?`).join(", ");
-    conditions.push(`events.id IN (${placeholders})`);
-    params.push(...filter.ids);
-  }
-
-  // Handle kinds filter
-  if (filter.kinds && filter.kinds.length > 0) {
-    const placeholders = filter.kinds.map(() => `?`).join(", ");
-    conditions.push(`events.kind IN (${placeholders})`);
-    params.push(...filter.kinds);
-  }
-
-  // Handle authors filter (pubkeys)
-  if (filter.authors && filter.authors.length > 0) {
-    const placeholders = filter.authors.map(() => `?`).join(", ");
-    conditions.push(`events.pubkey IN (${placeholders})`);
-    params.push(...filter.authors);
-  }
-
-  // Handle since filter (timestamp >= since)
-  if (filter.since !== undefined) {
-    conditions.push(`events.created_at >= ?`);
-    params.push(filter.since);
-  }
-
-  // Handle until filter (timestamp <= until)
-  if (filter.until !== undefined) {
-    conditions.push(`events.created_at <= ?`);
-    params.push(filter.until);
-  }
+  const tagConditions: string[] = [];
+  const tagParams: any[] = [];
 
   // Handle AND tag filters (& prefix) first - NIP-91
   // AND takes precedence and requires ALL values to be present
@@ -74,7 +44,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
       // Use a single subquery with GROUP BY + HAVING COUNT for efficiency
       // This is more efficient than multiple JOINs for the same tag
       const placeholders = values.map(() => "?").join(", ");
-      conditions.push(`events.id IN (
+      tagConditions.push(`events.id IN (
         SELECT event_id
         FROM event_tags
         WHERE tag_name = ? AND tag_value IN (${placeholders})
@@ -83,7 +53,7 @@ export function buildFilterConditions(filter: FilterWithSearch): {
       )`);
 
       // Add parameters: tagName, all tag values, then count of values
-      params.push(tagName, ...values, values.length);
+      tagParams.push(tagName, ...values, values.length);
     }
   }
 
@@ -107,16 +77,56 @@ export function buildFilterConditions(filter: FilterWithSearch): {
 
       // Use the event_tags table for efficient tag filtering
       const placeholders = filteredValues.map(() => "?").join(", ");
-      conditions.push(`events.id IN (
-        SELECT DISTINCT event_id
+      tagConditions.push(`events.id IN (
+        SELECT event_id
         FROM event_tags
         WHERE tag_name = ? AND tag_value IN (${placeholders})
       )`);
 
       // Add parameters: tagName first, then all the filtered tag values
-      params.push(tagName, ...filteredValues);
+      tagParams.push(tagName, ...filteredValues);
     }
   }
+
+  // With a tag condition, "+" keeps SQLite from scanning the kind or pubkey indexes and checking
+  // every row against the tag subquery. Looking up the tagged ids first is much faster without ANALYZE stats.
+  const column = tagConditions.length > 0 ? "+events." : "events.";
+
+  // Handle IDs filter
+  if (filter.ids && filter.ids.length > 0) {
+    const placeholders = filter.ids.map(() => `?`).join(", ");
+    conditions.push(`events.id IN (${placeholders})`);
+    params.push(...filter.ids);
+  }
+
+  // Handle kinds filter
+  if (filter.kinds && filter.kinds.length > 0) {
+    const placeholders = filter.kinds.map(() => `?`).join(", ");
+    conditions.push(`${column}kind IN (${placeholders})`);
+    params.push(...filter.kinds);
+  }
+
+  // Handle authors filter (pubkeys)
+  if (filter.authors && filter.authors.length > 0) {
+    const placeholders = filter.authors.map(() => `?`).join(", ");
+    conditions.push(`${column}pubkey IN (${placeholders})`);
+    params.push(...filter.authors);
+  }
+
+  // Handle since filter (timestamp >= since)
+  if (filter.since !== undefined) {
+    conditions.push(`${column}created_at >= ?`);
+    params.push(filter.since);
+  }
+
+  // Handle until filter (timestamp <= until)
+  if (filter.until !== undefined) {
+    conditions.push(`${column}created_at <= ?`);
+    params.push(filter.until);
+  }
+
+  conditions.push(...tagConditions);
+  params.push(...tagParams);
 
   return { conditions, params, search };
 }
@@ -140,11 +150,14 @@ export function buildFiltersQuery(
   // Build the final query with proper ordering and limit
   let fromClause = "events";
   let orderBy = "events.created_at DESC, events.id ASC";
+  // Rows only repeat when joined with the search table
+  let joined = false;
 
   for (const filter of filterArray) {
     const { conditions, params, search } = buildFilterConditions(filter);
 
     if (search) {
+      joined = true;
       // Override the from clause to join the events_search table
       fromClause = "events INNER JOIN events_search ON events.id = events_search.event_id";
 
@@ -179,7 +192,7 @@ export function buildFiltersQuery(
   const whereClause = filterQueries.length > 0 ? `WHERE ${filterQueries.join(" OR ")}` : "";
 
   let query = `
-      SELECT DISTINCT ${projection === "sync-pairs" ? "events.id, events.created_at" : "events.*"} FROM ${fromClause}
+      SELECT ${joined ? "DISTINCT " : ""}${projection === "sync-pairs" ? "events.id, events.created_at" : "events.*"} FROM ${fromClause}
       ${whereClause}
       ORDER BY ${orderBy}
     `;

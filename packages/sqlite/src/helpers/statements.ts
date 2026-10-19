@@ -114,13 +114,20 @@ export const CREATE_EVENT_TAGS_TABLE_STATEMENT: Statement<[]> = {
 
 // Index creation statements
 export const CREATE_INDEXES_STATEMENTS: Statement<[]>[] = [
-  // Events table indexes
-  { sql: `CREATE INDEX IF NOT EXISTS kind_idx ON events(kind)` },
-  { sql: `CREATE INDEX IF NOT EXISTS pubkey_idx ON events(pubkey)` },
-  { sql: `CREATE INDEX IF NOT EXISTS created_at_idx ON events(created_at)` },
-  { sql: `CREATE INDEX IF NOT EXISTS identifier_idx ON events(identifier)` },
+  // Remove single column indexes that the composite indexes below replace
+  { sql: `DROP INDEX IF EXISTS kind_idx` },
+  { sql: `DROP INDEX IF EXISTS pubkey_idx` },
+  { sql: `DROP INDEX IF EXISTS identifier_idx` },
+  { sql: `DROP INDEX IF EXISTS event_tags_event_id_idx` },
+  { sql: `DROP INDEX IF EXISTS event_tags_name_value_idx` },
 
-  // Event tags table indexes for efficient tag filtering
-  { sql: `CREATE INDEX IF NOT EXISTS event_tags_event_id_idx ON event_tags(event_id)` },
-  { sql: `CREATE INDEX IF NOT EXISTS event_tags_name_value_idx ON event_tags(tag_name, tag_value)` },
+  // Events table indexes, ending in created_at so timelines can read rows in order
+  { sql: `CREATE INDEX IF NOT EXISTS created_at_idx ON events(created_at)` },
+  { sql: `CREATE INDEX IF NOT EXISTS kind_created_at_idx ON events(kind, created_at)` },
+  { sql: `CREATE INDEX IF NOT EXISTS pubkey_created_at_idx ON events(pubkey, created_at)` },
+  { sql: `CREATE INDEX IF NOT EXISTS pubkey_kind_created_at_idx ON events(pubkey, kind, created_at)` },
+  { sql: `CREATE INDEX IF NOT EXISTS replaceable_idx ON events(kind, pubkey, identifier, created_at)` },
+
+  // Covering index for tag filters, the primary key already indexes event_id
+  { sql: `CREATE INDEX IF NOT EXISTS event_tags_name_value_event_idx ON event_tags(tag_name, tag_value, event_id)` },
 ];
