@@ -49,6 +49,8 @@ describe("exports", () => {
         "canHaveEncryptedContent",
         "canHaveHiddenContent",
         "canHaveHiddenTags",
+        "compileFilter",
+        "compileFilters",
         "convertToUrl",
         "createATagFromAddressPointer",
         "createETagFromEventPointer",

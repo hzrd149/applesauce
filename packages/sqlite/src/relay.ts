@@ -1,5 +1,5 @@
 import { EventStore } from "applesauce-core";
-import { NostrEvent, matchFilter, verifyEvent } from "applesauce-core/helpers";
+import { compileFilters, FilterMatcher, NostrEvent, verifyEvent } from "applesauce-core/helpers";
 import { createServer } from "http";
 import { WebSocket, WebSocketServer } from "ws";
 import { BetterSqlite3EventDatabase } from "./better-sqlite3/event-database.js";
@@ -16,6 +16,8 @@ eventStore.verifyEvent = verifyEvent;
 interface Subscription {
   id: string;
   filters: FilterWithSearch[];
+  /** The filters compiled once for broadcasting new events */
+  matches: FilterMatcher;
   ws: WebSocket;
 }
 
@@ -115,7 +117,7 @@ async function handleReq(ws: WebSocket, subscriptionId: string, filters: FilterW
     // Store subscription, replacing any existing subscription with the same id on this connection
     let connection = subscriptions.get(ws);
     if (!connection) subscriptions.set(ws, (connection = new Map()));
-    connection.set(subscriptionId, { id: subscriptionId, filters, ws });
+    connection.set(subscriptionId, { id: subscriptionId, filters, matches: compileFilters(filters), ws });
 
     // Get existing events that match filters
     const events = eventStore.getByFilters(filters);
@@ -152,7 +154,7 @@ function broadcastToSubscribers(event: NostrEvent) {
       if (sub.filters.some((filter) => filter.search)) continue;
 
       // Check if event matches any of the subscription filters
-      if (sub.filters.some((filter) => matchFilter(filter, event))) ws.send(JSON.stringify(["EVENT", subId, event]));
+      if (sub.matches(event)) ws.send(JSON.stringify(["EVENT", subId, event]));
     }
   }
 }

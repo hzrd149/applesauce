@@ -30,7 +30,7 @@ import {
   NostrEvent,
   StoreEvent,
 } from "../helpers/event.js";
-import { Filter, matchFilters } from "../helpers/filter.js";
+import { compileFilters, Filter } from "../helpers/filter.js";
 import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers/pointers.js";
 import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
@@ -195,6 +195,7 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
 
     const seen = new Map<string, E>();
     const getTimelineUID = (event: E) => (includeOldVersion ? event.id : getEventUID(event));
+    const matches = compileFilters<E>(filters);
 
     // get current events
     return defer(() => {
@@ -207,7 +208,7 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
       // subscribe to newer events
       mergeWith(
         s.insert$.pipe(
-          filter((e) => matchFilters(filters, e)),
+          filter(matches),
           // claim all new events
           claimEvents(s),
         ),
@@ -215,7 +216,7 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
       // subscribe to delete events
       mergeWith(
         s.remove$.pipe(
-          filter((e) => matchFilters(filters, e)),
+          filter(matches),
           map((e) => e.id),
         ),
       ),
@@ -299,7 +300,7 @@ export function FiltersModel<E extends StoreEvent = NostrEvent>(
     const existingEvents$: Observable<E> = onlyNew ? EMPTY : defer(() => getByFiltersFromStores(s, filters));
 
     // Create the new events observable
-    const newEvents$: Observable<E> = s.insert$.pipe(filter((e) => matchFilters(filters, e)));
+    const newEvents$: Observable<E> = s.insert$.pipe(filter(compileFilters<E>(filters)));
 
     return merge(existingEvents$, newEvents$);
   };

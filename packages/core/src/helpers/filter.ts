@@ -107,6 +107,104 @@ export function matchFilters<E extends StoreEvent = NostrEvent>(filters: Filter[
   return false;
 }
 
+/** A precompiled check for whether an event matches a filter */
+export type FilterMatcher<E extends StoreEvent = NostrEvent> = (event: E) => boolean;
+
+// Lists longer than this are checked with a Set, shorter lists are faster to scan
+const SET_THRESHOLD = 16;
+
+function compileList<T>(values: T[]): (value: T) => boolean {
+  if (values.length > SET_THRESHOLD) {
+    const set = new Set(values);
+    return (value) => set.has(value);
+  }
+  const list = Array.from(values);
+  return (value) => list.indexOf(value) !== -1;
+}
+
+/**
+ * Compiles a filter into a matcher with the same rules as {@link matchFilter}, for checking many events against one filter
+ * @note The matcher is a snapshot of the filter, later changes to the filter are not seen
+ */
+export function compileFilter<E extends StoreEvent = NostrEvent>(filter: Filter): FilterMatcher<E> {
+  const checks: FilterMatcher<E>[] = [];
+
+  if (filter.ids) {
+    const has = compileList(filter.ids);
+    checks.push((event) => has(event.id));
+  }
+  if (filter.kinds) {
+    const has = compileList(filter.kinds);
+    checks.push((event) => has(event.kind));
+  }
+  if (filter.authors) {
+    const has = compileList(filter.authors);
+    checks.push((event) => has(event.pubkey));
+  }
+  if (filter.since) {
+    const since = filter.since;
+    checks.push((event) => event.created_at >= since);
+  }
+  if (filter.until) {
+    const until = filter.until;
+    checks.push((event) => event.created_at <= until);
+  }
+
+  // NIP-91 AND tags: every "name:value" must be present
+  const all: string[] = [];
+  for (const key of Object.keys(filter)) {
+    if (key[0] !== "&") continue;
+    const values = filter[key as `&${string}`];
+    if (values) for (const value of values) all.push(key.slice(1) + ":" + value);
+  }
+  if (all.length > 0) {
+    checks.push((event) => {
+      const tags = getIndexableTags(event);
+      for (const tag of all) if (!tags.has(tag)) return false;
+      return true;
+    });
+  }
+
+  // OR tags: at least one "name:value" per tag, ignoring values already required by AND (NIP-91)
+  for (const key of Object.keys(filter)) {
+    if (key[0] !== "#") continue;
+    const values = filter[key as `#${string}`];
+    if (!values) continue;
+
+    const name = key.slice(1);
+    const and = filter[`&${name}` as `&${string}`];
+    const any = (and ? values.filter((v) => !and.includes(v)) : values).map((value) => name + ":" + value);
+    if (any.length === 0) continue;
+
+    checks.push((event) => {
+      const tags = getIndexableTags(event);
+      for (const tag of any) if (tags.has(tag)) return true;
+      return false;
+    });
+  }
+
+  if (checks.length === 0) return () => true;
+  if (checks.length === 1) return checks[0];
+  return (event) => {
+    for (const check of checks) if (!check(event)) return false;
+    return true;
+  };
+}
+
+/**
+ * Compiles filters into a matcher that passes when any filter matches, like {@link matchFilters}
+ * @note The matcher is a snapshot of the filters, later changes to the filters are not seen
+ */
+export function compileFilters<E extends StoreEvent = NostrEvent>(filters: Filter[]): FilterMatcher<E> {
+  const matchers = filters.map((filter) => compileFilter<E>(filter));
+  if (matchers.length === 1) return matchers[0];
+
+  return (event) => {
+    for (const matcher of matchers) if (matcher(event)) return true;
+    return false;
+  };
+}
+
 /** Copied from nostr-tools and modified to support undefined values and NIP-91 AND operator */
 export function mergeFilters(...filters: Filter[]): Filter {
   let result: Filter = {};
