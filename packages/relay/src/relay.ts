@@ -784,7 +784,8 @@ export class Relay {
         // Update the last message received at timestamp
         const now = Date.now();
         this.lastMessageReceivedAt = now;
-        this._lastMessageAt$.next(now);
+        // Skip repeated timestamps so bursts of messages do not emit once per message
+        if (now !== this._lastMessageAt$.value) this._lastMessageAt$.next(now);
 
         // Pass to the message subject
         allMessagesSubject.next(message);

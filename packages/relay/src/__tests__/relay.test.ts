@@ -914,6 +914,24 @@ describe("message$", () => {
   });
 });
 
+describe("lastMessageAt$", () => {
+  it("should only emit when the timestamp changes", async () => {
+    subscribeSpyTo(relay.req({ kinds: [1] }));
+    await server.connected;
+    const spy = subscribeSpyTo(relay.lastMessageAt$);
+
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    server.send(["NOTICE", "a"]);
+    server.send(["NOTICE", "b"]);
+    now.mockReturnValue(2000);
+    server.send(["NOTICE", "c"]);
+    now.mockRestore();
+
+    expect(spy.getValues()).toEqual([0, 1000, 2000]);
+    expect(relay.lastMessageAt).toBe(2000);
+  });
+});
+
 describe("sync", () => {
   it("should wait for authentication if relay responds with NEG-ERR auth-required", async () => {
     const spy = subscribeSpyTo(relay.sync([], { kinds: [1] }), { expectErrors: true });
