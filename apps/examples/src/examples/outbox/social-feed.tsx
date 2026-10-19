@@ -18,6 +18,7 @@ import {
 } from "applesauce-core";
 import {
   createOutboxMap,
+  fakeVerifyEvent,
   Filter,
   getDisplayName,
   getProfilePicture,
@@ -72,6 +73,8 @@ const pool = new RelayPool({
 });
 const eventStore = new EventStore();
 
+// Disable signature verification since that is not what is being tested here
+eventStore.verifyEvent = fakeVerifyEvent;
 
 // Setup a local event cache
 const cache = await openDB();
