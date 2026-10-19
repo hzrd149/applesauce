@@ -1,4 +1,4 @@
-import { Proof, Token, Wallet as CashuWallet } from "@cashu/cashu-ts";
+import { Amount, getDecodedToken, getEncodedToken, Proof, Token, Wallet as CashuWallet } from "@cashu/cashu-ts";
 import { EventStore } from "applesauce-core";
 import { getEncryptedContent, isEncryptedContentUnlocked, type NostrEvent } from "applesauce-core/helpers";
 import type { EncryptedContentCache } from "applesauce-common/helpers";
@@ -503,6 +503,48 @@ describe("start/stop", () => {
     await wallet.start();
     expect(pool.subscription).toHaveBeenCalledTimes(2);
 
+    wallet.stop();
+  });
+});
+
+describe("receiveToken", () => {
+  it("rejects unsupported units before contacting the mint", async () => {
+    const wallet = new NutWallet({ pubkey: signer.pubkey, signer, pool, eventStore, couch });
+    const load = vi.spyOn(CashuWallet.prototype, "loadMint");
+    try {
+      await expect(wallet.receiveToken({ mint: "https://mint.example.com", unit: "usd", proofs: [] })).rejects.toThrow(
+        "Only sat tokens are supported",
+      );
+      expect(load).not.toHaveBeenCalled();
+    } finally {
+      load.mockRestore();
+      wallet.stop();
+    }
+  });
+
+  it("loads the mint before resolving shortened v2 keyset IDs", async () => {
+    const token: Token = {
+      mint: "https://mint.example.com",
+      unit: "sat",
+      proofs: [{ id: "01" + "ab".repeat(32), amount: Amount.from(1), secret: "secret", C: "02" + "cd".repeat(32) }],
+    };
+    const encoded = getEncodedToken(token);
+    expect(() => getDecodedToken(encoded, [])).toThrow("no keysets");
+    const cashu = new CashuWallet(token.mint);
+    vi.spyOn(cashu.keyChain, "getAllKeysetIds").mockReturnValue([token.proofs[0].id]);
+    const decode = vi.spyOn(cashu, "decodeToken");
+    class TestWallet extends NutWallet {
+      protected getCashuWallet = vi.fn(async () => cashu);
+      runAction = vi.fn().mockResolvedValue(undefined);
+      constructor() {
+        super({ pubkey: signer.pubkey, signer, pool, eventStore, couch });
+        this.actions.run = this.runAction;
+      }
+    }
+    const wallet = new TestWallet();
+    await wallet.receiveToken(encoded);
+    expect(decode).toHaveBeenCalledWith(encoded);
+    expect(wallet.runAction.mock.calls[0][1]).toEqual(token);
     wallet.stop();
   });
 });

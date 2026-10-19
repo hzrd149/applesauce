@@ -82,7 +82,7 @@
     "vitest": "^4.1.11"
   },
   "peerDependencies": {
-    "@cashu/cashu-ts": "^4.5.1"
+    "@cashu/cashu-ts": "^4.11.0"
   },
   "peerDependenciesMeta": {
     "@cashu/cashu-ts": {

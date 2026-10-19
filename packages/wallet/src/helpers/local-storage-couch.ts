@@ -6,6 +6,7 @@ const STORAGE_KEY = "applesauce:couch:tokens";
 interface StoredToken {
   id: string;
   encodedToken: string;
+  keysetIds?: string[];
 }
 
 /**
@@ -33,8 +34,10 @@ export class LocalStorageCouch implements Couch {
   store(token: Token): () => void {
     const id = this.generateId();
     const encodedToken = getEncodedToken(token);
+    // Token encoding shortens v2 IDs; keep full IDs for offline recovery.
+    const keysetIds = [...new Set(token.proofs.map((proof) => proof.id))];
     const stored = this.getStoredTokens();
-    stored.push({ id, encodedToken });
+    stored.push({ id, encodedToken, keysetIds });
     this.saveStoredTokens(stored);
 
     // Return a function to remove this specific token by ID
@@ -61,7 +64,7 @@ export class LocalStorageCouch implements Couch {
     return this.getStoredTokens()
       .map((item): Token | null => {
         try {
-          return getDecodedToken(item.encodedToken, []);
+          return getDecodedToken(item.encodedToken, item.keysetIds ?? []);
         } catch {
           return null;
         }

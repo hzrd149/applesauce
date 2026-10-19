@@ -256,13 +256,13 @@ importers:
         version: link:../agent-skills
       vitepress:
         specifier: ^1.6.4
-        version: 1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2)
+        version: 1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(fuse.js@7.5.0)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2)
 
   apps/examples:
     dependencies:
       '@cashu/cashu-ts':
-        specifier: ^4.5.1
-        version: 4.7.2
+        specifier: ^4.11.0
+        version: 4.11.0
       '@emotion/react':
         specifier: ^11.14.0
         version: 11.14.0(@types/react@19.3.0)(react@19.2.8)(supports-color@8.1.1)
@@ -349,7 +349,7 @@ importers:
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
         specifier: ^5.0.0
-        version: 5.0.0(@cashu/cashu-ts@4.7.2)(hls.js@1.6.16)
+        version: 5.0.0(@cashu/cashu-ts@4.11.0)(hls.js@1.6.16)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -965,8 +965,8 @@ importers:
   packages/wallet:
     dependencies:
       '@cashu/cashu-ts':
-        specifier: ^4.5.1
-        version: 4.7.2
+        specifier: ^4.11.0
+        version: 4.11.0
       '@gandlaf21/bc-ur':
         specifier: ^1.1.12
         version: 1.1.12
@@ -1191,11 +1191,6 @@ packages:
   '@cashu/cashu-ts@4.11.0':
     resolution: {integrity: sha512-euNst5ZZCCAYDpIs9qXm0CElJYgvUargsODu+WvlI7SiRCVjTEPOIoeSsdBuEfj30qYfyufBopEDipVzS0d22Q==}
     engines: {node: '>=22.4.0'}
-
-  '@cashu/cashu-ts@4.7.2':
-    resolution: {integrity: sha512-rNfArnXhaoUCi7crcLFwayHFQ9ek9VUI0EemBbleC9dNEhrJDGBdyqkFH7b6ubmA2Pej0DskUfiLRx0fCp0ebQ==}
-    engines: {node: '>=22.4.0'}
-    deprecated: 'Superseded by 4.9.0: this version is not keyset-rotation aware and will fail once a mint rotates its keys. Upgrade with: npm i @cashu/cashu-ts@^4'
 
   '@changesets/apply-release-plan@7.1.1':
     resolution: {integrity: sha512-9qPCm/rLx/xoOFXIHGB229+4GOL76S4MC+7tyOuTsR6+1jYlfFDQORdvwR5hDA6y4FL2BPt3qpbcQIS+dW85LA==}
@@ -1749,10 +1744,6 @@ packages:
     resolution: {integrity: sha512-vs1Az2OOTBiP4q0pwjW5aF0xp9n4MxVrmkFBxc6EKZc6ddYx5gaZiAsZoq0uRRXWbi3AT/sBqn05eRPtn1JCPw==}
     engines: {node: '>= 20.19.0'}
 
-  '@noble/curves@2.2.0':
-    resolution: {integrity: sha512-T/BoHgFXirb0ENSPBquzX0rcjXeM6Lo892a2jlYJkqk83LqZx0l1Of7DzlKJ6jkpvMrkHSnAcgb5JegL8SeIkQ==}
-    engines: {node: '>= 20.19.0'}
-
   '@noble/curves@2.4.0':
     resolution: {integrity: sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==}
     engines: {node: '>= 20.19.0'}
@@ -2066,9 +2057,6 @@ packages:
 
   '@scure/bip32@2.0.1':
     resolution: {integrity: sha512-4Md1NI5BzoVP+bhyJaY3K6yMesEFzNS1sE/cP+9nuvE7p/b0kx9XbpDHHFl8dHtufcbdHRUUQdRqLIPHN/s7yA==}
-
-  '@scure/bip32@2.2.0':
-    resolution: {integrity: sha512-zFr7t2F+a9+5tB7QbarF2HQNYrgjCNaoLAupZdKkrFMYMozJf5zqH2WJCQibMzm1qQ0QogrxVGO3qXfQDYMaQg==}
 
   '@scure/bip32@2.4.0':
     resolution: {integrity: sha512-i3DS0CptAocyvqE4n3SUkpzeQK4vJMFwWLofTwRiiKo2aWojBOfyMCgfKw9HVpO6fSY5AK86sHS/Uzn8kK9Few==}
@@ -6464,13 +6452,6 @@ snapshots:
       '@scure/base': 2.4.0
       '@scure/bip32': 2.4.0
 
-  '@cashu/cashu-ts@4.7.2':
-    dependencies:
-      '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
-      '@scure/base': 2.2.0
-      '@scure/bip32': 2.2.0
-
   '@changesets/apply-release-plan@7.1.1':
     dependencies:
       '@changesets/config': 3.1.4
@@ -7112,10 +7093,6 @@ snapshots:
     dependencies:
       '@noble/hashes': 2.0.1
 
-  '@noble/curves@2.2.0':
-    dependencies:
-      '@noble/hashes': 2.2.0
-
   '@noble/curves@2.4.0':
     dependencies:
       '@noble/hashes': 2.4.0
@@ -7330,12 +7307,6 @@ snapshots:
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
       '@scure/base': 2.0.0
-
-  '@scure/bip32@2.2.0':
-    dependencies:
-      '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
-      '@scure/base': 2.2.0
 
   '@scure/bip32@2.4.0':
     dependencies:
@@ -8332,13 +8303,14 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@vueuse/integrations@12.8.2(focus-trap@7.8.0)(idb-keyval@6.3.0)(typescript@7.0.2)':
+  '@vueuse/integrations@12.8.2(focus-trap@7.8.0)(fuse.js@7.5.0)(idb-keyval@6.3.0)(typescript@7.0.2)':
     dependencies:
       '@vueuse/core': 12.8.2(typescript@7.0.2)
       '@vueuse/shared': 12.8.2(typescript@7.0.2)
       vue: 3.5.40(typescript@7.0.2)
     optionalDependencies:
       focus-trap: 7.8.0
+      fuse.js: 7.5.0
       idb-keyval: 6.3.0
     transitivePeerDependencies:
       - typescript
@@ -8642,11 +8614,11 @@ snapshots:
 
   block-iterator@1.1.2: {}
 
-  blossom-client-sdk@5.0.0(@cashu/cashu-ts@4.7.2)(hls.js@1.6.16):
+  blossom-client-sdk@5.0.0(@cashu/cashu-ts@4.11.0)(hls.js@1.6.16):
     dependencies:
       '@noble/hashes': 1.8.0
     optionalDependencies:
-      '@cashu/cashu-ts': 4.7.2
+      '@cashu/cashu-ts': 4.11.0
       hls.js: 1.6.16
 
   blurhash@2.0.5: {}
@@ -11545,7 +11517,7 @@ snapshots:
       terser: 5.49.0
       yaml: 2.9.0
 
-  vitepress@1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2):
+  vitepress@1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(fuse.js@7.5.0)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2):
     dependencies:
       '@docsearch/css': 3.8.2
       '@docsearch/js': 3.8.2(@algolia/client-search@5.56.0)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)
@@ -11558,7 +11530,7 @@ snapshots:
       '@vue/devtools-api': 7.7.10
       '@vue/shared': 3.5.40
       '@vueuse/core': 12.8.2(typescript@7.0.2)
-      '@vueuse/integrations': 12.8.2(focus-trap@7.8.0)(idb-keyval@6.3.0)(typescript@7.0.2)
+      '@vueuse/integrations': 12.8.2(focus-trap@7.8.0)(fuse.js@7.5.0)(idb-keyval@6.3.0)(typescript@7.0.2)
       focus-trap: 7.8.0
       mark.js: 8.11.1
       minisearch: 7.2.0

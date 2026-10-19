@@ -1,5 +1,5 @@
 import {
-  getDecodedToken,
+  getTokenMetadata,
   getEncodedToken,
   type MeltProofsResponse,
   type MeltQuoteBaseResponse,
@@ -581,10 +581,11 @@ export class NutWallet {
   /** Receives a Cashu token (encoded string or decoded {@link Token}) into the wallet */
   async receiveToken(token: string | Token): Promise<void> {
     await this.track("receive", async () => {
-      const decoded = typeof token === "string" ? getDecodedToken(token, []) : token;
-      if (!decoded) throw new Error("Failed to decode token");
+      const metadata = typeof token === "string" ? getTokenMetadata(token) : token;
+      if (metadata.unit && metadata.unit !== "sat") throw new Error("Only sat tokens are supported");
+      const wallet = await this.getCashuWallet(metadata.mint);
+      const decoded = typeof token === "string" ? wallet.decodeToken(token) : token;
       this.log("Receiving token from mint %s", decoded.mint);
-      const wallet = await this.getCashuWallet(decoded.mint);
       await this.actions.run(ReceiveToken, decoded, { couch: this.couch, wallet, getCashuWallet: this.getCashuWallet });
       await this.refreshCouch();
     });

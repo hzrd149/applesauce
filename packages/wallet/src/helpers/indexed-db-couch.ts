@@ -8,6 +8,7 @@ const DB_VERSION = 1;
 interface StoredToken {
   id: string;
   encodedToken: string;
+  keysetIds?: string[];
 }
 
 /**
@@ -72,11 +73,13 @@ export class IndexedDBCouch implements Couch {
     const db = await this.init();
     const id = this.generateId();
     const encodedToken = getEncodedToken(token);
+    // Token encoding shortens v2 IDs; keep full IDs for offline recovery.
+    const keysetIds = [...new Set(token.proofs.map((proof) => proof.id))];
 
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([this.storeName], "readwrite");
       const store = transaction.objectStore(this.storeName);
-      const request = store.add({ id, encodedToken });
+      const request = store.add({ id, encodedToken, keysetIds });
 
       request.onsuccess = () => {
         // Return a function to remove this specific token by ID
@@ -119,7 +122,7 @@ export class IndexedDBCouch implements Couch {
     return stored
       .map((item): Token | null => {
         try {
-          return getDecodedToken(item.encodedToken, []);
+          return getDecodedToken(item.encodedToken, item.keysetIds ?? []);
         } catch {
           return null;
         }

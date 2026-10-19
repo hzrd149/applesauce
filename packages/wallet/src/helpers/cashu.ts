@@ -47,10 +47,11 @@ export function ignoreDuplicateProofs(seen = new Set<string>()): (proof: ProofLi
 }
 
 /**
- * Returns a decoded cashu token inside an unicode emoji
+ * Returns a decoded cashu token inside a Unicode emoji
+ * @param keysetIds Full mint keyset IDs used to resolve shortened v2 IDs
  * @see https://github.com/cashubtc/cashu.me/blob/1194a7b9ee2f43305e38304de7bef8839601ff4d/src/components/ReceiveTokenDialog.vue#L387
  */
-export function decodeTokenFromEmojiString(str: string): Token | undefined {
+export function decodeTokenFromEmojiString(str: string, keysetIds: string[] = []): Token | undefined {
   try {
     let decoded: string[] = [];
     const chars = Array.from(str);
@@ -91,8 +92,7 @@ export function decodeTokenFromEmojiString(str: string): Token | undefined {
     // Switch out token if we found peanut data
     let decodedString = decoded.join("");
 
-    // Pass an empty keyset list — works for tokens with standard hex keyset ids
-    return getDecodedToken(decodedString, []);
+    return getDecodedToken(decodedString, keysetIds);
   } catch (error) {
     return undefined;
   }
