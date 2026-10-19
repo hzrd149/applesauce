@@ -3,6 +3,14 @@ import { BehaviorSubject, map, Observable } from "rxjs";
 import type { RelayPool } from "./pool.js";
 import type { Relay } from "./relay.js";
 
+/** A source of temporary relay exclusions for filtering operators */
+export interface RelayLivenessSource {
+  /** An observable of relays temporarily excluded from selection */
+  unhealthy$: Observable<string[]>;
+  /** The relay hints encountered by consumers */
+  seen?: Set<string>;
+}
+
 /** Relay health states for liveness tracking */
 export type RelayHealthState = "online" | "offline" | "dead";
 
@@ -49,7 +57,7 @@ export interface LivenessOptions {
 }
 
 /** Record and manage liveness reports for relays */
-export class RelayLiveness {
+export class RelayLiveness implements RelayLivenessSource {
   private log = logger.extend("RelayLiveness");
   private readonly options: Required<Omit<LivenessOptions, "storage">>;
   private readonly states$ = new BehaviorSubject<Record<string, RelayState>>({});

@@ -1,19 +1,19 @@
-import { combineLatestWith, map, MonoTypeOperatorFunction, Observable } from "rxjs";
+import { combineLatestWith, map, MonoTypeOperatorFunction } from "rxjs";
 
-type ILivenessTracker = { unhealthy$: Observable<string[]>; seen?: Set<string> };
+import type { RelayLivenessSource } from "../liveness.js";
 
 // Filter relays and notify the liveness tracker that we've seen this relay
-function filterRelays<Tracker extends ILivenessTracker>(
+function filterRelays<Tracker extends RelayLivenessSource>(
   relays: string[],
   unhealthy: string[],
   liveness: Tracker,
 ): string[];
-function filterRelays<Tracker extends ILivenessTracker>(
+function filterRelays<Tracker extends RelayLivenessSource>(
   relays: string[] | undefined,
   unhealthy: string[],
   liveness: Tracker,
 ): string[] | undefined;
-function filterRelays<Tracker extends ILivenessTracker>(
+function filterRelays<Tracker extends RelayLivenessSource>(
   relays: string[] | undefined,
   unhealthy: string[],
   liveness: Tracker,
@@ -31,7 +31,7 @@ function filterRelays<Tracker extends ILivenessTracker>(
 }
 
 /** Filters out unhealthy relays from an array of pointers */
-export function ignoreUnhealthyRelaysOnPointers<T extends { relays?: string[] }, Tracker extends ILivenessTracker>(
+export function ignoreUnhealthyRelaysOnPointers<T extends { relays?: string[] }, Tracker extends RelayLivenessSource>(
   liveness: Tracker,
 ): MonoTypeOperatorFunction<T[]> {
   return (source) =>
@@ -53,7 +53,7 @@ export function ignoreUnhealthyRelaysOnPointers<T extends { relays?: string[] },
 /** Filters out unhealthy relays from the inboxes and outboxes */
 export function ignoreUnhealthyMailboxes<
   T extends { inboxes?: string[]; outboxes?: string[] },
-  Tracker extends ILivenessTracker,
+  Tracker extends RelayLivenessSource,
 >(liveness: Tracker): MonoTypeOperatorFunction<T> {
   return (source) =>
     source.pipe(
@@ -73,7 +73,7 @@ export function ignoreUnhealthyMailboxes<
 }
 
 /** Filters out unhealthy relays from an array of relays */
-export function ignoreUnhealthyRelays<Tracker extends ILivenessTracker>(
+export function ignoreUnhealthyRelays<Tracker extends RelayLivenessSource>(
   liveness: Tracker,
 ): MonoTypeOperatorFunction<string[]> {
   return (source) =>
