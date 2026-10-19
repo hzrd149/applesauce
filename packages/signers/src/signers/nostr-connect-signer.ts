@@ -258,10 +258,10 @@ export class NostrConnectSigner implements ISigner {
 
   /** Call this method with incoming events */
   public async handleEvent(event: NostrEvent) {
-    if (!this.verifyEvent(event)) return;
-
     // ignore the event if its not from the remote signer
     if (this.remote && event.pubkey !== this.remote) return;
+
+    if (!this.verifyEvent(event)) return;
 
     try {
       const responseStr =

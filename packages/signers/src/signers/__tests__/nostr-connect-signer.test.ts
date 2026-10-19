@@ -32,6 +32,22 @@ afterEach(() => {
 });
 
 describe("connection", () => {
+  it("ignores unrelated authors before verifying signatures", async () => {
+    const verify = vi.spyOn(signer, "verifyEvent");
+    const event = await client.signEvent({ kind: 24133, content: "unrelated", tags: [], created_at: 0 });
+    await signer.handleEvent(event);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("still verifies the configured remote before decrypting", async () => {
+    const verify = vi.spyOn(signer, "verifyEvent").mockReturnValue(false);
+    const decrypt = vi.spyOn(client.nip44, "decrypt");
+    const event = await remote.signEvent({ kind: 24133, content: "invalid", tags: [], created_at: 0 });
+    await signer.handleEvent(event);
+    expect(verify).toHaveBeenCalledWith(event);
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
   it("should call subscription method with filters", async () => {
     signer.connect();
 
