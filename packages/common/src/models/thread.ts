@@ -14,7 +14,7 @@ import {
 } from "applesauce-core/helpers/pointers";
 import { type Observable } from "rxjs";
 import { map } from "rxjs/operators";
-import { COMMENT_KIND, getCommentReplyPointer } from "../helpers/comment.js";
+import { COMMENT_KIND, CommentPointer, getCommentReplyPointer, getCommentRootPointer } from "../helpers/comment.js";
 import { getNip10References, ThreadReferences } from "../helpers/threading.js";
 
 export type Thread = {
@@ -34,23 +34,52 @@ export type ThreadItem = {
 };
 
 export type ThreadModelOptions = {
+  /** The NIP-10 reply kinds to include, defaults to kind 1 */
   kinds?: number[];
+  /** Whether to include NIP-22 comments, defaults to true */
+  comments?: boolean;
 };
 
 const defaultOptions = {
   kinds: [kinds.ShortTextNote],
+  comments: true,
 };
 
-/** A model that returns a NIP-10 thread of events */
+/** Converts a NIP-22 comment pointer into a NIP-10 style thread reference */
+function commentPointerToReference(pointer: CommentPointer | null): ThreadReferences["reply"] {
+  if (pointer?.type === "event") {
+    const { id, kind, pubkey, relay } = pointer;
+    return { e: { id, kind, author: pubkey, relays: relay ? [relay] : undefined }, a: undefined };
+  }
+  if (pointer?.type === "address") {
+    const { kind, pubkey, identifier, relay } = pointer;
+    return { e: undefined, a: { kind, pubkey, identifier, relays: relay ? [relay] : undefined } };
+  }
+  // External roots have no event in the thread
+  return undefined;
+}
+
+/** Gets the thread references of a NIP-10 reply or a NIP-22 comment */
+function getThreadReferences(event: NostrEvent): ThreadReferences {
+  if (event.kind !== COMMENT_KIND) return getNip10References(event);
+  return {
+    root: commentPointerToReference(getCommentRootPointer(event)),
+    reply: commentPointerToReference(getCommentReplyPointer(event)),
+  };
+}
+
+/** A model that returns a thread of NIP-10 replies and NIP-22 comments */
 export function ThreadModel(root: string | AddressPointer | EventPointer, opts?: ThreadModelOptions): Model<Thread> {
   const parentReferences = new Map<string, Set<ThreadItem>>();
   const items = new Map<string, ThreadItem>();
 
-  const { kinds } = { ...defaultOptions, ...opts };
+  const { kinds, comments } = { ...defaultOptions, ...opts };
 
   let rootUID = "";
   const rootFilter: Filter = {};
   const replyFilter: Filter = { kinds };
+  // NIP-22 comments reference the root with uppercase tags at every depth
+  const commentFilter: Filter = { kinds: [COMMENT_KIND] };
 
   if (isAddressPointer(root)) {
     rootUID = getReplaceableAddressFromPointer(root);
@@ -59,21 +88,26 @@ export function ThreadModel(root: string | AddressPointer | EventPointer, opts?:
     rootFilter["#d"] = [root.identifier];
 
     replyFilter["#a"] = [rootUID];
+    commentFilter["#A"] = [rootUID];
   } else if (typeof root === "string") {
     rootUID = root;
     rootFilter.ids = [root];
     replyFilter["#e"] = [root];
+    commentFilter["#E"] = [root];
   } else {
     rootUID = root.id;
     rootFilter.ids = [root.id];
     replyFilter["#e"] = [root.id];
+    commentFilter["#E"] = [root.id];
   }
 
+  const filters = comments ? [rootFilter, replyFilter, commentFilter] : [rootFilter, replyFilter];
+
   return (events) =>
-    events.filters([rootFilter, replyFilter]).pipe(
+    events.filters(filters).pipe(
       map((event) => {
         if (!items.has(getEventUID(event))) {
-          const refs = getNip10References(event);
+          const refs = getThreadReferences(event);
 
           const replies = parentReferences.get(getEventUID(event)) || new Set<ThreadItem>();
           const item: ThreadItem = { event, refs, replies };
