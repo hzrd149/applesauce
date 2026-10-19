@@ -65,6 +65,7 @@ class WrappedBuffer {
 
 function decodeVarInt(buf: WrappedBuffer) {
   let res = 0;
+  let length = 0;
 
   while (1) {
     if (buf.length === 0) throw Error("parse ends prematurely");
@@ -72,6 +73,7 @@ function decodeVarInt(buf: WrappedBuffer) {
     // Arithmetic instead of `<<` so values past 2^31 don't wrap through 32-bit ints
     res = res * 128 + (byte & 127);
     if (res > Number.MAX_SAFE_INTEGER) throw Error("varint too large");
+    if (++length > 8) throw Error("varint too long");
     if ((byte & 128) === 0) break;
   }
 
@@ -79,6 +81,7 @@ function decodeVarInt(buf: WrappedBuffer) {
 }
 
 function encodeVarInt(n: number) {
+  if (!Number.isSafeInteger(n) || n < 0) throw Error("varint out of range");
   if (n === 0) return new WrappedBuffer([0]);
 
   let o = [];
