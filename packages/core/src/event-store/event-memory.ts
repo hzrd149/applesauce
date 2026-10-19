@@ -529,7 +529,8 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
     // If no filters were applied (empty filter), return all events
     if (first) {
-      return new Set(this.events.values());
+      // created_at is sorted newest first, so the limit can slice it directly
+      return new Set(filter.limit ? this.created_at.slice(0, filter.limit) : this.events.values());
     }
 
     // if the filter queried on time and has a limit. truncate the events now
@@ -540,6 +541,12 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
         if (events.has(event)) limited.add(event);
       }
       return limited;
+    }
+
+    // otherwise keep the newest events, breaking ties by lowest id (NIP-01)
+    if (filter.limit && events.size > filter.limit) {
+      const sorted = Array.from(events).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1));
+      return new Set(sorted.slice(0, filter.limit));
     }
 
     return events;

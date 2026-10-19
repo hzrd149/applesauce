@@ -564,6 +564,37 @@ describe("EventMemory - Query Filters", () => {
       expect(results).toContainEqual(note2);
     });
   });
+
+  describe("limit", () => {
+    // Added oldest-last so insertion order differs from created_at order
+    const addNotes = () =>
+      [300, 100, 400, 200].map((created_at) => eventMemory.add(user1.note(`Note ${created_at}`, { created_at })));
+
+    it("should return the newest events for a kind filter", () => {
+      addNotes();
+      const results = eventMemory.getByFilters({ kinds: [kinds.ShortTextNote], limit: 2 });
+
+      expect(results.map((e) => e.created_at).sort()).toEqual([300, 400]);
+    });
+
+    it("should return the newest events for an empty filter", () => {
+      addNotes();
+      const results = eventMemory.getByFilters({ limit: 2 });
+
+      expect(results.map((e) => e.created_at).sort()).toEqual([300, 400]);
+    });
+
+    it("should apply the limit to each filter separately", () => {
+      addNotes();
+      const other = eventMemory.add(user2.note("Other", { created_at: 50 }));
+      const results = eventMemory.getByFilters([
+        { authors: [user1.pubkey], limit: 1 },
+        { authors: [user2.pubkey], limit: 1 },
+      ]);
+
+      expect(results.map((e) => e.created_at).sort()).toEqual([400, other.created_at]);
+    });
+  });
 });
 
 describe("EventMemory - Timeline", () => {
