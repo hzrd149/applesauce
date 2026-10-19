@@ -304,4 +304,32 @@ describe("normalizeURL", () => {
   it("should return a string when a string is passed", () => {
     expect(typeof normalizeURL("https://example.com/path")).toBe("string");
   });
+
+  it("should normalize a copy without modifying the input URL", () => {
+    const input = new URL("https://example.com/a//b");
+    const result = normalizeURL(input);
+    expect(result).not.toBe(input);
+    expect(result.pathname).toBe("/a/b");
+    expect(input.pathname).toBe("/a//b");
+  });
+
+  it.each([
+    ["https://EXAMPLE.com:443/a/../b", "https://example.com/b"],
+    ["https://example.com/a%2F%2Fb?q=//#//", "https://example.com/a%2F%2Fb?q=//#//"],
+    ["https://example.com//a///b?q=//#//", "https://example.com/a/b?q=//#//"],
+    ["mailto:a//b@example.com", "mailto:a//b@example.com"],
+    ["file:///tmp//a", "file:///tmp/a"],
+  ])("should preserve URL parsing semantics for %s", (input, expected) => {
+    expect(normalizeURL(input)).toBe(expected);
+  });
+
+  it("should preserve the platform's empty pathname setter behavior", () => {
+    const expected = new URL("custom://");
+    expected.pathname = "";
+    expect(normalizeURL("custom://")).toBe(expected.toString());
+  });
+
+  it("should reject invalid URLs", () => {
+    expect(() => normalizeURL("not a url")).toThrow(TypeError);
+  });
 });

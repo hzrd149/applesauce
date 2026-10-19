@@ -82,17 +82,16 @@ export function ensureHttpURL<T extends string | URL>(url: T): T {
   return typeof url === "string" ? p.toString() : p;
 }
 
-/** Normalizes a string into a cleaner URL by dropping port if its not needed */
+/**
+ * Normalizes a URL by removing default ports and collapsing repeated pathname slashes
+ * @throws if the input is not a valid absolute URL
+ */
 export function normalizeURL<T extends string | URL>(url: T): T {
-  let p = new URL(url);
-  // Remove any double slashes
-  p.pathname = p.pathname.replace(/\/+/g, "/");
-  // Remove the port if its not needed
-  if (
-    (p.port === "80" && (p.protocol === "ws:" || p.protocol === "http:")) ||
-    (p.port === "443" && (p.protocol === "wss:" || p.protocol === "https:"))
-  )
-    p.port = "";
+  // Parsing already removes default ports; avoid reparsing unchanged paths through the setter.
+  const p = new URL(url);
+  const pathname = p.pathname;
+  // Setting an empty path can add a slash to non-special URLs such as custom://.
+  if (pathname === "" || pathname.includes("//")) p.pathname = pathname.replace(/\/{2,}/g, "/");
 
   // Return a string if a string was passed in
   // @ts-expect-error
