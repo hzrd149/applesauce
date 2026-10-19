@@ -2,7 +2,7 @@ import { logger as baseLogger, type Debugger } from "applesauce-core";
 import { EventMemory } from "applesauce-core/event-store";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { unixNow } from "applesauce-core/helpers/time";
-import { Filter, isFilterEqual, matchFilter, mergeFilters } from "applesauce-core/helpers/filter";
+import { compileFilter, Filter, isFilterEqual, mergeFilters } from "applesauce-core/helpers/filter";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
 import { mapEventsToStore } from "applesauce-core/observable";
@@ -371,6 +371,7 @@ function loadWindows(
               return {
                 state,
                 query,
+                matches: compileFilter({ ...state.filter, ...query }),
                 boundary: state.boundaries.get(range.until) ?? new Set<string>(),
                 oldest: undefined as number | undefined,
                 ids: new Set<string>(),
@@ -406,7 +407,7 @@ function loadWindows(
             filter((event) => {
               let matches = false;
               for (const page of pages) {
-                if (!matchFilter({ ...page.state.filter, ...page.query }, event)) continue;
+                if (!page.matches(event)) continue;
                 matches = true;
                 record(page.state, event);
                 if (!page.boundary.has(event.id)) page.fresh = true;
