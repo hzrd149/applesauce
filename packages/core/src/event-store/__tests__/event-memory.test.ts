@@ -14,6 +14,19 @@ beforeEach(() => {
 });
 
 describe("EventMemory - Basic Operations", () => {
+  it("builds mixed AND and OR tag indexes in a single pass, including across cache eviction", () => {
+    // Force eviction while building the query's missing indexes
+    (eventMemory as any).tags.max = 1;
+    const event = user1.note("Matching", { tags: [["t", "a"], ["t", "b"], ["p", user2.pubkey]] });
+    eventMemory.add(event);
+    eventMemory.getByFilters({ "#t": ["a"] });
+    const build = vi.spyOn(eventMemory as any, "buildTagIndexes");
+
+    expect(eventMemory.getByFilters({ "&t": ["a", "b"], "#p": [user2.pubkey] })).toEqual([event]);
+    expect(build).toHaveBeenCalledOnce();
+    expect(build).toHaveBeenCalledWith(["t:a", "t:b", "p:" + user2.pubkey]);
+  });
+
   describe("add and getEvent", () => {
     it("should add an event and retrieve it by id", () => {
       const note = user1.note("Test note");

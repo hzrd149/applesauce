@@ -445,12 +445,13 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     const conditions: Set<E>[][] = [];
 
     if (filter.ids) conditions.push([new Set(this.iterateIds(filter.ids))]);
+    const tagConditions: string[][] = [];
 
     // Process AND tag filters (& prefix) first - NIP-91
     // AND takes precedence and requires ALL values to be present, so each value is its own condition
     for (const t of INDEXABLE_TAGS) {
       const values = filter[`&${t}` as `&${string}`];
-      if (values?.length) for (const value of values) conditions.push(this.getTagSets(t, [value]));
+      if (values?.length) for (const value of values) tagConditions.push([t + ":" + value]);
     }
 
     // Process OR tag filters (# prefix)
@@ -462,9 +463,19 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // Only apply OR filter if there are values left after filtering
-        if (filteredValues.length > 0) conditions.push(this.getTagSets(t, filteredValues));
+        if (filteredValues.length > 0) tagConditions.push(filteredValues.map((value) => t + ":" + value));
       }
     }
+
+    // Keep cached sets before building, since a large query can evict them from the LRU
+    const tagKeys = tagConditions.flat();
+    const tagSets = new Map<string, Set<E>>();
+    for (const key of tagKeys) {
+      const cached = this.tags.get(key);
+      if (cached) tagSets.set(key, cached);
+    }
+    for (const [key, events] of this.buildTagIndexes(tagKeys)) tagSets.set(key, events);
+    for (const keys of tagConditions) conditions.push(keys.map((key) => tagSets.get(key)!));
 
     // Use the composite kind+author index when both are present and the cross-product is small
     if (filter.authors && filter.kinds && filter.authors.length * filter.kinds.length <= 20) {
