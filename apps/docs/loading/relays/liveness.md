@@ -47,9 +47,10 @@ Pass one or more sources to the pool to skip their unhealthy relays in every gro
 
 ```ts
 const pool = new RelayPool({ liveness: [local, monitors] });
+const loader = createSyncLoader({ eventStore, pool, liveness: local });
 ```
 
-Combine sources when both views matter: monitors catch global outages, while local tracking catches relays only this client cannot reach. `pool.relay(url)` is never filtered.
+The sync loader reports excluded relays with a `"skipped"` state, and records relays that fail before making progress with the `liveness` tracker so later loads skip them. Combine sources when both views matter: monitors catch global outages, while local tracking catches relays only this client cannot reach. `pool.relay(url)` is never filtered.
 
 One-shot operations (`request`, `publish`, `event`, `count`, and `sync`) filter their relays once when they start. Long-lived subscriptions (`req`, `subscription`, `subscriptionMap`, and `outboxSubscription`) re-filter whenever a source's `unhealthy$` changes, so they drop relays that go unhealthy and send their REQ again to relays that recover.
 

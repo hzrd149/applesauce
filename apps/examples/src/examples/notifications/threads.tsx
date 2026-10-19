@@ -788,6 +788,7 @@ const STATE_CLASS: Record<SyncRelayState, string> = {
   loading: "text-info",
   complete: "text-success",
   error: "text-error",
+  skipped: "text-base-content/50",
 };
 
 function RelayTable({ steps }: { steps: (SyncSummary | undefined)[] }) {

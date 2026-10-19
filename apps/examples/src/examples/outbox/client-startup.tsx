@@ -149,6 +149,7 @@ const stateColors = {
   loading: "#a78bfa",
   complete: "#34d399",
   error: "#fb7185",
+  skipped: "#94a3b8",
 };
 
 function StartupMap({

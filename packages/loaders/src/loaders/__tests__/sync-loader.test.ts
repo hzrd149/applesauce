@@ -1533,3 +1533,70 @@ describe("14-02: sync-loader's request logger is derived once per relay (D-18)",
     ]);
   });
 });
+
+describe("liveness", () => {
+  const filter: Filter = { kinds: [1] };
+
+  it("reports relays removed by filterRelays as skipped without loading them", async () => {
+    const request = vi.fn(() => asyncOf());
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      request,
+      getSupported: async () => [1],
+      sync: vi.fn(),
+      filterRelays: (relays) => relays.filter((r) => r !== "wss://dead/"),
+    });
+
+    const statuses = await collect(loader({ relays: ["wss://live/", "wss://dead/"], filter }).status$);
+    const final = statuses.at(-1)!;
+
+    expect(final.done).toBe(true);
+    expect(final.relays["wss://dead/"]).toMatchObject({ state: "skipped", count: 0 });
+    expect(final.relays["wss://live/"].state).toBe("complete");
+    expect(request.mock.calls.every(([relay]) => relay === "wss://live/")).toBe(true);
+  });
+
+  it("filters relays through the pool", async () => {
+    const relay = { request: () => asyncOf(), getSupported: async () => [1], sync: vi.fn() };
+    const pool = { relay: vi.fn(() => relay), filterRelays: (relays: string[]) => relays.slice(0, 1) };
+    const loader = createSyncLoader({ eventStore: new EventStore(), pool });
+
+    const statuses = await collect(loader({ relays: ["wss://a/", "wss://b/"], filter }).status$);
+
+    expect(statuses.at(-1)!.relays["wss://b/"].state).toBe("skipped");
+    expect(pool.relay).not.toHaveBeenCalledWith("wss://b/");
+  });
+
+  it("records failures for relays that never progress and successes for completed relays", async () => {
+    const liveness = { recordFailure: vi.fn(), recordSuccess: vi.fn() };
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      liveness,
+      request: (relay) => (relay === "wss://dead/" ? NEVER : asyncOf()),
+      getSupported: async () => [1],
+      sync: vi.fn(),
+    });
+
+    await collect(loader({ relays: ["wss://live/", "wss://dead/"], filter, timeout: 20 }).status$);
+
+    expect(liveness.recordSuccess).toHaveBeenCalledWith("wss://live/");
+    expect(liveness.recordFailure).toHaveBeenCalledWith("wss://dead/");
+    expect(liveness.recordFailure).not.toHaveBeenCalledWith("wss://live/");
+  });
+
+  it("counts the NIP-77 check against the relay's first progress deadline", async () => {
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      request: () => NEVER,
+      // The check hangs until it times out, the request then only gets what is left of the deadline
+      getSupported: () => NEVER,
+      sync: vi.fn(),
+    });
+
+    const start = Date.now();
+    const statuses = await collect(loader({ relays: ["wss://dead/"], filter, timeout: 100 }).status$);
+
+    expect(statuses.at(-1)!.relays["wss://dead/"].state).toBe("error");
+    expect(Date.now() - start).toBeLessThan(180);
+  });
+});

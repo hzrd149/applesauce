@@ -425,6 +425,7 @@ const STATE_ORDER: Record<TaskState, number> = {
   complete: 4,
   canceled: 5,
   error: 6,
+  skipped: 7,
 };
 
 const STATE_BADGE: Record<TaskState, string> = {
@@ -435,6 +436,7 @@ const STATE_BADGE: Record<TaskState, string> = {
   complete: "badge-success",
   canceled: "badge-warning",
   error: "badge-error",
+  skipped: "badge-ghost",
 };
 
 // ---------- Components ----------

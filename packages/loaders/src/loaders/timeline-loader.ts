@@ -85,6 +85,8 @@ export interface TimelineLoader {
 export interface TimelineLivenessTracker {
   /** Records a failed request to a relay */
   recordFailure(relay: string): void;
+  /** Classifies a request error before recording transport failure when supported */
+  recordRequestFailure?(relay: string, error: unknown, startedAt?: number): void;
   /** Records a completed request to a relay */
   recordSuccess(relay: string): void;
 }
@@ -132,7 +134,7 @@ type FilterState = {
   ahead?: Range;
 };
 
-type Tracker = { success(): void; failure(): void };
+type Tracker = { success(): void; failure(error: unknown, startedAt: number): void };
 
 // The longest delay between retries of a failing source
 const MAX_RETRY_DELAY = 5 * 60_000;
@@ -423,7 +425,6 @@ function loadWindows(
               complete: () => {
                 if (active !== job) return;
                 failures = 0;
-                tracker?.success();
                 const capped = returned >= largest;
                 largest = Math.max(largest, returned);
                 // Commit only completed pages. Keep the inclusive oldest second for the next request.
@@ -441,6 +442,7 @@ function loadWindows(
                     state.boundaries.set(oldest, ids);
                   }
                 }
+                tracker?.success();
               },
             }),
             catchError((error) => {
@@ -449,8 +451,8 @@ function loadWindows(
               waiting = undefined;
               for (const { state } of pages) state.failures.push({ range: { ...range }, error, retryAt });
               opts?.logger?.("Timeline request failed", error);
-              tracker?.failure();
               retries$.next(retryAt);
+              tracker?.failure(error, silentSince);
               return EMPTY;
             }),
             // Keep this after the completion tap: cancellation must not commit coverage.
@@ -563,7 +565,10 @@ export function loadBlocksFromRelay(
   const liveness = opts?.liveness;
   const tracker = liveness && {
     success: () => liveness.recordSuccess(relay),
-    failure: () => liveness.recordFailure(relay),
+    failure: (error: unknown, startedAt: number) => {
+      if (liveness.recordRequestFailure) liveness.recordRequestFailure(relay, error, startedAt);
+      else liveness.recordFailure(relay);
+    },
   };
   return loadWindows(
     (filters) => request([relay], filters),

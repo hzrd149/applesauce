@@ -106,7 +106,7 @@ const RELAY_AUTH_ERROR_NAMES = new Set([
 export type SyncRelayMethod = "negentropy" | "request";
 
 /** The lifecycle state of a single relay during a sync load */
-export type SyncRelayState = "pending" | "checking" | "loading" | "complete" | "error";
+export type SyncRelayState = "pending" | "checking" | "loading" | "complete" | "error" | "skipped";
 
 /** The status of a single relay during a sync load */
 export type SyncRelayStatus = {
@@ -188,6 +188,8 @@ export interface SyncLoaderRelay {
 /** The minimal pool interface the sync loader needs (structurally satisfied by applesauce-relay's `RelayPool`) */
 export interface SyncLoaderPool {
   relay(url: string): SyncLoaderRelay;
+  /** Removes relays the pool currently considers unhealthy (applesauce-relay's `RelayPool.filterRelays`) */
+  filterRelays?(relays: string[]): string[];
 }
 
 type EventStoreInput = Parameters<typeof mapEventsToStore>[0];
@@ -199,7 +201,17 @@ export type SyncLoaderMethods = {
   /** Used to fit page and batch sizes under a relay's result cap; without it short pages are not trusted */
   getMaxLimit?: SyncMaxLimitMethod;
   sync: SyncSyncMethod;
+  /** Removes relays that should be skipped, they are reported with a "skipped" state */
+  filterRelays?: (relays: string[]) => string[];
 };
+
+/** A tracker that records relay failures and successes (structurally satisfied by applesauce-relay's `RelayLiveness`) */
+export interface SyncLivenessTracker {
+  /** Records a relay that failed before making progress */
+  recordFailure(relay: string): void;
+  /** Records a relay that completed */
+  recordSuccess(relay: string): void;
+}
 
 /** Options for creating a sync loader */
 export type SyncLoaderOptions = {
@@ -207,6 +219,8 @@ export type SyncLoaderOptions = {
   eventStore: EventStoreInput;
   /** A logger to extend */
   logger?: Debugger;
+  /** A tracker that records relays that fail before making progress and relays that complete */
+  liveness?: SyncLivenessTracker;
 } & ({ pool: SyncLoaderPool } | SyncLoaderMethods);
 
 /** A request to load a set of events from a set of relays */
@@ -343,6 +357,7 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
       request: (relay, filters, opts) => pool.relay(relay).request(filters, opts),
       getSupported: (relay) => pool.relay(relay).getSupported(),
       getMaxLimit: async (relay) => (await pool.relay(relay).getLimitations?.())?.max_limit,
+      filterRelays: pool.filterRelays && ((relays) => pool.filterRelays!(relays)),
       // The event store doubles as the local store the relay reconciles against. The relay defaults to
       // receiving missing events; sending is intentionally left to a higher layer
       sync: (relay, filter, opts) => pool.relay(relay).sync(eventStore, filter, undefined, opts),
@@ -354,6 +369,7 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
     getSupported: options.getSupported,
     getMaxLimit: options.getMaxLimit,
     sync: options.sync,
+    filterRelays: options.filterRelays,
   };
 }
 
@@ -381,7 +397,8 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
  * loader({ relays: user.outboxes$.pipe(defined()), filter });
  */
 export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
-  const { request, getSupported, getMaxLimit, sync } = resolveMethods(options);
+  const { request, getSupported, getMaxLimit, sync, filterRelays } = resolveMethods(options);
+  const liveness = options.liveness;
   const eventStore = options.eventStore;
   const baseLog = (options.logger ?? baseLogger).extend("sync-loader");
 
@@ -432,12 +449,19 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
         const first = !listed;
         listed = true;
         const next = relaySet(list);
+        // Relays excluded by liveness when they join the list are reported but never loaded
+        const allowed = filterRelays ? new Set(filterRelays(next)) : undefined;
         const removed = urls.filter((url) => !next.includes(url));
-        const added = next.filter((url) => !state[url]);
+        const joined = next.filter((url) => !state[url]);
         for (const url of removed) delete state[url];
-        for (const url of added) state[url] = { relay: url, state: "pending", count: 0 };
-        urls = [...urls.filter((url) => state[url]), ...added];
-        return { first, added, removed };
+        const added: string[] = [];
+        for (const url of joined) {
+          const skipped = allowed !== undefined && !allowed.has(url);
+          state[url] = { relay: url, state: skipped ? "skipped" : "pending", count: 0 };
+          if (!skipped) added.push(url);
+        }
+        urls = [...urls.filter((url) => state[url]), ...joined];
+        return { first, added, removed, skipped: joined.length - added.length };
       };
 
       // The unique event ids surfaced across all relays (after store dedupe), drives the global `loaded` count
@@ -447,7 +471,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       const snapshot = (): SyncLoaderStatus => ({
         relays: Object.fromEntries(urls.map((url) => [url, { ...state[url] }])),
         loaded: seen.size,
-        done: listed && urls.every((url) => state[url].state === "complete" || state[url].state === "error"),
+        done: listed && urls.every((url) => ["complete", "error", "skipped"].includes(state[url].state)),
       });
 
       // Mutates the state then emits a full status snapshot
@@ -566,11 +590,16 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
         // resumes with the remaining — not reset — budget once every phase closes, mirroring D-15's
         // pause/resume model: an auth wait does not grant the operation extra time, it just stops the
         // clock while authentication is out of the operation's hands.
-        const withTimeout = <T>(observable: Observable<T>): Observable<T> => {
+        // The relay's first progress window starts when its NIP-77 check starts, so an unreachable relay
+        // costs one timeout across the check and the load rather than one for each
+        let startedAt = 0;
+        const firstBudget = () => Math.max(0, timeoutMs - (Date.now() - startedAt));
+
+        const withTimeout = <T>(observable: Observable<T>, budget = timeoutMs): Observable<T> => {
           if (timeoutMs <= 0) return observable;
 
           return new Observable<T>((subscriber) => {
-            let remaining = timeoutMs;
+            let remaining = budget;
             let armedAt: number | null = null;
             let timer: ReturnType<typeof setTimeout> | null = null;
             let settled = false;
@@ -701,13 +730,16 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             log("Loading from %s via %s", url, state[url].method);
 
             // Part 1: paginated REQ
-            const request$ = () =>
+            const request$ = (budget?: number) =>
               toMessages(
-                withTimeout(paginatedRequest(request, url, filter, limit, maxLimit, backwardLog, relayMethodOptions)),
+                withTimeout(
+                  paginatedRequest(request, url, filter, limit, maxLimit, backwardLog, relayMethodOptions),
+                  budget,
+                ),
               );
 
             // A relay without NIP-77 just pages through a REQ
-            if (!negentropy) return concat(status(), request$());
+            if (!negentropy) return concat(status(), request$(firstBudget()));
 
             // Part 2: negentropy sync, falling back to a paginated request if it fails or times out
             return concat(
@@ -716,6 +748,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
                 // Fit each batch of missing ids under the relay's cap so fewer re-requests are needed
                 withTimeout(
                   sync(url, filter, maxLimit ? { ...relayMethodOptions, batchSize: maxLimit } : relayMethodOptions),
+                  firstBudget(),
                 ).pipe(
                   rxFilter((message) => message.type === "received" || !("type" in message)),
                   map((message) => (message.type === "received" ? message.event : (message as unknown as NostrEvent))),
@@ -758,11 +791,13 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           // Mark the relay as being checked for NIP-77 support
           status(() => {
             state[url].state = "checking";
+            startedAt = Date.now();
           }),
           load$,
           // Mark the relay as complete once its events have finished
           status(() => {
             if (state[url].state !== "error") state[url].state = "complete";
+            liveness?.recordSuccess(url);
           }),
         ).pipe(
           // A failed relay should not fail the whole loader, surface it as an error status instead
@@ -770,6 +805,9 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             log("Relay %s failed: %s", url, error?.message ?? error);
             state[url].state = "error";
             state[url].error = error instanceof Error ? error : new Error(String(error));
+            // A relay that never made progress is unreachable, auth walls are a policy outcome not a failure
+            if (state[url].count === 0 && !(error?.name && RELAY_AUTH_ERROR_NAMES.has(error.name)))
+              liveness?.recordFailure(url);
             return of<Msg>({ status: snapshot() });
           }),
           // WR-04 leak path 3: force-close every auth phase still open on this relay when its stream ends
@@ -797,7 +835,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
           merge(
             // Surface a status when the relays change, or when the first list makes the load known
             changes$.pipe(
-              rxFilter((c) => c.first || c.added.length > 0 || c.removed.length > 0),
+              rxFilter((c) => c.first || c.added.length > 0 || c.removed.length > 0 || c.skipped > 0),
               concatMap(() => status()),
             ),
             // Run new relays with a concurrency cap so a large relay set does not open every connection at once,

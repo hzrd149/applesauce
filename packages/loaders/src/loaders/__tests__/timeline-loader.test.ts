@@ -293,6 +293,23 @@ describe("reactive timeline windows", () => {
     sub.unsubscribe();
   });
 
+  it("forwards the original error and start time to request-aware trackers", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const error = new Error("restricted");
+    const liveness = { recordFailure: vi.fn(), recordSuccess: vi.fn(), recordRequestFailure: vi.fn() };
+    const request = vi.fn(() => throwError(() => error));
+    const sub = createTimelineLoader(
+      request,
+      ["a"],
+      {},
+      { prefetch: 0, liveness },
+    )(new BehaviorSubject(window(100, 200))).subscribe();
+    await flush();
+    expect(liveness.recordRequestFailure).toHaveBeenCalledWith("a", error, 1_000_000);
+    expect(liveness.recordFailure).not.toHaveBeenCalled();
+    sub.unsubscribe();
+  });
+
   it("doubles the backoff and reports outcomes to a liveness tracker", async () => {
     vi.useFakeTimers({ now: 1000_000 });
     let fail = true;
