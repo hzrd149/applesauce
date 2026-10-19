@@ -52,21 +52,28 @@ See [Optional Transformers](#optional-transformers) below for opt-in transformer
 ```ts
 import { links, nostrMentions, hashtags } from "applesauce-content/text";
 
-const root = getParsedContent(event, undefined, [links, nostrMentions, hashtags]);
+const transformers = [links, nostrMentions, hashtags];
+const root = getParsedContent(event, undefined, transformers);
 ```
 
 ## Caching
 
-Because parsing and transforming content is an expensive operation `getParsedContent` method will cache the results on the event under a [Symbol](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol), by default this is the [`TextNoteContentSymbol`](https://applesauce.build/typedoc/variables/applesauce-content.Text.TextNoteContentSymbol.html)
-
-If your parsing or transforming different event kinds than kind 1, its recommended to create a new `Symbol` to and pass to `getParsedContent` to avoid cache collisions with the default kind 1 processor
+Because parsing and transforming content is an expensive operation `getParsedContent` method will cache the results on the event under a [Symbol](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol). The default transformers use the [`TextNoteContentSymbol`](https://applesauce.build/typedoc/variables/applesauce-content.Text.TextNoteContentSymbol.html), and each custom transformer array gets its own key, so define custom arrays at module level to reuse the cache.
 
 ```ts
-const ArticleContentSymbol = Symbol("article-content");
+// ✅ Cached once per event
+const articleTransformers = [links, nostrMentions, hashtags];
+const root = getParsedContent(event, undefined, articleTransformers);
 
-const content = useRenderedContent(event, components, {
-  cacheKey: ArticleContentSymbol,
-});
+// ❌ A new array every call, so nothing is reused
+const root = getParsedContent(event, undefined, [links, nostrMentions, hashtags]);
+```
+
+Passing a `content` override disables caching unless you also pass an explicit `cacheKey`:
+
+```ts
+const SummarySymbol = Symbol("summary");
+const content = useRenderedContent(event, components, { content: summary, cacheKey: SummarySymbol });
 ```
 
 **Disable Caching:**
@@ -333,12 +340,11 @@ Pass your own array to `getParsedContent` (or `useRenderedContent`) to fully con
 ```ts
 import { links, nostrMentions, hashtags } from "applesauce-content/text";
 
-const content = useRenderedContent(event, components, {
-  transformers: [links, customGalleries, nostrMentions, hashtags],
-});
-```
+// Define at module level so the parsed content is cached per event, see Caching above
+const transformers = [links, customGalleries, nostrMentions, hashtags];
 
-Use a custom `cacheKey` (or `null` to disable caching) when overriding transformers — otherwise results may collide with the default kind-1 cache. See [Caching](#caching) above.
+const content = useRenderedContent(event, components, { transformers });
+```
 
 ## Media Detection
 

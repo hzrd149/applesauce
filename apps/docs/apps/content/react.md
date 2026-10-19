@@ -63,13 +63,13 @@ const components = {
 // Truncate content
 const content = useRenderedContent(event, components, { maxLength: 280 });
 
-// Custom transformers
-const content = useRenderedContent(event, components, {
-  transformers: [links, nostrMentions, hashtags],
-});
+// Custom transformers, defined at module level so each event is parsed once
+const transformers = [links, nostrMentions, hashtags];
+const content = useRenderedContent(event, components, { transformers });
 
 // Custom cache key
-const content = useRenderedContent(event, components, { cacheKey: Symbol("custom") });
+const CustomSymbol = Symbol("custom");
+const content = useRenderedContent(event, components, { cacheKey: CustomSymbol });
 
 // Disable caching
 const content = useRenderedContent(event, components, { cacheKey: null });
