@@ -48,6 +48,7 @@ export default defineConfig({
         items: [
           { text: "Event Store", link: "/core/event-store" },
           { text: "Event Memory", link: "/core/event-memory" },
+          { text: "Optimistic Verification", link: "/core/optimistic-verification" },
           { text: "Models", link: "/core/models" },
           { text: "Casting", link: "/core/casting" },
           { text: "Helpers", link: "/core/helpers" },

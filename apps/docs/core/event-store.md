@@ -406,6 +406,8 @@ eventStore.verifyEvent = (event) => {
 };
 ```
 
+To check fewer signatures from relays with a history of valid events, use the [Optimistic Verification](./optimistic-verification.md) verifier.
+
 ### modelKeepWarm
 
 Controls how long a model should be kept "warm" (in memory) after all subscribers unsubscribe. Default is 60000ms (60 seconds):
