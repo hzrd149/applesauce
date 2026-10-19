@@ -206,3 +206,23 @@ it.each([
 ])("rejects invalid options %j", (options) => {
   expect(() => new OptimisticEventVerifier(options)).toThrow(RangeError);
 });
+
+it("reports every verification outcome", async () => {
+  const verifier = new OptimisticEventVerifier({ storage: { getItem: () => trusted, setItem: () => {} } });
+  const results: string[] = [];
+  const subscription = verifier.verifications$.subscribe((v) => results.push(`${v.result}:${v.probability}`));
+  const valid = event("prime");
+  verifier.verifyEvent(valid);
+  verifier.verifyEvent(valid);
+  await drain();
+  vi.spyOn(crypto, "getRandomValues").mockImplementation((array) => {
+    (array as Uint32Array)[0] = 0xffffffff;
+    return array;
+  });
+  verifier.verifyEvent(event("trusted"));
+  const bad = event("bad");
+  bad.id = "0".repeat(64);
+  verifier.verifyEvent(bad);
+  expect(results).toEqual(["verified:1", "cached:1", "skipped:0.1", "invalid:1"]);
+  subscription.unsubscribe();
+});

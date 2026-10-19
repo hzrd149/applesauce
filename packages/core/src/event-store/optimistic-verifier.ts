@@ -1,5 +1,15 @@
 import equal from "fast-deep-equal";
-import { BehaviorSubject, Observable, combineLatest, defer, distinctUntilChanged, map, startWith, timer } from "rxjs";
+import {
+  BehaviorSubject,
+  Observable,
+  Subject,
+  combineLatest,
+  defer,
+  distinctUntilChanged,
+  map,
+  startWith,
+  timer,
+} from "rxjs";
 import { getEventHash, type NostrEvent, verifyEvent } from "nostr-tools/pure";
 import { LRU } from "../helpers/lru.js";
 import { isEvent } from "../helpers/event.js";
@@ -10,7 +20,7 @@ export interface OptimisticVerifierStorage {
   /** Returns the serialized evidence for a storage key */
   getItem(key: string): string | null | Promise<string | null>;
   /** Stores serialized evidence for a storage key */
-  setItem(key: string, value: string): void | Promise<void>;
+  setItem(key: string, value: string): unknown;
 }
 
 /** Options for relay trust growth, signature sampling, and persistence */
@@ -66,6 +76,18 @@ export interface RelayVerificationState {
   readonly history: readonly RelayVerificationHistory[];
 }
 
+/** The outcome of a single call to {@link OptimisticEventVerifier.verifyEvent} */
+export interface OptimisticVerification {
+  /** The event that was checked */
+  readonly event: NostrEvent;
+  /** The seen relays used to pick the sampling probability */
+  readonly relays: readonly string[];
+  /** The probability of checking the signature, or one when the event failed before sampling */
+  readonly probability: number;
+  /** Whether the signature was checked, accepted optimistically, found in the recent cache, or rejected */
+  readonly result: "verified" | "skipped" | "cached" | "invalid";
+}
+
 /** An event verifier that gradually samples signatures using seen-relay evidence */
 export class OptimisticEventVerifier {
   private readonly states = new Map<string, RelayState>();
@@ -74,9 +96,13 @@ export class OptimisticEventVerifier {
   private readonly options: Required<Omit<OptimisticEventVerifierOptions, "storage">>;
   private readonly storage?: OptimisticVerifierStorage;
   private readonly knownRelays = new BehaviorSubject<readonly string[]>([]);
+  private readonly verifications = new Subject<OptimisticVerification>();
 
   /** The URLs of relays encountered or explicitly observed by this instance */
   readonly relays$ = this.knownRelays.asObservable();
+
+  /** Emits the outcome of every verification, useful for metrics and visualizing signature savings */
+  readonly verifications$ = this.verifications.asObservable();
 
   /**
    * Creates a verifier with configurable trust growth and optional persistent relay evidence
@@ -240,6 +266,9 @@ export class OptimisticEventVerifier {
     const relays = getSeenRelays(event);
     const sources = relays ? Array.from(relays, (url) => ({ url, state: this.getState(url) })) : [];
     const day = Math.floor(Date.now() / DAY);
+    let probability = 1;
+    const report = (result: OptimisticVerification["result"]) =>
+      this.verifications.next({ event, relays: sources.map((s) => s.url), probability, result });
     const fail = () => {
       for (const { url, state } of sources) {
         state.evidence.days = [];
@@ -247,6 +276,7 @@ export class OptimisticEventVerifier {
         this.persist(url, state);
         state.changes.next();
       }
+      report("invalid");
       return false;
     };
 
@@ -257,13 +287,19 @@ export class OptimisticEventVerifier {
     }
 
     const key = event.id + event.sig;
-    if (this.verified.get(key)) return true;
-    let probability = sources.length ? 0 : 1;
+    if (this.verified.get(key)) {
+      report("cached");
+      return true;
+    }
+    probability = sources.length ? 0 : 1;
     for (const { state } of sources) {
       probability = Math.max(probability, Math.pow(this.options.minimumVerificationRate, this.getTrust(state)));
     }
     // Web Crypto makes the sampling decision unpredictable to the relay.
-    if (probability < 1 && crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 >= probability) return true;
+    if (probability < 1 && crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 >= probability) {
+      report("skipped");
+      return true;
+    }
 
     // A fresh object prevents a caller's cached verifiedSymbol from bypassing the actual check.
     const clean: NostrEvent = {
@@ -281,6 +317,7 @@ export class OptimisticEventVerifier {
       return fail();
     }
     this.verified.set(key, true);
+    report("verified");
     if (this.credited.get(event.id)) return true;
     this.credited.set(event.id, true);
     for (const { url, state } of sources) {
