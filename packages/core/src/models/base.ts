@@ -240,8 +240,6 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
           return [...event];
         }
 
-        // create a new timeline and insert the event into it
-        let newTimeline = [...timeline];
         const uid = getTimelineUID(event);
         const existing = seen.get(uid);
 
@@ -252,6 +250,9 @@ export function TimelineModel<E extends StoreEvent = NostrEvent>(
         ) {
           return [...timeline];
         }
+
+        // Copy only after checking whether the incoming event will be ignored.
+        const newTimeline = [...timeline];
 
         // remove old replaceable events if enabled
         if (!includeOldVersion && isReplaceable(event.kind)) {
