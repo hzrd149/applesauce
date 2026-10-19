@@ -34,4 +34,12 @@ describe("add", () => {
     await expect(database.add(event)).resolves.toBe(event);
     await expect(database.add({ ...event })).resolves.toEqual(expect.objectContaining({ id: event.id }));
   });
+
+  it("should match tag values that contain colons", async () => {
+    const address = `30023:${user.pubkey}:article`;
+    const event = user.note("Hello World", { tags: [["a", address]] });
+    await database.add(event);
+
+    expect((await database.getByFilters({ "#a": [address] })).map((e) => e.id)).toEqual([event.id]);
+  });
 });

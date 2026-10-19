@@ -37,4 +37,12 @@ describeIfNativeSqlite("add", () => {
     expect(database.add(event)).toBe(event);
     expect(database.add({ ...event })).toEqual(expect.objectContaining({ id: event.id }));
   });
+
+  it("should match tag values that contain colons", () => {
+    const address = `30023:${user.pubkey}:article`;
+    const event = user.note("Hello World", { tags: [["a", address]] });
+    database.add(event);
+
+    expect(database.getByFilters({ "#a": [address] }).map((e) => e.id)).toEqual([event.id]);
+  });
 });

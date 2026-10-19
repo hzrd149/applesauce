@@ -92,7 +92,10 @@ export function insertEvent(db: Database, event: NostrEvent, contentFormatter?: 
 
       for (const tagString of indexableTags) {
         // Parse the "tagName:tagValue" format
-        const [name, value] = tagString.split(":");
+        // Split on the first ":" only, values like "a" addresses and "r" URLs contain colons
+        const sep = tagString.indexOf(":");
+        const name = tagString.slice(0, sep);
+        const value = tagString.slice(sep + 1);
         if (name && value) insertStmt.run(event.id, name, value);
       }
     }

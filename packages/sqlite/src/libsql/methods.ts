@@ -107,7 +107,10 @@ export async function insertEvent(
     if (indexableTags && indexableTags.size > 0) {
       for (const tagString of indexableTags) {
         // Parse the "tagName:tagValue" format
-        const [name, value] = tagString.split(":");
+        // Split on the first ":" only, values like "a" addresses and "r" URLs contain colons
+        const sep = tagString.indexOf(":");
+        const name = tagString.slice(0, sep);
+        const value = tagString.slice(sep + 1);
         if (name && value) {
           await transaction.execute({
             sql: INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql,

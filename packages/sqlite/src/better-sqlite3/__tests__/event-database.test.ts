@@ -228,6 +228,20 @@ describe("getByFilters", () => {
     expect(results.map((e) => e.id)).toContain(noteEvent.id);
   });
 
+  it("should match tag values that contain colons", () => {
+    const address = `30023:${user.pubkey}:article`;
+    const event = user.note("Hello World", {
+      tags: [
+        ["a", address],
+        ["r", "wss://relay.example.com"],
+      ],
+    });
+    database.add(event);
+
+    expect(database.getByFilters({ "#a": [address] }).map((e) => e.id)).toEqual([event.id]);
+    expect(database.getByFilters({ "#r": ["wss://relay.example.com"] }).map((e) => e.id)).toEqual([event.id]);
+  });
+
   it("should handle empty results gracefully", () => {
     const results = database.getByFilters({ kinds: [999] });
     expect(results.length).toBe(0);
