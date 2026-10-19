@@ -275,6 +275,29 @@ describe("batchLoader request pressure", () => {
     expect(state.peak).toBe(2);
   });
 
+  it("preserves batch order across compaction and completes remaining consumers on stop", () => {
+    const started: number[] = [];
+    let current = new Subject<number>();
+    const loader = batchLoader<number, number>(
+      bufferTime(10, undefined, 1),
+      (inputs) => {
+        started.push(inputs[0]);
+        current = new Subject<number>();
+        return current;
+      },
+      () => true,
+      undefined,
+      { maxConcurrentBatches: 1 },
+    );
+    const spies = Array.from({ length: 2201 }, (_, i) => subscribeSpyTo(loader(i)));
+    for (let i = 0; i < 1100; i++) current.complete();
+
+    expect(started).toEqual(Array.from({ length: 1101 }, (_, i) => i));
+    loader.stop();
+    expect(started).toHaveLength(1101);
+    expect(spies.every((spy) => spy.receivedComplete())).toBe(true);
+  });
+
   it("skips queued batches whose consumers unsubscribed", () => {
     const { state, upstream } = tracked();
     const loader = batchLoader<number, number>(bufferTime(10, undefined, 1), upstream, () => true, undefined, {

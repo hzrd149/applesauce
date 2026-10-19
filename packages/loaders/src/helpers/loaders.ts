@@ -136,7 +136,8 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
   // Inputs whose batch is queued or running, so repeated inputs can join it instead of making another request
   const running = new Map<string, Running>();
   // Batches waiting for a free upstream slot
-  const pending: Batch[] = [];
+  let pending: (Batch | undefined)[] = [];
+  let pendingHead = 0;
   let active = 0;
   let stopped = false;
   let draining = false;
@@ -191,8 +192,14 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
     if (draining) return;
     draining = true;
     try {
-      while (!stopped && active < maxConcurrent && pending.length > 0) {
-        const batch = pending.shift()!;
+      while (!stopped && active < maxConcurrent && pendingHead < pending.length) {
+        const batch = pending[pendingHead]!;
+        pending[pendingHead++] = undefined;
+        // Release batches immediately and amortize copying the remaining queue
+        if (pendingHead === pending.length || (pendingHead >= 1024 && pendingHead >= pending.length / 2)) {
+          pending = pending.slice(pendingHead);
+          pendingHead = 0;
+        }
 
         // Skip the request if every consumer for this batch already unsubscribed
         if (!batch.results.observed) {
@@ -266,12 +273,14 @@ export function batchLoader<Input extends unknown = unknown, Output extends unkn
   const stop = () => {
     if (stopped) return;
     stopped = true;
-    const queued = pending.splice(0);
+    const queued = pending.slice(pendingHead);
+    pending = [];
+    pendingHead = 0;
     destroy.next();
     destroy.complete();
     queue.complete();
     // Complete consumers waiting on batches that never started
-    for (const batch of queued) batch.results.complete();
+    for (const batch of queued) batch!.results.complete();
     running.clear();
   };
 
