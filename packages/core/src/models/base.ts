@@ -21,6 +21,7 @@ import {
 } from "rxjs";
 
 import { IAsyncEventStore, IEventStore, IMissingEventLoader, Model } from "../event-store/interface.js";
+import { getKeyedRouter } from "../observable/keyed-router.js";
 import {
   getEventUID,
   getReplaceableIdentifier,
@@ -89,6 +90,13 @@ function loadEventUsingFallback<E extends StoreEvent = NostrEvent>(
   });
 }
 
+// Single-event models route store updates by key, so each insert or remove reaches only its own models
+const eventId = (event: StoreEvent) => event.id;
+const kindAuthor = (event: StoreEvent) => event.kind + ":" + event.pubkey;
+const byId = <E extends StoreEvent>(source: Observable<E>, id: string) => getKeyedRouter(source, "id", eventId).route(id);
+const byKindAuthor = <E extends StoreEvent>(source: Observable<E>, kind: number, pubkey: string) =>
+  getKeyedRouter(source, "kind:pubkey", kindAuthor).route(kind + ":" + pubkey);
+
 /** A model that returns a single event or undefined when its removed */
 export function EventModel<E extends StoreEvent = NostrEvent>(pointer: string | EventPointer): Model<E | undefined, E> {
   if (typeof pointer === "string") pointer = { id: pointer };
@@ -106,10 +114,9 @@ export function EventModel<E extends StoreEvent = NostrEvent>(pointer: string | 
         s.eventLoader ? loadEventUsingFallback(s, pointer) : identity,
       ),
       // Listen for new events
-      s.insert$.pipe(filter((e) => e.id === pointer.id)),
+      byId(s.insert$, pointer.id),
       // emit undefined when deleted
-      s.remove$.pipe(
-        filter((e) => e.id === pointer.id),
+      byId(s.remove$, pointer.id).pipe(
         // Complete when the event is removed
         take(1),
         // Emit undefined when deleted
@@ -141,20 +148,15 @@ export function ReplaceableModel<E extends StoreEvent = NostrEvent>(
         s.eventLoader ? loadEventUsingFallback(s, pointer) : identity,
       ),
       // Subscribe to new events that match the pointer
-      s.insert$.pipe(
-        filter(
-          (e) =>
-            e.pubkey == pointer.pubkey &&
-            e.kind === pointer.kind &&
-            (pointer.identifier !== undefined ? getReplaceableIdentifier(e) === pointer.identifier : true),
-        ),
+      byKindAuthor(s.insert$, pointer.kind, pointer.pubkey).pipe(
+        filter((e) => (pointer.identifier !== undefined ? getReplaceableIdentifier(e) === pointer.identifier : true)),
       ),
     ).pipe(
       // Hacky way to extract the current event so it can be used in the remove$ stream
       tap((event) => (current = event)),
       // Subscribe to the event being removed
       mergeWith(
-        s.remove$.pipe(
+        byKindAuthor(s.remove$, pointer.kind, pointer.pubkey).pipe(
           filter((e) => {
             return e.id === current?.id;
           }),
