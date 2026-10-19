@@ -72,6 +72,16 @@ describe("matchMutes", () => {
     expect(matchMutes(mutes, nonMutedUser.note("Hello GM world"))).toBe(true);
   });
 
+  it("rebuilds when a muted word is replaced without changing the set size", () => {
+    const changed = { ...mutes, words: new Set(["gm"]) };
+    expect(matchMutes(changed, nonMutedUser.note("gm"))).toBe(true);
+    changed.words.delete("gm");
+    changed.words.add("gn");
+    expect(matchMutes(changed, nonMutedUser.note("gn"))).toBe(true);
+    expect(matchMutes(changed, nonMutedUser.note("gm"))).toBe(false);
+    expect(matchMutes(changed, nonMutedUser.note("gn"))).toBe(true);
+  });
+
   it("should match words added to the set after a previous match", () => {
     const words = { ...mutes, words: new Set(["gm"]) };
     expect(matchMutes(words, nonMutedUser.note("gn"))).toBe(false);
