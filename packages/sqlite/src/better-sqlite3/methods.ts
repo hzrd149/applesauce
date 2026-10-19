@@ -221,7 +221,7 @@ export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | 
   return db.transaction(() => {
     // Delete from search tables if they exist
     try {
-      const searchDeleteQuery = `DELETE FROM search_content WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
+      const searchDeleteQuery = `DELETE FROM events_search WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
       db.prepare(searchDeleteQuery).run(...whereClause.params);
     } catch (error) {
       // Search table might not exist if search is disabled, ignore the error

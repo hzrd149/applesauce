@@ -322,6 +322,14 @@ describe("removeByFilters", () => {
     user = new FakeUser();
   });
 
+  it("should remove search content for removed events", () => {
+    const searchable = new BetterSqlite3EventDatabase(":memory:", { search: true });
+    searchable.add(note());
+
+    expect(searchable.removeByFilters({ kinds: [kinds.ShortTextNote] })).toBe(1);
+    expect(searchable.db.prepare("SELECT COUNT(*) AS count FROM events_search").get()).toEqual({ count: 0 });
+  });
+
   it("should remove events by kind filter", () => {
     const profile1 = user.profile({ name: "user1" });
     const profile2 = user.profile({ name: "user2" });

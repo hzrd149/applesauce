@@ -46,3 +46,13 @@ describeIfNativeSqlite("add", () => {
     expect(database.getByFilters({ "#a": [address] }).map((e) => e.id)).toEqual([event.id]);
   });
 });
+
+describeIfNativeSqlite("removeByFilters", () => {
+  it("should remove search content for removed events", () => {
+    const searchable = new NativeSqliteEventDatabase(":memory:", { search: true });
+    searchable.add(user.note("Hello World"));
+
+    expect(searchable.removeByFilters({ kinds: [1] })).toBe(1);
+    expect({ ...searchable.db.prepare("SELECT COUNT(*) AS count FROM events_search").get() }).toEqual({ count: 0 });
+  });
+});

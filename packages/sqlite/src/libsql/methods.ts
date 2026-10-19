@@ -349,7 +349,7 @@ export async function deleteEventsByFilters(
   try {
     // Delete from search tables if they exist
     try {
-      const searchDeleteQuery = `DELETE FROM search_content WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
+      const searchDeleteQuery = `DELETE FROM events_search WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
       await transaction.execute({
         sql: searchDeleteQuery,
         args: whereClause.params,

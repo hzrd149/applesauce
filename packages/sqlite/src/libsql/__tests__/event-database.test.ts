@@ -50,3 +50,16 @@ describe("add", () => {
     expect((await database.getByFilters({ "#a": [address] })).map((e) => e.id)).toEqual([event.id]);
   });
 });
+
+describe("removeByFilters", () => {
+  it("should remove search content for removed events", async () => {
+    const searchable = new LibsqlEventDatabase(`file:${join(tempDir, "search.db")}`, { search: true });
+    await searchable.initialize();
+    await searchable.add(user.note("Hello World"));
+
+    await expect(searchable.removeByFilters({ kinds: [1] })).resolves.toBe(1);
+    const result = await searchable.db.execute("SELECT COUNT(*) AS count FROM events_search");
+    expect(Number(result.rows[0].count)).toBe(0);
+    searchable.close();
+  });
+});
