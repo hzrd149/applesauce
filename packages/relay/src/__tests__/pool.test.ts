@@ -43,6 +43,24 @@ afterEach(async () => {
 });
 
 describe("relay", () => {
+  it("applies the configured notice limit to new relay connections", async () => {
+    const custom = new RelayPool({ noticeLimit: 2, keepAlive: 0 });
+    const relay = custom.relay("wss://relay1.example.com");
+    const other = custom.relay("wss://relay2.example.com");
+    const subscription = relay.req({ kinds: [1] }).subscribe();
+    try {
+      await mockServer1.connected;
+      for (const notice of ["first", "second", "third"]) mockServer1.send(JSON.stringify(["NOTICE", notice]));
+      expect(relay.noticeLimit).toBe(2);
+      expect(other.noticeLimit).toBe(2);
+      expect(relay.notices).toEqual(["second", "third"]);
+      expect(other.notices).toEqual([]);
+    } finally {
+      subscription.unsubscribe();
+      custom.close();
+    }
+  });
+
   it("should create a new relay", () => {
     const url = "wss://relay1.example.com/";
     const relay = pool.relay(url);

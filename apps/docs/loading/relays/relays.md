@@ -20,6 +20,27 @@ relay.connected$.subscribe((connected) => console.log("Connection status:", conn
 relay.notices$.subscribe((notices) => console.log("Relay notices:", notices));
 ```
 
+## Notice History
+
+`notices$` and `notices` retain the latest 100 notices from the current connection, ordered oldest to newest. Set `noticeLimit` when creating a relay to change the limit; it must be a finite non-negative integer. Connection resets clear the history, and each update produces a new array without changing previous snapshots.
+
+```typescript
+const relay = new Relay("wss://relay.example.com", { noticeLimit: 50 });
+relay.notices$.subscribe((notices) => console.log(notices));
+```
+
+Use `noticeLimit: 0` to disable history retention. The passive `notice$` stream still emits every incoming notice while the relay connection is active.
+
+### Integration
+
+Pass the same option to [RelayPool](./pool) to configure newly created relay connections:
+
+```typescript
+import { RelayPool } from "applesauce-relay";
+
+const pool = new RelayPool({ noticeLimit: 100 });
+```
+
 ## Subscribing to Events
 
 The `req` or `subscription` methods returns an observable that emits events from the relay.

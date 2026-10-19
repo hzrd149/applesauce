@@ -74,6 +74,10 @@ const mockEvent: NostrEvent = {
 };
 
 describe("constructor", () => {
+  it.each([-1, 0.5, NaN, Infinity, -Infinity])("rejects invalid noticeLimit %s", (noticeLimit) => {
+    expect(() => new Relay("wss://test", { noticeLimit })).toThrow(RangeError);
+  });
+
   it("should default request and subscription reconnect to 3 retries", () => {
     expect(relay.subscriptionReconnect.count).toBe(3);
     expect(relay.requestReconnect.count).toBe(3);
@@ -738,6 +742,87 @@ describe("EVENT verdict and client-failure error boundary", () => {
 });
 
 describe("notices$", () => {
+  it("retains the latest 100 notices by default", async () => {
+    const spy = subscribeSpyTo(relay.req({ kinds: [1] }));
+    await server.connected;
+    const notices = Array.from({ length: 105 }, (_, index) => `Notice ${index}`);
+    for (const notice of notices) server.send(["NOTICE", notice]);
+
+    expect(relay.noticeLimit).toBe(100);
+    expect(relay.notices).toEqual(notices.slice(5));
+    spy.unsubscribe();
+  });
+
+  it.each([1, 3])("retains the latest %s notices without mutating prior snapshots", async (noticeLimit) => {
+    relay.close();
+    relay = new Relay("wss://test", { noticeLimit, keepAlive: 0 });
+    const snapshots = subscribeSpyTo(relay.notices$);
+    const spy = subscribeSpyTo(relay.req({ kinds: [1] }));
+    await server.connected;
+    const notices = ["duplicate", "duplicate", "third", "fourth"];
+    for (const notice of notices) {
+      server.send(["NOTICE", notice]);
+      Object.freeze(relay.notices);
+    }
+
+    expect(relay.notices).toEqual(notices.slice(-noticeLimit));
+    expect(snapshots.getValues()).toEqual([
+      [],
+      ...notices.map((_, index) => notices.slice(Math.max(0, index + 1 - noticeLimit), index + 1)),
+    ]);
+    spy.unsubscribe();
+    snapshots.unsubscribe();
+  });
+
+  it("disables history with zero while emitting every notice on notice$", async () => {
+    relay.close();
+    relay = new Relay("wss://test", { noticeLimit: 0, keepAlive: 0 });
+    const history = subscribeSpyTo(relay.notices$);
+    const live = subscribeSpyTo(relay.notice$);
+    const spy = subscribeSpyTo(relay.req({ kinds: [1] }));
+    await server.connected;
+    server.send(["NOTICE", "first"]);
+    server.send(["NOTICE", "second"]);
+
+    expect(history.getValues()).toEqual([[]]);
+    expect(relay.notices).toEqual([]);
+    expect(live.getValues()).toEqual(["first", "second"]);
+    spy.unsubscribe();
+    live.unsubscribe();
+    history.unsubscribe();
+  });
+
+  it("does not restore old notices after a state reset while the watcher remains active", async () => {
+    const spy = subscribeSpyTo(relay.req({ kinds: [1] }));
+    await server.connected;
+    server.send(["NOTICE", "before reset"]);
+
+    relay.open$.next(new Event("open"));
+    expect(relay.notices).toEqual([]);
+    server.send(["NOTICE", "after reset"]);
+    expect(relay.notices).toEqual(["after reset"]);
+    spy.unsubscribe();
+  });
+
+  it("clears history on disconnect and starts fresh on reconnect", async () => {
+    relay.reconnectTimer = () => timer(0);
+    const spy = subscribeSpyTo(
+      relay.subscription({ kinds: [1] }, { id: "notice-reconnect", reconnect: { count: 1, delay: 0 } }),
+    );
+    await expect(server).toReceiveMessage(["REQ", "notice-reconnect", { kinds: [1] }]);
+    server.send(["NOTICE", "before reconnect"]);
+    expect(relay.notices).toEqual(["before reconnect"]);
+    server.close({ wasClean: false, code: 1006, reason: "relay crashed" });
+    await server.closed;
+    expect(relay.notices).toEqual([]);
+    server = new WS("wss://test", { jsonProtocol: true });
+    await expect(server).toReceiveMessage(["REQ", "notice-reconnect", { kinds: [1] }]);
+    server.send(["NOTICE", "after reconnect"]);
+    expect(relay.notices).toEqual(["after reconnect"]);
+    spy.unsubscribe();
+    relay.close();
+  });
+
   it("should not trigger connection to relay", async () => {
     subscribeSpyTo(relay.notices$);
     expect(relay.connected).toBe(false);

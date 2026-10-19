@@ -38,7 +38,6 @@ import {
   ReplaySubject,
   retry,
   RetryConfig,
-  scan,
   share,
   shareReplay,
   startWith,
@@ -337,6 +336,8 @@ export type RelayOptions = {
   countTimeout?: number;
   /** How long to keep the connection alive after nothing is subscribed (default 30s) */
   keepAlive?: number;
+  /** Maximum retained notices as a finite non-negative integer (default 100, 0 disables history) */
+  noticeLimit?: number;
   /** Enable/disable ping functionality (default false) */
   enablePing?: boolean;
   /** How often to send pings in milliseconds (default 29000) */
@@ -416,8 +417,10 @@ export class Relay {
    * @deprecated use {@link authentications$} instead
    */
   authenticationResponse$ = new BehaviorSubject<PublishResponse | null>(null);
-  /** The notices from the relay */
+  /** The retained notices from the current relay connection, ordered oldest to newest */
   notices$ = new BehaviorSubject<string[]>([]);
+  /** The constructor-configured maximum number of retained notices */
+  readonly noticeLimit: number;
   /** The last connection error */
   error$ = new BehaviorSubject<Error | null>(null);
 
@@ -585,10 +588,18 @@ export class Relay {
    */
   protected destroy$ = new ReplaySubject<void>(1);
 
+  /**
+   * Creates a relay connection with the given settings
+   * @throws {RangeError} If noticeLimit is not a finite non-negative integer
+   */
   constructor(
     public url: string,
     opts?: RelayOptions,
   ) {
+    this.noticeLimit = opts?.noticeLimit ?? 100;
+    if (!Number.isFinite(this.noticeLimit) || !Number.isInteger(this.noticeLimit) || this.noticeLimit < 0)
+      throw new RangeError("noticeLimit must be a finite non-negative integer");
+
     // Derive off the still-url-less this.log for `Relay:auth:<url>` — must precede the line below.
     this.authLog = this.log.extend("auth").extend(url);
     this.log = this.log.extend(url);
@@ -740,10 +751,13 @@ export class Relay {
       filter((m) => Array.isArray(m) && m[0] === "NOTICE"),
       // pick the string out of the message
       map((m) => m[1]),
-      // Track all notices
-      scan((acc, notice) => [...acc, notice], [] as string[]),
-      // Update the notices state
-      tap((notices) => this.notices$.next(notices)),
+      // Use the public state so connection resets also clear the retained history.
+      tap((notice) => {
+        if (this.noticeLimit === 0) return;
+        const notices = this.notices$.value;
+        const start = Math.max(0, notices.length - this.noticeLimit + 1);
+        this.notices$.next([...notices.slice(start), notice]);
+      }),
     );
 
     // Update the challenge state
