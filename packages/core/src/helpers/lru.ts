@@ -12,7 +12,7 @@ type Item<T> = {
  */
 export class LRU<T extends unknown> {
   first: Item<T> | null = null;
-  items: Record<string, Item<T>> = Object.create(null);
+  items = new Map<string, Item<T>>();
   last: Item<T> | null = null;
 
   max: number;
@@ -22,7 +22,6 @@ export class LRU<T extends unknown> {
 
   constructor(max = 0, ttl = 0, resetTtl = false) {
     this.first = null;
-    this.items = Object.create(null);
     this.last = null;
     this.max = max;
     this.resetTtl = resetTtl;
@@ -32,7 +31,7 @@ export class LRU<T extends unknown> {
 
   clear() {
     this.first = null;
-    this.items = Object.create(null);
+    this.items.clear();
     this.last = null;
     this.size = 0;
 
@@ -40,10 +39,9 @@ export class LRU<T extends unknown> {
   }
 
   delete(key: string) {
-    if (this.has(key)) {
-      const item = this.items[key];
-
-      delete this.items[key];
+    const item = this.items.get(key);
+    if (item) {
+      this.items.delete(key);
       this.size--;
 
       if (item.prev !== null) {
@@ -74,7 +72,7 @@ export class LRU<T extends unknown> {
     if (bypass || this.size > 0) {
       const item = this.first!;
 
-      delete this.items[item.key];
+      this.items.delete(item.key);
 
       if (--this.size === 0) {
         this.first = null;
@@ -89,21 +87,14 @@ export class LRU<T extends unknown> {
   }
 
   expiresAt(key: string) {
-    let result;
-
-    if (this.has(key)) {
-      result = this.items[key].expiry;
-    }
-
-    return result;
+    return this.items.get(key)?.expiry;
   }
 
   get(key: string) {
     let result;
 
-    if (this.has(key)) {
-      const item = this.items[key];
-
+    const item = this.items.get(key);
+    if (item) {
       if (this.ttl > 0 && item.expiry <= Date.now()) {
         this.delete(key);
       } else {
@@ -116,7 +107,7 @@ export class LRU<T extends unknown> {
   }
 
   has(key: string) {
-    return key in this.items;
+    return this.items.has(key);
   }
 
   keys() {
@@ -134,8 +125,8 @@ export class LRU<T extends unknown> {
   set(key: string, value: T, bypass = false, resetTtl = this.resetTtl) {
     let item;
 
-    if (bypass || this.has(key)) {
-      item = this.items[key];
+    item = this.items.get(key);
+    if (item) {
       item.value = value;
 
       if (bypass === false && resetTtl) {
@@ -168,13 +159,14 @@ export class LRU<T extends unknown> {
         this.evict(true);
       }
 
-      item = this.items[key] = {
+      item = {
         expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
         key: key,
         prev: this.last,
         next: null,
         value,
       };
+      this.items.set(key, item);
 
       if (++this.size === 1) {
         this.first = item;
