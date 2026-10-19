@@ -28,7 +28,8 @@ function token(tags: string[][] = []): NostrEvent {
     kind: NOSTR_WEB_TOKEN_KIND,
     tags,
     content: "authorize upload",
-    sig: "not-a-real-signature",
+    // Structurally valid hex, deliberately not a verified signature.
+    sig: HEX("0", 128),
   };
 }
 
@@ -78,6 +79,7 @@ describe("nostr web token helpers", () => {
   });
 
   it("rejects invalid token structures", () => {
+    expect(isValidNostrWebToken({ ...token(), sig: "not-a-real-signature" })).toBe(false);
     expect(isValidNostrWebToken({ ...token(), kind: 1 })).toBe(false);
     expect(isValidNostrWebToken({ ...token(), created_at: 0 })).toBe(false);
     expect(
