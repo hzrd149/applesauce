@@ -12,6 +12,21 @@ import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";
 
+/** Returns the index sets for the keys that exist */
+function getSets<K, E>(index: Map<K, Set<E>>, keys: K[]): Set<E>[] {
+  const sets: Set<E>[] = [];
+  for (const key of keys) {
+    const events = index.get(key);
+    if (events) sets.push(events);
+  }
+  return sets;
+}
+
+/** Returns the newest events, breaking ties by lowest id (NIP-01) */
+function newest<E extends StoreEvent>(events: E[], limit: number): E[] {
+  return events.sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1)).slice(0, limit);
+}
+
 /** An in-memory database of events */
 export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMemory<E> {
   protected log = logger.extend("EventMemory");
@@ -77,10 +92,22 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
   /** Gets a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): E[] {
-    // Sorted insertion put later encounters first when timestamps match; preserve that tie order.
-    return this.getByFilters(filters)
-      .reverse()
-      .sort((a, b) => b.created_at - a.created_at);
+    const events = this.getByFilters(filters).sort((a, b) => b.created_at - a.created_at);
+
+    // Sorted insertion put later encounters first when timestamps match, so take tied events in created_at index order
+    for (let i = 0; i < events.length;) {
+      let j = i + 1;
+      while (j < events.length && events[j].created_at === events[i].created_at) j++;
+      if (j - i > 1) {
+        const tied = new Set(events.slice(i, j));
+        const [start, end] = this.getTimeRange(events[i].created_at, events[i].created_at);
+        let k = i;
+        for (let n = start; n < end; n++) if (tied.has(this.created_at[n])) events[k++] = this.created_at[n];
+      }
+      i = j;
+    }
+
+    return events;
   }
 
   /** Inserts an event into the database and notifies all subscriptions */
@@ -450,111 +477,123 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     // search is not supported, return an empty set
     if (filter.search) return new Set();
 
-    let first = true;
-    let events = new Set<E>();
-    const and = (iterable: Iterable<E>) => {
-      const set = iterable instanceof Set ? iterable : new Set(iterable);
-      if (first) {
-        events = set;
-        first = false;
-      } else {
-        for (const event of events) {
-          if (!set.has(event)) events.delete(event);
-        }
-      }
-      return events;
-    };
+    // Each condition is a union of index sets. They are intersected without copying the indexes.
+    const conditions: Set<E>[][] = [];
 
-    if (filter.ids) and(this.iterateIds(filter.ids));
-
-    let time: E[] | null = null;
-
-    // query for time first if since is set
-    if (filter.since !== undefined) {
-      time = Array.from(this.iterateTime(filter.since, filter.until));
-      and(time);
-    }
+    if (filter.ids) conditions.push([new Set(this.iterateIds(filter.ids))]);
 
     // Process AND tag filters (& prefix) first - NIP-91
-    // AND takes precedence and requires ALL values to be present
+    // AND takes precedence and requires ALL values to be present, so each value is its own condition
     for (const t of INDEXABLE_TAGS) {
-      const key = `&${t}` as `&${string}`;
-      const values = filter[key];
-      if (values?.length) {
-        // For AND logic, we need to intersect events that have ALL the specified tag values
-        // We do this by iterating through each value and intersecting the results
-        for (const value of values) {
-          and(this.iterateTag(t, [value]));
-        }
-      }
+      const values = filter[`&${t}` as `&${string}`];
+      if (values?.length) for (const value of values) conditions.push(this.getTagSets(t, [value]));
     }
 
     // Process OR tag filters (# prefix)
     // Skip values that are in AND tags (NIP-91 rule)
     for (const t of INDEXABLE_TAGS) {
-      const key = `#${t}`;
-      const values = filter[key as `#${string}`];
+      const values = filter[`#${t}` as `#${string}`];
       if (values?.length) {
-        // Check if there's a corresponding AND filter for this tag
-        const andKey = `&${t}` as `&${string}`;
-        const andValues = filter[andKey];
-
-        // Filterout values that are in AND tags (NIP-91 rule)
+        const andValues = filter[`&${t}` as `&${string}`];
         const filteredValues = andValues ? values.filter((v) => !andValues.includes(v)) : values;
 
         // Only apply OR filter if there are values left after filtering
-        if (filteredValues.length > 0) and(this.iterateTag(t, filteredValues));
+        if (filteredValues.length > 0) conditions.push(this.getTagSets(t, filteredValues));
       }
     }
 
-    // Optimize: Use composite kind+author index when both are present and the cross-product is small
+    // Use the composite kind+author index when both are present and the cross-product is small
     if (filter.authors && filter.kinds && filter.authors.length * filter.kinds.length <= 20) {
-      const combined = new Set<E>();
+      const sets: Set<E>[] = [];
       for (const kind of filter.kinds) {
         for (const author of filter.authors) {
-          const key = `${kind}:${author}`;
-          const kindAuthorEvents = this.kindAuthor.get(key);
-          if (kindAuthorEvents) {
-            for (const event of kindAuthorEvents) combined.add(event);
-          }
+          const events = this.kindAuthor.get(`${kind}:${author}`);
+          if (events) sets.push(events);
         }
       }
-      and(combined);
+      conditions.push(sets);
     } else {
-      // Use separate indexes
-      if (filter.authors) and(this.iterateAuthors(filter.authors));
-      if (filter.kinds) and(this.iterateKinds(filter.kinds));
+      if (filter.authors) conditions.push(getSets(this.authors, filter.authors));
+      if (filter.kinds) conditions.push(getSets(this.kinds, filter.kinds));
     }
 
-    // query for time last if only until is set
-    if (filter.since === undefined && filter.until !== undefined) {
-      time = Array.from(this.iterateTime(filter.since, filter.until));
-      and(time);
-    }
+    // A condition without any index sets matches nothing
+    if (conditions.some((sets) => sets.length === 0)) return new Set();
 
-    // If no filters were applied (empty filter), return all events
-    if (first) {
-      // created_at is sorted newest first, so the limit can slice it directly
-      return new Set(filter.limit ? this.created_at.slice(0, filter.limit) : this.events.values());
-    }
+    const { since, until, limit } = filter;
+    const timed = since !== undefined || until !== undefined;
 
-    // if the filter queried on time and has a limit. truncate the events now
-    if (filter.limit && time) {
-      const limited = new Set<E>();
-      for (const event of time) {
-        if (limited.size >= filter.limit) break;
-        if (events.has(event)) limited.add(event);
+    // An empty filter returns every event in insertion order
+    if (conditions.length === 0 && !timed && !limit) return new Set(this.events.values());
+    const [start, end] = this.getTimeRange(since, until);
+
+    // Check the smallest condition first and test the rest by membership
+    const size = (sets: Set<E>[]) => sets.reduce((total, set) => total + set.size, 0);
+    conditions.sort((a, b) => size(a) - size(b));
+    const matches = (event: E) => conditions.every((sets) => sets.some((set) => set.has(event)));
+
+    // Walking the time index finds the newest matches without sorting, and stops once the limit is reached.
+    // Each step checks every condition, so it is weighted as twice the cost of a sort comparison.
+    const base = conditions.length > 0 ? size(conditions[0]) : Infinity;
+    const range = end - start;
+    if (range <= base || (limit && (2 * limit * range) / base < base * Math.log2(base))) {
+      const found: E[] = [];
+      for (let i = start; i < end; i++) {
+        const event = this.created_at[i];
+        // Keep going past the limit while timestamps tie, so the tie-break below sees every candidate
+        if (limit && found.length >= limit && event.created_at !== found[found.length - 1].created_at) break;
+        if (matches(event)) found.push(event);
       }
-      return limited;
+      return new Set(limit && found.length > limit ? newest(found, limit) : found);
     }
 
-    // otherwise keep the newest events, breaking ties by lowest id (NIP-01)
-    if (filter.limit && events.size > filter.limit) {
-      const sorted = Array.from(events).sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1));
-      return new Set(sorted.slice(0, filter.limit));
+    // A single index set with nothing else to check can be returned as is
+    if (conditions.length === 1 && conditions[0].length === 1 && !timed && !(limit && base > limit))
+      return conditions[0][0];
+
+    const [first, ...rest] = conditions;
+    const found = new Set<E>();
+    for (const set of first) {
+      for (const event of set) {
+        if (since !== undefined && event.created_at < since) continue;
+        if (until !== undefined && event.created_at > until) continue;
+        if (rest.every((sets) => sets.some((other) => other.has(event)))) found.add(event);
+      }
     }
 
-    return events;
+    return limit && found.size > limit ? new Set(newest(Array.from(found), limit)) : found;
+  }
+
+  /** Returns the start and end (exclusive) indexes of the created_at index for a time range */
+  protected getTimeRange(since: number | undefined, until: number | undefined): [number, number] {
+    // created_at is sorted newest first, so find the first index past each bound
+    const firstIndex = (test: (event: E) => boolean) => {
+      let low = 0;
+      let high = this.created_at.length;
+      while (low < high) {
+        const mid = (low + high) >>> 1;
+        if (test(this.created_at[mid])) high = mid;
+        else low = mid + 1;
+      }
+      return low;
+    };
+
+    const start = until === undefined ? 0 : firstIndex((event) => event.created_at <= until);
+    const end = since === undefined ? this.created_at.length : firstIndex((event) => event.created_at < since);
+    return [start, Math.max(start, end)];
+  }
+
+  /** Returns the tag index sets for the values, building any that are missing */
+  protected getTagSets(tag: string, values: string[]): Set<E>[] {
+    const keys = values.map((value) => tag + ":" + value);
+    // Read from the built map in case the LRU evicted an index while building
+    const built = this.buildTagIndexes(keys);
+    const sets: Set<E>[] = [];
+    for (const key of keys) {
+      const events = built.get(key) ?? this.tags.get(key);
+      if (events) sets.push(events);
+    }
+    return sets;
   }
 
   /** Returns all events that match the filters */

@@ -599,6 +599,42 @@ describe("EventMemory - Query Filters", () => {
       expect(results.map((e) => e.created_at).sort()).toEqual([300, 400]);
     });
 
+    it("should break timestamp ties by lowest id when most events match", () => {
+      const tied = [1, 2, 3].map((n) => eventMemory.add(user1.note(`Tied ${n}`, { created_at: 500 })));
+      eventMemory.add(user1.note("Older", { created_at: 100 }));
+      const results = eventMemory.getByFilters({ kinds: [kinds.ShortTextNote], limit: 2 });
+
+      expect(results.map((e) => e.id).sort()).toEqual(
+        tied
+          .map((e) => e.id)
+          .sort()
+          .slice(0, 2),
+      );
+    });
+
+    it("should break timestamp ties by lowest id when few events match", () => {
+      for (let i = 0; i < 50; i++) eventMemory.add(user2.note(`Noise ${i}`, { created_at: 1000 + i }));
+      const tied = [1, 2, 3].map((n) => eventMemory.add(user1.note(`Tied ${n}`, { created_at: 500 })));
+      const results = eventMemory.getByFilters({ authors: [user1.pubkey], limit: 2 });
+
+      expect(results.map((e) => e.id).sort()).toEqual(
+        tied
+          .map((e) => e.id)
+          .sort()
+          .slice(0, 2),
+      );
+    });
+
+    it("should not change the indexes when intersecting them", () => {
+      addNotes();
+      const other = eventMemory.add(user2.note("Other", { created_at: 50, tags: [["t", "a"]] }));
+      eventMemory.getByFilters({ kinds: [kinds.ShortTextNote], "#t": ["a"] });
+      eventMemory.getByFilters({ "#t": ["a"], authors: [user1.pubkey] });
+
+      expect(eventMemory.getByFilters({ kinds: [kinds.ShortTextNote] })).toHaveLength(5);
+      expect(eventMemory.getByFilters({ "#t": ["a"] })).toEqual([other]);
+    });
+
     it("should apply the limit to each filter separately", () => {
       addNotes();
       const other = eventMemory.add(user2.note("Other", { created_at: 50 }));
