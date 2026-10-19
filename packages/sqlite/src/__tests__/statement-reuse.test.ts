@@ -46,6 +46,28 @@ for (const driver of [
       }
     });
 
+    it("reuses filter statements and evicts the least recently used", () => {
+      const connection = driver.open();
+      const methods = driver.methods as typeof native;
+      const db = connection as DatabaseSync;
+      try {
+        methods.createTables(db, false);
+        const spy = vi.spyOn(db, "prepare");
+        const ids = (count: number) => Array.from({ length: count }, (_, i) => i.toString(16).padStart(64, "0"));
+        methods.getEventsByFilters(db, { ids: ids(1) });
+        methods.getEventsByFilters(db, { ids: ids(1) });
+        expect(spy).toHaveBeenCalledTimes(1);
+
+        // Each id count builds a different query, enough of them push the first one out
+        for (let i = 2; i < 300; i++) methods.getEventsByFilters(db, { ids: ids(i) });
+        spy.mockClear();
+        methods.getEventsByFilters(db, { ids: ids(1) });
+        expect(spy).toHaveBeenCalledTimes(1);
+      } finally {
+        connection.close();
+      }
+    });
+
     it("can prepare search statements after the search table is created", () => {
       const connection = driver.open();
       const methods = driver.methods as typeof native;

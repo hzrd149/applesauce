@@ -1,5 +1,5 @@
 import type { SyncPair } from "applesauce-core";
-import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
+import { Filter, getIndexableTags, getReplaceableIdentifier, LRU, NostrEvent } from "applesauce-core/helpers";
 import { Database, type Statement as PreparedStatement } from "better-sqlite3";
 import {
   CREATE_SEARCH_TABLE_STATEMENT,
@@ -26,14 +26,16 @@ import {
   type StatementParams,
 } from "../helpers/statements.js";
 
-const statements = new WeakMap<Database, Map<string, PreparedStatement<unknown[]>>>();
+// Filter queries are cached too, so the cache is bounded for apps that build many filter shapes
+const MAX_STATEMENTS = 256;
+const statements = new WeakMap<Database, LRU<PreparedStatement<unknown[]>>>();
 
 function prepare<Params extends unknown[] = unknown[], Result = unknown>(
   db: Database,
   sql: string,
 ): PreparedStatement<Params, Result> {
   let cache = statements.get(db);
-  if (!cache) statements.set(db, (cache = new Map()));
+  if (!cache) statements.set(db, (cache = new LRU(MAX_STATEMENTS)));
   let statement = cache.get(sql);
   if (!statement) {
     statement = db.prepare(sql);
@@ -204,7 +206,7 @@ export function getEventsByFilters(db: Database, filters: FilterWithSearch | Fil
   const query = buildFiltersQuery(filters);
   if (!query) return [];
 
-  const rows = db.prepare<any[], EventRow>(query.sql).all(...query.params);
+  const rows = prepare<any[], EventRow>(db, query.sql).all(...query.params);
 
   // Convert rows to events and add to set
   return rows.map(rowToEvent);
@@ -250,7 +252,7 @@ export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | 
     // Delete from search tables if they exist
     try {
       const searchDeleteQuery = `DELETE FROM events_search WHERE event_id IN (SELECT id FROM events ${whereClause.sql})`;
-      db.prepare(searchDeleteQuery).run(...whereClause.params);
+      prepare(db, searchDeleteQuery).run(...whereClause.params);
     } catch (error) {
       // Search table might not exist if search is disabled, ignore the error
     }
@@ -259,7 +261,7 @@ export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | 
     // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
     // ensures that all related event_tags records are deleted automatically
     const deleteEventsQuery = `DELETE FROM events ${whereClause.sql}`;
-    const result = db.prepare(deleteEventsQuery).run(...whereClause.params);
+    const result = prepare(db, deleteEventsQuery).run(...whereClause.params);
 
     return result.changes;
   })();
@@ -269,5 +271,5 @@ export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | 
 export function getSyncPairs(db: Database, filters: FilterWithSearch | FilterWithSearch[]): SyncPair[] {
   const query = buildFiltersQuery(filters, "sync-pairs");
   if (!query) return [];
-  return db.prepare<any[], SyncPair>(query.sql).all(...query.params);
+  return prepare<any[], SyncPair>(db, query.sql).all(...query.params);
 }
