@@ -34,3 +34,18 @@ describe("recordFailure", () => {
     expect(liveness.isInBackoff(relay)).toBe(true);
   });
 });
+
+describe("revive", () => {
+  it("should put a revived relay in backoff for the max delay", () => {
+    liveness = new RelayLiveness({ backoffBaseDelay: 1000, backoffMaxDelay: 60_000, maxFailuresBeforeDead: 1 });
+    liveness.recordFailure(relay);
+    expect(liveness.getState(relay)?.state).toBe("dead");
+
+    liveness.revive(relay);
+    expect(liveness.getState(relay)?.state).toBe("offline");
+    expect(liveness.isInBackoff(relay)).toBe(true);
+
+    vi.advanceTimersByTime(60_000);
+    expect(liveness.isInBackoff(relay)).toBe(false);
+  });
+});

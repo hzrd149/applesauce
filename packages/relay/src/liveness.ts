@@ -213,8 +213,9 @@ export class RelayLiveness {
       failureCount: 0,
       lastFailureTime: 0,
       lastSuccessTime: Date.now(),
-      backoffUntil: this.options.backoffMaxDelay,
+      backoffUntil: Date.now() + this.options.backoffMaxDelay,
     });
+    this.scheduleBackoffEnd(relay, this.options.backoffMaxDelay);
 
     this.log(`Relay ${relay} revived to offline state with max backoff delay`);
   }
