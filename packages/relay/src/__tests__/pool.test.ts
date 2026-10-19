@@ -623,3 +623,108 @@ describe("sync and raw negentropy surface", () => {
     expect((pool.group([]) as any).negentropy).toBeUndefined();
   });
 });
+
+describe("liveness", () => {
+  const relay1 = "wss://relay1.example.com/";
+  const relay2 = "wss://relay2.example.com/";
+
+  // A minimal pool liveness source backed by a list of unhealthy relays
+  const source = (initial: string[]) => {
+    const unhealthy$ = new BehaviorSubject<string[]>(initial);
+    return { unhealthy$, filter: (relays: string[]) => relays.filter((r) => !unhealthy$.value.includes(r)) };
+  };
+
+  it("skips relays a liveness source reports as unhealthy", async () => {
+    const custom = new RelayPool({ liveness: source([relay2]) });
+    try {
+      const spy = subscribeSpyTo(custom.request([relay1, relay2], { kinds: [1] }));
+      const [type, req, filter] = JSON.parse((await mockServer1.nextMessage) as string);
+      expect([type, filter]).toEqual(["REQ", { kinds: [1] }]);
+      mockServer1.send(JSON.stringify(["EOSE", req]));
+      await spy.onComplete();
+
+      expect(custom.relays.has(relay1)).toBe(true);
+      expect(custom.relays.has(relay2)).toBe(false);
+    } finally {
+      custom.close();
+    }
+  });
+
+  it("applies every source", () => {
+    const custom = new RelayPool({ liveness: [source([relay1]), source(["wss://relay3.example.com/"])] });
+
+    expect(custom.filterRelays([relay1, relay2, "wss://relay3.example.com/"])).toEqual([relay2]);
+  });
+
+  it("filters each list from an observable relay input", async () => {
+    const custom = new RelayPool({ liveness: source([relay2]) });
+    try {
+      const spy = subscribeSpyTo(custom.request(of([relay1, relay2]), { kinds: [1] }));
+      const [type, req, filter] = JSON.parse((await mockServer1.nextMessage) as string);
+      expect([type, filter]).toEqual(["REQ", { kinds: [1] }]);
+      mockServer1.send(JSON.stringify(["EOSE", req]));
+      await spy.onComplete();
+
+      expect(custom.relays.has(relay2)).toBe(false);
+    } finally {
+      custom.close();
+    }
+  });
+
+  it("adds recovered relays to open subscriptions", async () => {
+    const liveness = source([relay2]);
+    const custom = new RelayPool({ liveness });
+    try {
+      subscribeSpyTo(custom.subscription([relay1, relay2], { kinds: [1] }));
+      await mockServer1.nextMessage;
+      expect(custom.relays.has(relay2)).toBe(false);
+
+      liveness.unhealthy$.next([]);
+      const [type, , filter] = JSON.parse((await mockServer2.nextMessage) as string);
+      expect([type, filter]).toEqual(["REQ", { kinds: [1] }]);
+    } finally {
+      custom.close();
+    }
+  });
+
+  it("removes relays from open subscriptions when they become unhealthy", async () => {
+    const liveness = source([]);
+    const custom = new RelayPool({ liveness });
+    try {
+      subscribeSpyTo(custom.subscription([relay1, relay2], { kinds: [1] }));
+      const [, id] = JSON.parse((await mockServer2.nextMessage) as string);
+
+      liveness.unhealthy$.next([relay2]);
+      expect(JSON.parse((await mockServer2.nextMessage) as string)).toEqual(["CLOSE", id]);
+    } finally {
+      custom.close();
+    }
+  });
+
+  it("does not re-add relays to one-shot requests", async () => {
+    const liveness = source([relay2]);
+    const custom = new RelayPool({ liveness });
+    try {
+      subscribeSpyTo(custom.request([relay1, relay2], { kinds: [1] }));
+      await mockServer1.nextMessage;
+
+      liveness.unhealthy$.next([]);
+      expect(custom.relays.has(relay2)).toBe(false);
+    } finally {
+      custom.close();
+    }
+  });
+
+  it("connects sources that track pools", () => {
+    const connectToPool = vi.fn();
+    const custom = new RelayPool({ liveness: { ...source([]), connectToPool } });
+
+    expect(connectToPool).toHaveBeenCalledWith(custom);
+  });
+
+  it("does not pass liveness sources to relays", () => {
+    const custom = new RelayPool({ liveness: source([]), keepAlive: 0 });
+
+    expect(custom.options).toEqual({ keepAlive: 0 });
+  });
+});

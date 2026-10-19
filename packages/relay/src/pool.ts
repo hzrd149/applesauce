@@ -3,8 +3,21 @@ import { Filter, isFilterEqual } from "applesauce-core/helpers/filter";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
 import { normalizeURL } from "applesauce-core/helpers/url";
 import { combineLatestByValue } from "applesauce-core/observable";
-import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, shareReplay, Subject } from "rxjs";
+import {
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  isObservable,
+  map,
+  merge,
+  Observable,
+  of,
+  shareReplay,
+  startWith,
+  Subject,
+} from "rxjs";
 import { RelayGroup } from "./group.js";
+import type { PoolLivenessSource } from "./liveness.js";
 import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
   FilterInput,
@@ -15,6 +28,12 @@ import type {
   PublishResponse,
   RelayStatus,
 } from "./types.js";
+
+/** Options for a {@link RelayPool} */
+export type RelayPoolOptions = RelayOptions & {
+  /** Liveness sources whose unhealthy relays are skipped, subscriptions re-add relays once they recover */
+  liveness?: PoolLivenessSource | PoolLivenessSource[];
+};
 
 export class RelayPool {
   relays$ = new BehaviorSubject<Map<string, Relay>>(new Map());
@@ -35,7 +54,16 @@ export class RelayPool {
   /** A signal when a relay is removed */
   removed$ = this.remove$.asObservable();
 
-  constructor(public options?: RelayOptions) {
+  /** The liveness sources used to skip unhealthy relays */
+  readonly liveness: PoolLivenessSource[];
+  /** The options passed to each new relay */
+  options?: RelayOptions;
+
+  constructor(options?: RelayPoolOptions) {
+    const { liveness, ...relayOptions } = options ?? {};
+    this.options = options ? relayOptions : undefined;
+    this.liveness = liveness ? (Array.isArray(liveness) ? liveness : [liveness]) : [];
+
     // Initialize status$ observable
     this.status$ = this.relays$.pipe(
       // Convert Map to array of relays
@@ -45,6 +73,15 @@ export class RelayPool {
       map((statuses) => Object.fromEntries(Array.from(statuses.values(), (status) => [status.url, status]))),
       shareReplay(1),
     );
+
+    // Let liveness sources track the pool's relays
+    for (const source of this.liveness) source.connectToPool?.(this);
+  }
+
+  /** Removes relays that any liveness source currently considers unhealthy */
+  filterRelays(relays: string[]): string[] {
+    for (const source of this.liveness) relays = source.filter(relays);
+    return relays;
   }
 
   /** Get or create a new relay connection */
@@ -64,13 +101,31 @@ export class RelayPool {
     return relay;
   }
 
-  /** Create a group of relays */
+  /** Create a group of relays, skipping relays the liveness sources currently consider unhealthy */
   group(relays: PoolRelayInput): RelayGroup {
+    // Filter each list once as it arrives so one-shot requests keep a stable cohort and can settle
     const input: Relay[] | Observable<Relay[]> = Array.isArray(relays)
-      ? relays.map((url) => this.relay(url))
-      : relays.pipe(map((urls) => urls.map((url) => this.relay(url))));
+      ? this.filterRelays(relays).map((url) => this.relay(url))
+      : relays.pipe(map((urls) => this.filterRelays(urls).map((url) => this.relay(url))));
 
     return new RelayGroup(input);
+  }
+
+  /** Creates a group that re-filters its relays whenever a liveness source changes, so recovered relays rejoin */
+  protected liveGroup(relays: PoolRelayInput): RelayGroup {
+    if (this.liveness.length === 0) return this.group(relays);
+
+    // unhealthy$ is only a change signal, the current exclusions are always read from filter()
+    const changes$ = merge(...this.liveness.map((source) => source.unhealthy$)).pipe(startWith(undefined));
+    const input$ = isObservable(relays) ? relays : of(relays);
+
+    return new RelayGroup(
+      combineLatest([input$, changes$]).pipe(
+        map(([urls]) => this.filterRelays(urls)),
+        distinctUntilChanged((a, b) => a.length === b.length && a.every((url, i) => url === b[i])),
+        map((urls) => urls.map((url) => this.relay(url))),
+      ),
+    );
   }
 
   /** Removes a relay from the pool and defaults to closing the connection */
@@ -96,7 +151,7 @@ export class RelayPool {
 
   /** Make a REQ to multiple relays that does not deduplicate events */
   req(relays: PoolRelayInput, filters: FilterInput, opts?: GroupReqOptions): Observable<GroupReqMessage> {
-    return this.group(relays).req(filters, opts);
+    return this.liveGroup(relays).req(filters, opts);
   }
 
   /** Send an EVENT message to multiple relays */
@@ -128,7 +183,7 @@ export class RelayPool {
     filters: Parameters<RelayGroup["subscription"]>[0],
     options?: Parameters<RelayGroup["subscription"]>[1],
   ): ReturnType<RelayGroup["subscription"]> {
-    return this.group(relays).subscription(filters, options);
+    return this.liveGroup(relays).subscription(filters, options);
   }
 
   /** Open a subscription for a map of relays and filters */
@@ -139,7 +194,7 @@ export class RelayPool {
     // Convert input to observable
     const relays$ = isObservable(relays) ? relays : of(relays);
 
-    return this.group(
+    return this.liveGroup(
       // Create a group with an observable of dynamic relay urls
       relays$.pipe(map((dir) => Object.keys(dir))),
     ).subscription((relay) => {

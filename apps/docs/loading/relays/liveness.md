@@ -39,7 +39,19 @@ Remote attachment reads monitor events from the configured source relays; it doe
 
 ## Integration
 
-Both sources implement `RelayLivenessSource`, whose `unhealthy$` emits the current exclusions. The operators below work with either implementation. Creating a source alone does not change subscription routing.
+Both sources implement `RelayLivenessSource`, whose `unhealthy$` emits the current exclusions. Creating a source alone does not change routing until it is passed to a pool or an operator.
+
+### Relay pool
+
+Pass one or more sources to the pool to skip their unhealthy relays in every group, request, subscription, and sync. The pool connects each source, so local tracking needs no separate `connectToPool` call. Pool sources must implement `filter(relays)`, which both built-in sources do:
+
+```ts
+const pool = new RelayPool({ liveness: [local, monitors] });
+```
+
+Combine sources when both views matter: monitors catch global outages, while local tracking catches relays only this client cannot reach. `pool.relay(url)` is never filtered.
+
+One-shot operations (`request`, `publish`, `event`, `count`, and `sync`) filter their relays once when they start. Long-lived subscriptions (`req`, `subscription`, `subscriptionMap`, and `outboxSubscription`) re-filter whenever a source's `unhealthy$` changes, so they drop relays that go unhealthy and send their REQ again to relays that recover.
 
 ### Subscribe to a relay list
 

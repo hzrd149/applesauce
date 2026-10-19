@@ -9,6 +9,16 @@ export interface RelayLivenessSource {
   unhealthy$: Observable<string[]>;
   /** The relay hints encountered by consumers */
   seen?: Set<string>;
+  /** Removes relays this source currently excludes from a relay list */
+  filter?(relays: string[]): string[];
+  /** Starts tracking a pool's relays, called by {@link RelayPool} when the source is passed as an option */
+  connectToPool?(pool: RelayPool): void;
+}
+
+/** A liveness source that can filter relay lists synchronously, required by the {@link RelayPool} liveness option */
+export interface PoolLivenessSource extends RelayLivenessSource {
+  /** Removes relays this source currently excludes from a relay list */
+  filter(relays: string[]): string[];
 }
 
 /** Relay health states for liveness tracking */
