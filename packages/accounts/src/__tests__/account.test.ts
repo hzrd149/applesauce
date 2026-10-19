@@ -32,6 +32,29 @@ describe("request queue", () => {
     await expect(account.getPublicKey()).resolves.toBe(pubkey);
   });
 
+  it("cancels queued operations and recovers after the running operation settles", async () => {
+    const pubkey = await signer.getPublicKey();
+    const account = new BaseAccount(pubkey, signer);
+    let resolve!: (value: string) => void;
+    const getKey = vi.spyOn(signer, "getPublicKey").mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolve = res;
+        }),
+    );
+    const first = account.getPublicKey();
+    const queued = account.getPublicKey();
+    const rejected = expect(queued).rejects.toThrow("cancelled");
+    account.abortQueue(new Error("cancelled"));
+    await rejected;
+    resolve(pubkey);
+    await first;
+    await new Promise((res) => setTimeout(res, 0));
+    expect(getKey).toHaveBeenCalledTimes(1);
+    expect(Reflect.get(account, "queueLength")).toBe(0);
+    await expect(account.getPublicKey()).resolves.toBe(pubkey);
+  });
+
   it("should queue signing requests by default", async () => {
     const account = new BaseAccount(await signer.getPublicKey(), signer);
 

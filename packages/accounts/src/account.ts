@@ -154,15 +154,16 @@ export class BaseAccount<Signer extends ISigner, SignerData, Metadata extends un
 
     // if there is already a pending request, wait for it
     if (this.lock && this.abort) {
+      const signal = this.abort.signal;
       // create a new promise that runs after the lock
       const p = wrapInSignal(
         this.lock.then(() => {
           // if the abort signal is triggered, don't call the signer
-          this.abort?.signal.throwIfAborted();
+          signal.throwIfAborted();
 
           return operation();
         }),
-        this.abort.signal,
+        signal,
       );
 
       // set the lock the new promise that ignores errors
