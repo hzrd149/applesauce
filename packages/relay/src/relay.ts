@@ -59,6 +59,7 @@ import { fromAbortSignal } from "./helpers/abort.js";
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./helpers/count.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
+import { SocketRouter } from "./lib/socket-router.js";
 import {
   AuthPhaseGate,
   authSuspendableLifetime,
@@ -375,6 +376,8 @@ export class Relay {
   /** D-13/D-20: the relay's NIP-42 lines, re-derived in the constructor as `Relay:auth:<url>`. */
   protected authLog: typeof logger = this.log.extend("auth");
   protected socket: WebSocketSubject<any>;
+  /** Routes subscription and OK replies to their listeners by id */
+  protected router: SocketRouter;
 
   /** Internal subject that tracks the ready state of the relay */
   protected _ready$ = new BehaviorSubject(true);
@@ -681,6 +684,7 @@ export class Relay {
       closingObserver: this.closing$,
       WebSocketCtor: opts?.WebSocket,
     });
+    this.router = new SocketRouter(this.socket);
 
     // Create an observable to fetch the NIP-11 information document
     this.information$ = defer(async () => {
@@ -1091,8 +1095,8 @@ export class Relay {
       // Per-attempt: a fresh chain, so a resend after an auth-required refusal always registers its own
       // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
       // completed for the previous attempt.
-      const messages: Observable<RelayReqMessage> = this.socket.pipe(
-        filter((m) => Array.isArray(m) && (m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE") && m[1] === id),
+      const messages: Observable<RelayReqMessage> = this.router.route("sub", id).pipe(
+        filter((m) => m[0] === "EVENT" || m[0] === "CLOSED" || m[0] === "EOSE"),
         // Map NIP-01 messages to RelayReqMessage
         map<any, RelayReqMessage>((m) => {
           if (m[0] === "EVENT" && typeof m[2] === "object")
@@ -1245,8 +1249,8 @@ export class Relay {
       // Per-attempt: a fresh chain, so a resend after an auth-required refusal always registers its own
       // socket filters and its own inclusive takeWhile rather than rejoining a chain that already
       // completed for the previous attempt.
-      const messages: Observable<RelayCountResponse> = this.socket.pipe(
-        filter((m) => Array.isArray(m) && (m[0] === "COUNT" || m[0] === "CLOSED") && m[1] === id),
+      const messages: Observable<RelayCountResponse> = this.router.route("sub", id).pipe(
+        filter((m) => m[0] === "COUNT" || m[0] === "CLOSED"),
         // Parse a COUNT response, or throw a typed error for a CLOSED. Auth-required throws AuthRequiredError, which
         // the auth operator retries; its prefix is checked directly so the refusal is logged and flagged first
         map<any, RelayCountResponse>((m) => {
@@ -1335,8 +1339,7 @@ export class Relay {
     // defer, so the fixed reply clock begins only after the socket is ready and the frame is written.
     return this.waitForReady(
       defer(() => {
-        const messages = this.socket.pipe(
-          filter((m) => m[0] === "OK" && m[1] === event.id),
+        const messages = this.router.route("ok", event.id).pipe(
           map((m): PublishResponse => {
             const ok = m[2] as boolean;
             const message = m[3] as string;
