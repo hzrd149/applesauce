@@ -28,6 +28,19 @@ import {
 
 const log = logger.extend("sqlite:tables");
 
+const statements = new WeakMap<DatabaseSync, Map<string, ReturnType<DatabaseSync["prepare"]>>>();
+
+function prepare(db: DatabaseSync, sql: string): ReturnType<DatabaseSync["prepare"]> {
+  let cache = statements.get(db);
+  if (!cache) statements.set(db, (cache = new Map()));
+  let statement = cache.get(sql);
+  if (!statement) {
+    statement = db.prepare(sql);
+    cache.set(sql, statement);
+  }
+  return statement;
+}
+
 /** Create and migrate the `events`, `event_tags`, and search tables */
 export function createTables(db: DatabaseSync, search: boolean = true): void {
   // Create the events table
@@ -60,7 +73,7 @@ export function insertSearchContent(
   const searchableContent = contentFormatter(event);
 
   // Insert/update directly into the FTS5 table
-  db.prepare(INSERT_SEARCH_CONTENT_STATEMENT.sql).run(
+  prepare(db, INSERT_SEARCH_CONTENT_STATEMENT.sql).run(
     event.id,
     searchableContent,
     event.kind,
@@ -71,7 +84,7 @@ export function insertSearchContent(
 
 /** Removes search content for an event */
 export function deleteSearchContent(db: DatabaseSync, eventId: string): void {
-  db.prepare(DELETE_SEARCH_CONTENT_STATEMENT.sql).run(eventId);
+  prepare(db, DELETE_SEARCH_CONTENT_STATEMENT.sql).run(eventId);
 }
 
 /** Inserts an event into the `events`, `event_tags`, and search tables of a database */
@@ -82,18 +95,16 @@ export function insertEvent(db: DatabaseSync, event: NostrEvent, contentFormatte
   db.exec("BEGIN");
   try {
     // Try to insert the main event with OR IGNORE
-    const result = db
-      .prepare(INSERT_EVENT_STATEMENT_WITH_IGNORE.sql)
-      .run(
-        event.id,
-        event.kind,
-        event.pubkey,
-        event.created_at,
-        event.content,
-        JSON.stringify(event.tags),
-        event.sig,
-        identifier,
-      );
+    const result = prepare(db, INSERT_EVENT_STATEMENT_WITH_IGNORE.sql).run(
+      event.id,
+      event.kind,
+      event.pubkey,
+      event.created_at,
+      event.content,
+      JSON.stringify(event.tags),
+      event.sig,
+      identifier,
+    );
 
     // If no rows were changed, the event already existed
     if (result.changes === 0) {
@@ -105,7 +116,7 @@ export function insertEvent(db: DatabaseSync, event: NostrEvent, contentFormatte
     // Get only the indexable tags using applesauce-core helper
     const indexableTags = getIndexableTags(event);
     if (indexableTags && indexableTags.size > 0) {
-      const insertStmt = db.prepare(INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql);
+      const insertStmt = prepare(db, INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql);
 
       for (const tagString of indexableTags) {
         // Parse the "tagName:tagValue" format
@@ -147,7 +158,7 @@ export function deleteEvent(db: DatabaseSync, id: string): boolean {
     // Delete from events table - this will CASCADE to event_tags automatically!
     // The foreign key constraint: FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
     // ensures that all related event_tags records are deleted automatically
-    const deleteEventStmt = db.prepare(DELETE_EVENT_STATEMENT.sql);
+    const deleteEventStmt = prepare(db, DELETE_EVENT_STATEMENT.sql);
     const result = deleteEventStmt.run(id);
 
     db.exec("COMMIT");
@@ -160,14 +171,14 @@ export function deleteEvent(db: DatabaseSync, id: string): boolean {
 
 /** Checks if an event exists */
 export function hasEvent(db: DatabaseSync, id: string): boolean {
-  const result = db.prepare(HAS_EVENT_STATEMENT.sql).get(id) as { count: number } | undefined;
+  const result = prepare(db, HAS_EVENT_STATEMENT.sql).get(id) as { count: number } | undefined;
   if (!result) return false;
   return result.count > 0;
 }
 
 /** Gets a single event from a database */
 export function getEvent(db: DatabaseSync, id: string): NostrEvent | undefined {
-  const row = db.prepare(GET_EVENT_STATEMENT.sql).get(id) as EventRow | undefined;
+  const row = prepare(db, GET_EVENT_STATEMENT.sql).get(id) as EventRow | undefined;
   return row && rowToEvent(row);
 }
 
@@ -178,7 +189,7 @@ export function getReplaceable(
   pubkey: string,
   identifier: string,
 ): NostrEvent | undefined {
-  const row = db.prepare(GET_REPLACEABLE_STATEMENT.sql).get(kind, pubkey, identifier) as EventRow | undefined;
+  const row = prepare(db, GET_REPLACEABLE_STATEMENT.sql).get(kind, pubkey, identifier) as EventRow | undefined;
   return row && rowToEvent(row);
 }
 
@@ -189,14 +200,14 @@ export function getReplaceableHistory(
   pubkey: string,
   identifier: string,
 ): NostrEvent[] {
-  return (db.prepare(GET_REPLACEABLE_HISTORY_STATEMENT.sql).all(kind, pubkey, identifier) as EventRow[]).map(
+  return (prepare(db, GET_REPLACEABLE_HISTORY_STATEMENT.sql).all(kind, pubkey, identifier) as EventRow[]).map(
     rowToEvent,
   );
 }
 
 /** Checks if a replaceable event exists in a database */
 export function hasReplaceable(db: DatabaseSync, kind: number, pubkey: string, identifier: string = ""): boolean {
-  const result = db.prepare(HAS_REPLACEABLE_STATEMENT.sql).get(kind, pubkey, identifier) as
+  const result = prepare(db, HAS_REPLACEABLE_STATEMENT.sql).get(kind, pubkey, identifier) as
     { count: number } | undefined;
   if (!result) return false;
   return result.count > 0;
@@ -235,7 +246,7 @@ export function rebuildSearchIndex(db: DatabaseSync, contentFormatter: SearchCon
     db.exec(`DELETE FROM events_search;`);
 
     // Rebuild from all events
-    const events = (db.prepare(GET_ALL_EVENTS_STATEMENT.sql).all() as EventRow[]).map(rowToEvent);
+    const events = (prepare(db, GET_ALL_EVENTS_STATEMENT.sql).all() as EventRow[]).map(rowToEvent);
 
     for (const event of events) {
       insertSearchContent(db, event, contentFormatter);
