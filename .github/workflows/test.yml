@@ -50,6 +50,7 @@ jobs:
 
   test-react:
     name: Test applesauce-react on React ${{ matrix.react-major }}
+    needs: build
     runs-on: ubuntu-latest
 
     strategy:
@@ -73,7 +74,15 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Select React ${{ matrix.react-major }}
-        run: pnpm --filter applesauce-react add --save-dev --no-lockfile "react@^${{ matrix.react-major }}.0.0" "react-dom@^${{ matrix.react-major }}.0.0" "@types/react@^${{ matrix.react-major }}.0.0" "@types/react-dom@^${{ matrix.react-major }}.0.0"
+        run: pnpm --filter applesauce-react add --save-dev "react@^${{ matrix.react-major }}.0.0" "react-dom@^${{ matrix.react-major }}.0.0" "@types/react@^${{ matrix.react-major }}.0.0" "@types/react-dom@^${{ matrix.react-major }}.0.0"
+
+      - name: Download package dist
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-dist
+
+      - name: Extract package dist
+        run: tar -xf packages-dist.tar && rm packages-dist.tar
 
       - name: Run applesauce-react tests
         run: pnpm --filter applesauce-react test
