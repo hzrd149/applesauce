@@ -19,7 +19,8 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
   /** Indexes */
   protected kinds = new Map<number, Set<E>>();
   protected authors = new Map<string, Set<E>>();
-  protected tags = new LRU<Set<E>>();
+  // Capped so queries for many distinct tag values do not grow the index forever, evicted indexes are rebuilt on demand
+  protected tags = new LRU<Set<E>>(10_000);
   protected created_at: E[] = [];
 
   /** Composite index for kind+author queries (common pattern) */
@@ -289,22 +290,25 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     return this.kindAuthor.get(key)!;
   }
   protected getTagIndex(tagAndValue: string) {
-    if (!this.tags.has(tagAndValue)) {
-      // build new tag index from existing events
-      const events = new Set<E>();
+    return this.tags.get(tagAndValue) ?? this.buildTagIndexes([tagAndValue]).get(tagAndValue)!;
+  }
 
-      const ts = Date.now();
-      for (const event of this.events.values()) {
-        if (getIndexableTags(event).has(tagAndValue)) {
-          events.add(event);
-        }
-      }
-      const took = Date.now() - ts;
-      if (took > 100) this.log(`Built index ${tagAndValue} took ${took}ms`);
+  /** Builds the indexes for any tag values that are not indexed yet with a single pass over the events */
+  protected buildTagIndexes(tagAndValues: Iterable<string>): Map<string, Set<E>> {
+    const built = new Map<string, Set<E>>();
+    for (const key of tagAndValues) if (!this.tags.has(key)) built.set(key, new Set());
+    if (built.size === 0) return built;
 
-      this.tags.set(tagAndValue, events);
+    const ts = Date.now();
+    // Walk the LRU nodes directly, LRU.values() would reorder every event
+    for (let item = this.events.first; item !== null; item = item.next) {
+      for (const tag of getIndexableTags(item.value)) built.get(tag)?.add(item.value);
     }
-    return this.tags.get(tagAndValue)!;
+    const took = Date.now() - ts;
+    if (took > 100) this.log(`Built ${built.size} tag indexes took ${took}ms`);
+
+    for (const [key, events] of built) this.tags.set(key, events);
+    return built;
   }
 
   /**
@@ -370,8 +374,12 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
   /** Iterates over all events by indexable tag and value */
   *iterateTag(tag: string, values: Iterable<string>): Generator<E> {
-    for (const value of values) {
-      const events = this.getTagIndex(tag + ":" + value);
+    const keys = Array.from(values, (value) => tag + ":" + value);
+    // Build all missing indexes in one pass, and read them from the result in case the LRU evicted them
+    const built = this.buildTagIndexes(keys);
+
+    for (const key of keys) {
+      const events = built.get(key) ?? this.tags.get(key);
 
       if (events) {
         for (const event of events) yield event;

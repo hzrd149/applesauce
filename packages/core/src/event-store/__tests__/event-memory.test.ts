@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { kinds, NostrEvent } from "../../helpers/event.js";
 import { EventMemory } from "../event-memory.js";
@@ -459,6 +459,21 @@ describe("EventMemory - Query Filters", () => {
       expect(results).toHaveLength(2);
       expect(results).toContainEqual(note1);
       expect(results).toContainEqual(note3);
+    });
+
+    it("should build indexes for every new tag value in one pass", () => {
+      for (const id of ["event-1", "event-2", "event-3"]) eventMemory.add(user1.note(id, { tags: [["e", id]] }));
+      const build = vi.spyOn(eventMemory as any, "buildTagIndexes");
+
+      expect(eventMemory.getByFilters({ "#e": ["event-1", "event-2", "event-3"] })).toHaveLength(3);
+      expect(build).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return every tag value when the index cache is smaller than the query", () => {
+      for (const id of ["event-1", "event-2", "event-3"]) eventMemory.add(user1.note(id, { tags: [["e", id]] }));
+      (eventMemory as any).tags.max = 1;
+
+      expect(eventMemory.getByFilters({ "#e": ["event-1", "event-2", "event-3"] })).toHaveLength(3);
     });
   });
 
