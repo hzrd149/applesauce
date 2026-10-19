@@ -26,8 +26,13 @@ function isSharedArrayBufferSupported(): boolean {
   return typeof SharedArrayBuffer !== "undefined";
 }
 
-// Initialize the database
-async function initializeDatabase() {
+// Open the database once, OPFS only allows a single connection to each file
+let initializing: Promise<boolean> | undefined;
+function initializeDatabase() {
+  return (initializing ??= openDatabase());
+}
+
+async function openDatabase() {
   try {
     const db = await connect("nostr-events.db");
     eventDatabase = await TursoWasmEventDatabase.fromDatabase(db);
