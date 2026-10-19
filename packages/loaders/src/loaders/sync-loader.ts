@@ -94,7 +94,7 @@ export type SyncAuthHandler = (context: SyncAuthContext) => void | Promise<void>
  * duck-types against the exact strings instead — a rename in `relay.ts` must update this set in the same
  * change.
  */
-export const RELAY_AUTH_ERROR_NAMES = new Set([
+const RELAY_AUTH_ERROR_NAMES = new Set([
   "AuthRequiredError",
   "AuthHandlerError",
   "AuthTimeoutError",

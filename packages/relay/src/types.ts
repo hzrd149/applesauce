@@ -151,8 +151,13 @@ export type RelayReqOptions = {
 
 /** Options for the count method on the pool and relay */
 export type RelayCountOptions = RelayAuthOptions & {
+  /** Calls immediately before each COUNT frame is written, including authentication resends */
+  onSent?: () => void;
+  /** The transport retry policy, default true */
   retries?: boolean | number | Parameters<typeof retry>[0];
+  /** The connection retry policy when retries is omitted */
   reconnect?: boolean | number | Parameters<typeof retry>[0];
+  /** The operation timeout, suspended during authentication */
   timeout?: boolean | number;
 };
 

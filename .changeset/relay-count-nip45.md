@@ -2,4 +2,4 @@
 "applesauce-relay": minor
 ---
 
-Make `COUNT` a validated high-level Observable with configurable policy and NIP-45 HLL utilities.
+Add validated COUNT responses with configurable retry and timeout options to `Relay.count()`.

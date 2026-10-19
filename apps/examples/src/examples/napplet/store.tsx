@@ -37,11 +37,12 @@ import {
   mergeRelaySets,
   NostrEvent,
 } from "applesauce-core/helpers";
-import { createEventLoaderForStore, createZapsLoader } from "applesauce-loaders/loaders";
+import { createCountService, createEventLoaderForStore, createZapsLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { Heart, MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   catchError,
@@ -70,6 +71,9 @@ const pool = new RelayPool();
 // Load profiles, contact lists and lineage (parent$ / root$) on demand
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 const zapLoader = createZapsLoader(pool, { eventStore });
+// Counts reflect one trusted relay's dataset, independently of the store's search relay.
+const counts = createCountService(pool, { relays: ["wss://relay.ditto.pub/", "wss://relay.primal.net/"] });
+if (import.meta.hot) import.meta.hot.dispose(() => counts.stop());
 
 /** Opens a napplet by its pointer so the selection survives replaceable revisions */
 type Select = (pointer: AddressPointer | EventPointer | null) => void;
@@ -160,6 +164,31 @@ function NappletIconImage({ napplet, size = "w-14 h-14" }: { napplet: Napplet; s
 function AuthorName({ user }: { user: User }) {
   const profile = use$(user.profile$);
   return <span className="font-medium">{profile?.displayName || user.npub.slice(0, 12)}</span>;
+}
+
+/** Shows relay counts without downloading the comments and reactions */
+function NappletCounts({ napplet }: { napplet: Napplet }) {
+  const comments = use$(
+    () => counts.event({ ...napplet.event, address: napplet.coordinate ?? undefined }).comments$,
+    [napplet.id],
+  );
+  const reactions = use$(() => counts.event(napplet.event).reactions$, [napplet.id]);
+  return (
+    <div className="flex gap-4 text-sm text-base-content/60">
+      <span className="inline-flex items-center gap-1" aria-label={`${comments ?? "Loading"} comments`}>
+        <MessageCircle size={16} aria-hidden="true" />
+        {comments ?? "…"}
+      </span>
+      <span
+        className="inline-flex items-center gap-1"
+        aria-label={`${reactions ?? "Loading"} reactions`}
+        title="All kind-7 reactions"
+      >
+        <Heart size={16} aria-hidden="true" />
+        {reactions ?? "…"}
+      </span>
+    </div>
+  );
 }
 
 function nappletName(napplet: Napplet) {
@@ -276,6 +305,7 @@ function NappletTile({ napplet, select, update }: { napplet: Napplet; select: Se
           <TagBadges values={napplet.requiredDomains} onClick={(domain) => update({ domain })} />
         </div>
       )}
+      <NappletCounts napplet={napplet} />
       <div className="mt-auto flex justify-end">
         <OpenInPaja napplet={napplet} />
       </div>
@@ -798,6 +828,7 @@ function NappletDetails({ napplet, relay, select }: { napplet: Napplet; relay: s
             by <AuthorName user={napplet.author} />
             {snapshotLabel(napplet)} · {napplet.createdAt.toLocaleString()}
           </div>
+          <NappletCounts napplet={napplet} />
           <div className="flex flex-wrap gap-2 mt-2">
             <OpenInPaja napplet={napplet} className="" />
             {napplet.source && (

@@ -6,16 +6,13 @@ describe("exports", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
         "DnsIdentityLoader",
-        "RELAY_AUTH_ERROR_NAMES",
         "addressPointerLoadingSequence",
-        "availabilityCountSource",
         "cacheAddressPointersLoader",
         "cacheEventsLoader",
         "cacheTagValueLoader",
         "consolidateAddressPointers",
-        "countService",
         "createAddressLoader",
-        "createCountRuntime",
+        "createCountScheduler",
         "createCountService",
         "createEventLoader",
         "createEventLoaderForStore",
@@ -28,7 +25,6 @@ describe("exports", () => {
         "createUnifiedEventLoader",
         "createZapsLoader",
         "eventLoadingSequence",
-        "fallbackCountSource",
         "legacyReferenceCountMetric",
         "loadBlocksFromCache",
         "loadBlocksFromFilterMap",
@@ -36,9 +32,7 @@ describe("exports", () => {
         "loadBlocksFromOutboxMapCache",
         "loadBlocksFromRelay",
         "loadBlocksFromRelays",
-        "nip85CountSource",
         "reactionCountMetric",
-        "relayCountSource",
         "relayEventsLoader",
         "relayHintsAddressPointersLoader",
         "relayHintsEventsLoader",
@@ -46,8 +40,6 @@ describe("exports", () => {
         "relaysEventsLoader",
         "relaysTagValueLoader",
         "rootCommentCountMetric",
-        "roundRobinCountSource",
-        "routingCountSource",
       ]
     `);
   });

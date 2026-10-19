@@ -2508,6 +2508,19 @@ describe("multi-user authentication", () => {
 });
 
 describe("count", () => {
+  it("should report dispatch through onSent only after subscribing", async () => {
+    const onSent = vi.fn();
+    const observable = relay.count([{}], "timing", { retries: false, onSent });
+    expect(onSent).not.toHaveBeenCalled();
+
+    const result = firstValueFrom(observable);
+    await expect(server).toReceiveMessage(["COUNT", "timing", {}]);
+    expect(onSent).toHaveBeenCalledOnce();
+
+    server.send(["COUNT", "timing", { count: 0 }]);
+    expect(await result).toMatchObject({ count: 0 });
+  });
+
   it.each(["response", "unsubscribe", "timeout", "refusal", "invalid response"])(
     "should not send CLOSE after %s",
     async (outcome) => {

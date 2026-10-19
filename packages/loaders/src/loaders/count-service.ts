@@ -1,9 +1,9 @@
 import { logger as baseLogger, type Debugger } from "applesauce-core";
+import { mergeRelaySets, type Filter } from "applesauce-core/helpers";
 import { chainable, type ChainableObservable } from "applesauce-core/observable";
 import {
-  asyncScheduler,
+  BehaviorSubject,
   catchError,
-  combineLatest,
   concat,
   defaultIfEmpty,
   defer,
@@ -12,7 +12,9 @@ import {
   expand,
   filter,
   finalize,
+  firstValueFrom,
   from,
+  isObservable,
   map,
   merge,
   NEVER,
@@ -24,29 +26,60 @@ import {
   switchMap,
   takeUntil,
   tap,
-  timeout,
   timer,
+  timeout,
   type SchedulerLike,
+  Subscription,
 } from "rxjs";
-import { createCountRuntime, type CountRuntime, type CountRuntimeOptions } from "./count-runtime.js";
-import { createPersistentCountCache } from "../helpers/count-service/cache.js";
-import { createTransportScheduler } from "../helpers/count-service/scheduler.js";
-import { fallbackCountSource } from "./count-sources/fallback.js";
-import { nip85CountSource, type Nip85CountSourceOptions } from "./count-sources/nip85.js";
-import { routingCountSource } from "./count-sources/routing.js";
-import { relayCountSource } from "./count-sources/relay.js";
-import type {
-  AssertionRequest,
-  CountList,
-  CountMetric,
-  CountPool,
-  CountQuery,
-  CountRequest,
-  CountResult,
-  CountSource,
-  CountTarget,
-  CountUpstream,
-} from "./count-sources/types.js";
+import {
+  createCountScheduler,
+  validateCountTimeout,
+  type CountScheduler,
+  type CountRelayPool,
+  type CountRelayStatus,
+} from "./count-scheduler.js";
+
+/** A static or reactive configuration list */
+export type CountList<T> = readonly T[] | Observable<readonly T[]>;
+
+/** A target identified by event ID, or an explicitly selected stable address */
+export interface CountTarget {
+  /** The event ID */
+  id: string;
+
+  /** The event creation time in seconds */
+  created_at: number;
+
+  /** The event kind */
+  kind: number;
+
+  /** The stable address when counting an address instead of a revision */
+  address?: string;
+}
+
+/** A named event count defined by COUNT filters */
+export interface CountMetric {
+  /** The stable semantic identifier, including a version */
+  id: string;
+
+  /** The COUNT filters, or undefined for unsupported targets */
+  filters: (target: CountTarget) => Filter[] | undefined;
+}
+
+/** A request for one target and semantic metric */
+export interface CountQuery {
+  /** The target event or address */
+  target: CountTarget;
+
+  /** The requested metric */
+  metric: CountMetric;
+}
+
+/** The provenance of a selected count */
+export interface CountOrigin {
+  /** The selected relay */
+  relay: string;
+}
 
 /** The state of one independently observed metric */
 export interface CountState {
@@ -59,19 +92,16 @@ export interface CountState {
   /** Whether a resolution is underway */
   refreshing: boolean;
 
-  /** The successful source provenance */
-  origin: CountResult["origin"] | undefined;
+  /** The selected relay provenance */
+  origin: CountOrigin | undefined;
 
-  /** Whether the selected source supplied an approximation */
+  /** Whether the selected relay supplied an approximation */
   approximate: boolean | undefined;
 
   /** The fetch time in milliseconds */
   observedAt: number | undefined;
 
-  /** The assertion creation time in seconds */
-  assertedAt: number | undefined;
-
-  /** The last failed resolution */
+  /** The local metric or scheduler error, excluding retried relay failures */
   failure: unknown | undefined;
 }
 
@@ -83,10 +113,10 @@ export interface CountDiagnostic {
   /** The active transport count */
   active: number;
 
-  /** The pending transport count */
-  pending: number;
+  /** The outstanding subscribed count requests */
+  requests: number;
 
-  /** The retained result and cooldown cache entries */
+  /** The retained result cache entries */
   cacheEntries: number;
 
   /** The canonical observed metric entries */
@@ -94,6 +124,9 @@ export interface CountDiagnostic {
 
   /** The measured duration in milliseconds for timing diagnostics */
   latency?: number;
+
+  /** The current per-relay admission measurements when using a RelayPool */
+  relays?: readonly CountRelayStatus[];
 }
 
 /** A Keyv-compatible persistent store dedicated to count cache records and invalidation markers */
@@ -108,7 +141,7 @@ export interface CountCache {
 export interface CountCacheRecord {
   /** The serialization format version */
   version: 1;
-  /** The effective source policy */
+  /** The effective relay policy */
   policy: string;
   /** The successful count state */
   state: CountState;
@@ -118,22 +151,18 @@ export interface CountCacheRecord {
   retainUntil: number | null;
 }
 
+/** The context used to choose metric freshness */
+export interface CountFreshnessContext {
+  /** The target's age in seconds */
+  age: number;
+  /** The target and metric being resolved */
+  query: CountQuery;
+}
+
 /** Options for demand-driven event metric counts */
 export interface CountServiceOptions {
-  /** The explicit routing tree, overriding the legacy source hierarchy */
-  source?: CountSource;
-
-  /** The shared transport runtime for explicit routing trees */
-  runtime?: CountRuntime;
-
-  /** The optional capacity settings for a service-owned routing runtime */
-  capacity?: Omit<CountRuntimeOptions, "scheduler">;
-
-  /** The capacity selection wait in milliseconds, default 1000 */
-  selectionTimeout?: number;
-
-  /** The explicit ordered hierarchy, overriding automatic source creation */
-  sources?: readonly CountSource[];
+  /** The app-owned relay scheduler shared across services */
+  countScheduler?: CountScheduler;
 
   /** The optional Keyv-compatible persistent count cache; use a dedicated namespace */
   cache?: CountCache;
@@ -141,67 +170,37 @@ export interface CountServiceOptions {
   /** The persistent retention lifetime in milliseconds, default 24 hours */
   cacheRetention?: number;
 
-  /** The maximum cache operation duration in milliseconds, default 1000 */
+  /** The maximum cache operation duration in milliseconds, default 1000 and maximum 2147483647 */
   cacheTimeout?: number;
 
-  /** The structural upstream pool used by automatic sources */
-  pool?: CountPool;
-
-  /** The explicit COUNT method, overriding pool.count */
-  count?: CountRequest;
-
-  /** The explicit finite assertion request method, overriding pool.request */
-  request?: AssertionRequest;
-
-  /** The ordered trusted relays for automatic NIP-45 counts */
-  relays?: CountList<string>;
-
-  /** The metric-scoped providers for automatic NIP-85 counts before relay fallback */
-  providers?: Nip85CountSourceOptions["providers"];
-
-  /** The freshness curve receiving event age in seconds and returning milliseconds, defaulting to 1 minute through 6 hours */
-  ttl?: (context: { age: number; query: CountQuery }) => number;
-
-  /** The maximum inactive cached result and cooldown entries, default 1000 */
-  cacheCapacity?: number;
-
-  /** The global transport limit, default 8 */
+  /** The maximum active COUNT requests per relay, default 20 */
   concurrency?: number;
 
-  /** The transport limit per relay, default 2 */
-  perRelay?: number;
+  /** The trusted relay list for balanced NIP-45 counts */
+  relays: CountList<string>;
 
-  /** The transport limit per provider, default 2 */
-  perProvider?: number;
+  /** The freshness curve receiving event age in seconds and returning milliseconds, defaulting to 1 minute through 6 hours */
+  ttl?: (context: CountFreshnessContext) => number;
 
-  /** The maximum queued transports, default 256 */
-  queueCapacity?: number;
+  /** The maximum inactive cached result entries, default 1000 */
+  cacheCapacity?: number;
 
-  /** The transport admission window in milliseconds, default 0 (next scheduler turn) */
-  admissionWindow?: number;
-
-  /** The entire resolution deadline in milliseconds, default 15000 */
-  resolutionTimeout?: number;
-
-  /** The individual source deadline in milliseconds, default 5000 */
+  /** The transport response budget including authentication in milliseconds, default 5000 and maximum 2147483647 */
   attemptTimeout?: number;
 
   /** The minimum refresh interval in milliseconds, default 1000 */
   minimumRefresh?: number;
 
-  /** The failed resolution retry interval in milliseconds, default 10000 */
-  retryDelay?: number;
-
   /** The clock for deadlines and deterministic tests */
   scheduler?: SchedulerLike;
 
-  /** The deterministic random source for retry jitter */
+  /** The deterministic random source for relay cooldown jitter */
   random?: () => number;
 
   /** The optional service cancellation signal */
   signal?: AbortSignal;
 
-  /** The parent logger for the service and its source attempts */
+  /** The parent logger for the service and its relay attempts */
   logger?: Debugger;
 
   /** The optional transport instrumentation callback */
@@ -244,23 +243,18 @@ export interface CountService {
 /** The canonical kind-7 event reaction count */
 export const reactionCountMetric: CountMetric = {
   id: "reactions:v1",
-  unit: "events",
-  assertionTag: "reaction_cnt",
   filters: (target) => (target.address ? undefined : [{ kinds: [7], "#e": [target.id] }]),
 };
 
 /** The legacy kind-1 reference count, including indirect thread references */
 export const legacyReferenceCountMetric: CountMetric = {
   id: "legacy-references:v1",
-  unit: "events",
   filters: (target) => (target.address ? undefined : [{ kinds: [1], "#e": [target.id] }]),
 };
 
 /** The NIP-22 root comment count, including the entire comment tree */
 export const rootCommentCountMetric: CountMetric = {
   id: "root-comments:v1",
-  unit: "events",
-  assertionTag: "comment_cnt",
   filters: (target) =>
     target.address ? [{ kinds: [1111], "#A": [target.address] }] : [{ kinds: [1111], "#E": [target.id] }],
 };
@@ -274,109 +268,54 @@ function defaultCountTTL(age: number): number {
 }
 
 /**
- * Creates a lazy shared count service with ordered sources and age-based freshness
- * @throws if configured sources lack transports, limits are invalid, or source IDs are duplicated
+ * Creates lazy shared metrics with balanced COUNT requests to a flat trusted relay set
+ * @throws if concurrency, timeouts, cache settings, or scheduler clocks are invalid
  */
-export function createCountService(options: CountServiceOptions): CountService;
-
-/**
- * Creates a count service from a request method or structural pool and routing options
- * @throws if configured sources lack transports or limits are invalid
- */
-export function createCountService(upstream: CountUpstream, options: CountServiceOptions): CountService;
-export function createCountService(
-  input: CountServiceOptions | CountUpstream,
-  configuration?: CountServiceOptions,
-): CountService {
-  const options: CountServiceOptions =
-    configuration === undefined
-      ? (input as CountServiceOptions)
-      : { ...configuration, pool: typeof input === "function" ? { request: input } : (input as CountPool) };
-
+export function createCountService(pool: CountRelayPool, options: CountServiceOptions): CountService {
   const log = (options.logger ?? baseLogger).extend("count-service");
-  const sourceLog = log.extend("sources");
-  const transportLog = log.extend("transport");
-
-  // Explicit composition wins; automatic sources try assertions before relay counts.
-  const sources = options.source
-    ? [options.source]
-    : (options.sources ?? [
-        ...(options.providers
-          ? [nip85CountSource({ pool: options.pool, request: options.request, providers: options.providers })]
-          : []),
-        ...(options.relays
-          ? [relayCountSource({ pool: options.pool, count: options.count, relays: options.relays })]
-          : []),
-      ]);
-
+  const relayLog = log.extend("relay");
+  const routes = new BehaviorSubject({ relays: [] as readonly string[], policy: "[]" });
+  const scheduler =
+    options.countScheduler ??
+    createCountScheduler({
+      concurrency: options.concurrency,
+      scheduler: options.scheduler,
+      random: options.random,
+    });
+  if (options.scheduler && scheduler.scheduler !== options.scheduler)
+    throw new Error("Count service and scheduler must use the same clock");
+  if (options.countScheduler && options.concurrency !== undefined)
+    throw new Error("Configure concurrency on the shared countScheduler");
   const positive = (name: string, value: number) => {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive and finite`);
 
     return value;
   };
 
-  const clock = options.scheduler ?? options.runtime?.scheduler ?? asyncScheduler;
-  if (options.runtime && options.scheduler && options.runtime.scheduler !== options.scheduler)
-    throw new Error("Count service and runtime must use the same scheduler");
-  const runtime =
-    options.runtime ?? (options.source ? createCountRuntime({ ...options.capacity, scheduler: clock }) : undefined);
+  const clock = scheduler.scheduler;
   const minimum = positive("minimumRefresh", options.minimumRefresh ?? 1000);
-  const retry = positive("retryDelay", options.retryDelay ?? 10000);
-  const deadline = positive("resolutionTimeout", options.resolutionTimeout ?? 15000);
-  const attempt = positive("attemptTimeout", options.attemptTimeout ?? 5000);
-  const cacheTimeout = positive("cacheTimeout", options.cacheTimeout ?? 1000);
+  const attempt = validateCountTimeout("attemptTimeout", options.attemptTimeout ?? 5000);
+  const cacheTimeout = validateCountTimeout("cacheTimeout", options.cacheTimeout ?? 1000);
   if (options.cacheRetention !== undefined && options.cacheRetention !== Infinity)
     positive("cacheRetention", options.cacheRetention);
   const persistent = options.cache && createPersistentCountCache(options.cache, clock, cacheTimeout);
   const capacity = options.cacheCapacity ?? 1000;
   if (!Number.isInteger(capacity) || capacity < 0) throw new Error("cacheCapacity must be a nonnegative integer");
 
-  const limit = (name: string, value: number) => {
-    positive(name, value);
-    if (!Number.isInteger(value)) throw new Error(`${name} must be an integer`);
-
-    return value;
-  };
-
-  let activity = { active: 0, pending: 0 };
+  let activity = { active: 0, requests: 0 };
   const diagnostic = (type: string, latency?: number) =>
     options.diagnostic?.({ type, latency, ...activity, cacheEntries: cache.size, activeMetrics: registry.size });
 
-  const admissionWindow = options.admissionWindow ?? 0;
-  if (!Number.isFinite(admissionWindow) || admissionWindow < 0)
-    throw new Error("admissionWindow must be nonnegative and finite");
-
-  // All sources share admission limits, including nested fallbacks and retries.
-  const transport =
-    runtime ??
-    createTransportScheduler({
-      admissionWindow,
-      clock,
-      logger: transportLog,
-      concurrency: limit("concurrency", options.concurrency ?? 8),
-      perRelay: limit("perRelay", options.perRelay ?? 2),
-      perProvider: limit("perProvider", options.perProvider ?? 2),
-      queueCapacity: limit("queueCapacity", options.queueCapacity ?? 256),
-      diagnostic: (event) => {
-        activity = { active: event.active, pending: event.pending };
-        options.diagnostic?.({ ...event, cacheEntries: cache.size, activeMetrics: registry.size });
-      },
-    });
-
-  const resolver = options.source ? routingCountSource("fallback", [options.source]) : fallbackCountSource(sources);
-  const batchScope = {};
-  const selectionTimeout = positive("selectionTimeout", options.selectionTimeout ?? 1000);
   const stopped$ = new ReplaySubject<void>(1);
   const invalidated$ = new Subject<string | undefined>();
   let stopped = false;
 
-  // Retain values and cooldowns separately from the registry of currently observed streams.
+  // Retain values separately from the registry of currently observed streams.
   const cache = new Map<
     string,
     {
       policy: string;
       state: CountState;
-      retryAt?: number;
       freshUntil?: number | null;
       write?: (record: CountCacheRecord) => Promise<void>;
     }
@@ -388,7 +327,7 @@ export function createCountService(
 
   // Only inactive entries are evictable; observed metrics remain pinned.
   const trim = () => {
-    let inactive = [...cache.keys()].filter((key) => !registry.has(key));
+    const inactive = [...cache.keys()].filter((key) => !registry.has(key));
     while (inactive.length > capacity) cache.delete(inactive.shift()!);
   };
 
@@ -415,38 +354,10 @@ export function createCountService(
         const began = clock.now();
         let firstValue = false;
 
-        // Keep policy observation alive independently of each finite source attempt.
-        const policy$ = sources.length
-          ? combineLatest(
-              sources.map((source) =>
-                defer(() => source.policy(query)).pipe(
-                  timeout({
-                    first: attempt,
-                    scheduler: clock,
-
-                    // Allow a bounded initial wait, then continue observing configuration that arrives later.
-                    with: () => {
-                      log("Policy wait expired", key, source.id, "timeout", attempt);
-                      return concat(of("waiting"), source.policy(query));
-                    },
-                  }),
-
-                  catchError((error) => {
-                    log("Policy failed", key, source.id, error);
-                    return concat(of("unavailable"), NEVER);
-                  }),
-                ),
-              ),
-            ).pipe(
-              map((value) => JSON.stringify(value.map((policy, index) => [sources[index].id, policy]))),
-              distinctUntilChanged(),
-            )
-          : of("[]");
-
-        canonical = policy$.pipe(
-          tap(() => log("Policy observed", key)),
-          // A policy revision cancels obsolete work before resolving against the new trust/routing rules.
-          switchMap((policy) =>
+        canonical = routes.pipe(
+          tap(() => log("Relay set observed", key)),
+          // A relay-set change cancels obsolete work before exposing retained values.
+          switchMap(({ relays, policy }) =>
             // Start once, then restart only for invalidations affecting this target.
             merge(
               of(undefined),
@@ -467,25 +378,8 @@ export function createCountService(
                       : of(undefined);
                 return load.pipe(
                   switchMap((stored) => {
-                    const record = stored?.record as CountCacheRecord | undefined;
-                    if (
-                      (!cache.has(key) || cache.get(key)?.policy !== policy) &&
-                      record &&
-                      record.version === 1 &&
-                      record.policy === policy &&
-                      record.state &&
-                      Number.isSafeInteger(record.state.value) &&
-                      record.state.value! >= 0 &&
-                      Number.isFinite(record.state.observedAt) &&
-                      record.state.observedAt! <= clock.now() &&
-                      record.state.failure === undefined &&
-                      record.state.origin &&
-                      typeof record.state.origin.adapter === "string" &&
-                      typeof record.state.origin.relay === "string" &&
-                      (record.freshUntil === null || Number.isFinite(record.freshUntil)) &&
-                      (record.retainUntil === null ||
-                        (Number.isFinite(record.retainUntil) && record.retainUntil > clock.now()))
-                    ) {
+                    const record = stored?.record;
+                    if ((!cache.has(key) || cache.get(key)?.policy !== policy) && record) {
                       cache.set(key, {
                         policy,
                         state: record.state,
@@ -517,14 +411,12 @@ export function createCountService(
                       (retained?.freshUntil === undefined ||
                         retained.freshUntil === null ||
                         clock.now() < retained.freshUntil);
-                    const coolingDown = retained?.retryAt !== undefined && retained.retryAt > clock.now();
-                    let retryAt = retained?.retryAt;
                     diagnostic(fresh ? "cache-hit" : "cache-miss");
-                    log("Cache %s", fresh ? "hit" : "miss", key, "cooldown", coolingDown);
+                    log("Cache %s", fresh ? "hit" : "miss", key);
 
-                    // Expose retained data immediately; freshness and retry cooldown decide whether to fetch now.
+                    // Expose retained data immediately while stale counts are requested.
                     const initial: CountState = old
-                      ? { ...old, fresh, refreshing: !fresh && !coolingDown }
+                      ? { ...old, fresh, refreshing: !fresh }
                       : {
                           value: undefined,
                           fresh: false,
@@ -532,115 +424,89 @@ export function createCountService(
                           origin: undefined,
                           approximate: undefined,
                           observedAt: undefined,
-                          assertedAt: undefined,
                           failure: undefined,
                         };
-
-                    let failures = old?.failure ? 1 : 0;
-
-                    // Back off failed resolutions with bounded jitter instead of retrying each revisit immediately.
-                    const retryInterval = () => {
-                      const random = (options.random ?? Math.random)();
-                      const jitter = Number.isFinite(random) ? Math.max(0, Math.min(1, random)) : 0.5;
-
-                      return (
-                        Math.min(60000, retry * 2 ** Math.min(5, Math.max(0, failures - 1))) * (0.8 + 0.4 * jitter)
-                      );
-                    };
 
                     // Each resolution settles once; failures preserve the previous successful value and provenance.
                     const resolve = (previous: CountState): Observable<CountState> =>
                       defer(() => {
-                        let failure: unknown = new Error("No count source answered");
-                        log("Resolution started", key, "timeout", deadline);
+                        let failure: unknown = new Error("Count scheduler completed without a response");
+                        log("Resolution started", key);
 
-                        return resolver
-                          .count(query, {
-                            deadline: clock.now() + deadline,
-                            runtime,
-                            attempts: new Set(),
-                            routed: !!options.source,
-                            batchScope,
-                            selectionTimeout,
-                            transport,
-                            clock,
+                        return defer(() => {
+                          const filters = query.metric.filters(query.target);
+                          if (!filters?.length) throw new Error("Metric does not support this target");
+                          return scheduler.count(pool, relays, filters, {
                             attemptTimeout: attempt,
-                            logger: sourceLog,
-                            diagnostic,
-                            onFailure: (error) => {
-                              failure = error;
-                              log("Source attempt failed", key, error);
+                            diagnostic: (type, latency) => {
+                              relayLog("COUNT %s", type, key, latency);
+                              diagnostic(type, latency);
                             },
-                          })
-                          .pipe(
-                            // Bound the entire hierarchy, including queue time and individual source attempts.
-                            timeout({ first: deadline, scheduler: clock }),
-                            map((result): CountState => ({
-                              value: result.value,
-                              origin: result.origin,
-                              approximate: result.approximate,
-                              assertedAt: result.assertedAt,
-                              failure: undefined,
-                              fresh: true,
-                              refreshing: false,
-                              observedAt: clock.now(),
-                            })),
+                          });
+                        }).pipe(
+                          map(({ relay, response }): CountState => ({
+                            value: response.count,
+                            origin: { relay },
+                            approximate: response.approximate,
+                            failure: undefined,
+                            fresh: true,
+                            refreshing: false,
+                            observedAt: clock.now(),
+                          })),
 
-                            catchError((error) => {
-                              failure = error;
-                              log("Resolution failed", key, error);
+                          catchError((error) => {
+                            failure = error;
+                            log("Resolution failed", key, error);
 
-                              return EMPTY;
-                            }),
+                            return EMPTY;
+                          }),
 
-                            // Empty completion is a missing result, never a fabricated count of zero.
-                            defaultIfEmpty(undefined),
-                            map((state) => state ?? { ...previous, fresh: false, refreshing: false, failure }),
+                          // Empty completion is a missing result, never a fabricated count of zero.
+                          defaultIfEmpty(undefined),
+                          map((state) => state ?? { ...previous, fresh: false, refreshing: false, failure }),
 
-                            // Persist cooldown deadlines as well as results so unmounting does not reset retry pressure.
-                            tap((state) => {
-                              if (log.enabled)
-                                log(state.failure ? "Resolution unavailable" : "Resolution succeeded", key, {
-                                  value: state.value,
-                                  origin: state.origin,
-                                  failure: state.failure,
-                                });
+                          // Cache settled states; relay cooldowns belong to the scheduler.
+                          tap((state) => {
+                            if (log.enabled)
+                              log(state.failure ? "Resolution unavailable" : "Resolution succeeded", key, {
+                                value: state.value,
+                                origin: state.origin,
+                                failure: state.failure,
+                              });
 
-                              if (retained) retained.freshUntil = undefined;
-                              failures = state.failure ? failures + 1 : 0;
-                              retryAt = state.failure ? clock.now() + retryInterval() : undefined;
-                              cache.delete(key);
-                              cache.set(key, { policy, state, retryAt, write: stored?.write });
-                              if (!state.failure && persistent) {
-                                const lifetime = ttl(query);
-                                const retention = options.cacheRetention ?? 24 * 60 * 60_000;
-                                const record: CountCacheRecord = {
-                                  version: 1,
-                                  policy,
-                                  state,
-                                  freshUntil: lifetime === Infinity ? null : state.observedAt! + lifetime,
-                                  retainUntil: retention === Infinity ? null : state.observedAt! + retention,
-                                };
-                                // Keep the epoch captured before resolution so invalidation fences delayed writes.
-                                if (stored)
-                                  void stored.write(record).catch((error) => log("Cache write failed", key, error));
-                              }
-                              trim();
-                            }),
-                          );
+                            if (retained) retained.freshUntil = undefined;
+                            cache.delete(key);
+                            cache.set(key, { policy, state, write: stored?.write });
+                            if (!state.failure && persistent) {
+                              const lifetime = ttl(query);
+                              const retention = options.cacheRetention ?? 24 * 60 * 60_000;
+                              const record: CountCacheRecord = {
+                                version: 1,
+                                policy,
+                                state,
+                                freshUntil: lifetime === Infinity ? null : state.observedAt! + lifetime,
+                                retainUntil: retention === Infinity ? null : state.observedAt! + retention,
+                              };
+                              // Keep the epoch captured before resolution so invalidation fences delayed writes.
+                              if (stored)
+                                void stored.write(record).catch((error) => log("Cache write failed", key, error));
+                            }
+                            trim();
+                          }),
+                        );
                       });
 
-                    // Only an observed metric schedules its next TTL refresh or failed-attempt retry.
+                    // Only successful observed counts schedule a freshness refresh.
                     const cycle = (state: CountState): Observable<CountState> => {
-                      const delay = state.failure
-                        ? Math.max(1, (retryAt ?? clock.now() + retryInterval()) - clock.now())
-                        : Math.max(
-                            minimum,
-                            Math.min(
-                              ttl(query) - (clock.now() - (state.observedAt ?? clock.now())),
-                              retained?.freshUntil == null ? Infinity : retained.freshUntil - clock.now(),
-                            ),
-                          );
+                      // Invalid filters require a caller correction or explicit invalidation, not network retries.
+                      if (state.failure) return NEVER;
+                      const delay = Math.max(
+                        minimum,
+                        Math.min(
+                          ttl(query) - (clock.now() - (state.observedAt ?? clock.now())),
+                          retained?.freshUntil == null ? Infinity : retained.freshUntil - clock.now(),
+                        ),
+                      );
 
                       // An infinite successful TTL keeps the lifecycle open without allocating a timer.
                       if (delay === Infinity) {
@@ -648,20 +514,18 @@ export function createCountService(
                         return NEVER;
                       }
 
-                      log(state.failure ? "Retry scheduled" : "Refresh scheduled", key, "delay", delay);
+                      log("Refresh scheduled", key, "delay", delay);
 
                       return timer(delay, clock).pipe(
                         switchMap(() => concat(of({ ...state, fresh: false, refreshing: true }), resolve(state))),
                       );
                     };
 
-                    const settled$ = fresh || coolingDown ? of(initial) : resolve(initial);
+                    const settled$ = fresh ? of(initial) : resolve(initial);
 
                     // Emit cache state synchronously, then drive subsequent cycles from settled states only.
-                    return concat(
-                      of(initial),
-                      settled$.pipe(expand((state) => (state.refreshing ? EMPTY : cycle(state)), 1)),
-                    );
+                    const updates$ = settled$.pipe(expand((state) => (state.refreshing ? EMPTY : cycle(state))));
+                    return fresh ? updates$ : concat(of(initial), updates$);
                   }),
                 );
               }),
@@ -675,7 +539,7 @@ export function createCountService(
             }
           }),
 
-          // Service shutdown cancels policy observation, queued/running work, and refresh timers together.
+          // Service shutdown cancels policy observation, outstanding requests, and refresh timers together.
           takeUntil(stopped$),
 
           // Last-unsubscribe teardown removes the canonical stream while leaving bounded cache retention.
@@ -742,27 +606,114 @@ export function createCountService(
     },
 
     stop: () => {
-      runtimeEvents?.unsubscribe();
-      if (!options.runtime) runtime?.stop();
-      if (!stopped) {
-        log("Stopped", "observed metrics", registry.size, "cached entries", cache.size);
-        stopped = true;
-        stopped$.next();
-        stopped$.complete();
-        cache.clear();
-        registry.clear();
-        invalidated$.complete();
-        options.signal?.removeEventListener("abort", service.stop);
-      }
+      if (stopped) return;
+      stopped = true;
+      log("Stopped", "observed metrics", registry.size, "cached entries", cache.size);
+      schedulerEvents.unsubscribe();
+      routeSubscription.unsubscribe();
+      stopped$.next();
+      stopped$.complete();
+      releaseRoutes?.();
+      routes.complete();
+      if (!options.countScheduler) scheduler.stop();
+      cache.clear();
+      registry.clear();
+      invalidated$.complete();
+      options.signal?.removeEventListener("abort", service.stop);
     },
   };
 
-  const runtimeEvents = runtime?.events$.subscribe((event) => {
-    activity = { active: event.active, pending: event.pending };
-    options.diagnostic?.({ ...event, cacheEntries: cache.size, activeMetrics: registry.size });
+  const schedulerEvents = scheduler.status$.subscribe((event) => {
+    activity = { active: event.active, requests: event.requests };
+    options.diagnostic?.({ ...event, type: "scheduler", cacheEntries: cache.size, activeMetrics: registry.size });
   });
+  let releaseRoutes: (() => void) | undefined;
+  const routeSubscription = new Subscription();
+  routeSubscription.add(
+    (isObservable(options.relays) ? options.relays : of(options.relays))
+      .pipe(
+        catchError(() => of([] as readonly string[])),
+        map((urls) => mergeRelaySets(urls).sort()),
+        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+      )
+      .subscribe((urls) => {
+        const previous = releaseRoutes;
+        releaseRoutes = scheduler.retain(urls);
+        previous?.();
+        routes.next({ relays: urls, policy: JSON.stringify(urls) });
+      }),
+  );
   if (options.signal?.aborted) service.stop();
   else options.signal?.addEventListener("abort", service.stop, { once: true });
 
   return service;
+}
+
+function isValidRecord(value: unknown, policy: string, now: number): value is CountCacheRecord {
+  const record = value as CountCacheRecord | undefined;
+  return !!(
+    record &&
+    record.version === 1 &&
+    record.policy === policy &&
+    record.state &&
+    Number.isSafeInteger(record.state.value) &&
+    record.state.value! >= 0 &&
+    Number.isFinite(record.state.observedAt) &&
+    record.state.observedAt! <= now &&
+    record.state.failure === undefined &&
+    record.state.origin &&
+    typeof record.state.origin.relay === "string" &&
+    (record.state.approximate === undefined || typeof record.state.approximate === "boolean") &&
+    (record.freshUntil === null || Number.isFinite(record.freshUntil)) &&
+    (record.retainUntil === null || (Number.isFinite(record.retainUntil) && record.retainUntil > now))
+  );
+}
+
+// Epoch keys let invalidation cover entries written by earlier sessions without enumerating or clearing the store.
+/** Creates bounded persistent cache access with policy-scoped invalidation */
+function createPersistentCountCache(cache: CountCache, clock: SchedulerLike, deadline: number) {
+  let pending: Promise<unknown> = Promise.resolve();
+  const run = <T>(action: () => Promise<T>, ordered = true): Promise<T> => {
+    let expired = false;
+    const task = pending.then(() => {
+      if (expired) throw new Error("Count cache operation expired before execution");
+      return action();
+    });
+    // Include queue wait in the deadline, and never start an operation that already timed out.
+    const result = firstValueFrom(from(task).pipe(timeout({ first: deadline, scheduler: clock }))).catch((error) => {
+      expired = true;
+      throw error;
+    });
+    if (ordered) pending = result.catch(() => undefined);
+    return result;
+  };
+  const prefix = "applesauce:counts:v1:";
+  const globalKey = `${prefix}epoch`;
+  const targetEpochKey = (target: string) => `${prefix}target:${target}`;
+  const token = () => globalThis.crypto.randomUUID();
+
+  return {
+    read: (target: string, metric: string, policy: string) =>
+      run(async () => {
+        const global = await cache.get(globalKey);
+        const local = await cache.get(targetEpochKey(target));
+        if ((global !== undefined && typeof global !== "string") || (local !== undefined && typeof local !== "string"))
+          throw new Error("Invalid count cache epoch");
+        const key = prefix + JSON.stringify([global ?? "", local ?? "", target, metric, policy]);
+        const record = await cache.get(key);
+        return {
+          record: isValidRecord(record, policy, clock.now()) ? record : undefined,
+          write: (value: CountCacheRecord) =>
+            run(async () => {
+              const remaining = value.retainUntil === null ? 0 : value.retainUntil - clock.now();
+              if (value.retainUntil !== null && remaining <= 0) return;
+              await cache.set(key, value, remaining);
+            }),
+        };
+      }, false),
+    invalidate: (target?: string) =>
+      run(async () => {
+        await cache.set(target === undefined ? globalKey : targetEpochKey(target), token(), 0);
+      }),
+  };
 }

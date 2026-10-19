@@ -63,6 +63,9 @@
     "nanoid": "^5.0.9",
     "rxjs": "^7.8.1"
   },
+  "optionalDependencies": {
+    "applesauce-relay": "^6.2.0"
+  },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
     "applesauce-signers": "^6.2.0",

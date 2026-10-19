@@ -252,7 +252,7 @@ importers:
         version: link:../agent-skills
       vitepress:
         specifier: ^1.6.4
-        version: 1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2)
+        version: 1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2)
 
   apps/examples:
     dependencies:
@@ -770,6 +770,10 @@ importers:
       vitest-websocket-mock:
         specifier: ^0.5.0
         version: 0.5.0(vitest@4.1.11)
+    optionalDependencies:
+      applesauce-relay:
+        specifier: ^6.2.0
+        version: link:../relay
 
   packages/react:
     dependencies:
@@ -8324,13 +8328,14 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@vueuse/integrations@12.8.2(focus-trap@7.8.0)(typescript@7.0.2)':
+  '@vueuse/integrations@12.8.2(focus-trap@7.8.0)(idb-keyval@6.3.0)(typescript@7.0.2)':
     dependencies:
       '@vueuse/core': 12.8.2(typescript@7.0.2)
       '@vueuse/shared': 12.8.2(typescript@7.0.2)
       vue: 3.5.40(typescript@7.0.2)
     optionalDependencies:
       focus-trap: 7.8.0
+      idb-keyval: 6.3.0
     transitivePeerDependencies:
       - typescript
 
@@ -11534,7 +11539,7 @@ snapshots:
       terser: 5.49.0
       yaml: 2.9.0
 
-  vitepress@1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2):
+  vitepress@1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(@types/react@18.3.31)(idb-keyval@6.3.0)(lightningcss@1.33.0)(postcss@8.5.23)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)(terser@5.49.0)(typescript@7.0.2):
     dependencies:
       '@docsearch/css': 3.8.2
       '@docsearch/js': 3.8.2(@algolia/client-search@5.56.0)(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(search-insights@2.17.3)
@@ -11547,7 +11552,7 @@ snapshots:
       '@vue/devtools-api': 7.7.10
       '@vue/shared': 3.5.40
       '@vueuse/core': 12.8.2(typescript@7.0.2)
-      '@vueuse/integrations': 12.8.2(focus-trap@7.8.0)(typescript@7.0.2)
+      '@vueuse/integrations': 12.8.2(focus-trap@7.8.0)(idb-keyval@6.3.0)(typescript@7.0.2)
       focus-trap: 7.8.0
       mark.js: 8.11.1
       minisearch: 7.2.0

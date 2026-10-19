@@ -25,6 +25,7 @@ relay
   .subscribe({ next: (res) => console.log(res.count), error: console.error });
 ```
 
+- `onSent` runs immediately before each COUNT frame is written, including authentication resends; use it to distinguish wire response latency from readiness and authentication waiting.
 - `timeout` is one deadline for the whole request, including retries (default 10s, or the relay's `countTimeout`). It pauses while authenticating. Pass `false` to disable it.
 - `retries` retries connection failures and takes precedence over its `reconnect` alias.
 - `onAuthRequired`, `waitForAuth` and `authTimeout` work like other requests. See [Authentication](./authentication).
@@ -65,7 +66,7 @@ Failed relays and responses without a sketch can't contribute, so the estimate o
 
 ## Integration
 
-To load per-event metrics that components share, cache and refresh, use the [count service](/loading/loaders/count-service). It runs these COUNT requests through a pool and can fall back to other count sources.
+To load per-event metrics that components share, cache and refresh, use the [count service](/loading/loaders/count-service). It runs NIP-45 COUNT requests through a pool and can balance requests across trusted relays.
 
 ## Best Practices
 

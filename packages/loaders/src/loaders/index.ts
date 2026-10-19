@@ -9,6 +9,14 @@ export * from "./timeline-loader.js";
 export * from "./unified-event-loader.js";
 export * from "./zaps-loader.js";
 export * from "./count-service.js";
-export * from "./count-sources/index.js";
-export * from "./count-runtime.js";
-export * from "./count-service-builder.js";
+export {
+  createCountScheduler,
+  type CountRelayPool,
+  type CountSchedulerOptions,
+  type CountRelayStatus,
+  type CountFailure,
+  type CountSchedulerStatus,
+  type CountScheduleOptions,
+  type ScheduledCount,
+  type CountScheduler,
+} from "./count-scheduler.js";

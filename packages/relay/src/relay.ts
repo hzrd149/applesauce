@@ -1259,6 +1259,7 @@ export class Relay {
       // NIP-45 queries do not create live subscriptions, so teardown needs no CLOSE message.
       const control = defer(() => {
         // Send the COUNT message when subscription starts
+        opts?.onSent?.();
         this.socket.next(Array.isArray(filters) ? ["COUNT", id, ...filters] : ["COUNT", id, filters]);
 
         return messages;

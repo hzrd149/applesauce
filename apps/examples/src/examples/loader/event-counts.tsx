@@ -1,61 +1,29 @@
 /**
  * Progressively load reaction, comment, repost and zap counts for a scrolling feed with the count service
- * @tags loader, count, nip-45, nip-85, stress
+ * @tags loader, count, nip-45, stress
  * @related loader/infinite-scroll, feed/loading-reactions
  */
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Note } from "applesauce-common/casts";
 import { castTimelineStream } from "applesauce-common/observable";
 import { EventStore } from "applesauce-core";
+import { ensureWebSocketURL, getDisplayName, getProfilePicture, normalizeURL } from "applesauce-core/helpers";
 import {
-  ensureWebSocketURL,
-  getDisplayName,
-  getProfilePicture,
-  normalizeToPubkey,
-  normalizeURL,
-} from "applesauce-core/helpers";
-import {
-  countService,
+  createCountService,
   type CountService,
   createEventLoaderForStore,
   createTimelineLoader,
   legacyReferenceCountMetric,
   reactionCountMetric,
   rootCommentCountMetric,
-  type AssertionRequest,
   type CountDiagnostic,
   type CountMetric,
-  type CountRequest,
   type CountState,
 } from "applesauce-loaders/loaders";
-import { use$ } from "applesauce-react/hooks";
+import { use$, useRenderedContent, type ComponentMap } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  Heart,
-  GripVertical,
-  MessageSquare,
-  Quote,
-  Repeat2,
-  Reply,
-  Trash2,
-  X,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
-import {
-  createContext,
-  Fragment,
-  memo,
-  useContext,
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-} from "react";
+import { Heart, MessageSquare, Quote, Repeat2, Reply, Zap, type LucideIcon } from "lucide-react";
+import { memo, useCallback, useMemo, useState } from "react";
 import Keyv from "keyv";
 import { KeyvIndexedDB } from "keyv-browser";
 import {
@@ -64,27 +32,21 @@ import {
   BehaviorSubject,
   combineLatest,
   defer,
-  distinctUntilChanged,
   EMPTY,
-  finalize,
   ignoreElements,
   map,
-  merge,
   Observable,
   ReplaySubject,
   scan,
   share,
-  shareReplay,
   startWith,
   Subject,
   subscribeOn,
   switchMap,
-  take,
   tap,
   timer,
 } from "rxjs";
 
-import RelayAddForm from "../../components/add-relay-form";
 import RelayPicker from "../../components/relay-picker";
 import { historyWindows } from "../../extra/history-window";
 import { lookupRelays$ } from "../../settings";
@@ -97,162 +59,47 @@ const PREFETCH = 3;
 // The fixed height of a grid row and the minimum width of a note column
 const ROW_HEIGHT = 84;
 const COLUMN_WIDTH = 340;
-// The service gives up on a single relay or provider after this long
+// The service gives up on a single relay after this long
 const ATTEMPT_TIMEOUT = 5000;
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
+// This adapter creates its object store only when the database is first created.
 const countCache = new Keyv({
-  store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "counts" }),
+  store: new KeyvIndexedDB({ dbName: "applesauce-example-counts", storeName: "counts" }),
 });
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
-const COUNT_RELAYS = ["wss://relay.primal.net/", "wss://relay.ditto.pub/", "wss://relay.nostr.net/"];
-const COUNT_PRESETS = [
-  { label: "Ordered", groups: COUNT_RELAYS.map((relay) => [relay]) },
-  { label: "Round-robin", groups: [[...COUNT_RELAYS]] },
-  { label: "Grouped fallback", groups: [COUNT_RELAYS.slice(0, 2), COUNT_RELAYS.slice(2)] },
-];
-
-// Relay groups are ordered; each group distributes its requests round-robin.
-const countRelays$ = new BehaviorSubject<string[][]>(COUNT_PRESETS[0].groups.map((group) => [...group]));
-type Distribution = "fallback" | "round-robin" | "availability";
-const routing$ = new BehaviorSubject({
-  mode: "fallback" as Distribution,
-  busy: "wait" as "wait" | "skip",
-  branchTimeout: 15000,
+const COUNT_RELAYS = ["wss://relay.ditto.pub/", "wss://relay.primal.net/", "wss://relay.nostr.net/"];
+const settings$ = new BehaviorSubject({
+  relays: COUNT_RELAYS,
+  concurrency: 40,
   attemptTimeout: ATTEMPT_TIMEOUT,
-  resolutionTimeout: 15000,
-  selectionTimeout: 1000,
-  concurrency: 8,
-  perRelay: 2,
-  perProvider: 2,
-  queueCapacity: 256,
-  failureCooldown: 1000,
+  persistentCache: false,
 });
-const routeMethod = (mode: Distribution) => (mode === "round-robin" ? "roundRobin" : mode);
-const groupModes = new WeakMap<readonly string[], Distribution>();
-const distributionFor = (group: readonly string[]) => groupModes.get(group) ?? "round-robin";
-function withoutEntry(group: string[], entry: string) {
-  const next = group.filter((value) => value !== entry);
-  groupModes.set(next, distributionFor(group));
-  return next;
-}
-const provider$ = new BehaviorSubject<{ pubkey: string; relay: string } | null>(null);
-
-const RoutingDraftContext = createContext({ countRelays$, provider$, routing$ });
-
-function createRoutingDraft() {
-  return {
-    countRelays$: new BehaviorSubject(
-      countRelays$.value.map((group) => {
-        const copy = [...group];
-        groupModes.set(copy, distributionFor(group));
-        return copy;
-      }),
-    ),
-    provider$: new BehaviorSubject(provider$.value),
-    routing$: new BehaviorSubject({ ...routing$.value }),
-  };
-}
-
-type Outcome = "sent" | "answered" | "refused" | "failed" | "timeout" | "cancelled";
-type Transport = { type: "count" | "assertion"; outcome: Outcome };
-
-const transports$ = new Subject<Transport>();
 const diagnostics$ = new Subject<CountDiagnostic>();
-
-/** Reports how each upstream request ended, since the service only sees when a transport settles */
-function track<T>(type: Transport["type"], request: Observable<T>, answer: (value: T) => Outcome | undefined) {
-  return defer(() => {
-    const started = Date.now();
-    const attemptTimeout = routing$.value.attemptTimeout;
-    let settled = false;
-    const report = (outcome: Outcome) => {
-      settled = true;
-      transports$.next({ type, outcome });
-    };
-
-    transports$.next({ type, outcome: "sent" });
-    return request.pipe(
-      tap({
-        next: (value) => {
-          const outcome = settled ? undefined : answer(value);
-          if (outcome) report(outcome);
-        },
-        complete: () => settled || report("answered"),
-        error: () => settled || report("failed"),
-      }),
-      // Unsubscribed without an answer: either the attempt timed out or its row scrolled away
-      finalize(() => settled || report(Date.now() - started >= attemptTimeout ? "timeout" : "cancelled")),
-    );
+function buildCounts({ persistentCache, ...settings }: typeof settings$.value) {
+  return createCountService(pool, {
+    ...settings,
+    cache: persistentCache ? countCache : undefined,
+    ttl: () => 5 * 60_000,
+    diagnostic: (event) => diagnostics$.next(event),
   });
 }
 
-const count: CountRequest = (relays, filters) =>
-  track("count", pool.count(relays, filters), (outcomes) => {
-    const results = Object.values(outcomes);
-    if (results.length) return results.every((result) => result.ok) ? "answered" : "refused";
-  });
-const request: AssertionRequest = (relays, filters) =>
-  track("assertion", pool.request(relays, filters), () => undefined);
-
-const assertionOptions = {
-  providers: (kind: number, tag: string) =>
-    provider$.pipe(map((p) => (p ? [{ kind, tag, servicePubkey: p.pubkey, relay: p.relay }] : []))),
-};
-
-// Only include NIP-85 when a provider is configured, so plain relay lookups skip the assertion attempt
-const counts$ = combineLatest([provider$.pipe(map(Boolean), distinctUntilChanged()), countRelays$, routing$]).pipe(
-  auditTime(0),
+const counts$ = settings$.pipe(
   switchMap(
-    ([nip85, groups, settings]) =>
+    (settings) =>
       new Observable<CountService>((subscriber) => {
-        const service = countService({ count, request })
-          [routeMethod(settings.mode)](
-            (route) => {
-              const relayGroups = groups.map((entries) => {
-                const relays = entries.map((entry) =>
-                  entry === "nip85" ? route.nip85(assertionOptions) : route.relay(entry),
-                );
-                return route[routeMethod(distributionFor(entries))](relays, {
-                  busy: settings.busy,
-                  timeout: settings.branchTimeout,
-                });
-              });
-              return nip85 && !groups.flat().includes("nip85")
-                ? [route.nip85(assertionOptions), ...relayGroups]
-                : relayGroups;
-            },
-            { busy: settings.busy, timeout: settings.branchTimeout },
-          )
-          .capacity({
-            concurrency: settings.concurrency,
-            perRelay: settings.perRelay,
-            perProvider: settings.perProvider,
-            queueCapacity: settings.queueCapacity,
-            failureCooldown: settings.failureCooldown,
-          })
-          .configure({
-            cache: countCache,
-            ttl: () => 5 * 60_000,
-            cacheRetention: 24 * 60 * 60_000,
-            attemptTimeout: settings.attemptTimeout,
-            resolutionTimeout: settings.resolutionTimeout,
-            selectionTimeout: settings.selectionTimeout,
-            diagnostic: (event) => diagnostics$.next(event),
-          })
-          .build();
+        const service = buildCounts(settings);
         subscriber.next(service);
-
-        // Replacing the service cancels its queued work and refresh timers
         return () => service.stop();
       }),
   ),
-  shareReplay(1),
+  share({ connector: () => new ReplaySubject<CountService>(1), resetOnRefCountZero: true }),
 );
 
-// Built-in metrics plus custom ones with their COUNT filters and NIP-85 assertion tags
+// Built-in metrics plus custom ones with their COUNT filters
 const METRICS: { label: string; icon: LucideIcon; metric: CountMetric }[] = [
   { label: "Reactions", icon: Heart, metric: reactionCountMetric },
   { label: "Comments", icon: MessageSquare, metric: rootCommentCountMetric },
@@ -262,8 +109,6 @@ const METRICS: { label: string; icon: LucideIcon; metric: CountMetric }[] = [
     icon: Repeat2,
     metric: {
       id: "reposts:v1",
-      unit: "events",
-      assertionTag: "repost_cnt",
       filters: (target) => (target.address ? undefined : [{ kinds: [6, 16], "#e": [target.id] }]),
     },
   },
@@ -272,8 +117,6 @@ const METRICS: { label: string; icon: LucideIcon; metric: CountMetric }[] = [
     icon: Quote,
     metric: {
       id: "quotes:v1",
-      unit: "events",
-      assertionTag: "quote_cnt",
       filters: (target) => (target.address ? undefined : [{ kinds: [1], "#q": [target.id] }]),
     },
   },
@@ -282,52 +125,34 @@ const METRICS: { label: string; icon: LucideIcon; metric: CountMetric }[] = [
     icon: Zap,
     metric: {
       id: "zaps:v1",
-      unit: "events",
-      assertionTag: "zap_cnt",
       filters: (target) => (target.address ? undefined : [{ kinds: [9735], "#e": [target.id] }]),
     },
   },
 ];
 
-type Tally = Record<Outcome, number>;
 type Stats = {
-  /** The latest service snapshot */
-  gauges: Pick<CountDiagnostic, "active" | "pending" | "activeMetrics" | "cacheEntries">;
-  /** Totals for each diagnostic type, such as queued, abandoned and cache-hit */
+  gauges: Pick<CountDiagnostic, "active" | "requests" | "activeMetrics" | "cacheEntries">;
   events: Record<string, number>;
-  /** The summed first-value latency in milliseconds */
-  latency: number;
-  count: Tally;
-  assertion: Tally;
 };
-
-const TALLY: Tally = { sent: 0, answered: 0, refused: 0, failed: 0, timeout: 0, cancelled: 0 };
 const EMPTY_STATS: Stats = {
-  gauges: { active: 0, pending: 0, activeMetrics: 0, cacheEntries: 0 },
+  gauges: { active: 0, requests: 0, activeMetrics: 0, cacheEntries: 0 },
   events: {},
-  latency: 0,
-  count: TALLY,
-  assertion: TALLY,
 };
-
-function reduce(stats: Stats, event: CountDiagnostic | Transport): Stats {
-  if ("outcome" in event)
-    return { ...stats, [event.type]: { ...stats[event.type], [event.outcome]: stats[event.type][event.outcome] + 1 } };
-
-  const { type, latency, ...gauges } = event;
-  return {
-    ...stats,
-    gauges,
-    events: { ...stats.events, [type]: (stats.events[type] ?? 0) + 1 },
-    latency: stats.latency + (type === "first-value" ? (latency ?? 0) : 0),
-  };
-}
-
 const reset$ = new Subject<void>();
 const stats$ = reset$.pipe(
   startWith(undefined),
-  switchMap(() => merge(diagnostics$, transports$).pipe(scan(reduce, EMPTY_STATS), startWith(EMPTY_STATS))),
-  // Tally every event before limiting how often the panel renders
+  switchMap(() =>
+    diagnostics$.pipe(
+      scan((stats: Stats, event: CountDiagnostic): Stats => {
+        const { type, active, requests, activeMetrics, cacheEntries } = event;
+        return {
+          gauges: { active, requests, activeMetrics, cacheEntries },
+          events: { ...stats.events, [type]: (stats.events[type] ?? 0) + 1 },
+        };
+      }, EMPTY_STATS),
+      startWith(EMPTY_STATS),
+    ),
+  ),
   auditTime(100),
 );
 
@@ -335,7 +160,7 @@ const more$ = new Subject<void>();
 
 /** Loads kind 1 notes from one relay, reaching another step further back for each older page request */
 function feed$(relay: string) {
-  const loader = createTimelineLoader(pool, [relay], NOTES, { eventStore, limit: 200 });
+  const loader = createTimelineLoader(pool, [relay], NOTES, { eventStore, limit: 100 });
 
   return defer(() => {
     const windows$ = historyWindows(more$, STEP).pipe(share({ connector: () => new ReplaySubject(1) }));
@@ -345,22 +170,26 @@ function feed$(relay: string) {
       auditTime(16),
       castTimelineStream(Note, eventStore),
     );
-    const loading$ = loader.status$.pipe(
-      map((statuses) => statuses.length === 0 || statuses.some((status) => status.state === "loading")),
-      startWith(true),
+    const status$ = loader.status$.pipe(
+      map((statuses) => ({
+        loading: statuses.length === 0 || statuses.some((status) => status.state === "loading"),
+        error: statuses
+          .filter((status) => status.state === "incomplete" && status.reason === "request")
+          .map((status) => String(status.error ?? "Incomplete relay coverage"))
+          .join("; "),
+      })),
+      startWith({ loading: true, error: "" }),
     );
 
-    return combineLatest([notes$, loading$, loader(windows$).pipe(ignoreElements(), startWith(null))]).pipe(
-      map(([notes, loading]) => ({ notes, loading })),
+    return combineLatest([notes$, status$, loader(windows$).pipe(ignoreElements(), startWith(null))]).pipe(
+      map(([notes, status]) => ({ notes, ...status })),
     );
   });
 }
 
 function describe(label: string, state: CountState | undefined) {
   if (state?.value !== undefined) {
-    const origin = state.origin?.provider
-      ? `NIP-85 provider ${state.origin.provider.slice(0, 8)} on ${state.origin.relay}`
-      : state.origin?.relay;
+    const origin = state.origin?.relay;
     return `${label}: ${state.value} from ${origin}${state.fresh ? "" : " (stale)"}`;
   }
   if (!state || state.refreshing) return `${label}: loading`;
@@ -370,7 +199,7 @@ function describe(label: string, state: CountState | undefined) {
 }
 
 const MetricCount = memo(function MetricCount({ note, entry }: { note: Note; entry: (typeof METRICS)[number] }) {
-  // Subscribing starts the request, unmounting cancels it if it is still queued or in flight
+  // Subscribing starts the request, unmounting cancels it whether it is waiting for capacity or in flight
   const state = use$(
     () =>
       counts$.pipe(
@@ -403,7 +232,7 @@ const MetricCount = memo(function MetricCount({ note, entry }: { note: Note; ent
 
 /** Uses a stable relay color across counts, grouping changes, and reloads */
 const RelayColor = memo(function RelayColor({ relay }: { relay: string }) {
-  const url = normalizeURL(relay);
+  const url = normalizeURL(ensureWebSocketURL(relay.trim()));
   const preset = COUNT_RELAYS.indexOf(url);
   let hash = 0;
   for (const char of url) hash = (Math.imul(hash, 31) + char.charCodeAt(0)) | 0;
@@ -419,8 +248,20 @@ const RelayColor = memo(function RelayColor({ relay }: { relay: string }) {
   );
 });
 
+const excerptComponents: ComponentMap = {
+  text: ({ node }) => <span>{node.value}</span>,
+  link: ({ node }) => (
+    <a href={node.href} target="_blank" rel="noreferrer">
+      {node.value}
+    </a>
+  ),
+  hashtag: ({ node }) => <span>#{node.hashtag}</span>,
+  mention: ({ node }) => <span>@{node.encoded.slice(0, 12)}…</span>,
+};
+
 const FeedNote = memo(function FeedNote({ note }: { note: Note }) {
   const profile = use$(note.author.profile$);
+  const content = useRenderedContent(note.event, excerptComponents);
   const time = useMemo(() => new Date(note.event.created_at * 1000).toLocaleTimeString(), [note.event.created_at]);
 
   return (
@@ -431,10 +272,10 @@ const FeedNote = memo(function FeedNote({ note }: { note: Note }) {
           className="h-5 w-5 shrink-0 rounded-full"
           alt=""
         />
-        <span className="min-w-0 truncate font-semibold">{getDisplayName(profile)}</span>
+        <span className="min-w-0 truncate">{getDisplayName(profile)}</span>
         <time className="ml-auto shrink-0 text-sm text-base-content/60">{time}</time>
       </div>
-      <p className="truncate text-sm text-base-content/70">{note.event.content}</p>
+      <p className="truncate text-sm text-base-content/70">{content}</p>
       <div className="mt-1 flex gap-3 overflow-hidden">
         {METRICS.map((entry) => (
           <MetricCount key={entry.metric.id} note={note} entry={entry} />
@@ -508,368 +349,6 @@ const Feed = memo(function Feed({ notes, loading }: { notes: Note[]; loading: bo
   );
 });
 
-// Separate drag payloads let relay drops stack while group drops reorder
-const RELAY_DRAG = "application/x-count-relay";
-const GROUP_DRAG = "application/x-count-group";
-
-/** Moves a priority group and re-resolves visible counts */
-function moveGroup(from: number, to: number, countRelays$: BehaviorSubject<string[][]>) {
-  const next = [...countRelays$.value];
-  if (from === to || !next[from] || !next[to]) return;
-  next.splice(to, 0, ...next.splice(from, 1));
-  countRelays$.next(next);
-}
-
-/** Moves a relay into another priority group */
-function groupRelay(relay: string, target: number, countRelays$: BehaviorSubject<string[][]>) {
-  const groups = countRelays$.value;
-  const destination = groups[target];
-  if (!destination || destination.includes(relay)) return;
-  const next = groups
-    .map((group) => {
-      const remaining = withoutEntry(group, relay);
-      if (group !== destination) return remaining;
-      const merged = [...remaining, relay];
-      groupModes.set(merged, distributionFor(group));
-      return merged;
-    })
-    .filter((group) => group.length);
-  countRelays$.next(next);
-}
-
-function SourceGroupPicker({ source }: { source: string }) {
-  const { countRelays$ } = useContext(RoutingDraftContext);
-  const groups = use$(countRelays$);
-  const current = groups.findIndex((group) => group.includes(source));
-  return (
-    <select
-      className="select select-sm max-w-32"
-      aria-label={`Group for ${source}`}
-      value={current}
-      onChange={(event) => {
-        const target = Number(event.target.value);
-        if (target < groups.length) groupRelay(source, target, countRelays$);
-        else
-          countRelays$.next([
-            ...groups.map((group) => withoutEntry(group, source)).filter((group) => group.length),
-            [source],
-          ]);
-      }}
-    >
-      {groups.map((_, index) => (
-        <option key={index} value={index}>
-          Group {index + 1}
-        </option>
-      ))}
-      <option value={groups.length}>New group</option>
-    </select>
-  );
-}
-
-function RelayName({ relay }: { relay: string }) {
-  const name = use$(() => pool.relay(relay).name$, [relay]);
-  return <span className="truncate">{name?.trim() || new URL(relay).hostname}</span>;
-}
-
-function CountRelayItem({ relay }: { relay: string }) {
-  const { countRelays$ } = useContext(RoutingDraftContext);
-  const supported = use$(() => pool.relay(relay).supported$, [relay]);
-  const nip45 = supported === undefined ? undefined : !!supported?.includes(45);
-  return (
-    <div
-      className="flex cursor-grab items-center gap-2 px-2 py-1 active:cursor-grabbing"
-      draggable
-      title="Drag relay"
-      onDragStart={(e) => {
-        e.stopPropagation();
-        e.dataTransfer.setData(RELAY_DRAG, relay);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-    >
-      <GripVertical className="h-4 w-4 shrink-0 text-base-content/40" />
-      <RelayColor relay={relay} />
-      <div className="min-w-0 flex-1 truncate font-medium" title={relay}>
-        <RelayName relay={relay} />
-      </div>
-      <SourceGroupPicker source={relay} />
-      {nip45 === undefined ? (
-        <span className="loading loading-spinner loading-sm" />
-      ) : nip45 ? (
-        <Check className="h-5 w-5 text-success" aria-label="Supports NIP-45" />
-      ) : (
-        <X className="h-5 w-5 text-error" aria-label="Does not advertise NIP-45" />
-      )}
-      <button
-        className="btn btn-ghost btn-sm px-1"
-        title={`Remove ${relay}`}
-        onClick={() => countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, relay)).filter((g) => g.length))}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
-/** Inserts a dragged relay or group at a boundary between priority groups */
-function insertCountGroup(event: DragEvent, position: number, countRelays$: BehaviorSubject<string[][]>) {
-  const groups = countRelays$.value;
-  const relay = event.dataTransfer.getData(RELAY_DRAG);
-  const from = event.dataTransfer.getData(GROUP_DRAG);
-  if (relay && groups.some((group) => group.includes(relay))) {
-    const before = groups
-      .slice(0, position)
-      .map((group) => withoutEntry(group, relay))
-      .filter((g) => g.length);
-    const after = groups
-      .slice(position)
-      .map((group) => withoutEntry(group, relay))
-      .filter((g) => g.length);
-    countRelays$.next([...before, [relay], ...after]);
-  } else if (from !== "" && groups[Number(from)]) {
-    const index = Number(from);
-    moveGroup(index, position > index ? position - 1 : position, countRelays$);
-  }
-}
-
-function CountProviderItem() {
-  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
-  const provider = use$(provider$);
-  if (!provider) return null;
-  return (
-    <div
-      className="flex cursor-grab items-center gap-2 px-2 py-1"
-      draggable
-      title="Drag provider"
-      onDragStart={(e) => {
-        e.stopPropagation();
-        e.dataTransfer.setData(RELAY_DRAG, "nip85");
-        e.dataTransfer.effectAllowed = "move";
-      }}
-    >
-      <GripVertical className="h-4 w-4 shrink-0 text-base-content/40" />
-      <RelayColor relay={provider.relay} />
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">NIP-85</div>
-        <div className="truncate text-sm text-base-content/60">{provider.pubkey}</div>
-      </div>
-      <SourceGroupPicker source="nip85" />
-      <button
-        className="btn btn-ghost btn-sm px-1"
-        title="Remove provider"
-        onClick={() => {
-          provider$.next(null);
-          countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, "nip85")).filter((g) => g.length));
-        }}
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
-function CountPresets() {
-  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
-  const groups = use$(countRelays$);
-  const provider = use$(provider$);
-  return (
-    <section className="flex flex-col gap-2">
-      <h2 className="font-semibold">Presets</h2>
-      <div className="flex flex-wrap gap-2">
-        {COUNT_PRESETS.map((preset) => {
-          const active =
-            !provider &&
-            groups.every((group) => distributionFor(group) === "round-robin") &&
-            JSON.stringify(groups) === JSON.stringify(preset.groups);
-          return (
-            <button
-              key={preset.label}
-              className={`btn btn-sm ${active ? "btn-primary" : ""}`}
-              aria-pressed={active}
-              onClick={() => {
-                provider$.next(null);
-                countRelays$.next(preset.groups.map((group) => [...group]));
-              }}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function CountRelays() {
-  const { countRelays$ } = useContext(RoutingDraftContext);
-  const groups = use$(countRelays$);
-  const [over, setOver] = useState<string | null>(null);
-  const accepts = (event: DragEvent) =>
-    event.dataTransfer.types.includes(RELAY_DRAG) || event.dataTransfer.types.includes(GROUP_DRAG);
-  const boundary = (index: number) => (
-    <li
-      className={`h-3 rounded border transition-colors ${over === `slot-${index}` ? "border-primary bg-primary/20" : "border-transparent"}`}
-      aria-label={`Insert group at position ${index + 1}`}
-      onDragOver={(e) => {
-        if (!accepts(e)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setOver(`slot-${index}`);
-      }}
-      onDragLeave={() => setOver(null)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(null);
-        insertCountGroup(e, index, countRelays$);
-      }}
-    />
-  );
-  return (
-    <section className="flex flex-col gap-2" onDragEnd={() => setOver(null)}>
-      <h2 className="font-semibold">Count sources</h2>
-      <ol className="flex flex-col">
-        {groups.map((group, i) => (
-          <Fragment key={JSON.stringify(group)}>
-            {boundary(i)}
-            <li
-              className={`border ${over === `group-${i}` ? "border-primary bg-primary/10" : "border-base-300"}`}
-              onDragOver={(e) => {
-                if (!accepts(e)) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setOver(`group-${i}`);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(null);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setOver(null);
-                const relay = e.dataTransfer.getData(RELAY_DRAG);
-                if (relay && groups.some((g) => g.includes(relay))) groupRelay(relay, i, countRelays$);
-                else {
-                  const from = e.dataTransfer.getData(GROUP_DRAG);
-                  if (from !== "") moveGroup(Number(from), i, countRelays$);
-                }
-              }}
-            >
-              <div className="flex items-center gap-2 border-b border-base-300 px-2 py-1">
-                <span
-                  className="flex flex-1 cursor-grab items-center gap-1 text-sm"
-                  draggable
-                  title="Drag group"
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(GROUP_DRAG, String(i));
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                >
-                  <GripVertical className="h-4 w-4 text-base-content/40" />
-                  {i + 1}
-                </span>
-                {group.length > 1 && (
-                  <select
-                    className="select select-sm max-w-40"
-                    aria-label={`Routing for group ${i + 1}`}
-                    value={distributionFor(group)}
-                    onChange={(event) => {
-                      groupModes.set(group, event.target.value as Distribution);
-                      countRelays$.next([...groups]);
-                    }}
-                  >
-                    <option value="fallback">Ordered fallback</option>
-                    <option value="round-robin">Round-robin</option>
-                    <option value="availability">Available first</option>
-                  </select>
-                )}
-                <button
-                  className="btn btn-ghost btn-sm px-1"
-                  disabled={i === 0}
-                  title="Move group up"
-                  onClick={() => moveGroup(i, i - 1, countRelays$)}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm px-1"
-                  disabled={i === groups.length - 1}
-                  title="Move group down"
-                  onClick={() => moveGroup(i, i + 1, countRelays$)}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </button>
-              </div>
-              {group.map((relay) =>
-                relay === "nip85" ? <CountProviderItem key={relay} /> : <CountRelayItem key={relay} relay={relay} />,
-              )}
-            </li>
-          </Fragment>
-        ))}
-        {boundary(groups.length)}
-        {groups.length === 0 && <li className="text-sm text-base-content/70">No relays</li>}
-      </ol>
-      <RelayAddForm onSubmit={(relay) => groups.flat().includes(relay) || countRelays$.next([...groups, [relay]])} />
-    </section>
-  );
-}
-
-function ProviderSettings() {
-  const { countRelays$, provider$ } = useContext(RoutingDraftContext);
-  const provider = use$(provider$);
-  const [pubkey, setPubkey] = useState(provider?.pubkey ?? "");
-  const [relay, setRelay] = useState(provider?.relay ?? "");
-  const [error, setError] = useState("");
-
-  const apply = (e: React.FormEvent) => {
-    e.preventDefault();
-    const hex = normalizeToPubkey(pubkey.trim());
-    if (!hex) return setError("Enter a hex pubkey or npub");
-    try {
-      provider$.next({ pubkey: hex, relay: normalizeURL(ensureWebSocketURL(relay.trim())) });
-      if (!countRelays$.value.flat().includes("nip85")) countRelays$.next([["nip85"], ...countRelays$.value]);
-      setError("");
-    } catch {
-      setError("Enter a valid relay URL");
-    }
-  };
-
-  return (
-    <form className="flex flex-col gap-2" onSubmit={apply}>
-      <h2 className="font-semibold">NIP-85 provider</h2>
-      <input
-        className="input w-full"
-        aria-label="Provider pubkey or npub"
-        placeholder="Provider pubkey or npub"
-        value={pubkey}
-        onChange={(e) => setPubkey(e.target.value)}
-      />
-      <input
-        className="input w-full"
-        aria-label="Provider relay"
-        placeholder="wss://provider.relay"
-        value={relay}
-        onChange={(e) => setRelay(e.target.value)}
-      />
-      {error && <p className="text-sm text-error">{error}</p>}
-      <div className="flex gap-2">
-        <button type="submit" className="btn btn-primary btn-sm">
-          {provider ? "Update" : "Use provider"}
-        </button>
-        {provider && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => {
-              provider$.next(null);
-              countRelays$.next(countRelays$.value.map((g) => withoutEntry(g, "nip85")).filter((g) => g.length));
-            }}
-          >
-            Remove
-          </button>
-        )}
-      </div>
-    </form>
-  );
-}
-
 function StatTable({ title, rows }: { title: string; rows: [label: string, value: number | string, hint?: string][] }) {
   return (
     <div className="border border-base-300">
@@ -888,22 +367,11 @@ function StatTable({ title, rows }: { title: string; rows: [label: string, value
   );
 }
 
-function transportRows(tally: Tally): [string, number, string][] {
-  return [
-    ["Sent", tally.sent, "Requests sent to a relay"],
-    ["Answered", tally.answered, "Requests that returned a result"],
-    ["Refused", tally.refused, "Relays that rejected the COUNT"],
-    ["Failed", tally.failed, "Requests that errored"],
-    ["Timed out", tally.timeout, `No answer within ${routing$.value.attemptTimeout / 1000}s`],
-    ["Cancelled in flight", tally.cancelled, "The row scrolled away before the relay answered"],
-  ];
-}
-
 function RequestStats() {
   const stats = use$(stats$) ?? EMPTY_STATS;
+  const counts = use$(counts$);
   const total = (type: string) => stats.events[type] ?? 0;
-  const firstValues = total("first-value");
-  const { active, pending, activeMetrics, cacheEntries } = stats.gauges;
+  const { active, requests, activeMetrics, cacheEntries } = stats.gauges;
 
   return (
     <section className="flex flex-col gap-3">
@@ -912,7 +380,7 @@ function RequestStats() {
         <div className="flex gap-2">
           <button
             className="btn btn-sm"
-            onClick={() => counts$.pipe(take(1)).subscribe((counts) => void counts.invalidate().catch(console.error))}
+            onClick={() => void counts?.invalidate().catch(console.error)}
             title="Visible rows refetch"
           >
             Clear cache
@@ -926,7 +394,7 @@ function RequestStats() {
       <div className="grid grid-cols-2 border border-base-300">
         {[
           ["Active", active],
-          ["Queued", pending],
+          ["Outstanding", requests],
           ["Observed metrics", activeMetrics],
           ["Cached results", cacheEntries],
         ].map(([label, value]) => (
@@ -937,105 +405,100 @@ function RequestStats() {
         ))}
       </div>
 
+      <StatTable title="Scheduler" rows={[["Started", total("dispatched"), "Requests admitted and sent"]]} />
       <StatTable
-        title="Scheduler"
+        title="Cache"
         rows={[
-          ["Queued", total("queued"), "Requests waiting for a free slot"],
-          ["Started", total("start"), "Requests admitted and sent"],
-          ["Cancelled before sending", total("abandoned"), "The row scrolled away while its request was queued"],
-          ["Overloaded", total("overload"), "Rejected because the queue was full"],
-        ]}
-      />
-      <StatTable title="NIP-45 COUNT" rows={transportRows(stats.count)} />
-      <StatTable title="NIP-85 assertions" rows={transportRows(stats.assertion)} />
-      <StatTable
-        title="Cache (5 min freshness, 24 hr retention across reloads)"
-        rows={[
-          ["Restored", total("persistent-cache-hit"), "A saved count was restored from IndexedDB"],
-          ["Hits", total("cache-hit"), "A fresh cached count was reused"],
-          ["Misses", total("cache-miss"), "No fresh count, a request was needed"],
-          ["Fallbacks", total("fallback"), "Another routing candidate was tried"],
-          ["Metrics released", total("released"), "Counts no longer observed by any row"],
-          ["First values", firstValues],
-          ["Avg time to first count", firstValues ? `${Math.round(stats.latency / firstValues)} ms` : "—"],
+          [
+            "Fresh hits",
+            total("cache-hit"),
+            "Fresh counts reused from memory or browser storage without a relay request",
+          ],
+          [
+            "Persistent hits",
+            total("persistent-cache-hit"),
+            "Counts restored from browser storage, including stale counts",
+          ],
         ]}
       />
     </section>
   );
 }
 
-function RoutingSummary() {
-  const groups = use$(countRelays$);
-  const settings = use$(routing$);
+function CountRelay({ relay, onRemove }: { relay: string; onRemove: () => void }) {
+  const icon = use$(() => pool.relay(relay).icon$, [relay]);
+  const name = use$(() => pool.relay(relay).name$, [relay]);
+
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <p>
-        {settings.mode} · busy candidates: {settings.busy}
-      </p>
-      <ol className="border-l-2 border-primary pl-3">
-        {groups.map((group, index) => (
-          <li key={index} className="py-2">
-            <div className="font-medium">
-              {index + 1}. {distributionFor(group)}
-            </div>
-            {group.map((relay) => (
-              <div key={relay} className="flex items-center gap-2">
-                {relay !== "nip85" && <RelayColor relay={relay} />}
-                {relay === "nip85" ? <span>NIP-85 provider</span> : <RelayName relay={relay} />}
-              </div>
-            ))}
-          </li>
-        ))}
-      </ol>
-      {!groups.length && <p>No count sources configured.</p>}
-      <p className="text-base-content/60">
-        {settings.concurrency} concurrent requests · {settings.attemptTimeout / 1000}s per attempt
-      </p>
-    </div>
+    <li className="flex items-center gap-2 border-b border-base-300 py-2 last:border-b-0">
+      <RelayColor relay={relay} />
+      <img src={icon} alt="" className="size-5 shrink-0 rounded-full" />
+      <div className="min-w-0 flex-1 truncate">{name?.trim() || new URL(relay).hostname}</div>
+      <button className="btn btn-sm btn-ghost" onClick={onRemove} aria-label={`Remove ${relay}`}>
+        Remove
+      </button>
+    </li>
   );
 }
 
-function RoutingSettings() {
-  const { routing$ } = useContext(RoutingDraftContext);
-  const settings = use$(routing$);
+function CountSettings() {
+  const settings = use$(settings$);
+  const [draft, setDraft] = useState(settings$.value);
+  const [error, setError] = useState("");
+  const apply = () => {
+    try {
+      if (!draft.relays.length) throw Error("Add at least one trusted relay");
+      const next = draft;
+      const validation = buildCounts(next);
+      validation.stop();
+      reset$.next();
+      settings$.next(next);
+      setError("");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Invalid settings");
+    }
+  };
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-semibold">Routing policy and transport limits</h2>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm">
-          Root distribution
-          <select
-            className="select w-full"
-            value={settings.mode}
-            onChange={(e) => routing$.next({ ...settings, mode: e.target.value as Distribution })}
-          >
-            <option value="fallback">Ordered fallback</option>
-            <option value="round-robin">Round-robin</option>
-            <option value="availability">Available first</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Busy candidates
-          <select
-            className="select w-full"
-            value={settings.busy}
-            onChange={(e) => routing$.next({ ...settings, busy: e.target.value as "wait" | "skip" })}
-          >
-            <option value="wait">Wait for capacity</option>
-            <option value="skip">Skip busy candidates</option>
-          </select>
-        </label>
+      <h2 className="font-semibold">Trusted COUNT relays</h2>
+      <p className="text-sm text-base-content/70">
+        One relay answers each metric. Faster available relays receive more work; answers may differ between relays.
+      </p>
+      <ul>
+        {draft.relays.map((relay) => (
+          <CountRelay
+            key={relay}
+            relay={relay}
+            onRemove={() =>
+              setDraft((current) => ({ ...current, relays: current.relays.filter((url) => url !== relay) }))
+            }
+          />
+        ))}
+      </ul>
+      <div className="flex flex-col gap-1 text-sm">
+        <span>Add relay</span>
+        <RelayPicker
+          key={draft.relays.join("|")}
+          value=""
+          className="w-full"
+          supportedNips={["45"]}
+          onChange={(value) => {
+            const relay = normalizeURL(ensureWebSocketURL(value));
+            setDraft((current) => ({
+              ...current,
+              relays: current.relays.includes(relay) ? current.relays : [...current.relays, relay],
+            }));
+          }}
+        />
+        <p className="text-xs text-base-content/60">
+          Recommendations support NIP-45 according to the selected monitor.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         {(
           [
-            ["branchTimeout", "Branch budget (ms)"],
-            ["attemptTimeout", "Attempt timeout (ms)"],
-            ["resolutionTimeout", "Resolution deadline (ms)"],
-            ["selectionTimeout", "Capacity wait (ms)"],
-            ["concurrency", "Concurrent transports"],
-            ["perRelay", "Transports per relay"],
-            ["perProvider", "Transports per provider"],
-            ["queueCapacity", "Queue capacity"],
-            ["failureCooldown", "Failure cooldown (ms)"],
+            ["concurrency", "Maximum per relay"],
+            ["attemptTimeout", "Attempt budget (ms)"],
           ] as const
         ).map(([key, label]) => (
           <label key={key} className="flex flex-col gap-1 text-sm">
@@ -1043,86 +506,44 @@ function RoutingSettings() {
             <input
               className="input w-full"
               type="number"
-              min={key === "failureCooldown" ? 0 : 1}
-              step="1"
-              value={settings[key]}
+              min={1}
+              max={key === "attemptTimeout" ? 2_147_483_647 : Number.MAX_SAFE_INTEGER}
+              step={1}
+              value={draft[key]}
               onChange={(e) => {
                 const value = e.target.valueAsNumber;
-                if (Number.isSafeInteger(value) && value >= (key === "failureCooldown" ? 0 : 1))
-                  routing$.next({ ...settings, [key]: value });
+                if (Number.isSafeInteger(value) && value > 0) setDraft({ ...draft, [key]: value });
               }}
             />
           </label>
         ))}
       </div>
-    </section>
-  );
-}
-
-function RoutingModal() {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [draft, setDraft] = useState(createRoutingDraft);
-  const [session, setSession] = useState(0);
-  const open = () => {
-    setDraft(createRoutingDraft());
-    setSession((value) => value + 1);
-    dialog.current?.showModal();
-  };
-  const submit = () => {
-    provider$.next(draft.provider$.value);
-    countRelays$.next(draft.countRelays$.value);
-    routing$.next(draft.routing$.value);
-    dialog.current?.close();
-  };
-  return (
-    <>
-      <button className="btn btn-primary" onClick={open}>
-        Configure routing
+      <label className="flex items-center gap-3 text-sm">
+        <input
+          type="checkbox"
+          className="toggle toggle-primary"
+          checked={draft.persistentCache}
+          onChange={(event) => setDraft({ ...draft, persistentCache: event.target.checked })}
+        />
+        Persist counts in browser storage
+      </label>
+      <p className="text-xs text-base-content/60">
+        Enable and apply to reuse counts across reloads. Disabling leaves saved counts intact. Counts are always cached
+        in memory while this example is open.
+      </p>
+      {error && (
+        <p role="alert" className="text-sm text-error">
+          {error}
+        </p>
+      )}
+      <button className="btn btn-primary" onClick={apply}>
+        Apply settings
       </button>
-      <dialog ref={dialog} className="modal" aria-labelledby="count-routing-title">
-        <div className="modal-box flex max-h-[90vh] w-11/12 max-w-7xl flex-col rounded-none p-0 shadow-none">
-          <header className="flex items-center justify-between gap-4 border-b border-base-300 p-4">
-            <div>
-              <h1 id="count-routing-title" className="text-xl font-semibold">
-                Count routing laboratory
-              </h1>
-              <p className="text-sm text-base-content/60">Changes apply when you submit this configuration.</p>
-            </div>
-            <button
-              className="btn btn-ghost btn-sm"
-              aria-label="Close routing settings"
-              onClick={() => dialog.current?.close()}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </header>
-          <RoutingDraftContext.Provider key={session} value={draft}>
-            <div className="grid gap-6 overflow-y-auto p-4 lg:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-6">
-                <CountPresets />
-                <p className="text-sm text-base-content/60">
-                  Drag sources together to group them. Drop between groups to split them. Use arrows to change priority.
-                </p>
-                <CountRelays />
-                <ProviderSettings />
-              </div>
-              <RoutingSettings />
-            </div>
-          </RoutingDraftContext.Provider>
-          <footer className="flex justify-end gap-2 border-t border-base-300 p-3">
-            <button className="btn" onClick={() => dialog.current?.close()}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={submit}>
-              Apply routing
-            </button>
-          </footer>
-        </div>
-        <form method="dialog" className="modal-backdrop">
-          <button>Close</button>
-        </form>
-      </dialog>
-    </>
+      <p className="text-sm text-base-content/60">
+        Starts with up to two requests per relay and adapts toward a maximum of {settings.concurrency}. Every observed
+        metric remains requested until it is answered or its component unmounts.
+      </p>
+    </section>
   );
 }
 
@@ -1136,15 +557,18 @@ export default function EventCounts() {
         <div className="border-b border-base-300 p-2">
           <RelayPicker value={relay} onChange={setRelay} />
         </div>
-        {feed && !feed.loading && feed.notes.length === 0 && (
+        {feed?.error && (
+          <p role="alert" className="border-b border-base-300 p-3 text-error">
+            Feed relay: {feed.error}
+          </p>
+        )}
+        {feed && !feed.loading && !feed.error && feed.notes.length === 0 && (
           <p className="p-4 text-base-content/70">No notes in this time range yet, load older notes below.</p>
         )}
         <Feed notes={feed?.notes ?? []} loading={feed?.loading ?? true} />
       </div>
-      <aside className="flex min-h-0 w-96 flex-col gap-6 overflow-y-auto border-l border-base-300 p-4">
-        <h2 className="font-semibold">Count routing</h2>
-        <RoutingSummary />
-        <RoutingModal />
+      <aside className="flex min-h-0 w-[28rem] max-w-[45vw] flex-col gap-6 overflow-y-auto border-l border-base-300 p-4">
+        <CountSettings />
         <RequestStats />
       </aside>
     </div>

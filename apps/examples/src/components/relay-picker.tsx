@@ -419,13 +419,14 @@ function RelayPickerInput({ value, onChange, common = COMMON_RELAYS, className, 
       [discovery, supportedNips?.join(",")],
     ) ?? [];
 
-  // Combine common relays with discovery relays
+  // NIP-filtered recommendations come exclusively from the selected monitor.
   const allRelayOptions = useMemo(() => {
+    if (supportedNips?.length) return discoveryRelays;
     const combined = relaySet(common || [], discoveryRelays);
     const relay = inputValue && parseRelayInput(inputValue);
     if (relay && !combined.includes(relay)) return [relay, ...combined];
     return combined;
-  }, [common, discoveryRelays, inputValue]);
+  }, [common, discoveryRelays, inputValue, supportedNips?.join(",")]);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => input$.next(event.target.value);
 

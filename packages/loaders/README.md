@@ -4,6 +4,27 @@ A collection of functional loading methods to make common event loading patterns
 
 [Documentation](https://applesauce.build/loaders/package.html) [typedoc](https://applesauce.build/typedoc/modules/applesauce-loaders.html)
 
+## Event Count Service
+
+Use `createCountService` to share and refresh NIP-45 event totals across views without downloading matching events. It balances requests across trusted relays and adapts per-relay concurrency after rate limits and transport failures.
+
+```ts
+import { createCountService } from "applesauce-loaders/loaders";
+
+const counts = createCountService(pool, { relays: trustedRelays, concurrency: 40 });
+const subscription = counts.event(event).reactions.subscribe((state) => {
+  // value can be zero or undefined; origin.relay identifies the answering relay.
+  renderCount(state.value, state.refreshing);
+});
+
+subscription.unsubscribe(); // Release this view's demand.
+counts.stop(); // Stop the application-owned service.
+```
+
+The pool must provide `relay(url).count(...)`, as `RelayPool` does. Counts come from one relay and are not network-wide totals. In-memory caching is built in; pass a Keyv-compatible `cache` to persist successful answers across sessions.
+
+See the [event count service guide](https://applesauce.build/loading/loaders/count-service) for custom metrics, React integration, persistence, invalidation, and shared schedulers.
+
 ## Address Loader
 
 The Address Loader is a specialized loader for fetching Nostr replaceable events by their address (kind, pubkey, and optional identifier). It provides an efficient way to batch and deduplicate requests, cache results, and handle relay hints.
