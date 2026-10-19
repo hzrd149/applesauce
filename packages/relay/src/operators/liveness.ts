@@ -1,3 +1,4 @@
+import { normalizeURL } from "applesauce-core/helpers/url";
 import { combineLatestWith, map, MonoTypeOperatorFunction } from "rxjs";
 
 import type { RelayLivenessSource } from "../liveness.js";
@@ -18,6 +19,15 @@ function filterRelays<Tracker extends RelayLivenessSource>(
   unhealthy: string[],
   liveness: Tracker,
 ): string[] | undefined {
+  const excluded = new Set(
+    unhealthy.map((url) => {
+      try {
+        return normalizeURL(url);
+      } catch {
+        return url;
+      }
+    }),
+  );
   return (
     relays &&
     relays.filter((relay) => {
@@ -25,7 +35,11 @@ function filterRelays<Tracker extends RelayLivenessSource>(
       liveness.seen?.add(relay);
 
       // Exclude unhealthy relays
-      return !unhealthy.includes(relay);
+      try {
+        return !excluded.has(normalizeURL(relay));
+      } catch {
+        return !excluded.has(relay);
+      }
     })
   );
 }

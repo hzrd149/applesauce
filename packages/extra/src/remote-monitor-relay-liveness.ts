@@ -51,6 +51,8 @@ export interface Nip66LivenessOptions {
   offlineQuorum?: number;
   /** The maximum initial reports requested per monitor, default 2000 */
   limit?: number;
+  /** Whether an active monitor's expired report counts as its offline observation, default false */
+  staleAsOffline?: boolean;
 }
 
 /** A signed, expiring observation from one trusted monitor */
@@ -126,6 +128,7 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
       maxClockSkew: options.maxClockSkew ?? 60_000,
       offlineQuorum: options.offlineQuorum ?? Math.min(2, this.monitors.size),
       limit: options.limit ?? 2000,
+      staleAsOffline: options.staleAsOffline ?? false,
     };
     if (
       this.monitors.size === 0 ||
@@ -255,7 +258,10 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
               {
                 kinds: [RELAY_DISCOVERY_KIND],
                 authors: [monitor.pubkey],
-                since: Math.floor((Date.now() - this.options.maxAge) / 1000),
+                // Reports are addressable, so without a window each tracked relay returns only its latest report
+                ...(this.options.staleAsOffline
+                  ? {}
+                  : { since: Math.floor((Date.now() - this.options.maxAge) / 1000) }),
                 limit: this.options.limit,
               },
             ],
@@ -344,6 +350,15 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
         /* Non-URL identifiers cannot inform WebSocket reachability. */
       }
     }
+    // A monitor that stopped reporting a relay only means something while it still reports other relays
+    const active = new Set<string>();
+    for (const reports of latest.values())
+      for (const [pubkey, report] of reports) {
+        const observedAt = report.event.created_at * 1000;
+        const expiresAt = observedAt + (lifetimes.get(pubkey) ?? this.options.maxAge);
+        if (observedAt <= now + this.options.maxClockSkew && expiresAt > now) active.add(pubkey);
+      }
+
     const states = new Map<string, Nip66RelayState>();
     let nextExpiry = Infinity;
     for (const [url, reports] of latest) {
@@ -351,8 +366,10 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
       for (const [pubkey, report] of reports) {
         const observedAt = report.event.created_at * 1000;
         const expiresAt = observedAt + (lifetimes.get(pubkey) ?? this.options.maxAge);
-        if (observedAt > now + this.options.maxClockSkew || expiresAt <= now) continue;
-        nextExpiry = Math.min(nextExpiry, expiresAt);
+        if (observedAt > now + this.options.maxClockSkew) continue;
+        const stale = expiresAt <= now;
+        if (stale && !(this.options.staleAsOffline && active.has(pubkey))) continue;
+        if (!stale) nextExpiry = Math.min(nextExpiry, expiresAt);
         const network = report.networkType;
         const host = new URL(url).hostname;
         if (
@@ -363,14 +380,18 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
           continue;
         const monitor = this.monitors.get(pubkey)!;
         let state: Nip66RelayStatus = "unknown";
-        try {
-          if (monitor.interpretReport) state = monitor.interpretReport(report, this.options.capability);
-          else {
-            const value = getTagValue(report.event, `rtt-${this.options.capability}`);
-            if (value?.trim() && Number.isFinite(Number(value)) && Number(value) >= 0) state = "online";
+        // An expired report from an active monitor means its recent checks no longer reach the relay
+        if (stale) state = "offline";
+        else {
+          try {
+            if (monitor.interpretReport) state = monitor.interpretReport(report, this.options.capability);
+            else {
+              const value = getTagValue(report.event, `rtt-${this.options.capability}`);
+              if (value?.trim() && Number.isFinite(Number(value)) && Number(value) >= 0) state = "online";
+            }
+          } catch {
+            /* A provider parsing failure leaves the observation unknown. */
           }
-        } catch {
-          /* A provider parsing failure leaves the observation unknown. */
         }
         if (!["online", "offline", "unknown"].includes(state)) state = "unknown";
         if (this.errorsSubject.value[pubkey] && state === "offline") state = "unknown";

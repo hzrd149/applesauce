@@ -35,7 +35,7 @@ const liveness = new RemoteMonitorRelayLiveness(eventStore, {
 liveness.connectToPool(pool);
 ```
 
-Remote attachment reads monitor events from the configured source relays; it does not probe target relays or record their local failures. Standard NIP-66 reports confirm positive reachability. Offline exclusions require a provider-specific explicit-failure decoder; missing reports alone never exclude a relay. See [monitor observation policy](./remote-monitor-liveness).
+Remote attachment reads monitor events from the configured source relays; it does not probe target relays or record their local failures. Standard NIP-66 reports confirm positive reachability. Offline exclusions require a provider-specific explicit-failure decoder or the opt-in `staleAsOffline` policy; missing reports alone never exclude a relay. See [monitor observation policy](./remote-monitor-liveness).
 
 ## Integration
 

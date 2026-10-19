@@ -49,6 +49,8 @@ Standard NIP-66 discovery data does **not** define a universal explicit-negative
 
 To offload negative decisions, configure a monitor's `interpretReport(report, capability)` callback for a provider with documented failed-check semantics. It receives a `RelayDiscovery` cast and returns `"online"`, `"offline"`, or `"unknown"`. The callback replaces the default RTT decoder for that publisher; it must handle positive observations as well as explicit failures. Parsing exceptions become unknown.
 
+Alternatively, enable `staleAsOffline` to treat a report that outlived its monitor's lifetime as that monitor's offline observation, while the monitor still publishes fresh reports for other relays. Monitors stop reporting relays they can no longer reach, so a quorum of stale reports marks a relay offline. The report window is removed, so raise `limit` to cover every relay a monitor has reported on.
+
 The SDK still enforces publisher trust, timestamp freshness, network matching, positive overrides, and negative quorum around custom decoding. It assumes no provider-specific failure tags.
 
 ### Options
@@ -64,6 +66,7 @@ Options use the exported `Nip66LivenessOptions` type; monitor entries use `Nip66
 | `maxClockSkew` | `60000` | Accepted future timestamp tolerance |
 | `offlineQuorum` | `Math.min(2, monitors.length)` | Distinct explicit-negative publishers required to exclude a relay |
 | `limit` | `2000` | Maximum initial discovery reports requested per monitor |
+| `staleAsOffline` | `false` | Count an active monitor's expired report as its offline observation |
 
 A valid announced monitor `frequency` shortens observation lifetime to three reporting periods, capped by `maxAge`. Expiry runs even when no new reports arrive. Tor and I2P endpoints require matching network evidence; an observation from another transport does not prove availability on the client's transport.
 

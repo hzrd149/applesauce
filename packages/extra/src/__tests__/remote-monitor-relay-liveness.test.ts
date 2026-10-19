@@ -291,3 +291,52 @@ describe("monitor subscriptions and lifecycle", () => {
     expect(() => create([monitor(a)], { maxAge: Infinity })).toThrow(RangeError);
   });
 });
+
+describe("stale reports", () => {
+  const other = "wss://other.example/";
+  // A report for the relay older than the 60s lifetime, plus a fresh report showing the monitor is still active
+  const staleAndActive = (key: Uint8Array) => {
+    store.add(report(key, [["rtt-read", "10"]], -120));
+    store.add(report(key, [["rtt-read", "10"]], 0, other));
+  };
+
+  it("counts an active monitor's expired report as offline when enabled", async () => {
+    const tracker = create([monitor(a), monitor(b)], { staleAsOffline: true });
+    staleAndActive(a);
+    staleAndActive(b);
+    await flush();
+    expect(tracker.getState(relay).state).toBe("offline");
+    expect(tracker.filter([relay, other])).toEqual([other]);
+  });
+
+  it("ignores expired reports by default", async () => {
+    const tracker = create([monitor(a), monitor(b)]);
+    staleAndActive(a);
+    staleAndActive(b);
+    await flush();
+    expect(tracker.getState(relay).state).toBe("unknown");
+  });
+
+  it("ignores expired reports from a monitor that stopped reporting entirely", async () => {
+    const tracker = create([monitor(a)], { staleAsOffline: true });
+    store.add(report(a, [["rtt-read", "10"]], -120));
+    await flush();
+    expect(tracker.getState(relay).state).toBe("unknown");
+  });
+
+  it("still requires the offline quorum and lets a fresh positive win", async () => {
+    const tracker = create([monitor(a), monitor(b)], { staleAsOffline: true });
+    staleAndActive(a);
+    store.add(report(b));
+    await flush();
+    expect(tracker.getState(relay).state).toBe("online");
+  });
+
+  it("requests reports without a time window so expired reports can be seen", () => {
+    const tracker = create([monitor(a)], { staleAsOffline: true });
+    const subscription = vi.fn(() => of());
+    tracker.connectToPool({ subscription } as unknown as RelayPool);
+    const filters = (subscription.mock.calls[0] as unknown[])[1] as { kinds: number[]; since?: number }[];
+    expect(filters.find((f) => f.kinds.includes(30166))?.since).toBeUndefined();
+  });
+});
