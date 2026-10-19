@@ -59,6 +59,7 @@ import { fromAbortSignal } from "./helpers/abort.js";
 import { describeWireRequest, truncateForLog } from "./helpers/auth-log.js";
 import { parseRelayCountResponse, RelayCountResponseError } from "./helpers/count.js";
 import { RELAY_REQ_LIFECYCLE } from "./internal.js";
+import { ReqsSubject } from "./lib/reqs-subject.js";
 import { SocketRouter } from "./lib/socket-router.js";
 import {
   AuthPhaseGate,
@@ -474,7 +475,7 @@ export class Relay {
   closing$ = new Subject<void>();
 
   /** Tracks active req() operations by subscription ID */
-  reqs$ = new BehaviorSubject<Record<string, Filter[]>>({});
+  reqs$ = new ReqsSubject();
 
   // sync state
   get ready() {
@@ -1068,7 +1069,7 @@ export class Relay {
     // A thunk (not a value) since this REQ's filters can change over the life of the subscription —
     // the wire request handed to onAuthRequired must describe the filters as they stood when the relay
     // refused them. Filters are already tracked at the send site (this.reqs$), so no new bookkeeping.
-    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.value[id] ?? [] });
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.get(id) ?? [] });
 
     return defer(() => {
       // Resolve function inputs per cold interaction. Factory side effects and failures therefore occur
@@ -1142,7 +1143,7 @@ export class Relay {
           relayClosedSub = false;
           this.socket.next(["REQ", id, ...filters]);
           // Add to tracking when REQ is sent
-          this.reqs$.next({ ...this.reqs$.value, [id]: filters });
+          this.reqs$.set(id, filters);
 
           return { type: "OPEN", id, filters, from: this.url } satisfies RelayReqOpenMessage;
         }),
@@ -1150,8 +1151,7 @@ export class Relay {
         finalize(() => {
           if (!relayClosedSub) this.socket.next(["CLOSE", id]);
           // Remove from tracking when REQ closes
-          const { [id]: _, ...rest } = this.reqs$.value;
-          this.reqs$.next(rest);
+          this.reqs$.delete(id);
         }),
         // Once filters have been sent, switch to listening for messages
         switchMap((openMessage) =>
@@ -1190,7 +1190,7 @@ export class Relay {
     const id = opts?.id ?? nanoid();
     const repeatAfterClosed = { value: false };
     const authCounter = { consecutive: 0 };
-    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.value[id] ?? [] });
+    const describeRequest = (): RelayAuthWireRequest => ({ verb: "REQ", id, filters: this.reqs$.get(id) ?? [] });
     const attempt = defer(() => {
       repeatAfterClosed.value = false;
       return this.req(filters, { id }).pipe(
