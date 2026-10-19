@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
 
 import { Check, ExternalLink } from "lucide-react";
-import examples, { Example } from "../examples";
+import examples from "../examples";
 
 function ExampleMount({ Component, error }: { Component?: (() => ReactElement) | null; error: unknown }) {
   if (error !== null) throw error;
@@ -21,7 +21,6 @@ export default function ExamplePage() {
   const exampleId = splat;
   const [path, setPath] = useState("");
   const [source, setSource] = useState("");
-  const [metadata, setMetadata] = useState<Example["metadata"]>();
   const [Component, setComponent] = useState<(() => ReactElement) | null>();
   const [copied, setCopied] = useState(false);
   const [loadedId, setLoadedId] = useState<string>();
@@ -51,7 +50,6 @@ export default function ExamplePage() {
     setComponent(null);
     setLoadError(null);
     setSource("");
-    setMetadata(undefined);
     setPath(example.path.replace(/^\.\//, ""));
 
     Promise.resolve()
@@ -75,7 +73,6 @@ export default function ExamplePage() {
       .then((source: string) => {
         if (!active) return;
         setSource(source);
-        setMetadata(example.metadata);
       })
       .catch((error: unknown) => console.error("Failed to load example source:", error));
 
@@ -94,6 +91,8 @@ export default function ExamplePage() {
       </div>
     );
   }
+
+  const metadata = example.metadata;
 
   return (
     <div className="drawer lg:drawer-open h-screen">
@@ -130,7 +129,7 @@ export default function ExamplePage() {
           <div className="mx-2 flex-1 px-2">
             <div className="flex flex-col">
               <span className="font-bold text-lg">{example.name}</span>
-              {metadata?.description && <span className="text-xs text-base-content/70">{metadata.description}</span>}
+              {metadata?.description && <span className="text-sm text-base-content/70">{metadata.description}</span>}
             </div>
           </div>
           <div className="flex-none">
@@ -164,13 +163,13 @@ export default function ExamplePage() {
         </div>
 
         {/* Metadata */}
-        {metadata && (metadata.tags?.length || metadata.related?.length) && (
+        {Boolean(metadata.tags?.length || metadata.related?.length) && (
           <div className="bg-base-200 px-4 py-2 border-b border-base-300">
             <div className="flex flex-wrap gap-2 items-center">
               {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {metadata.tags.map((tag) => (
-                    <span key={tag} className="badge badge-secondary badge-sm">
+                    <span key={tag} className="badge badge-secondary">
                       {tag}
                     </span>
                   ))}
@@ -178,12 +177,12 @@ export default function ExamplePage() {
               )}
               {metadata.related && metadata.related.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
-                  <span className="text-xs text-base-content/70">Related:</span>
+                  <span className="text-sm text-base-content/70">Related:</span>
                   {metadata.related.map((rel) => {
                     const relatedExample = examples.find((e) => e.id === rel);
                     if (!relatedExample) return null;
                     return (
-                      <Link key={rel} to={`/example/${rel}`} className="link link-primary text-xs">
+                      <Link key={rel} to={`/example/${rel}`} className="link link-primary text-sm">
                         {relatedExample.name}
                       </Link>
                     );

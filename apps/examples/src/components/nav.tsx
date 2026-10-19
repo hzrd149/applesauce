@@ -1,16 +1,8 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
-import examples, { type Example } from "../examples";
+import { categories, searchExamples } from "../examples";
 import SettingsButton from "./settings-modal";
-
-const sections = new Map<string, Example[]>();
-for (const example of examples) {
-  const section = example.id.includes("/") ? example.id.split("/")[0] : "general";
-  const items = sections.get(section) ?? [];
-  items.push(example);
-  sections.set(section, items);
-}
 
 export default function SideNav() {
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -20,11 +12,13 @@ export default function SideNav() {
     () => new Set(exampleId ? [exampleId.includes("/") ? exampleId.split("/")[0] : "general"] : []),
   );
 
-  const query = searchTerm.trim().toLowerCase();
-  const filteredSections = [...sections]
-    .map(([section, items]) => ({
-      section,
-      items: items.filter((item) => item.id.toLowerCase().includes(query)),
+  const query = searchTerm.trim();
+  const matches = new Set(searchExamples(query));
+  const filteredSections = categories
+    .map(({ id, label, examples }) => ({
+      section: id,
+      label,
+      items: examples.filter((item) => matches.has(item)),
     }))
     .filter(({ items }) => items.length > 0);
 
@@ -56,7 +50,7 @@ export default function SideNav() {
           <SettingsButton />
         </div>
         <nav aria-label="Examples" className="flex-1 min-h-0 overflow-y-auto font-mono">
-          {filteredSections.map(({ section, items }) => {
+          {filteredSections.map(({ section, label, items }) => {
             const open = Boolean(query) || openSections.has(section);
             return (
               <div key={section} className="border-b border-base-300">
@@ -70,8 +64,8 @@ export default function SideNav() {
                   }}
                 >
                   <ChevronDown aria-hidden="true" className={`size-4 shrink-0 ${open ? "" : "-rotate-90"}`} />
-                  <span className="flex-1">{section.replace(/[-_]/g, " ")}</span>
-                  <span className="text-xs text-base-content/60">{items.length}</span>
+                  <span className="flex-1">{label}</span>
+                  <span className="text-sm text-base-content/60">{items.length}</span>
                 </button>
                 <ul id={`examples-section-${section}`} hidden={!open} className={open ? "m-0 p-0 list-none" : "hidden"}>
                   {items.map((item) => (
@@ -84,7 +78,7 @@ export default function SideNav() {
                           (exampleId === item.id ? "bg-base-300 font-semibold" : "")
                         }
                       >
-                        {item.id.includes("/") ? item.name.slice(item.name.indexOf(" / ") + 3) : item.name}
+                        {item.title}
                       </Link>
                     </li>
                   ))}
