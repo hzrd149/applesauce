@@ -13,6 +13,7 @@ describe("exports", () => {
         "getEventsByFilters",
         "getReplaceable",
         "getReplaceableHistory",
+        "getSyncPairs",
         "hasEvent",
         "hasReplaceable",
         "insertEvent",
