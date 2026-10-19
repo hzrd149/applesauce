@@ -145,7 +145,8 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
       const subscriptions = new Subscription();
       // Root is marked seen so a follow-back does not request it twice
       const seen = new Set<string>([user.pubkey]);
-      const queue: QueuedProfilePointer[] = [user];
+      let queue: (QueuedProfilePointer | undefined)[] = [user];
+      let queueHead = 0;
       // created_at of the newest follow list per user, full events are only held while their batch loads
       const newest = new Map<string, number>();
       const relays: Record<string, SocialGraphRelayStatus> = {};
@@ -162,7 +163,7 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
         requested,
         found: newest.size,
         missing,
-        queued: queue.length,
+        queued: queue.length - queueHead,
         inFlight,
         done,
         relays: Object.fromEntries(Object.entries(relays).map(([url, s]) => [url, { ...s }])),
@@ -337,8 +338,18 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
 
       // Start batches until the concurrency limit, each finished batch frees a slot for the next
       const pump = () => {
-        while (!closed && inFlight < concurrency && queue.length > 0) {
-          const pointers = queue.splice(0, batchSize);
+        while (!closed && inFlight < concurrency && queueHead < queue.length) {
+          const pointers: QueuedProfilePointer[] = [];
+          const end = Math.min(queueHead + batchSize, queue.length);
+          while (queueHead < end) {
+            pointers.push(queue[queueHead]!);
+            queue[queueHead++] = undefined;
+          }
+          // Release consumed pointers immediately and compact only after draining at least half the queue
+          if (queueHead === queue.length || (queueHead >= 1024 && queueHead >= queue.length / 2)) {
+            queue = queue.slice(queueHead);
+            queueHead = 0;
+          }
           requested += pointers.length;
           inFlight++;
           emitStatus(true);
@@ -346,7 +357,7 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
           loadBatch(pointers).then(
             () => {
               inFlight--;
-              if (inFlight === 0 && queue.length === 0) finish();
+              if (inFlight === 0 && queueHead === queue.length) finish();
               else {
                 emitStatus(true);
                 pump();

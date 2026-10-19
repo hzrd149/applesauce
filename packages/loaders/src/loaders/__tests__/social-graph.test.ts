@@ -62,6 +62,24 @@ describe("createSocialGraphLoader", () => {
     expect(request.mock.calls[1][1]).toEqual([{ kinds: [kinds.Contacts], authors: [user1.pubkey, user2.pubkey] }]);
   });
 
+  it("should preserve queued users and progress when compacting a large queue", async () => {
+    const root = new FakeUser();
+    const friends = Array.from({ length: 2200 }, (_, i) => i.toString(16).padStart(64, "0"));
+    const contacts = root.contacts(friends);
+    const request: Mock<NostrRequest> = vi.fn((_relays, filters) =>
+      filters[0].authors!.includes(root.pubkey) ? of(contacts) : EMPTY,
+    );
+    const loader = createSocialGraphLoader(request, { parallel: 100, concurrency: 1 });
+    const spy = subscribeSpyTo(loader({ pubkey: root.pubkey, relays: ["wss://relay.com"], distance: 1 }).status$);
+    await spy.onComplete();
+
+    expect(requestedAuthors(request).flat()).toEqual([root.pubkey, ...friends]);
+    expect(spy.getValues()).toContainEqual(expect.objectContaining({ requested: 1101, queued: 1100 }));
+    expect(spy.getLastValue()).toEqual(
+      expect.objectContaining({ requested: 2201, queued: 0, inFlight: 0, done: true }),
+    );
+  });
+
   it("should not request the root again when a contact follows it back", async () => {
     const root = new FakeUser();
     const friend = new FakeUser();
