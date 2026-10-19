@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { Database } from "@tursodatabase/database-wasm";
 import { IAsyncEventDatabase, logger } from "applesauce-core";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
@@ -7,6 +8,7 @@ import {
   deleteEventsByFilters,
   getEvent,
   getEventsByFilters,
+  getSyncPairs,
   getReplaceable,
   getReplaceableHistory,
   hasEvent,
@@ -100,6 +102,17 @@ export class TursoWasmEventDatabase implements IAsyncEventDatabase {
 
     return await getEventsByFilters(this.db, filters);
   }
+  /**
+   * Gets matching sync pairs without reading full events
+   * @throws If the filters request search when it is unavailable
+   */
+  async getSyncPairs(filters: Filter | Filter[]): Promise<SyncPair[]> {
+    if (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters)
+      throw new Error("Search is not supported");
+
+    return await getSyncPairs(this.db, filters);
+  }
+
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
   async getTimeline(filters: Filter | Filter[]): Promise<NostrEvent[]> {
     if (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters)

@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { Database } from "@tursodatabase/database";
 import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { buildDeleteFiltersQuery, buildFiltersQuery, rowToEvent } from "../helpers/sql.js";
@@ -213,4 +214,12 @@ export async function rebuildSearchIndex(db: Database, searchContentFormatter: S
     // Search table might not exist if search is disabled, throw a more descriptive error
     throw new Error("Search table does not exist. Make sure search is enabled when creating the database.");
   }
+}
+
+/** Gets matching sync pairs without reading full event rows */
+export async function getSyncPairs(db: Database, filters: Filter | Filter[]): Promise<SyncPair[]> {
+  const query = buildFiltersQuery(filters, "sync-pairs");
+  if (!query) return [];
+  const rows = await db.prepare(query.sql).all(...query.params);
+  return rows.map((row) => ({ id: row.id as string, created_at: Number(row.created_at) }));
 }

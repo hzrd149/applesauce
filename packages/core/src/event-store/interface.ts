@@ -4,6 +4,14 @@ import { Filter } from "../helpers/filter.js";
 import { AddressPointer, AddressPointerWithoutD, EventPointer, ProfilePointer } from "../helpers/pointers.js";
 import { ProfileContent } from "../helpers/profile.js";
 
+/** An event ID and timestamp used for set reconciliation */
+export type SyncPair = {
+  /** The event ID */
+  id: string;
+  /** The event creation timestamp */
+  created_at: number;
+};
+
 /** The read interface for an event store */
 export interface IEventStoreRead<E extends StoreEvent = NostrEvent> {
   /** Check if the event store has an event with id */
@@ -20,6 +28,8 @@ export interface IEventStoreRead<E extends StoreEvent = NostrEvent> {
 
   /** Get all events that match the filters */
   getByFilters(filters: Filter | Filter[]): E[];
+  /** An optional query for matching sync pairs without loading full events */
+  getSyncPairs?(filters: Filter | Filter[]): SyncPair[];
   /** Get a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): E[];
 }
@@ -40,6 +50,8 @@ export interface IAsyncEventStoreRead<E extends StoreEvent = NostrEvent> {
 
   /** Get all events that match the filters */
   getByFilters(filters: Filter | Filter[]): Promise<E[]>;
+  /** An optional query for matching sync pairs without loading full events */
+  getSyncPairs?(filters: Filter | Filter[]): Promise<SyncPair[]>;
   /** Get a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): Promise<E[]>;
 }

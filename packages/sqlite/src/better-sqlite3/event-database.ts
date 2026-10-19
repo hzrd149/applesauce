@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { IEventDatabase, logger } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers";
 import Database, { type Database as TDatabase } from "better-sqlite3";
@@ -7,6 +8,7 @@ import {
   deleteEventsByFilters,
   getEvent,
   getEventsByFilters,
+  getSyncPairs,
   getReplaceable,
   getReplaceableHistory,
   hasEvent,
@@ -101,6 +103,17 @@ export class BetterSqlite3EventDatabase implements IEventDatabase {
 
     return getEventsByFilters(this.db, filters);
   }
+  /**
+   * Gets matching sync pairs without reading full events
+   * @throws If the filters request search when it is unavailable
+   */
+  getSyncPairs(filters: FilterWithSearch | FilterWithSearch[]): SyncPair[] {
+    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Search is disabled");
+
+    return getSyncPairs(this.db, filters);
+  }
+
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
   getTimeline(filters: FilterWithSearch | FilterWithSearch[]): NostrEvent[] {
     // No need to sort since query defaults to created_at descending order

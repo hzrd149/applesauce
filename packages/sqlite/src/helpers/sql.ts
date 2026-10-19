@@ -121,7 +121,11 @@ export function buildFilterConditions(filter: FilterWithSearch): {
   return { conditions, params, search };
 }
 
-export function buildFiltersQuery(filters: FilterWithSearch | FilterWithSearch[]): {
+/** Builds a filtered query selecting full events or sync pairs */
+export function buildFiltersQuery(
+  filters: FilterWithSearch | FilterWithSearch[],
+  projection: "events" | "sync-pairs" = "events",
+): {
   sql: string;
   params: any[];
 } | null {
@@ -175,7 +179,7 @@ export function buildFiltersQuery(filters: FilterWithSearch | FilterWithSearch[]
   const whereClause = filterQueries.length > 0 ? `WHERE ${filterQueries.join(" OR ")}` : "";
 
   let query = `
-      SELECT DISTINCT events.* FROM ${fromClause}
+      SELECT DISTINCT ${projection === "sync-pairs" ? "events.id, events.created_at" : "events.*"} FROM ${fromClause}
       ${whereClause}
       ORDER BY ${orderBy}
     `;

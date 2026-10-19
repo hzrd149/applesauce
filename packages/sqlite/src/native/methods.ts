@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { logger } from "applesauce-core";
 import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { DatabaseSync } from "node:sqlite";
@@ -271,4 +272,11 @@ export function deleteEventsByFilters(db: DatabaseSync, filters: FilterWithSearc
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+/** Gets matching sync pairs without reading full event rows */
+export function getSyncPairs(db: DatabaseSync, filters: FilterWithSearch | FilterWithSearch[]): SyncPair[] {
+  const query = buildFiltersQuery(filters, "sync-pairs");
+  if (!query) return [];
+  return db.prepare(query.sql).all(...query.params) as SyncPair[];
 }

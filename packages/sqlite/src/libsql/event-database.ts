@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { Client, createClient } from "@libsql/client";
 import { IAsyncEventDatabase, logger } from "applesauce-core";
 import { NostrEvent } from "applesauce-core/helpers";
@@ -8,6 +9,7 @@ import {
   deleteEventsByFilters,
   getEvent,
   getEventsByFilters,
+  getSyncPairs,
   getReplaceable,
   getReplaceableHistory,
   hasEvent,
@@ -114,6 +116,17 @@ export class LibsqlEventDatabase implements IAsyncEventDatabase {
 
     return await getEventsByFilters(this.db, filters);
   }
+  /**
+   * Gets matching sync pairs without reading full events
+   * @throws If the filters request search when it is unavailable
+   */
+  async getSyncPairs(filters: FilterWithSearch | FilterWithSearch[]): Promise<SyncPair[]> {
+    if (!this.search && (Array.isArray(filters) ? filters.some((f) => "search" in f) : "search" in filters))
+      throw new Error("Search is disabled");
+
+    return await getSyncPairs(this.db, filters);
+  }
+
   /** Get a timeline of events that match the filters (returns array in chronological order, supports NIP-50 search) */
   async getTimeline(filters: FilterWithSearch | FilterWithSearch[]): Promise<NostrEvent[]> {
     // No need to sort since query defaults to created_at descending order

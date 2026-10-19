@@ -1,3 +1,4 @@
+import type { SyncPair } from "./interface.js";
 import {
   binarySearch,
   createReplaceableAddress,
@@ -65,6 +66,14 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
   getByFilters(filters: Filter | Filter[]): E[] {
     return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]));
   }
+  /** Gets matching sync pairs without populating event memory */
+  getSyncPairs(filters: Filter | Filter[]): SyncPair[] {
+    return Array.from(this.getEventsForFilters(Array.isArray(filters) ? filters : [filters]), ({ id, created_at }) => ({
+      id,
+      created_at,
+    }));
+  }
+
   /** Gets a timeline of events that match the filters */
   getTimeline(filters: Filter | Filter[]): E[] {
     const timeline: E[] = [];

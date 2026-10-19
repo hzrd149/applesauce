@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 import { Client, Transaction } from "@libsql/client";
 import {
@@ -369,4 +370,12 @@ export async function deleteEventsByFilters(
     await transaction.rollback();
     throw error;
   }
+}
+
+/** Gets matching sync pairs without reading full event rows */
+export async function getSyncPairs(db: Client, filters: FilterWithSearch | FilterWithSearch[]): Promise<SyncPair[]> {
+  const query = buildFiltersQuery(filters, "sync-pairs");
+  if (!query) return [];
+  const result = await db.execute({ sql: query.sql, args: query.params });
+  return result.rows.map((row) => ({ id: row.id as string, created_at: Number(row.created_at) }));
 }

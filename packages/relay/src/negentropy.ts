@@ -50,7 +50,8 @@ export async function buildStorageFromFilter(
   filter: Filter,
 ): Promise<NegentropyStorageVector> {
   const storage = new NegentropyStorageVector();
-  for (const event of await store.getByFilters(filter)) storage.insert(event.created_at, event.id);
+  const pairs = await (store.getSyncPairs ? store.getSyncPairs(filter) : store.getByFilters(filter));
+  for (const pair of pairs) storage.insert(pair.created_at, pair.id);
   storage.seal();
   return storage;
 }

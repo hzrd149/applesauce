@@ -1,3 +1,4 @@
+import type { SyncPair } from "./interface.js";
 import { verifyEvent as coreVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
 import { Observable, Subject, Subscription } from "rxjs";
 import { setCachedValue } from "../helpers/cache.js";
@@ -478,6 +479,13 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
     // Map events to memory if available for better performance
     if (this.memory) return events.map((e) => this.mapToMemory(e));
     else return events;
+  }
+
+  /** Gets matching sync pairs without populating event memory */
+  getSyncPairs(filters: Filter | Filter[]): SyncPair[] {
+    if (this.database.getSyncPairs) return this.database.getSyncPairs(filters);
+    const events = this.database.getByFilters(filters);
+    return events.map(({ id, created_at }) => ({ id, created_at }));
   }
 
   /** Returns a timeline of events that match filters */

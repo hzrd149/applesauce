@@ -1,3 +1,4 @@
+import type { SyncPair } from "applesauce-core";
 import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
 // @ts-ignore - bun:sqlite is a built-in module in Bun
 import { Database } from "bun:sqlite";
@@ -226,4 +227,11 @@ export function deleteEventsByFilters(db: Database, filters: FilterWithSearch | 
   });
 
   return transaction();
+}
+
+/** Gets matching sync pairs without reading full event rows */
+export function getSyncPairs(db: Database, filters: FilterWithSearch | FilterWithSearch[]): SyncPair[] {
+  const query = buildFiltersQuery(filters, "sync-pairs");
+  if (!query) return [];
+  return db.query(query.sql).all(...query.params) as SyncPair[];
 }
