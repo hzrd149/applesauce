@@ -17,6 +17,13 @@ export const INSERT_SEARCH_CONTENT_STATEMENT: Statement<[string, string, number,
         VALUES (?, ?, ?, ?, ?)`,
 };
 
+/** Inserts search content only when the event is not stored yet, for batches that cannot branch */
+export const INSERT_NEW_SEARCH_CONTENT_STATEMENT: Statement<[string, string, number, string, number, string]> = {
+  sql: `INSERT INTO events_search (event_id, content, kind, pubkey, created_at)
+        SELECT ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM events WHERE id = ?)`,
+};
+
 export const DELETE_SEARCH_CONTENT_STATEMENT: Statement<[string]> = {
   sql: `DELETE FROM events_search WHERE event_id = ?`,
 };

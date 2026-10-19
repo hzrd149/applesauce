@@ -1,10 +1,11 @@
 import type { SyncPair } from "applesauce-core";
 import { Filter, getIndexableTags, getReplaceableIdentifier, NostrEvent } from "applesauce-core/helpers";
-import { Client, Transaction } from "@libsql/client";
+import { Client, InStatement, Transaction } from "@libsql/client";
 import {
   CREATE_SEARCH_TABLE_STATEMENT,
   DELETE_SEARCH_CONTENT_STATEMENT,
   FilterWithSearch,
+  INSERT_NEW_SEARCH_CONTENT_STATEMENT,
   INSERT_SEARCH_CONTENT_STATEMENT,
   SearchContentFormatter,
 } from "../helpers/search.js";
@@ -20,7 +21,7 @@ import {
   GET_REPLACEABLE_STATEMENT,
   HAS_EVENT_STATEMENT,
   HAS_REPLACEABLE_STATEMENT,
-  INSERT_EVENT_STATEMENT,
+  INSERT_EVENT_STATEMENT_WITH_IGNORE,
   INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE,
 } from "../helpers/statements.js";
 
@@ -73,68 +74,44 @@ export async function insertEvent(
   contentFormatter?: SearchContentFormatter,
 ): Promise<boolean> {
   const identifier = getReplaceableIdentifier(event);
+  const statements: InStatement[] = [];
 
-  const transaction = await db.transaction();
-  try {
-    // Check if event already exists
-    const existsResult = await transaction.execute({
-      sql: HAS_EVENT_STATEMENT.sql,
-      args: [event.id],
+  // Send every statement in one batch so a remote database answers in a single round trip.
+  // The search row runs first so it can skip events that are already stored.
+  if (contentFormatter) {
+    statements.push({
+      sql: INSERT_NEW_SEARCH_CONTENT_STATEMENT.sql,
+      args: [event.id, contentFormatter(event), event.kind, event.pubkey, event.created_at, event.id],
     });
-
-    if (existsResult.rows[0] && (existsResult.rows[0][0] as number) > 0) {
-      await transaction.rollback();
-      return false; // Event already exists, skip insertion
-    }
-
-    // Insert the event
-    const result = await transaction.execute({
-      sql: INSERT_EVENT_STATEMENT.sql,
-      args: [
-        event.id,
-        event.kind,
-        event.pubkey,
-        event.created_at,
-        event.content,
-        JSON.stringify(event.tags),
-        event.sig,
-        identifier,
-      ],
-    });
-
-    // Insert indexable tags into the event_tags table
-    const indexableTags = getIndexableTags(event);
-    if (indexableTags && indexableTags.size > 0) {
-      for (const tagString of indexableTags) {
-        // Parse the "tagName:tagValue" format
-        // Split on the first ":" only, values like "a" addresses and "r" URLs contain colons
-        const sep = tagString.indexOf(":");
-        const name = tagString.slice(0, sep);
-        const value = tagString.slice(sep + 1);
-        if (name && value) {
-          await transaction.execute({
-            sql: INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql,
-            args: [event.id, name, value],
-          });
-        }
-      }
-    }
-
-    // Insert searchable content into the search tables
-    if (contentFormatter) {
-      try {
-        await insertSearchContent(transaction, event, contentFormatter);
-      } catch (error) {
-        // Search table might not exist if search is disabled, ignore the error
-      }
-    }
-
-    await transaction.commit();
-    return result.rowsAffected > 0;
-  } catch (error) {
-    await transaction.rollback();
-    throw error;
   }
+
+  const insert = statements.length;
+  statements.push({
+    sql: INSERT_EVENT_STATEMENT_WITH_IGNORE.sql,
+    args: [
+      event.id,
+      event.kind,
+      event.pubkey,
+      event.created_at,
+      event.content,
+      JSON.stringify(event.tags),
+      event.sig,
+      identifier,
+    ],
+  });
+
+  // Insert indexable tags into the event_tags table, existing events already have these rows
+  for (const tagString of getIndexableTags(event)) {
+    // Split on the first ":" only, values like "a" addresses and "r" URLs contain colons
+    const sep = tagString.indexOf(":");
+    const name = tagString.slice(0, sep);
+    const value = tagString.slice(sep + 1);
+    if (name && value)
+      statements.push({ sql: INSERT_EVENT_TAG_STATEMENT_WITH_IGNORE.sql, args: [event.id, name, value] });
+  }
+
+  const results = await db.batch(statements, "write");
+  return results[insert].rowsAffected > 0;
 }
 
 /** Removes an event by id from the `events`, `event_tags`, and search tables of a database */

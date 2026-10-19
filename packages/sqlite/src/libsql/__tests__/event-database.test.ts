@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { LibsqlEventDatabase } from "../event-database.js";
@@ -40,6 +40,37 @@ describe("add", () => {
 
     await expect(database.add(event)).resolves.toBe(event);
     await expect(database.add({ ...event })).resolves.toEqual(expect.objectContaining({ id: event.id }));
+  });
+
+  it("should send the event and its tags in one batch", async () => {
+    const batch = vi.spyOn(database.db, "batch");
+    const transaction = vi.spyOn(database.db, "transaction");
+    const event = user.note("Hello World", {
+      tags: [
+        ["t", "a"],
+        ["t", "b"],
+        ["p", user.pubkey],
+      ],
+    });
+
+    await database.add(event);
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(batch.mock.calls[0][0]).toHaveLength(4);
+    expect(transaction).not.toHaveBeenCalled();
+    expect((await database.getByFilters({ "#t": ["b"] })).map((e) => e.id)).toEqual([event.id]);
+  });
+
+  it("should not index search content twice for duplicate events", async () => {
+    const searchable = new LibsqlEventDatabase(`file:${join(tempDir, "search.db")}`, { search: true });
+    await searchable.initialize();
+    const event = user.note("Hello World");
+    await searchable.add(event);
+    await searchable.add({ ...event });
+
+    const result = await searchable.db.execute("SELECT COUNT(*) AS count FROM events_search");
+    expect(Number(result.rows[0].count)).toBe(1);
+    expect((await searchable.getByFilters({ search: "Hello" })).map((e) => e.id)).toEqual([event.id]);
+    searchable.close();
   });
 
   it("should match tag values that contain colons", async () => {
