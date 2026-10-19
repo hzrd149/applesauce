@@ -39,8 +39,10 @@ export function useRenderedContent(
     [event, opts?.content, opts?.transformers, opts?.cacheKey],
   );
 
-  let truncated = nast;
-  if (opts?.maxLength && nast) truncated = truncateContent(nast, opts.maxLength);
+  const truncated = useMemo(
+    () => (opts?.maxLength && nast ? truncateContent(nast, opts.maxLength) : nast),
+    [nast, opts?.maxLength],
+  );
 
   return useRenderNast(truncated, _components);
 }
