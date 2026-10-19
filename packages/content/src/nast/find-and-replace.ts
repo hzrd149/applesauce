@@ -5,6 +5,7 @@ type Replace = (...groups: string[]) => null | undefined | false | string | Cont
 type FindAndReplaceTuple = [RegExp, Replace];
 type FindAndReplaceList = FindAndReplaceTuple[];
 
+/** Replaces matching text with content nodes while preserving unmatched text */
 export function findAndReplace(tree: Root, list: FindAndReplaceList) {
   const pairs = list;
   let pairIndex = -1;
@@ -46,8 +47,6 @@ export function findAndReplace(tree: Root, list: FindAndReplaceList) {
     const find = pairs[pairIndex][0];
     const replace = pairs[pairIndex][1];
     let start = 0;
-    const siblings: Content[] = parent.children;
-    const index = siblings.indexOf(node);
     let change = false;
     let nodes: Content[] = [];
 
@@ -106,11 +105,11 @@ export function findAndReplace(tree: Root, list: FindAndReplaceList) {
         nodes.push({ type: "text", value: node.value.slice(start) });
       }
 
+      const index = parent.children.indexOf(node);
       parent.children.splice(index, 1, ...nodes);
-    } else {
-      nodes = [node];
+      return index + nodes.length;
     }
 
-    return index + nodes.length;
+    return undefined;
   }
 }
