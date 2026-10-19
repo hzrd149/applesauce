@@ -171,7 +171,7 @@ console.log(`Stored ${profiles.length} profiles`);
 
 ### Full-Text Search
 
-Some implementations support full-text search:
+The Better SQLite3, Native, Bun, and LibSQL implementations support full-text search (Turso does not):
 
 ```ts
 const database = new LibsqlEventDatabase("file:./events.db", {

@@ -17,7 +17,6 @@ describe("exports", () => {
         "hasEvent",
         "hasReplaceable",
         "insertEvent",
-        "rebuildSearchIndex",
       ]
     `);
   });

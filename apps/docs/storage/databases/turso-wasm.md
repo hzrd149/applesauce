@@ -4,7 +4,9 @@ description: Turso WASM database for event storage in browser environments
 
 # Turso WASM Implementation
 
-The Turso WASM implementation uses the `@tursodatabase/database-wasm` library, providing SQLite functionality in web browsers and other WASM-compatible environments.
+The Turso WASM implementation uses the `@tursodatabase/database-wasm` library (version 0.8 or later), providing SQLite functionality in web browsers and other WASM-compatible environments.
+
+**NOTE**: The `TursoWasmEventDatabase` implements the [`IAsyncEventDatabase`](https://applesauce.build/typedoc/interfaces/applesauce-core.IAsyncEventDatabase.html) interface which means you MUST use the [`AsyncEventStore`](https://applesauce.build/typedoc/classes/applesauce-core.AsyncEventStore.html) instead of the normal [`EventStore`](https://applesauce.build/typedoc/classes/applesauce-core.EventStore.html).
 
 :::info
 This implementation uses [`SharedArrayBuffer`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer) and [`OPFS`](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) which require the following server headers to be set:
@@ -22,123 +24,30 @@ npm install applesauce-sqlite @tursodatabase/database-wasm
 
 ## Basic Usage
 
-Unlike other implementations, Turso WASM requires you to create and initialize the database instance yourself before passing it to the `TursoWasmEventDatabase` constructor:
+Create the Turso database yourself and pass it to `TursoWasmEventDatabase.fromDatabase()`, which creates the tables:
 
 ```js
-import { EventStore } from "applesauce-core";
+import { AsyncEventStore } from "applesauce-core";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
 import { connect } from "@tursodatabase/database-wasm";
 
-// Create a database connection
 const db = await connect("my-database.db");
-
-// Create and initialize the event database in one step
 const database = await TursoWasmEventDatabase.fromDatabase(db);
 
-// Create EventStore with Turso WASM backend
-const eventStore = new EventStore(database);
-
-// Use as normal
-eventStore.add(someNostrEvent);
+const eventStore = new AsyncEventStore({ database });
+await eventStore.add(someNostrEvent);
 ```
 
-## Options
+When bundling with Vite, import `connect` from `@tursodatabase/database-wasm/vite` instead.
 
-The `TursoWasmEventDatabase.fromDatabase()` method accepts the following options:
+## Search
 
-```js
-const database = await TursoWasmEventDatabase.fromDatabase(db, {
-  search: true, // Enable full-text search (default: false)
-  searchContentFormatter: customFormatter, // Custom search content formatter
-});
-```
+Turso does not include the SQLite FTS5 extension, so NIP-50 `search` filters are not supported and throw an error.
 
-### Search Support
-
-Enable full-text search using SQLite's FTS5 extension:
-
-```js
-const database = await TursoWasmEventDatabase.fromDatabase(db, {
-  search: true,
-});
-
-// Now you can search events
-const results = eventStore.getByFilters({
-  search: "bitcoin lightning",
-});
-```
-
-### Custom Search Formatter
-
-Customize how content is indexed for search:
-
-```js
-const database = await TursoWasmEventDatabase.fromDatabase(db, {
-  search: true,
-  searchContentFormatter: (event) => {
-    // Extract searchable content from event
-    return event.content + " " + event.tags.map((t) => t[1]).join(" ");
-  },
-});
-```
-
-## Advanced Usage
-
-### Database Connection Management
-
-The Turso WASM implementation requires you to manage the database connection lifecycle:
-
-```js
-import { connect } from "@tursodatabase/database-wasm";
-
-// Create connection
-const db = await connect("my-database.db");
-
-// Create and initialize event database in one step
-const database = await TursoWasmEventDatabase.fromDatabase(db, { search: true });
-
-// ... use the database
-
-// Close when done
-await database.close();
-```
-
-### Using with Existing Database Instance
-
-You can use any existing Turso WASM Database instance:
-
-```js
-import { connect } from "@tursodatabase/database-wasm";
-import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
-
-// Your existing database setup
-const db = await connect("existing-database.db");
-
-// Create and initialize event database in one step
-const database = await TursoWasmEventDatabase.fromDatabase(db, { search: true });
-```
-
-### Rebuilding Search Index
-
-If you need to rebuild the search index (e.g., after changing the search formatter):
-
-```js
-await database.rebuildSearchIndex();
-```
-
-### Closing the Database
+## Closing the Database
 
 Always close the database when done:
 
 ```js
 await database.close();
-```
-
-Or use automatic cleanup with `Symbol.dispose`:
-
-```js
-{
-  const database = await TursoWasmEventDatabase.fromDatabase(db);
-  // ... use database
-} // Automatically closed when out of scope
 ```
