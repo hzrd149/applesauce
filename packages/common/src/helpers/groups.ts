@@ -48,9 +48,9 @@ export function decodeGroupPointer(str: string): GroupPointer | null {
   if (!relay.match(/^wss?:/)) relay = `wss://${relay}`;
 
   try {
-    const url = new URL(relay);
-    if (url.hash) return null;
-    relay = normalizeURL(url).toString();
+    relay = normalizeURL(relay);
+    const hash = relay.indexOf("#");
+    if (hash !== -1 && hash < relay.length - 1) return null;
   } catch {
     return null;
   }
@@ -65,8 +65,9 @@ export function encodeGroupPointer(pointer: GroupPointer): string {
 
   let relay = normalized;
   if (normalized.startsWith("wss://")) {
-    const url = new URL(normalized);
-    relay = url.pathname === "/" && !url.search ? url.host : normalized.slice("wss://".length);
+    const root = /^wss:\/\/([^/?#]+)\/(?:\?)?(?:#)?$/.exec(normalized);
+    // Native URL.host excludes credentials, even on root URLs.
+    relay = root ? root[1].slice(root[1].lastIndexOf("@") + 1) : normalized.slice("wss://".length);
   }
 
   return `${relay}'${pointer.id}`;

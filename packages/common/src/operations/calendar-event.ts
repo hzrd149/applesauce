@@ -1,3 +1,4 @@
+import { serializeURL } from "applesauce-core/helpers/url";
 import { EventOperation } from "applesauce-core/factories";
 import { addNameValueTag, removeNameValueTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import { includeNameValueTag, includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
@@ -42,12 +43,12 @@ export function removeLocation(location: string): EventOperation {
 
 /** Adds a location to a calendar event */
 export function addReferenceLink(link: string | URL): EventOperation {
-  return modifyPublicTags(addNameValueTag(["r", new URL(link).toString()], true));
+  return modifyPublicTags(addNameValueTag(["r", serializeURL(link)], true));
 }
 
 /** Removes a location from a calendar event */
 export function removeReferenceLink(link: string | URL): EventOperation {
-  return modifyPublicTags(removeNameValueTag(["r", new URL(link).toString()]));
+  return modifyPublicTags(removeNameValueTag(["r", serializeURL(link)]));
 }
 
 /** Removes all locations from a calendar event */

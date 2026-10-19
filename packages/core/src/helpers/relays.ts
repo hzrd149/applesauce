@@ -1,23 +1,29 @@
+import { LRU } from "./lru.js";
 import { setCachedValue } from "./cache.js";
-import { NostrEvent, StoreEvent } from "./event.js";
+import type { NostrEvent, StoreEvent } from "./event.js";
 import { ensureWebSocketURL, normalizeURL } from "./url.js";
 
 export const SeenRelaysSymbol = Symbol.for("seen-relays");
+
+const relayURLs = new LRU<string>(1024);
 
 /**
  * Normalizes a relay URL by using {@link normalizeURL} and {@link ensureWebSocketURL}
  * @throws if the input is not a single WebSocket URL
  */
 export function normalizeRelayUrl(input: string): string {
+  const cached = relayURLs.get(input);
+  if (cached !== undefined) return cached;
   const trimmed = input.trim();
   // URL parsing percent-encodes or strips inner whitespace, which would merge joined lists into one URL
   if (/[\s\x00-\x1f\x7f]/.test(trimmed)) throw new Error("Relay URL contains whitespace");
 
   const url = normalizeURL(ensureWebSocketURL(trimmed));
   // ensureWebSocketURL cannot change non-special schemes like javascript: or nostr:
-  const { protocol, hostname } = new URL(url);
-  if ((protocol !== "ws:" && protocol !== "wss:") || !hostname) throw new Error("Not a WebSocket URL");
+  // normalizeURL has already validated the absolute URL, including the required WebSocket hostname.
+  if (!url.startsWith("ws://") && !url.startsWith("wss://")) throw new Error("Not a WebSocket URL");
 
+  if (input.length <= 4096) relayURLs.set(input, url);
   return url;
 }
 
@@ -59,25 +65,22 @@ export function isSafeRelayURL(relay: string): boolean {
 /** Merge multiple sets of relays and remove duplicates (ignores invalid URLs) */
 export function mergeRelaySets(...sources: (Iterable<string> | string | undefined | null)[]): string[] {
   const set = new Set<string>();
+  const attempted = new Set<string>();
+  const add = (url: string) => {
+    if (set.has(url) || attempted.has(url)) return;
+    attempted.add(url);
+    try {
+      set.add(normalizeRelayUrl(url));
+    } catch {
+      // Ignore invalid URLs, including repeated invalid inputs.
+    }
+  };
 
   for (const src of sources) {
     if (!src) continue;
 
-    if (typeof src === "string") {
-      try {
-        set.add(normalizeRelayUrl(src));
-      } catch (error) {
-        // failed to parse URL, ignore
-      }
-    } else if (Reflect.has(src, Symbol.iterator)) {
-      for (const url of src) {
-        try {
-          set.add(normalizeRelayUrl(url));
-        } catch (error) {
-          // failed to parse URL, ignore
-        }
-      }
-    }
+    if (typeof src === "string") add(src);
+    else if (Reflect.has(src, Symbol.iterator)) for (const url of src) add(url);
   }
 
   return Array.from(set);

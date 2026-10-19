@@ -1,3 +1,4 @@
+import { serializeURL } from "applesauce-core/helpers/url";
 import { EventOperation } from "applesauce-core/factories";
 import { ensureMarkedProfilePointerTag } from "applesauce-core/helpers/factory";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
@@ -25,12 +26,12 @@ export function setImage(image: string): EventOperation {
 
 /** Sets the streaming URL for a live event */
 export function setStreamingUrl(url: string | URL): EventOperation {
-  return includeSingletonTag(["streaming", new URL(url).toString()], true);
+  return includeSingletonTag(["streaming", serializeURL(url)], true);
 }
 
 /** Sets the recording URL for a live event (typically after the event ends) */
 export function setRecordingUrl(url: string | URL): EventOperation {
-  return includeSingletonTag(["recording", new URL(url).toString()], true);
+  return includeSingletonTag(["recording", serializeURL(url)], true);
 }
 
 /** Sets the start timestamp for a live event */
@@ -77,12 +78,12 @@ export function removeParticipant(pubkey: string): EventOperation {
 
 /** Adds a relay to the live event's relay list */
 export function addRelay(relay: string | URL): EventOperation {
-  return modifyPublicTags(addNameValueTag(["relays", new URL(relay).toString()] as [string, string], true));
+  return modifyPublicTags(addNameValueTag(["relays", serializeURL(relay)] as [string, string], true));
 }
 
 /** Removes a relay from the live event's relay list */
 export function removeRelay(relay: string | URL): EventOperation {
-  return modifyPublicTags(removeNameValueTag(["relays", new URL(relay).toString()]));
+  return modifyPublicTags(removeNameValueTag(["relays", serializeURL(relay)]));
 }
 
 /** Sets a pinned live chat message */

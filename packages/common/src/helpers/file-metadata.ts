@@ -1,3 +1,4 @@
+import { getURLPathname } from "applesauce-core/helpers/url";
 import { getTagValue, KnownEvent, NostrEvent } from "applesauce-core/helpers/event";
 import { getOrComputeCachedValue } from "applesauce-core/helpers/cache";
 import { NameValueTag } from "applesauce-core/helpers";
@@ -130,12 +131,9 @@ export function getFileMetadata(file?: NostrEvent): FileMetadataFields | undefin
 
 /** Returns the last 64 length hex string in a URL */
 export function getSha256FromURL(url: string | URL): string | undefined {
-  if (typeof url === "string") url = new URL(url);
-
-  const hashes = Array.from(url.pathname.matchAll(/[0-9a-f]{64}/gi));
-  if (hashes.length > 0) return hashes[hashes.length - 1][0];
-
-  return;
+  let hash: string | undefined;
+  for (const match of getURLPathname(url).matchAll(/[0-9a-f]{64}/gi)) hash = match[0];
+  return hash;
 }
 
 /** Creates tags for {@link FileMetadataFields} */

@@ -6,7 +6,7 @@ import {
   RELAY_MONITOR_ANNOUNCEMENT_KIND,
 } from "applesauce-common/helpers";
 import { castEvent, EventStore, mapEventsToStore } from "applesauce-core";
-import { getTagValue, mergeRelaySets, normalizeToPubkey, normalizeURL } from "applesauce-core/helpers";
+import { getTagValue, getURLHostname, mergeRelaySets, normalizeToPubkey, normalizeURL } from "applesauce-core/helpers";
 import { type RelayLivenessSource, type RelayPool } from "applesauce-relay";
 import {
   auditTime,
@@ -336,7 +336,7 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
     for (const report of this.reports) {
       try {
         const url = normalizeURL(report.url!);
-        if (!["ws:", "wss:"].includes(new URL(url).protocol)) continue;
+        if (!url.startsWith("ws://") && !url.startsWith("wss://")) continue;
         const byMonitor = latest.get(url) ?? new Map<string, RelayDiscovery>();
         const current = byMonitor.get(report.event.pubkey);
         if (
@@ -362,6 +362,7 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
     const states = new Map<string, Nip66RelayState>();
     let nextExpiry = Infinity;
     for (const [url, reports] of latest) {
+      const host = getURLHostname(url);
       const observations: Nip66RelayObservation[] = [];
       for (const [pubkey, report] of reports) {
         const observedAt = report.event.created_at * 1000;
@@ -371,7 +372,6 @@ export class RemoteMonitorRelayLiveness implements RelayLivenessSource {
         if (stale && !(this.options.staleAsOffline && active.has(pubkey))) continue;
         if (!stale) nextExpiry = Math.min(nextExpiry, expiresAt);
         const network = report.networkType;
-        const host = new URL(url).hostname;
         if (
           (network ?? "clearnet") !== this.options.network ||
           (host.endsWith(".onion") && network !== "tor") ||

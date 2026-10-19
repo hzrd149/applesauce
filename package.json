@@ -14,7 +14,7 @@
     "release-snapshot": "node scripts/snapshot-release.mjs",
     "release-next": "node scripts/snapshot-release.mjs --tag next",
     "verify-next-release": "node scripts/snapshot-release.mjs --tag next --verify-only",
-    "test:browser": "vitest",
+    "test:browser": "vitest run --config vitest.browser.config.mts",
     "docs": "cd apps/docs && pnpm dev"
   },
   "dependencies": {

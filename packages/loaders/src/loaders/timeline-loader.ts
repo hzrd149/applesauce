@@ -812,6 +812,7 @@ function reconcileFilterMap(
               const filters$ = new ReplaySubject<TimelessFilter[]>(1);
               const sub = relay$.subscribe({
                 next: ({ filters }) => filters$.next(filters ? (Array.isArray(filters) ? filters : [filters]) : []),
+                error: (error) => filters$.error(error),
                 // The map freezes when windows end, so the filters can no longer change
                 complete: () => filters$.complete(),
               });

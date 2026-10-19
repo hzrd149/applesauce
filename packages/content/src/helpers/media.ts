@@ -1,18 +1,17 @@
+import { serializeURL } from "applesauce-core/helpers/url";
 import { MediaAttachment, getSha256FromURL } from "applesauce-common/helpers/file-metadata";
 import { Tokens } from "applesauce-core/helpers/regexp";
 
 /** Returns all URLs in a content string that contain a sha256 hash */
 export function getMediaAttachmentURLsFromContent(content: string): MediaAttachment[] {
-  return (
-    Array.from(content.matchAll(Tokens.link))
-      .map((match) => match[0])
-      // filter out invalid URLs
-      .filter((str) => URL.canParse(str))
-      // convert to URLs
-      .map((url) => new URL(url))
-      // only keep urls with sha256 hashes in the
-      .filter((url) => !!getSha256FromURL(url))
-      // convert to media attachments
-      .map((url) => ({ url: url.toString(), sha256: getSha256FromURL(url)! }) satisfies MediaAttachment)
-  );
+  const attachments: MediaAttachment[] = [];
+  for (const match of content.matchAll(Tokens.link)) {
+    try {
+      const sha256 = getSha256FromURL(match[0]);
+      if (sha256) attachments.push({ url: serializeURL(match[0]), sha256 });
+    } catch {
+      // Ignore invalid URLs.
+    }
+  }
+  return attachments;
 }

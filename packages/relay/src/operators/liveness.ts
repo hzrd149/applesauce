@@ -1,47 +1,45 @@
+import { LRU } from "applesauce-core/helpers/lru";
 import { normalizeURL } from "applesauce-core/helpers/url";
-import { combineLatestWith, map, MonoTypeOperatorFunction } from "rxjs";
+import { combineLatestWith, map, type MonoTypeOperatorFunction } from "rxjs";
 
 import type { RelayLivenessSource } from "../liveness.js";
 
-// Filter relays and notify the liveness tracker that we've seen this relay
-function filterRelays<Tracker extends RelayLivenessSource>(
-  relays: string[],
-  unhealthy: string[],
-  liveness: Tracker,
-): string[];
-function filterRelays<Tracker extends RelayLivenessSource>(
-  relays: string[] | undefined,
-  unhealthy: string[],
-  liveness: Tracker,
-): string[] | undefined;
-function filterRelays<Tracker extends RelayLivenessSource>(
-  relays: string[] | undefined,
-  unhealthy: string[],
-  liveness: Tracker,
-): string[] | undefined {
-  const excluded = new Set(
-    unhealthy.map((url) => {
-      try {
-        return normalizeURL(url);
-      } catch {
-        return url;
-      }
-    }),
-  );
-  return (
-    relays &&
-    relays.filter((relay) => {
-      // Notify the liveness tracker that we've seen this relay
-      liveness.seen?.add(relay);
+function canonicalRelay(url: string): string {
+  try {
+    return normalizeURL(url);
+  } catch {
+    return url;
+  }
+}
 
-      // Exclude unhealthy relays
-      try {
-        return !excluded.has(normalizeURL(relay));
-      } catch {
-        return !excluded.has(relay);
+function createRelayFilter(unhealthy: string[], liveness: RelayLivenessSource) {
+  // Build exclusions only when unhealthy$ emits, rather than once per pointer or mailbox.
+  const excluded = new Set(unhealthy.map(canonicalRelay));
+  const eligibility = new LRU<boolean>(1024);
+
+  function filterRelays(relays: string[]): string[];
+  function filterRelays(relays: string[] | undefined): string[] | undefined;
+  function filterRelays(relays: string[] | undefined): string[] | undefined {
+    if (!relays) return undefined;
+    const result: string[] = [];
+    for (const relay of relays) {
+      // Keep reporting raw hints, including excluded relays and cached eligibility results.
+      liveness.seen?.add(relay);
+      if (excluded.size === 0) {
+        result.push(relay);
+        continue;
       }
-    })
-  );
+      let allowed = eligibility.get(relay);
+      if (allowed === undefined) {
+        allowed = !excluded.has(canonicalRelay(relay));
+        if (relay.length <= 4096) eligibility.set(relay, allowed);
+      }
+      if (allowed) result.push(relay);
+    }
+    return result;
+  }
+
+  return filterRelays;
 }
 
 /** Filters out unhealthy relays from an array of pointers */
@@ -50,16 +48,9 @@ export function ignoreUnhealthyRelaysOnPointers<T extends { relays?: string[] },
 ): MonoTypeOperatorFunction<T[]> {
   return (source) =>
     source.pipe(
-      // Combine with the liveness observable
-      combineLatestWith(liveness.unhealthy$),
-      // Filters out unhealthy relays from the pointers
-      map(([pointers, unhealthy]) =>
-        pointers.map((pointer) => {
-          if (!pointer.relays) return pointer;
-
-          // Exclude unhealthy relays
-          return { ...pointer, relays: filterRelays(pointer.relays, unhealthy, liveness) };
-        }),
+      combineLatestWith(liveness.unhealthy$.pipe(map((unhealthy) => createRelayFilter(unhealthy, liveness)))),
+      map(([pointers, filterRelays]) =>
+        pointers.map((pointer) => (pointer.relays ? { ...pointer, relays: filterRelays(pointer.relays) } : pointer)),
       ),
     );
 }
@@ -71,16 +62,13 @@ export function ignoreUnhealthyMailboxes<
 >(liveness: Tracker): MonoTypeOperatorFunction<T> {
   return (source) =>
     source.pipe(
-      // Combine with the liveness observable
-      combineLatestWith(liveness.unhealthy$),
-      // Filters out unhealthy relays from the inboxes and outboxes
-      map(([mailboxes, unhealthy]) => {
+      combineLatestWith(liveness.unhealthy$.pipe(map((unhealthy) => createRelayFilter(unhealthy, liveness)))),
+      map(([mailboxes, filterRelays]) => {
         if (!mailboxes.inboxes && !mailboxes.outboxes) return mailboxes;
-
         return {
           ...mailboxes,
-          inboxes: filterRelays(mailboxes.inboxes, unhealthy, liveness),
-          outboxes: filterRelays(mailboxes.outboxes, unhealthy, liveness),
+          inboxes: filterRelays(mailboxes.inboxes),
+          outboxes: filterRelays(mailboxes.outboxes),
         };
       }),
     );
@@ -92,9 +80,7 @@ export function ignoreUnhealthyRelays<Tracker extends RelayLivenessSource>(
 ): MonoTypeOperatorFunction<string[]> {
   return (source) =>
     source.pipe(
-      // Combine with the liveness observable
-      combineLatestWith(liveness.unhealthy$),
-      // Filters out unhealthy relays from the array
-      map(([relays, unhealthy]) => filterRelays(relays, unhealthy, liveness)),
+      combineLatestWith(liveness.unhealthy$.pipe(map((unhealthy) => createRelayFilter(unhealthy, liveness)))),
+      map(([relays, filterRelays]) => filterRelays(relays)),
     );
 }

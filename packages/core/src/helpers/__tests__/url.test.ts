@@ -174,9 +174,12 @@ describe("ensureWebSocketURL", () => {
     expect(ensureWebSocketURL(urlInput)).toBeInstanceOf(URL);
   });
 
-  it("should convert unknown protocols to wss:", () => {
+  it("should follow native conversion for other special protocols", () => {
     expect(ensureWebSocketURL("ftp://example.com/path")).toBe("wss://example.com/path");
-    expect(ensureWebSocketURL("file://example.com/path")).toBe("wss://example.com/path");
+    // Firefox and Chromium handle file URL hosts and protocol changes differently.
+    const file = new URL("file://example.com/path");
+    file.protocol = "wss:";
+    expect(ensureWebSocketURL("file://example.com/path")).toBe(file.href);
     expect(ensureWebSocketURL(new URL("ftp://example.com/path"))).toEqual(new URL("wss://example.com/path"));
   });
 

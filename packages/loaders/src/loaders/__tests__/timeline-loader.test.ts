@@ -1,7 +1,7 @@
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter, matchFilter } from "applesauce-core/helpers/filter";
 import { EventStore } from "applesauce-core";
-import { BehaviorSubject, defer, EMPTY, lastValueFrom, of, Subject, throwError, toArray } from "rxjs";
+import { BehaviorSubject, config, defer, EMPTY, lastValueFrom, of, Subject, throwError, toArray } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTimelineLoader,
@@ -707,20 +707,42 @@ describe("reactive timeline windows", () => {
     expect(await result).toEqual([]);
   });
 
-  it("cancels outbox work when the map errors", async () => {
+  it.each([false, true])("cancels all outbox work without leaking errors (cache: %s)", async (useCache) => {
     const pending = new Subject<NostrEvent>();
-    const outboxes = new BehaviorSubject({ a: [{ pubkey: "a".repeat(64) }] });
+    const cached = new Subject<NostrEvent>();
+    const windows = new BehaviorSubject(window(100, 200));
+    const outboxes = new BehaviorSubject({
+      a: [{ pubkey: "a".repeat(64) }],
+      b: [{ pubkey: "b".repeat(64) }],
+    });
     const errors: unknown[] = [];
-    createOutboxTimelineLoader(
-      () => pending,
-      outboxes,
-      {},
-    )(new BehaviorSubject(window(100, 200))).subscribe({ error: (error) => errors.push(error) });
-    await flush();
-    const error = new Error("outbox failed");
-    outboxes.error(error);
-    expect(errors).toEqual([error]);
-    expect(pending.observed).toBe(false);
+    const unhandled = vi.fn();
+    const previousHandler = config.onUnhandledError;
+    config.onUnhandledError = unhandled;
+    try {
+      const sub = createOutboxTimelineLoader(
+        () => pending,
+        outboxes,
+        {},
+        { prefetch: 0, cache: useCache ? () => cached : undefined },
+      )(windows).subscribe({ error: (error) => errors.push(error) });
+      await flush();
+      expect(pending.observed).toBe(true);
+      expect(cached.observed).toBe(useCache);
+      const error = new Error("outbox failed");
+      outboxes.error(error);
+      expect(errors).toEqual([error]);
+      expect(sub.closed).toBe(true);
+      expect(pending.observed).toBe(false);
+      expect(cached.observed).toBe(false);
+      expect(windows.observed).toBe(false);
+      expect(outboxes.observed).toBe(false);
+      // RxJS reports missing error handlers on a later timer, after synchronous assertions pass.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      config.onUnhandledError = previousHandler;
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 import { EventOperation } from "applesauce-core/factories";
 import { getReplaceableAddressFromPointer } from "applesauce-core/helpers/pointers";
 import { isSafeRelayURL } from "applesauce-core/helpers/relays";
-import { normalizeURL } from "applesauce-core/helpers/url";
+import { normalizeURL, serializeURL } from "applesauce-core/helpers/url";
 import { includeSingletonTag, modifyPublicTags } from "applesauce-core/operations/tags";
 import { removeSingletonTag, setSingletonTag } from "applesauce-core/operations/tag/common";
 import { GIT_REPOSITORY_KIND, GitRepositoryPointer } from "../helpers/git-repository.js";
@@ -56,7 +56,7 @@ export function setGitRepositoryCloneUrls(urls: string[]): EventOperation {
 /** Sets the repository relay URLs (single `relays` tag, normalized). */
 export function setGitRepositoryRelays(relays: string[]): EventOperation {
   return modifyPublicTags((tags) => {
-    const normalized = relays.map((relay) => new URL(relay).toString());
+    const normalized = relays.map((relay) => serializeURL(relay));
     return withFlatListTag(tags, "relays", normalized);
   });
 }
@@ -97,7 +97,7 @@ export function removeGitRepositoryCloneUrl(url: string): EventOperation {
 
 /** Adds a repository relay URL. */
 export function addGitRepositoryRelay(relay: string): EventOperation {
-  const normalized = new URL(relay).toString();
+  const normalized = serializeURL(relay);
   return modifyPublicTags((tags) => {
     const cur = collectFlatTagValues(tags, "relays");
     if (cur.includes(normalized)) return withFlatListTag(tags, "relays", cur);
@@ -107,7 +107,7 @@ export function addGitRepositoryRelay(relay: string): EventOperation {
 
 /** Removes a repository relay URL. */
 export function removeGitRepositoryRelay(relay: string): EventOperation {
-  const normalized = new URL(relay).toString();
+  const normalized = serializeURL(relay);
   return modifyPublicTags((tags) => {
     const cur = collectFlatTagValues(tags, "relays").filter((r) => r !== normalized);
     return withFlatListTag(tags, "relays", cur);

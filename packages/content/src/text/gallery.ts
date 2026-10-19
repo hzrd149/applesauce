@@ -1,5 +1,5 @@
 import { Transformer } from "unified";
-import { convertToUrl, getURLFilename, IMAGE_EXT } from "applesauce-core/helpers/url";
+import { getURLFilename, IMAGE_EXT } from "applesauce-core/helpers/url";
 
 import { BlossomURI, Link, Root } from "../nast/types.js";
 
@@ -40,8 +40,7 @@ export function galleries(types = IMAGE_EXT, options: GalleriesOptions = {}): Tr
 
       try {
         if (node.type === "link") {
-          const url = convertToUrl(node.href);
-          const filename = getURLFilename(url);
+          const filename = getURLFilename(node.href);
 
           if (filename && types.some((ext) => filename.endsWith(ext))) {
             items.push(node);

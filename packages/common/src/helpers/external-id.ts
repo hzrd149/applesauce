@@ -1,3 +1,5 @@
+import { serializeURL } from "applesauce-core/helpers/url";
+
 export type ExternalIdentifiers = {
   // URL (web)
   web: string;
@@ -46,22 +48,6 @@ export function isValidExternalPointer(identifier: string): identifier is `${key
   return parseExternalPointer(identifier) !== null;
 }
 
-/**
- * Normalizes a URL according to NIP-73:
- * - Removes fragment
- * - Returns the normalized URL string
- */
-function normalizeUrl(url: string): string {
-  try {
-    const urlObj = new URL(url);
-    urlObj.hash = ""; // Remove fragment
-    return urlObj.toString();
-  } catch {
-    // If URL parsing fails, return original (will be caught by validation)
-    return url;
-  }
-}
-
 /** Parses a NIP-73 external identifier */
 export function parseExternalPointer<Prefix extends keyof ExternalIdentifiers>(
   identifier: `${Prefix}1${string}`,
@@ -95,9 +81,17 @@ export function parseExternalPointer(identifier: string): ParseResult | null {
   // Check for URL (must be a valid URL, normalized, no fragment)
   // URLs don't have a prefix, so we check if it's a valid URL after checking all prefixes
   try {
-    new URL(identifier); // Validate URL
-    // Valid URL - normalize it (remove fragment) and return
-    const normalized = normalizeUrl(identifier);
+    let normalized: string;
+    if (/^(?:https?|wss?):\/\//i.test(identifier)) {
+      const serialized = serializeURL(identifier);
+      const hash = serialized.indexOf("#");
+      normalized = hash === -1 ? serialized : serialized.slice(0, hash);
+    } else {
+      // Removing a fragment can also trim opaque paths, so retain the native setter here.
+      const url = new URL(identifier);
+      url.hash = "";
+      normalized = url.href;
+    }
     return { kind: "web", identifier: normalized };
   } catch {
     // Not a valid URL

@@ -1,3 +1,4 @@
+import { serializeURL } from "applesauce-core/helpers/url";
 import { Tokens } from "applesauce-core/helpers";
 import { Transformer } from "unified";
 import { findAndReplace } from "../nast/find-and-replace.js";
@@ -13,7 +14,7 @@ export function links(): Transformer<Root> {
           try {
             return {
               type: "link",
-              href: new URL(_).toString(),
+              href: serializeURL(_),
               value: _,
             } satisfies Link;
           } catch (error) {}

@@ -1,3 +1,4 @@
+import { serializeURL } from "applesauce-core/helpers/url";
 import { type FileMetadataFields, getMediaAttachments } from "applesauce-common/helpers/file-metadata";
 import { type NostrEvent } from "applesauce-core/helpers/event";
 import { type Transformer } from "unified";
@@ -26,7 +27,7 @@ export function imetaLinks(): Transformer<Root> {
     for (const attachment of attachments) {
       if (!attachment.url) continue;
       try {
-        byUrl.set(new URL(attachment.url).toString(), attachment);
+        byUrl.set(serializeURL(attachment.url), attachment);
       } catch {
         // ignore invalid URLs
       }
