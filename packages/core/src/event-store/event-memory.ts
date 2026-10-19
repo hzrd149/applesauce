@@ -11,6 +11,7 @@ import { Filter, getIndexableTags, INDEXABLE_TAGS } from "../helpers/filter.js";
 import { LRU } from "../helpers/lru.js";
 import { logger } from "../logger.js";
 import { IEventMemory } from "./interface.js";
+import { TimeIndex } from "./time-index.js";
 
 /** Returns the index sets for the keys that exist */
 function getSets<K, E>(index: Map<K, Set<E>>, keys: K[]): Set<E>[] {
@@ -36,7 +37,7 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
   protected authors = new Map<string, Set<E>>();
   // Capped so queries for many distinct tag values do not grow the index forever, evicted indexes are rebuilt on demand
   protected tags = new LRU<Set<E>>(10_000);
-  protected created_at: E[] = [];
+  protected created_at = new TimeIndex<E>();
 
   /** Composite index for kind+author queries (common pattern) */
   protected kindAuthor = new Map<string, Set<E>>();
@@ -100,9 +101,9 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
       while (j < events.length && events[j].created_at === events[i].created_at) j++;
       if (j - i > 1) {
         const tied = new Set(events.slice(i, j));
-        const [start, end] = this.getTimeRange(events[i].created_at, events[i].created_at);
         let k = i;
-        for (let n = start; n < end; n++) if (tied.has(this.created_at[n])) events[k++] = this.created_at[n];
+        for (const event of this.created_at.range(events[i].created_at, events[i].created_at))
+          if (tied.has(event)) events[k++] = event;
       }
       i = j;
     }
@@ -128,9 +129,7 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     }
 
     // Insert into time index
-    // NOTE: insertEventIntoDescendingList is not in the CORE-04 list and stays NostrEvent-typed;
-    // bridge with a localized cast, mirroring casts/event.ts's signedView pattern.
-    insertEventIntoDescendingList(this.created_at as unknown as NostrEvent[], event as unknown as NostrEvent);
+    this.created_at.insert(event);
 
     // Insert into replaceable index
     if (isReplaceable(event.kind)) {
@@ -192,8 +191,8 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
       }
     }
 
-    // remove from created_at index using binary search
-    this.removeFromSortedArray(this.created_at, event);
+    // remove from created_at index
+    this.created_at.remove(event);
 
     this.events.delete(id);
 
@@ -427,42 +426,7 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
   /** Iterates over all events by time */
   *iterateTime(since: number | undefined, until: number | undefined): Generator<E> {
-    // Early return if array is empty
-    if (this.created_at.length === 0) return;
-
-    let startIndex = 0;
-    let endIndex = this.created_at.length - 1;
-
-    // If until is set, use binary search to find better start index
-    let start = until
-      ? binarySearch(this.created_at, (mid) => {
-          return mid.created_at - until;
-        })
-      : undefined;
-    if (start) {
-      startIndex = Math.max(0, Math.min(start[0], this.created_at.length - 1));
-    }
-
-    // If since is set, use binary search to find better end index
-    const end = since
-      ? binarySearch(this.created_at, (mid) => {
-          return mid.created_at - since;
-        })
-      : undefined;
-    if (end) {
-      endIndex = Math.max(0, Math.min(end[0], this.created_at.length - 1));
-    }
-
-    // Ensure startIndex <= endIndex
-    if (startIndex > endIndex) return;
-
-    // Yield events in the range, filtering by exact bounds
-    for (let i = startIndex; i <= endIndex; i++) {
-      const event = this.created_at[i];
-      if (until !== undefined && event.created_at > until) continue;
-      if (since !== undefined && event.created_at < since) break;
-      yield event;
-    }
+    yield* this.created_at.range(since, until);
   }
 
   /** Iterates over all events by id */
@@ -525,7 +489,6 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
 
     // An empty filter returns every event in insertion order
     if (conditions.length === 0 && !timed && !limit) return new Set(this.events.values());
-    const [start, end] = this.getTimeRange(since, until);
 
     // Check the smallest condition first and test the rest by membership
     const size = (sets: Set<E>[]) => sets.reduce((total, set) => total + set.size, 0);
@@ -535,11 +498,10 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     // Walking the time index finds the newest matches without sorting, and stops once the limit is reached.
     // Each step checks every condition, so it is weighted as twice the cost of a sort comparison.
     const base = conditions.length > 0 ? size(conditions[0]) : Infinity;
-    const range = end - start;
+    const range = this.created_at.count(since, until);
     if (range <= base || (limit && (2 * limit * range) / base < base * Math.log2(base))) {
       const found: E[] = [];
-      for (let i = start; i < end; i++) {
-        const event = this.created_at[i];
+      for (const event of this.created_at.range(since, until)) {
         // Keep going past the limit while timestamps tie, so the tie-break below sees every candidate
         if (limit && found.length >= limit && event.created_at !== found[found.length - 1].created_at) break;
         if (matches(event)) found.push(event);
@@ -562,25 +524,6 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     }
 
     return limit && found.size > limit ? new Set(newest(Array.from(found), limit)) : found;
-  }
-
-  /** Returns the start and end (exclusive) indexes of the created_at index for a time range */
-  protected getTimeRange(since: number | undefined, until: number | undefined): [number, number] {
-    // created_at is sorted newest first, so find the first index past each bound
-    const firstIndex = (test: (event: E) => boolean) => {
-      let low = 0;
-      let high = this.created_at.length;
-      while (low < high) {
-        const mid = (low + high) >>> 1;
-        if (test(this.created_at[mid])) high = mid;
-        else low = mid + 1;
-      }
-      return low;
-    };
-
-    const start = until === undefined ? 0 : firstIndex((event) => event.created_at <= until);
-    const end = since === undefined ? this.created_at.length : firstIndex((event) => event.created_at < since);
-    return [start, Math.max(start, end)];
   }
 
   /** Returns the tag index sets for the values, building any that are missing */
@@ -617,7 +560,7 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     this.authors.clear();
     this.kindAuthor.clear();
     this.tags.clear();
-    this.created_at = [];
+    this.created_at.clear();
     this.replaceable.clear();
     this.claims = new WeakMap();
   }
