@@ -2,20 +2,8 @@ import type { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter, isFilterEqual } from "applesauce-core/helpers/filter";
 import { createFilterMap, FilterMap, OutboxMap } from "applesauce-core/helpers/relay-selection";
 import { normalizeURL } from "applesauce-core/helpers/url";
-import {
-  BehaviorSubject,
-  distinctUntilChanged,
-  isObservable,
-  map,
-  merge,
-  Observable,
-  of,
-  scan,
-  shareReplay,
-  startWith,
-  Subject,
-  switchMap,
-} from "rxjs";
+import { combineLatestByValue } from "applesauce-core/observable";
+import { BehaviorSubject, distinctUntilChanged, isObservable, map, Observable, of, shareReplay, Subject } from "rxjs";
 import { RelayGroup } from "./group.js";
 import { Relay, type RelayOptions, SyncDirection } from "./relay.js";
 import type {
@@ -34,7 +22,7 @@ export class RelayPool {
     return this.relays$.value;
   }
 
-  /** Observable of relay status for all relays in the pool */
+  /** A stream of current relay statuses that preserves subscriptions for unchanged relays */
   status$: Observable<Record<string, RelayStatus>>;
 
   /** A signal when a relay is added */
@@ -52,21 +40,9 @@ export class RelayPool {
     this.status$ = this.relays$.pipe(
       // Convert Map to array of relays
       map((relayMap) => Array.from(relayMap.values())),
-      // Use same pattern as RelayGroup
-      switchMap((relays) => {
-        if (relays.length === 0) return of({} as Record<string, RelayStatus>);
-
-        return merge(...relays.map((relay) => relay.status$)).pipe(
-          scan(
-            (acc, status) => ({
-              ...acc,
-              [status.url]: status,
-            }),
-            {} as Record<string, RelayStatus>,
-          ),
-          startWith({} as Record<string, RelayStatus>),
-        );
-      }),
+      // Retain unchanged branches and batch synchronous initial statuses on membership changes.
+      combineLatestByValue((relay) => relay.status$),
+      map((statuses) => Object.fromEntries(Array.from(statuses.values(), (status) => [status.url, status]))),
       shareReplay(1),
     );
   }

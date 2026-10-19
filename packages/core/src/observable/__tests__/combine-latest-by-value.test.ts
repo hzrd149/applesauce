@@ -1,8 +1,23 @@
-import { NEVER, Observable, Subject, of } from "rxjs";
+import { BehaviorSubject, NEVER, Observable, Subject, of } from "rxjs";
 import { describe, expect, it } from "vitest";
 import { combineLatestByValue } from "../index.js";
 
 describe("combineLatestByValue", () => {
+  it("forwards branch updates triggered synchronously by an output subscriber", () => {
+    const source = new Subject<number[]>();
+    const branch = new BehaviorSubject(0);
+    const results: number[] = [];
+    const subscription = source.pipe(combineLatestByValue(() => branch)).subscribe((values) => {
+      const value = values.get(1)!;
+      results.push(value);
+      if (value === 0) branch.next(1);
+    });
+    source.next([1]);
+    expect(results).toEqual([0, 1]);
+    subscription.unsubscribe();
+    expect(branch.observed).toBe(false);
+  });
+
   it("maps input arrays to output maps", () => {
     const source = new Subject<number[]>();
     const results: Array<Map<number, number>> = [];

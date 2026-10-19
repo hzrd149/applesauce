@@ -113,8 +113,9 @@ export function combineLatestByValue<T, R>(
             }
           }
 
-          tryEmit();
           batchingSourceNext = false;
+          // Subscriber callbacks can synchronously update a branch; forward those updates normally.
+          tryEmit();
         },
         error(err) {
           subscriber.error(err);

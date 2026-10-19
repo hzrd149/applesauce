@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { Filter, NostrEvent } from "applesauce-core/helpers";
-import { BehaviorSubject, lastValueFrom, of, throwError, toArray } from "rxjs";
+import { BehaviorSubject, defer, finalize, lastValueFrom, of, throwError, toArray } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WS } from "vitest-websocket-mock";
 
@@ -90,6 +90,176 @@ describe("relay", () => {
 
     expect(relay.requestReconnect.count).toBe(2);
     expect(relay.subscriptionReconnect.count).toBe(5);
+  });
+});
+
+describe("status$", () => {
+  it("forwards status changes triggered synchronously by a status subscriber", () => {
+    const relay = pool.relay("wss://relay1.example.com");
+    const values: boolean[] = [];
+    const subscription = pool.status$.subscribe((statuses) => {
+      if (!statuses[relay.url]) return;
+      const connected = statuses[relay.url].connected;
+      values.push(connected);
+      if (!connected) relay.connected$.next(true);
+    });
+    expect(values).toEqual([false, true]);
+    subscription.unsubscribe();
+    pool.remove(relay, false);
+    relay.close();
+  });
+
+  it("forwards the disconnected status before removing a relay that it closes", () => {
+    const relay = pool.relay("wss://relay1.example.com");
+    relay.connected$.next(true);
+    const spy = subscribeSpyTo(pool.status$);
+    try {
+      pool.remove(relay);
+      expect(
+        spy.getValues().map((statuses) => {
+          const status = statuses[relay.url];
+          return status ? { connected: status.connected, ready: status.ready } : undefined;
+        }),
+      ).toEqual([
+        { connected: true, ready: true },
+        { connected: false, ready: true },
+        { connected: false, ready: false },
+        undefined,
+      ]);
+      expect(spy.getLastValue()).toEqual({});
+    } finally {
+      spy.unsubscribe();
+      pool.close();
+    }
+  });
+
+  it("emits complete snapshots when membership changes, including an empty pool", () => {
+    const spy = subscribeSpyTo(pool.status$);
+    try {
+      const first = pool.relay("wss://relay1.example.com");
+      const second = pool.relay("wss://relay2.example.com");
+      pool.remove(first, false);
+      pool.remove(second, false);
+
+      expect(spy.getValues().map((status) => Object.keys(status))).toEqual([
+        [],
+        [first.url],
+        [first.url, second.url],
+        [second.url],
+        [],
+      ]);
+      first.close();
+      second.close();
+    } finally {
+      spy.unsubscribe();
+      pool.close();
+    }
+  });
+
+  it("keeps existing status subscriptions and stops observing removed relays", () => {
+    const first = pool.relay("wss://relay1.example.com");
+    const original = first.status$;
+    let starts = 0;
+    let stops = 0;
+    first.status$ = defer(() => {
+      starts++;
+      return original.pipe(finalize(() => stops++));
+    });
+    const spy = subscribeSpyTo(pool.status$);
+    try {
+      first.connected$.next(true);
+      const second = pool.relay("wss://relay2.example.com");
+      expect(spy.getLastValue()?.[first.url].connected).toBe(true);
+      expect(starts).toBe(1);
+      expect(stops).toBe(0);
+
+      pool.remove(second, false);
+      const count = spy.getValuesLength();
+      second.connected$.next(true);
+      expect(spy.getValuesLength()).toBe(count);
+      expect(spy.getLastValue()?.[second.url]).toBeUndefined();
+      expect(starts).toBe(1);
+      expect(stops).toBe(0);
+
+      first.challenge$.next("new challenge");
+      expect(spy.getValuesLength()).toBe(count + 1);
+      expect(spy.getLastValue()?.[first.url].challenge).toBe("new challenge");
+      pool.remove(first, false);
+      expect(stops).toBe(1);
+      first.close();
+      second.close();
+    } finally {
+      spy.unsubscribe();
+      pool.close();
+    }
+  });
+
+  it("preserves earlier snapshots while forwarding changes from every relay", () => {
+    const first = pool.relay("wss://relay1.example.com");
+    const second = pool.relay("wss://relay2.example.com");
+    const spy = subscribeSpyTo(pool.status$);
+    try {
+      const initial = spy.getLastValue()!;
+      first.connected$.next(true);
+      const connected = spy.getLastValue()!;
+      second.challenge$.next("challenge");
+      const challenged = spy.getLastValue()!;
+      expect(initial[first.url].connected).toBe(false);
+      expect(connected[first.url].connected).toBe(true);
+      expect(connected[second.url].challenge).toBeNull();
+      expect(challenged[first.url]).toBe(connected[first.url]);
+      expect(challenged[second.url].challenge).toBe("challenge");
+      expect(spy.getValuesLength()).toBe(3);
+    } finally {
+      spy.unsubscribe();
+      pool.close();
+    }
+  });
+
+  it("observes a new instance at the same URL without forwarding the old instance", () => {
+    const first = pool.relay("wss://relay1.example.com");
+    const spy = subscribeSpyTo(pool.status$);
+    try {
+      first.connected$.next(true);
+      pool.remove(first, false);
+      const replacement = pool.relay(first.url);
+      expect(replacement).not.toBe(first);
+      expect(spy.getLastValue()?.[replacement.url].connected).toBe(false);
+      const count = spy.getValuesLength();
+      first.challenge$.next("old instance");
+      expect(spy.getValuesLength()).toBe(count);
+      replacement.challenge$.next("new instance");
+      expect(spy.getValuesLength()).toBe(count + 1);
+      expect(spy.getLastValue()?.[replacement.url].challenge).toBe("new instance");
+      first.close();
+    } finally {
+      spy.unsubscribe();
+      pool.close();
+    }
+  });
+
+  it("shares and replays current status without adding relay subscriptions", () => {
+    const relay = pool.relay("wss://relay1.example.com");
+    const original = relay.status$;
+    let starts = 0;
+    relay.status$ = defer(() => {
+      starts++;
+      return original;
+    });
+    const first = subscribeSpyTo(pool.status$);
+    const second = subscribeSpyTo(pool.status$);
+    try {
+      expect(second.getLastValue()).toBe(first.getLastValue());
+      relay.challenge$.next("shared challenge");
+      expect(first.getValuesLength()).toBe(2);
+      expect(second.getValuesLength()).toBe(2);
+      expect(second.getLastValue()).toBe(first.getLastValue());
+      expect(starts).toBe(1);
+    } finally {
+      first.unsubscribe();
+      second.unsubscribe();
+      pool.close();
+    }
   });
 });
 

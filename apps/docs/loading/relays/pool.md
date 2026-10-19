@@ -215,6 +215,16 @@ Pool and group methods forward auth options to every relay; see [Authentication]
 
 The RelayPool provides observables for tracking relays:
 
+`status$` emits a record of the latest status for every relay, keyed by relay URL. Adding or removing a relay emits one complete snapshot while retaining subscriptions to unchanged relays; each relay's subsequent status changes still emit updated snapshots. An empty pool emits `{}`.
+
+```typescript
+pool.status$.subscribe((statuses) => {
+  console.log("Connected relays:", Object.values(statuses).filter((status) => status.connected).length);
+});
+```
+
+**Migration:** membership changes no longer emit intermediate empty or partially rebuilt status records. Handle the complete snapshot instead of relying on those intermediate emissions.
+
 ```typescript
 // Subscribe to changes in the relays map
 pool.relays$.subscribe((relaysMap) => {
