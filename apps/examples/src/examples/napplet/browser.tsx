@@ -11,6 +11,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { useState } from "react";
+import { Link } from "react-router";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
@@ -90,13 +91,16 @@ function NappletItem({ napplet }: { napplet: Napplet }) {
           )}
         </div>
       </div>
+      <Link className="btn btn-primary btn-sm shrink-0" to={`/example/napplet/loader?pointer=${address}`}>
+        Run
+      </Link>
       <a
-        className="btn btn-primary btn-sm shrink-0"
+        className="btn btn-sm shrink-0"
         href={`https://kehto.github.io/web/paja/?pointer=${address}`}
         target="_blank"
         rel="noreferrer"
       >
-        Open
+        Open in paja
       </a>
     </div>
   );

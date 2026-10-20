@@ -44,6 +44,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { Heart, MessageCircle } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import {
   catchError,
   connect,
@@ -200,20 +201,24 @@ function snapshotLabel(napplet: Napplet) {
   return napplet.isSnapshot ? ` · Snapshot ${napplet.id.slice(0, 8)}` : "";
 }
 
-/** Opens the napplet in the kehto paja runtime using its NIP-19 address with outbox relay hints */
+/** Runs the napplet in the local loader example or the kehto paja runtime using its NIP-19 address with outbox relay hints */
 function OpenInPaja({ napplet, className = "btn-sm" }: { napplet: Napplet; className?: string }) {
-  const address = use$(napplet.address$);
+  const address = use$(napplet.address$) ?? napplet.address;
 
   return (
-    <a
-      className={`btn btn-primary ${className}`}
-      href={`https://kehto.github.io/web/paja/?pointer=${address ?? napplet.address}`}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(e) => e.stopPropagation()}
-    >
-      Open in paja
-    </a>
+    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+      <Link className={`btn btn-primary ${className}`} to={`/example/napplet/loader?pointer=${address}`}>
+        Run
+      </Link>
+      <a
+        className={`btn ${className}`}
+        href={`https://kehto.github.io/web/paja/?pointer=${address}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Open in paja
+      </a>
+    </div>
   );
 }
 
