@@ -1,5 +1,23 @@
 # applesauce-actions
 
+## 7.0.0
+
+### Minor Changes
+
+- 7145a4d: Add `RecommendAppHandler` and `RemoveAppHandlerRecommendation` actions for managing NIP-89 handler recommendations.
+- 1bf75c3: Add actions for publishing user, event, and blob reports to the reporter's outboxes.
+- 41e7deb: Add `AddTrustedProvider`, `RemoveTrustedProvider`, `SetTrustedProvider`, `RemoveTrustedService` and `MoveTrustedProvider` actions for managing NIP-85 trusted providers.
+- 4703c55: Add `SetUserStatus` and `ClearUserStatus` actions
+
+### Patch Changes
+
+- e46d1ac: Fix `ActionRunner` reusing the previous account's `self` and `user` after the signer's active account changes
+- 8cec242: Publish `ReplyToLegacyMessage` replies to our own messages to the recipient's inboxes instead of our own.
+- b4e6267: Allow `RemoveAppHandlerRecommendation` to take `null` to remove only the entry without a platform.
+- Updated dependencies
+  - applesauce-common@7.0.0
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Patch Changes

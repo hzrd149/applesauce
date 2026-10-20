@@ -1,5 +1,18 @@
 # applesauce-wallet-connect
 
+## 7.0.0
+
+### Patch Changes
+
+- df9fe3a: Bound wallet requests through encryption negotiation and release pending negotiation subscriptions when the request times out ([#94](https://github.com/hzrd149/applesauce/pull/94), thanks [@sh1ftred](https://github.com/sh1ftred)).
+- 593e668: Fix `waitForPaid()` timer handling so invoices without an expiry do not reject immediately and far-future expiry delays stay within Node's 32-bit limit.
+- f5c7be3: Speed up NIP-44 request encryption in `WalletConnect` by caching conversation keys
+- df9fe3a: Reject waiting for an unknown wallet service when the supplied abort signal is already aborted ([#94](https://github.com/hzrd149/applesauce/pull/94), thanks [@sh1ftred](https://github.com/sh1ftred)).
+- 06904f4: `getWalletNotification` now returns undefined when the notification content is not valid JSON instead of throwing.
+- Updated dependencies
+  - applesauce-common@7.0.0
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Minor Changes

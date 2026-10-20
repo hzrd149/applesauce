@@ -1,5 +1,21 @@
 # applesauce-content
 
+## 7.0.0
+
+### Major Changes
+
+- 5727e85: Cache `getParsedContent` results with custom transformers under a key per transformer array instead of `TextNoteContentSymbol`, and skip caching content overrides unless a `cacheKey` is passed
+
+### Patch Changes
+
+- 05b64ef: Update cashu-ts dependencies to require the latest stable 4.11.0 release
+- 0028a38: Avoid redundant URL and hash parsing when extracting media attachments
+- 0028a38: Avoid repeated URL parsing when rendering note links
+- 5212a3d: Avoid scanning sibling arrays for text nodes that produce no replacements during content transformation
+- Updated dependencies
+  - applesauce-common@7.0.0
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Minor Changes

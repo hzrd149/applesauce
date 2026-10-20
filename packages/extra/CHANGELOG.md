@@ -1,5 +1,20 @@
 # applesauce-extra
 
+## 7.0.0
+
+### Minor Changes
+
+- 48e431c: Add `applesauce-extra/nspam`, `/vertex`, `/primal`, `/open-ranking` and `/remote-monitor-relay-liveness` entry points so each module can be imported on its own
+- 5dac2ce: Add a `staleAsOffline` option that treats reports active NIP-66 monitors stopped refreshing as offline.
+- f816ca8: Add monitor-backed relay liveness with trusted publishers, expiring observations, and explicit negative consensus.
+- 48e431c: Add `NspamClassifier` and the `filterSpam` operator for hiding reply spam with the on-device nspam model
+
+### Patch Changes
+
+- 0028a38: Avoid reparsing relay URLs for each monitor observation
+- Updated dependencies
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Minor Changes

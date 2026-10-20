@@ -1,5 +1,29 @@
 # applesauce-wallet
 
+## 7.0.0
+
+### Minor Changes
+
+- bfe3267: The token content, history content, and nutzap P2PK getters now return undefined on malformed input instead of throwing.
+
+### Patch Changes
+
+- 05b64ef: Preserve full keyset IDs in recovery couches so v2 tokens can be decoded offline
+- 05b64ef: Accept full keyset IDs when decoding emoji tokens with v2 proofs
+- 05b64ef: Update cashu-ts dependencies to require the latest stable 4.11.0 release
+- 05b64ef: Resolve shortened v2 token keyset IDs through the loaded mint wallet before receiving sat tokens
+- 70a9608: Add a 10 second timeout when fetching mint info for mint recommendations
+- a093eca: Fix `receiveAnimated` dropping QR fragments from hot sources that emit while the UR decoder is still loading.
+- 993bbed: Clear cached relay metadata when locking a wallet.
+- abc0838: Allow the package root to load in supported Node runtimes without eagerly evaluating the animated QR dependency.
+- Updated dependencies
+  - applesauce-actions@7.0.0
+  - applesauce-common@7.0.0
+  - applesauce-loaders@7.0.0
+  - applesauce-signers@7.0.0
+  - applesauce-relay@7.0.0
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Minor Changes

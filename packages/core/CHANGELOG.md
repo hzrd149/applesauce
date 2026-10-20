@@ -1,5 +1,76 @@
 # applesauce-core
 
+## 7.0.0
+
+### Major Changes
+
+- 223d3a4: Index watched event-array membership per subscription for faster update checks, requiring callers to re-emit arrays after membership changes
+- e8458c2: Change `LRU.items` from a plain object to a `Map`, which makes lookups and deletes faster
+
+### Minor Changes
+
+- bfe3267: Writing a cached value onto a frozen event now throws instead of failing silently.
+- f5c7be3: Add `getCachedConversationKey` helper that caches NIP-44 conversation keys per secret key and pubkey
+- 0028a38: Add string-based URL serialization and component extraction helpers
+- d055b85: Add `compileFilter` and `compileFilters` helpers that precompile filters into fast matchers for checking many events
+- 7145a4d: Add `.clientTag()` to `EventFactory` for setting the NIP-89 `client` tag.
+- bfe3267: Event stores, models, casts, and helpers are now generic over the event type, so they can hold unsigned rumors as well as signed events.
+- a587410: `getHiddenTags` now returns undefined when the hidden content is not valid tags instead of throwing.
+- a4c6cd5: Add colored logger output with a stable per-namespace color and a `+Nms` time diff
+- 059f80f: Add `verifyEvent` option to `OptimisticEventVerifier` for using a custom signature check such as nostr-wasm
+- 954adec: Add an optimistic event verifier with progressive relay signature sampling and optional storage persistence
+- bfe3267: Add `RumorStore` and `AsyncRumorStore` for storing NIP-59 rumors, verifying each one by recomputing its event hash.
+- bfe3267: Add a shared `Rumor` type for unsigned events along with `isRumor` and `verifyRumor` helpers.
+- 7145a4d: Add an optional relay hint to the NIP-89 `client` tag written by `setClient`.
+- 751d67a: Add optional backend sync-pair queries with full-event fallback in event stores
+
+### Patch Changes
+
+- 0452b26: Build missing tag indexes in one pass for each event memory query
+- bfe3267: Cached values are no longer copied by an object spread, so a duplicated event can no longer carry a stale cached value forward.
+- 593e668: Clamp NIP-40 expiration timer delays to Node's 32-bit limit so far-future events do not trigger a `TimeoutOverflowWarning` hot loop.
+- bfe3267: Decrypted content and signature verification results are no longer copied onto a different version of a replaceable event.
+- 95717f8: Speed up adding and removing events when many event and replaceable models are open by routing store updates to models by id and address
+- d055b85: Speed up `TimelineModel` and `FiltersModel` updates by compiling their filters once instead of re-reading them for every new event
+- 804cc7e: Fix the in-memory event database ignoring `limit` on filters without `since` or `until`
+- 05a700b: Speed up in-memory event queries that use a limit or match many events
+- 0ed0dc8: Speed up in-memory tag queries with many values by building missing tag indexes in a single pass, and cap the tag index cache at 10,000 values
+- 6377907: Speed up adding and removing events in large in-memory event stores
+- c965c54: Speed up `selectOptimalRelays` for large contact lists
+- 7e76271: Avoid redundant URL pathname assignments during normalization.
+- 297f017: Fix `eventStore.filters()` only replaying the last matching event to subscribers that join after another subscriber.
+- 8d1d7f0: Fix `EventStore.add` emitting `insert$` again when the same event instance is added twice.
+- e6a8cb2: Move the gift wrap, seal, and rumor symbols into `applesauce-core` and re-export them from `applesauce-common`.
+- a77960d: Fix `includeMailboxes` and `OutboxModel` keeping the previous selection when the contact list becomes empty.
+- 2d05555: Stop `includeMailboxes` and `OutboxModel` from resubscribing to every contact's relay list when the contacts change
+- 3bb6011: Format logged errors as their name and message without appending stack traces.
+- d1806ef: Fix `getOutboxes` and `getInboxes` returning the same relay twice when a relay list writes its URL in different forms.
+- 49719aa: Speed up `mapEventsToStore` and stop it from holding every emitted event in memory for the life of the subscription
+- 49719aa: Fix `mapEventsToStore` silently dropping every later event after one event fails to insert into the store
+- 0028a38: Avoid native URL parsing when classifying ordinary media URLs
+- c16ea8f: Fix `OutboxModel` selecting blacklisted relays that come from a contact's NIP-65 relay list.
+- 552820e: Fix `OutboxModel` sharing one cached selection between subscriptions that use different `blacklist` or `score` options.
+- 9d17415: Preserve standard pointer fields exposed through getters when adding relay hints
+- e17c1f8: Pubkey casts are now cached per event store so the same pubkey can be cast independently across multiple stores.
+- 6734240: Reduce timeline construction overhead by sorting matching events once while preserving timestamp tie ordering
+- cec51d3: Preserve synchronous branch updates triggered by output subscribers of combineLatestByValue
+- 96a53cf: Reject relay URLs containing whitespace or non-WebSocket protocols in `relaySet` and `normalizeRelayUrl`.
+- fe49af9: Limit the relays `selectOptimalRelays` returns for each user to `maxRelaysPerUser`.
+- fe49af9: Fix `selectOptimalRelays` ignoring `maxRelaysPerUser` above 1, which could use up the connection budget and leave some users uncovered.
+- 0028a38: Deduplicate relay hints before normalizing relay sets
+- e829d0a: Remove the unused `EventFactory.kind()` method, whose returned promise never resolved.
+- cf00514: Fix modified replaceable events losing to the event they replace when both are created in the same second
+- 88d77d5: `stamp()` no longer removes `id` and `sig` from the draft that was passed into it.
+- 0028a38: Normalize ordinary HTTP and WebSocket URL strings without constructing native `URL` objects
+- Reject structurally invalid events and rumors with non-string IDs or non-integer timestamps.
+- d9a0448: Avoid an unused timeline copy when ignoring duplicate events or older replaceable versions
+- 8f6c0d2: Stop timelines from emitting a second unchanged array when a replaceable event is updated
+- 4f2c1bb: Import from `nostr-tools` subpaths instead of the package root so bundles no longer pull in modules that reference `fetch`
+- 96a53cf: Trim surrounding whitespace from relay URLs in `relaySet` and `normalizeRelayUrl`.
+- 0028a38: Cache completed URL transformations in bounded least recently used caches
+- 954adec: Validate canonical hex fields, safe timestamps, kind bounds, and tag structure in the event and rumor guards
+- 937e4d3: Event stores now honor `verifyEvent: undefined` to disable event verification.
+
 ## 6.2.0
 
 ### Minor Changes

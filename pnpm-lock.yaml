@@ -318,43 +318,43 @@ importers:
         specifier: ^0.12.2
         version: 0.12.2
       applesauce-accounts:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/accounts
       applesauce-actions:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/actions
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/common
       applesauce-content:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/content
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/core
       applesauce-extra:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/loaders
       applesauce-react:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../../packages/react
       applesauce-relay:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/relay
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/signers
       applesauce-sqlite:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../../packages/sqlite
       applesauce-wallet:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/wallet
       applesauce-wallet-connect:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../../packages/wallet-connect
       blossom-client-sdk:
         specifier: ^5.0.0
@@ -526,10 +526,10 @@ importers:
   packages/accounts:
     dependencies:
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.5
@@ -558,10 +558,10 @@ importers:
   packages/actions:
     dependencies:
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       rxjs:
         specifier: ^7.8.1
@@ -571,7 +571,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       nanoid:
         specifier: ^5.1.16
@@ -595,7 +595,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       hash-sum:
         specifier: ^2.0.0
@@ -656,10 +656,10 @@ importers:
         specifier: ^3.0.3
         version: 3.0.3
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       mdast-util-find-and-replace:
         specifier: ^3.0.2
@@ -681,7 +681,7 @@ importers:
         specifier: ^4.11.0
         version: 4.11.0
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       rimraf:
         specifier: ^6.1.3
@@ -730,7 +730,7 @@ importers:
   packages/extra:
     dependencies:
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       rxjs:
         specifier: ^7.8.2
@@ -750,19 +750,19 @@ importers:
         version: 4.1.11(@types/node@22.20.1)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@8.3.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
     optionalDependencies:
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../common
       applesauce-relay:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../relay
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
 
   packages/loaders:
     dependencies:
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -775,7 +775,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       keyv:
         specifier: ^6.1.0
@@ -794,7 +794,7 @@ importers:
         version: 0.5.0(vitest@4.1.11)
     optionalDependencies:
       applesauce-relay:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../relay
 
   packages/react:
@@ -841,16 +841,16 @@ importers:
         version: 4.1.11(@types/node@22.20.1)(@vitest/browser-playwright@4.1.11)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1(@noble/hashes@2.2.0))(vite@8.3.4(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.0)(yaml@2.9.0))
     optionalDependencies:
       applesauce-accounts:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../accounts
       applesauce-actions:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../actions
       applesauce-content:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../content
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../core
 
   packages/relay:
@@ -859,7 +859,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -875,7 +875,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       keyv:
         specifier: ^6.1.0
@@ -908,7 +908,7 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       nanoid:
         specifier: ^5.0.9
@@ -940,7 +940,7 @@ importers:
   packages/sqlite:
     dependencies:
       applesauce-core:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../core
     devDependencies:
       '@hirez_io/observer-spy':
@@ -962,7 +962,7 @@ importers:
         specifier: ^8.18.2
         version: 8.18.2
       applesauce-signers:
-        specifier: ^6.0.0
+        specifier: ^7.0.0
         version: link:../signers
       better-sqlite3:
         specifier: ^12.11.1
@@ -992,16 +992,16 @@ importers:
         specifier: ^1.1.12
         version: 1.1.12
       applesauce-actions:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../actions
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       applesauce-loaders:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../loaders
       rxjs:
         specifier: ^7.8.2
@@ -1011,10 +1011,10 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-relay:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../relay
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       rimraf:
         specifier: ^6.1.3
@@ -1032,10 +1032,10 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       applesauce-common:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../common
       applesauce-core:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../core
       rxjs:
         specifier: ^7.8.1
@@ -1045,7 +1045,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-signers:
-        specifier: ^6.2.0
+        specifier: ^7.0.0
         version: link:../signers
       rimraf:
         specifier: ^6.1.3

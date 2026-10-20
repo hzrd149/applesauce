@@ -1,5 +1,82 @@
 # applesauce-relay
 
+## 7.0.0
+
+### Major Changes
+
+- ff72518: Change Relay.fetchInformationDocument to return a promise instead of an observable.
+- e218b12: Remove the public EVENT/AUTH selector and make authenticate own bounded challenge acquisition and freshness.
+- d2cb1fa: Make `event` a one-attempt raw interaction and move authentication, retry, reconnect, and timeout policy to publish.
+- cb0240c: Make Group and Pool COUNT emit progressive per-relay success and failure outcomes.
+- d084099: Make high-level group requests and subscriptions report total relay failure with every relay cause preserved.
+- fe49af9: Group and pool `request()` now default to `RelayGroup.completeAfterIdle()` instead of completing five seconds after the first EOSE.
+- e904c48: Replace callback-based negentropy with a raw Observable of negotiation rounds.
+- 27e5991: Remove the `authRequiredForRead$` and `authRequiredForPublish$` observables and their `RelayStatus` fields, since auth-required refusals are now handled per request and watching `challenge$` is the way to authenticate proactively.
+- 89a3989: Make req a one-interaction raw REQ primitive and move authentication, reconnect, and repeat policy to request and subscription.
+- e904c48: Make sync own coordinated authentication, reconnect, bounded transfers, and explicit transfer outcomes.
+- cec51d3: Preserve unchanged relay status subscriptions and emit complete pool status snapshots instead of intermediate empty or partial snapshots during membership changes
+- 43a0248: Remove the deprecated `RelayPool.ignoreOffline` property and the `ignoreOffline` argument of `RelayPool.group()` in favor of the `ignoreUnhealthyRelays` operator
+
+### Minor Changes
+
+- e4d5977: Batch sync requests for missing events into REQs of up to 500 ids, configurable with `batchSize`
+- ff72518: Allow relays and pools to cache NIP-11 information documents with a Keyv-compatible cache and configurable TTL.
+- 585dc49: Add an `onSent` option to `Relay.count()` for measuring response latency separately from connection and authentication delays.
+- 1899731: Add support for authenticating multiple users on a single relay connection with `authentications$`, `authenticatedPubkeys$`, and `isAuthenticated`
+- 0156e2d: Add a `liveness` option to `RelayPool` that skips unhealthy relays and re-adds them to open subscriptions once they recover.
+- 5dac2ce: Make relay liveness exclusions temporary and connectivity-aware with recoverable failures and managed pool lifecycles.
+- 54d8400: An operation that previously waited indefinitely against an auth-required relay now fails with a timeout after 30 seconds by default, since `waitForAuth` no longer pre-blocks the operation on the relay-wide auth-required flags and the wait is instead bounded by the new `authTimeout` option — pass `authTimeout: false` to restore the previous indefinite wait for out-of-band authentication.
+- c5dc2e5: The auth-required handler context now carries the exact NIP-01/NIP-77 request that triggered it, discriminated by wire verb (`REQ`/`COUNT`/`EVENT`/`NEG-OPEN`), replacing the previous read/publish/sync category.
+- fe49af9: Add `RelayGroup.completeAfterIdle()`, a completion condition that keeps waiting while relays are still sending events after the first EOSE.
+- 585dc49: Add NIP-45 HyperLogLog helpers for estimating unique event counts across relay results.
+- f5eeb5e: Add validated COUNT responses with configurable retry and timeout options to `Relay.count()`.
+- fe49af9: Add a `firstResponseTimeout` request option (default 10 seconds) that fails group relays which never send an EVENT or EOSE.
+- 54d8400: Emit an attributed `relay-failed` result when one relay fails without ending sibling sync operations.
+- 47ae6c0: Add `Relay.name$` observable that emits the NIP-11 relay name with a URL fallback
+- 8bf9bae: Add a configurable noticeLimit that retains the latest 100 relay notices by default and supports disabling history with zero
+- 54d8400: Move operation-scoped authentication callbacks to publish, request, count, and sync.
+- 54d8400: Attach typed errors to relay rejection verdicts and RelayGroup-converted failures.
+- 165a27b: Add `RelayPool.added$` and `RelayPool.removed$` aliases
+- f816ca8: Expose a shared liveness source interface for local and monitor-backed relay filtering.
+- 1899731: Add `waitForAuth` support to publish, request, count, and sync.
+- e4d5977: Accept synchronous event stores in `NegentropyWriteStore` so a store written to during sync is typed as writeable
+
+### Patch Changes
+
+- db7ed4a: Prevent relay operations from starting a second authentication phase after an authentication retry has already failed.
+- dbd2598: Fix `RelayLiveness` ending a relay's backoff early when a timer from an earlier failure fires
+- 0028a38: Reuse normalized relay exclusions and cached eligibility decisions between liveness updates
+- fe31def: Fix `RelayLiveness.revive()` not putting the revived relay into its max backoff period
+- e4d5977: Reconnect negentropy sync when a RECEIVE transfer fails with a transport error instead of failing the whole sync
+- 3edafc6: Reject overlong negentropy varints and invalid encoder inputs ([#101](https://github.com/hzrd149/applesauce/pull/101), thanks [@mptfire](https://github.com/mptfire)).
+- bbf4adb: Fix negentropy varint encoding and decoding overflowing for values larger than 2^31
+- 6734240: Use Set membership to reduce event lookup overhead when syncing array-backed stores
+- ccc77fa: Stop sending unnecessary CLOSE messages when one-shot NIP-45 COUNT requests end.
+- 1be34ca: A synchronously-throwing `onAuthRequired` handler now maps to `AuthHandlerError` identically to a rejected promise, instead of escaping as a raw, unmapped `Error`.
+- c5dc2e5: NIP-42 auth activity is now logged to a dedicated `:auth` sub-namespace covering the challenge, signing, send, result, and per-operation retry lifecycle.
+- e876bc3: Move the relay auth debug namespace from `applesauce:Relay:<url>:auth` to `applesauce:Relay:auth:<url>` so `applesauce:Relay:auth:*` filters every relay's auth trace at once.
+- 1be34ca: A synchronous `onAuthRequired` handler resolving `req()` or `count()`'s auth phase now sends a real resend frame and observes its reply, instead of silently rejoining an already-terminated listen chain and completing with no results.
+- 1be34ca: `req()`, `request()`, and `subscription()` auth-required retries are now correctly bounded by `authRetries` instead of being silently reset by the synthetic `OPEN` message emitted on every resubscribe.
+- 25909a1: Treat unrecognized `CLOSED` prefixes that match JavaScript prototype properties as ordinary relay closures instead of invalid errors.
+- 566758b: Convert WebSocket error events into a `RelayConnectionError` with the relay URL instead of surfacing `[object ErrorEvent]`
+- ea8a6cb: Bound duplicate-only traffic in idle-aware request completion with a configurable progress timeout
+- 168c683: Advance reconnect backoff for WebSocket errors and constructor failures that do not emit a close event by counting each pending recovery once, skipping clean closes, and marking the relay not ready before notifying error observers.
+- 1be34ca: `RelayGroup` now routes its debug diagnostics through the package's shared debug logger instead of writing directly to the console, so a consumer can silence them like every other class in the package.
+- 0926171: `RelayGroup.request()`'s operation clock no longer treats a relay's connection error as progress, so a group whose relays all fail or fall silent now errors on its declared timeout instead of hanging forever.
+- 1be34ca: `RelayGroup.request()`'s operation timeout is now suspended for the duration of a relay's auth phase instead of racing it.
+- 1065007: Reduce `RelayGroup` request and subscription overhead by only re-checking completion when a relay's status changes instead of on every event
+- 81c2121: Stop `lastMessageAt$` emitting the same timestamp again for every message in a burst
+- 8c23561: Make opening and closing relay subscriptions constant time by only rebuilding the `reqs$` record when it is observed or read
+- c5dc2e5: Reject publish calls when their client-side timeout expires.
+- 0420f75: Stop logging the auth invalidation line on reset when no authenticated pubkeys were dropped.
+- 1be34ca: `request()`'s own operation timeout can now actually fire against an unresponsive relay, instead of being permanently cancelled by the synthetic `OPEN` message it previously treated as first progress.
+- 48da0c0: Route relay messages to subscriptions by id instead of checking every message against every open subscription
+- 5c93027: Re-request missing event ids in `Relay.sync()` until a round makes no progress so relays that cap REQ results no longer drop events.
+- 5dac2ce: Require corroborating connectivity after the previous counted failure before classifying a relay as dead.
+- 751d67a: Prefer optional sync-pair queries when preparing Negentropy reconciliation
+- Updated dependencies
+  - applesauce-core@7.0.0
+
 ## 6.2.1
 
 ### Patch Changes

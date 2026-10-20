@@ -1,5 +1,12 @@
 # applesauce-react
 
+## 7.0.0
+
+### Patch Changes
+
+- ce37e84: Reuse truncated content trees across renders when the parsed content and maximum length are unchanged
+- 6fc1f87: Fix `useObservableState` calling function values such as timeline loaders as React state updaters instead of returning them unchanged.
+
 ## 6.0.0
 
 ### Major Changes

@@ -1,5 +1,21 @@
 # applesauce-accounts
 
+## 7.0.0
+
+### Minor Changes
+
+- b432e68: Add SeedWordsAccount with seed-word creation and derived-key persistence.
+
+### Patch Changes
+
+- b590655: Prevent aborted queued operations from reaching the signer after the queue resets
+- 6e4479e: Release account queue abort listeners when operations settle
+- 4441639: Restore the persisted `id` and metadata of `AndroidNativeAccount` when rehydrating from JSON.
+- 4441639: Seed `AndroidNativeSigner` with the persisted pubkey so relaunching an app does not re-prompt the signer app for `getPublicKey`.
+- Updated dependencies
+  - applesauce-signers@7.0.0
+  - applesauce-core@7.0.0
+
 ## 6.2.0
 
 ### Patch Changes

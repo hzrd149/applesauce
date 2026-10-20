@@ -1,5 +1,31 @@
 # applesauce-signer
 
+## 7.0.0
+
+### Minor Changes
+
+- 3f0d362: Add an `autoSwitchRelays` option to `NostrConnectSigner` that sends `switch_relays` after connecting.
+- 3f0d362: Add a `metadata` option to `NostrConnectSigner` that sends client metadata with `connect` requests.
+- 3f0d362: Add a `timeout` option to `NostrConnectSigner.logout` that limits how long it waits for the remote signer to acknowledge.
+- 3f0d362: Add a `timeout` option to `NostrConnectSigner` that rejects requests the remote signer never answers.
+- b432e68: Add SeedWordsSigner for deriving NIP-06 signing keys from validated BIP-39 seed words.
+
+### Patch Changes
+
+- 4441639: Seed `AndroidNativeSigner` with the persisted pubkey so relaunching an app does not re-prompt the signer app for `getPublicKey`.
+- 981e632: Fix `NostrConnectSigner.switchRelays` ignoring JSON-stringified relay lists and hanging on `null` results.
+- db105f3: Stop `NostrConnectProvider` from remembering every request id for the life of the provider
+- 3f0d362: Cache the user pubkey returned by `get_public_key` in `NostrConnectSigner`.
+- 3f0d362: Stop `NostrConnectSigner.fromNbunksec` from sending a new `connect` request for a stored session.
+- 3f0d362: Reject `NostrConnectSigner` requests when publishing fails or the signer is closed instead of hanging forever.
+- 3f0d362: Require the `nostrconnect://` secret in the remote signer's connect response and stop accepting `"ack"`.
+- 3f0d362: Fix `NostrConnectSigner` re-sending `connect` with a used secret when resuming an established session.
+- ab42e42: Reject error responses during client-initiated NIP-46 pairing ([#97](https://github.com/hzrd149/applesauce/pull/97), thanks [@sh1ftred](https://github.com/sh1ftred)).
+- f5c7be3: Speed up repeated NIP-44 encryption and decryption in `PrivateKeySigner` and `PasswordSigner` by caching conversation keys
+- 9c6b6e4: Skip signature verification for Nostr Connect events from authors other than the configured remote signer
+- Updated dependencies
+  - applesauce-core@7.0.0
+
 ## 6.2.3
 
 ### Patch Changes
