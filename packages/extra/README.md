@@ -2,6 +2,8 @@
 
 A collection of stuff that doesn't fit into any applesauce package.
 
+Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`), so importing one doesn't load the others or their optional dependencies.
+
 ## PrimalCache
 
 Extended relay interface for Primal's caching server. Provides access to Primal's enhanced API endpoints for content discovery, user recommendations, trending hashtags, notifications, and more. Includes methods for:
@@ -49,3 +51,15 @@ Pass `health` to `RelayPool` to skip its unhealthy relays in every request, or t
 - Preserve unknown relays when reports are missing.
 - Supply `interpretReport` only for a provider with documented explicit-negative semantics, or enable `staleAsOffline` to treat reports that active monitors stopped refreshing as offline.
 - Match the requested capability and transport to the application.
+
+## nspam Spam Filter
+
+`NspamClassifier` runs the [nspam](https://huggingface.co/barrydeen/nspam) reply-spam model on-device and scores authors from their newest kind 1 replies. `filterSpam` removes spam replies from a timeline.
+
+```ts
+const nspam = await NspamClassifier.load();
+const replies$ = eventStore.timeline({ kinds: [1], "#e": [root.id] }).pipe(filterSpam(nspam));
+```
+
+**Code:** [`src/nspam/`](src/nspam/)
+**Upstream:** [barrydeen/nspam](https://huggingface.co/barrydeen/nspam)

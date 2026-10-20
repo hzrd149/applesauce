@@ -10,6 +10,31 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./nspam": {
+      "import": "./dist/nspam/index.js",
+      "require": "./dist/nspam/index.js",
+      "types": "./dist/nspam/index.d.ts"
+    },
+    "./open-ranking": {
+      "import": "./dist/open-ranking.js",
+      "require": "./dist/open-ranking.js",
+      "types": "./dist/open-ranking.d.ts"
+    },
+    "./primal": {
+      "import": "./dist/primal.js",
+      "require": "./dist/primal.js",
+      "types": "./dist/primal.d.ts"
+    },
+    "./remote-monitor-relay-liveness": {
+      "import": "./dist/remote-monitor-relay-liveness.js",
+      "require": "./dist/remote-monitor-relay-liveness.js",
+      "types": "./dist/remote-monitor-relay-liveness.d.ts"
+    },
+    "./vertex": {
+      "import": "./dist/vertex.js",
+      "require": "./dist/vertex.js",
+      "types": "./dist/vertex.d.ts"
     }
   },
   "scripts": {
