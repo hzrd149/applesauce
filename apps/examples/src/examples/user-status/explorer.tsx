@@ -21,11 +21,12 @@ import { debounceTime, ignoreElements, map, merge, share, switchMap, timer } fro
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Used for contacts that have not published a relay list
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });

@@ -25,9 +25,10 @@ import { useState } from "react";
 import { BehaviorSubject, EMPTY, map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Setup event store
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create a relay pool for connections
 const pool = new RelayPool();

@@ -69,8 +69,9 @@ import {
 import LoginView from "../../components/login-view";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 /** Skips signature verification for cached events, they were verified by the event store before they were saved */

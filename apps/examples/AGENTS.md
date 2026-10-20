@@ -36,6 +36,7 @@ return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 
 - Create the `EventStore`, `RelayPool`, loaders and other foundational classes at the top of the module. Do not create them in `useMemo`, in `useState` or in a factory function passed to a hook.
 - Examples are not only about React. Creating RxJS classes and subjects outside React is acceptable, and often expected, because it keeps examples simpler and more reactive.
+- Pass the shared optimistic verifier to every store, `new EventStore({ verifyEvent })` with `verifyEvent` from `extra/verifier`, unless the example is about signature verification.
 - Reuse one `EventStore` and `RelayPool` for related data within an example, and keep infrastructure ownership and cleanup explicit.
 - Route incoming events into the example's shared `EventStore`, then render reactive store queries and casts.
 - Let the EventStore handle replaceable-event revisions and deduplication rather than maintaining a second event collection in React state.

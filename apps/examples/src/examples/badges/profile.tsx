@@ -27,6 +27,7 @@ import { useMemo, createContext, useContext } from "react";
 import { BehaviorSubject, map } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 type BrowserState = { pubkey: string; selected: AddressPointer | undefined };
 const BrowserContext = createContext<BehaviorSubject<BrowserState> | undefined>(undefined);
@@ -40,7 +41,7 @@ function useBrowserState() {
 const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 /** List of relays to use for looking up profiles */
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {

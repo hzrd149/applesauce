@@ -23,9 +23,10 @@ import RelayPicker from "../../components/relay-picker";
 // Import window.nostrdb.js to polyfill window.nostrdb
 // The package provides its own TypeScript definitions
 import "window.nostrdb.js";
+import { verifyEvent } from "../../extra/verifier";
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create cache request function that loads from event store

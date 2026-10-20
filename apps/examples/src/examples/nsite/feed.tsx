@@ -31,6 +31,7 @@ import JsonBlock from "../../components/json-block";
 import NoteContent from "../../components/note-content";
 import RelayPicker from "../../components/relay-picker";
 import { relayTimeline } from "../../extra/relay-timeline";
+import { verifyEvent } from "../../extra/verifier";
 
 const DEFAULT_RELAY = "wss://relay.nsite.lol/";
 const NSITE_RELAYS = [DEFAULT_RELAY];
@@ -38,7 +39,7 @@ type Pointer = AddressPointer | EventPointer;
 type Select = (site: Nsite) => void;
 type Tab = "overview" | "versions" | "activity" | "raw";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const relay$ = new BehaviorSubject(DEFAULT_RELAY);
 createEventLoaderForStore(eventStore, pool, {

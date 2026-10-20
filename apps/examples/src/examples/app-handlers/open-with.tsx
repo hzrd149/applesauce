@@ -25,6 +25,7 @@ import { useMemo, useRef, useState } from "react";
 import { catchError, distinctUntilChanged, endWith, ignoreElements, map, Observable, of, startWith } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 type Pointer = AddressPointer | EventPointer | ProfilePointer;
 type LoadState = { status: "loading" | "done" } | { status: "error"; message: string };
@@ -33,7 +34,7 @@ const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
 const EXAMPLE = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
 

@@ -13,8 +13,9 @@ import { RelayPool } from "applesauce-relay";
 import { type ReactNode, useState } from "react";
 import { catchError, map, of, startWith, switchMap, timer } from "rxjs";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const primal = new PrimalCache();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });

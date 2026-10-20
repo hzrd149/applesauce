@@ -15,9 +15,10 @@ import { BehaviorSubject, map, of, combineLatest, startWith } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create unified event loader so profiles, contacts, mailboxes and assertion events are fetched on demand

@@ -27,11 +27,12 @@ import ReactPlayer from "react-player";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const STREAM_DEBUG_MODAL_ID = "stream_debug_modal";
 
 // Create an event store for all events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 const signer = new ExtensionSigner();
 

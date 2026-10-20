@@ -19,8 +19,9 @@ import { type ReactNode, useMemo, useState } from "react";
 import { catchError, defer, map, of, startWith, switchMap, timer } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 

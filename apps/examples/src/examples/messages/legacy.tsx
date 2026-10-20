@@ -71,6 +71,7 @@ import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const DAY = 24 * 60 * 60;
 // How far back the sync panel can load, zero syncs the whole history
@@ -87,7 +88,7 @@ const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const user$ = new BehaviorSubject<User | null>(null);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 // Drops failing inbox relays from the relay set until they recover
 const liveness = new RelayLiveness();

@@ -1,8 +1,56 @@
 import { use$ } from "applesauce-react/hooks";
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { relayTrust$, resetRelayTrust } from "../extra/verifier";
 import { DEFAULT_LOOKUP_RELAYS, lookupRelays$ } from "../settings";
 import RelayAddForm from "./add-relay-form";
+
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+/** A bar per relay showing its signature trust and the chance a new signature is still checked */
+function RelayTrustGraph() {
+  const relays = use$(relayTrust$);
+  const sorted = [...(relays ?? [])].sort((a, b) => b.trust - a.trust);
+  const [resetting, setResetting] = useState(false);
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="font-semibold">Relay trust</h4>
+        <button
+          className="btn btn-sm btn-ghost text-error"
+          disabled={resetting || sorted.length === 0}
+          onClick={() => {
+            setResetting(true);
+            resetRelayTrust();
+          }}
+        >
+          Reset all
+        </button>
+      </div>
+      <p className="text-sm text-base-content/70 mb-3">
+        Signatures from trusted relays are only spot checked. Hover a bar to see how often they are still checked.
+      </p>
+
+      <ul className="border border-base-300 rounded-box divide-y divide-base-300 max-h-64 overflow-y-auto">
+        {sorted.map((r) => (
+          <li
+            key={r.relay}
+            className="grid grid-cols-[minmax(0,1fr)_6rem_3rem] items-center gap-3 px-3 py-2"
+            title={`${r.verified} verified, checks ${pct(r.verificationProbability)} of new signatures`}
+          >
+            <span className="font-mono text-sm truncate">{r.relay}</span>
+            <div className="h-3 border border-base-300">
+              <div className="h-full bg-success" style={{ width: pct(r.trust) }} />
+            </div>
+            <span className="text-sm tabular-nums text-right">{pct(r.trust)}</span>
+          </li>
+        ))}
+        {sorted.length === 0 && <li className="px-3 py-2 text-sm text-base-content/50">No relays seen yet</li>}
+      </ul>
+    </>
+  );
+}
 
 function SettingsModal({ onClose }: { onClose: () => void }) {
   const lookupRelays = use$(lookupRelays$);
@@ -41,6 +89,9 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
         </ul>
 
         <RelayAddForm onSubmit={addRelay} />
+
+        <div className="divider" />
+        <RelayTrustGraph />
       </div>
       <div className="modal-backdrop" onClick={onClose}></div>
     </div>

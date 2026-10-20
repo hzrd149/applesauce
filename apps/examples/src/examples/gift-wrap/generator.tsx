@@ -36,6 +36,7 @@ import {
 } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const totalRandomUsers = [
   "npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s",
@@ -48,7 +49,7 @@ const totalRandomUsers = [
 ].map(normalizeToPubkey);
 
 const pool = new RelayPool();
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const signer = new PrivateKeySigner();
 
 // Create an address loader to load user profiles and replaceable events

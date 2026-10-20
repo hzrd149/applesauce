@@ -30,6 +30,7 @@ import {
 } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Create relay pool for connections
 const pool = new RelayPool({
@@ -37,7 +38,7 @@ const pool = new RelayPool({
 });
 
 // Create event store for keeping local events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create loaders for the event store
 // Create unified event loader for the store

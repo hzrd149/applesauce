@@ -30,12 +30,13 @@ import { useMemo, useState } from "react";
 import { Bar } from "react-chartjs-2";
 
 import PubkeyPicker from "../../components/pubkey-picker";
+import { verifyEvent } from "../../extra/verifier";
 
 // Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, LogarithmicScale, BarElement, Title, Tooltip, Legend);
 
 // Setup stores and pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create a unified event loader so we can fetch profiles and NIP-65 mailbox lists

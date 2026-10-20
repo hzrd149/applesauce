@@ -28,6 +28,7 @@ import JsonBlock from "../../components/json-block";
 import LoginView from "../../components/login-view";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 const CATEGORY_PRESETS = ["video,movie,4k", "video,tv", "audio,music", "software,linux", "ebook"];
@@ -37,7 +38,7 @@ const ID_PREFIXES: TorrentExternalIdentifierPrefix[] = ["imdb", "tmdb", "ttvdb",
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
 

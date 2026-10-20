@@ -39,8 +39,9 @@ import { useRef, useMemo, useState } from "react";
 import { BehaviorSubject, combineLatest, distinctUntilChanged, map, switchMap } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);

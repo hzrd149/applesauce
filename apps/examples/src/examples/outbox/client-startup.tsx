@@ -41,13 +41,11 @@ import {
 } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
-
-const eventStore = new EventStore();
-const pool = new RelayPool();
+import { verifyEvent } from "../../extra/verifier";
 
 // Events in the cache were verified before they were written, so skip re-verifying them on startup
-const verifyEvent = eventStore.verifyEvent!;
-eventStore.verifyEvent = (event) => isFromCache(event) || verifyEvent(event);
+const eventStore = new EventStore({ verifyEvent: (event) => isFromCache(event) || verifyEvent(event) });
+const pool = new RelayPool();
 
 // A local IndexedDB cache that every event arriving from relays is written to
 const cache = await openDB();

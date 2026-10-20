@@ -45,6 +45,7 @@ import {
 } from "rxjs";
 import NoteContent from "../../components/note-content";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 /** A known large thread to test loading against */
 type ThreadPreset = { label: string; id: string; relays: string[]; expect: string };
@@ -201,7 +202,7 @@ const MONITORS = [
   { name: "Ghost", pubkey: "45df0580711f37c547270480d7aed2c7fc03ba5a4f8fef5a8787db0b19343de0" },
 ];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Local liveness records this client's own failures, a relay that times out is skipped while it backs off
 const local = new RelayLiveness();

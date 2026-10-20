@@ -48,9 +48,10 @@ import {
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // --- Setup ---
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,

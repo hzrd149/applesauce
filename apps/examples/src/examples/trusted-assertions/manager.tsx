@@ -45,10 +45,11 @@ import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Loads profiles, relay lists, provider lists and assertions on demand

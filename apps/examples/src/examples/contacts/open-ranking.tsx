@@ -21,6 +21,7 @@ import { BehaviorSubject, map, defer, from, mergeMap, scan, startWith, catchErro
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Common Open Ranking providers to choose from
 const COMMON_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
@@ -29,7 +30,7 @@ const COMMON_PROVIDERS = [DEFAULT_OPEN_RANKING_PROVIDER];
 const STATS_ENDPOINT = "/stats/pubkey";
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create unified event loader for the store so profiles/contacts/mailboxes are fetched on demand

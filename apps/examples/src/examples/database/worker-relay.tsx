@@ -30,6 +30,7 @@ import { ChangeEvent, FormEvent, useRef, useMemo, useState } from "react";
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
 import ImportEventsButton from "../../components/import-events-button";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // The prebuilt development worker is an asset; production bundles the source worker.
 const devWorkerUrl = new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url);
@@ -113,7 +114,7 @@ class WorkerRelayEventDatabase implements IAsyncEventDatabase {
 }
 
 const eventDatabase = new WorkerRelayEventDatabase(workerRelay);
-const eventStore = new AsyncEventStore({ database: eventDatabase });
+const eventStore = new AsyncEventStore({ database: eventDatabase, verifyEvent });
 
 const pool = new RelayPool();
 

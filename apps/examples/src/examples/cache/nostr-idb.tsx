@@ -20,13 +20,14 @@ import { NostrIDB } from "nostr-idb";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, combineLatest, debounceTime, interval, startWith, switchMap, Subject } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
+import { verifyEvent } from "../../extra/verifier";
 
 // Open the IndexedDB database
 const nostrIDB = new NostrIDB<NostrEvent>();
 await nostrIDB.start();
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create cache request function that loads from IndexedDB

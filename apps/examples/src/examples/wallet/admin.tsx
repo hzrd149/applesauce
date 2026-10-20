@@ -45,6 +45,7 @@ import QRCode from "../../components/qr-code";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // ---- Application infrastructure (owned by the app, not the wallet) ----
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
@@ -52,7 +53,7 @@ const session$ = new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>
 const signer$ = session$.pipe(map((session) => session?.signer ?? null));
 const pubkey$ = session$.pipe(map((session) => session?.pubkey ?? null));
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const couch = createEncryptedCouch(
   () => storage$.value,

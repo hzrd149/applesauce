@@ -34,10 +34,11 @@ import RelayPicker from "../../components/relay-picker";
 import NoteContent from "../../components/note-content";
 import { relayTimeline } from "../../extra/relay-timeline";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const NOTES = { kinds: [1] };
 const ROW_HEIGHT = 76;
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 

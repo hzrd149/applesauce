@@ -48,8 +48,9 @@ import LoginView from "../../components/login-view";
 import NoteContent from "../../components/note-content";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool({
   informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
 });

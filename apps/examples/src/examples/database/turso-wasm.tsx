@@ -11,6 +11,7 @@ import { NostrEvent, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
 import { connect } from "@tursodatabase/database-wasm/vite";
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { verifyEvent } from "../../extra/verifier";
 
 // Initialize database and event store
 let eventDatabase: TursoWasmEventDatabase | null = null;
@@ -36,7 +37,7 @@ async function openDatabase() {
   try {
     const db = await connect("nostr-events.db");
     eventDatabase = await TursoWasmEventDatabase.fromDatabase(db);
-    eventStore = new AsyncEventStore({ database: eventDatabase });
+    eventStore = new AsyncEventStore({ database: eventDatabase, verifyEvent });
     return true;
   } catch (error) {
     console.error("Failed to initialize database:", error);

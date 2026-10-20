@@ -404,6 +404,9 @@ importers:
       nostr-social-graph:
         specifier: ^1.0.36
         version: 1.0.36
+      nostr-wasm:
+        specifier: ^0.1.0
+        version: 0.1.0
       parse-torrent:
         specifier: ^11.0.19
         version: 11.0.23

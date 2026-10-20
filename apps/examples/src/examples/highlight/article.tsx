@@ -23,6 +23,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { of, map } from "rxjs";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Memoize plugins and components at module level
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
@@ -48,7 +49,7 @@ const markdownComponents = {
   td: ({ ...props }: any) => <td {...props} />,
 };
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create an address loader to fetch articles

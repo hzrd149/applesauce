@@ -18,6 +18,7 @@ import { RelayPool } from "applesauce-relay";
 import { map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const DEFAULT_RELAY = "wss://relay.primal.net/";
 const CURATED_MIME_TYPES = [
@@ -30,7 +31,7 @@ const CURATED_MIME_TYPES = [
   "application/pdf",
 ];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: [DEFAULT_RELAY] });

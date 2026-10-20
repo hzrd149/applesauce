@@ -34,6 +34,7 @@ import { BehaviorSubject, catchError, distinctUntilChanged, endWith, ignoreEleme
 import LoginView from "../../components/login-view";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
@@ -63,7 +64,7 @@ function logout() {
 }
 
 // Shared infrastructure
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
   // Actions publish recommendations to the user's outboxes

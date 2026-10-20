@@ -19,12 +19,13 @@ import { useMemo, useState } from "react";
 import { catchError, combineLatest, endWith, ignoreElements, map, of, startWith, switchMap } from "rxjs";
 
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Torrents are spread across many relays, so search a set of them instead of a single one
 const DEFAULT_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 const ID_PREFIXES: TorrentExternalIdentifierPrefix[] = ["imdb", "tmdb", "ttvdb", "mal", "anilist"];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 

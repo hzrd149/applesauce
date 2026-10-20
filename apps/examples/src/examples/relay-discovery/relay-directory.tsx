@@ -46,8 +46,9 @@ import {
   type SortKey,
 } from "../../helpers/relay-directory";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Loads monitor profiles and NIP-65 relay lists on demand

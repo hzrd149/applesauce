@@ -21,6 +21,7 @@ import { BehaviorSubject, firstValueFrom, map, shareReplay, switchMap, throttleT
 import PubkeyPicker from "../../components/pubkey-picker";
 import { RelayStatusModal } from "../../components/relay-status-popover";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // pastellify ships CommonJS with exports.default, so unwrap it when the bundler returns the module object
 const pastellify: typeof pastellifyModule = (pastellifyModule as any).default ?? pastellifyModule;
@@ -32,7 +33,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const pool = new RelayPool({
   informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
 });
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create some loaders using the cache method and the event store
 // Create unified event loader for the store

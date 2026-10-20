@@ -19,6 +19,7 @@ import { BehaviorSubject, of, materialize, scan, startWith, map, debounceTime } 
 import RelayAddForm from "../../components/add-relay-form";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Create a relay pool for connections
 const pool = new RelayPool({
@@ -26,7 +27,7 @@ const pool = new RelayPool({
 });
 
 // Create an event store for keeping local events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create loaders for the event store
 // Create unified event loader for the store

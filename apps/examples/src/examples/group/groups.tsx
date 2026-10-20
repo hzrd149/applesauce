@@ -13,12 +13,13 @@ import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
 import { useCallback, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
+import { verifyEvent } from "../../extra/verifier";
 
 // NIP-29 Group Metadata Event kind
 const GROUP_METADATA_KIND = 39000;
 
 const pool = new RelayPool();
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 function GroupCard({ group, relay }: { group: NostrEvent; relay: string }) {
   const groupPointer = getGroupPointerFromMetadata(group, relay);

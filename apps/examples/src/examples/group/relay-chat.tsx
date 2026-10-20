@@ -21,8 +21,9 @@ import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useState } from "react";
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const signer = new ExtensionSigner();
 const pool = new RelayPool();
 

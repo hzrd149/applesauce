@@ -33,6 +33,7 @@ import {
   VerifyResult,
 } from "../../helpers/social-graph-stress";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Users with large follow lists, any other user can be picked below
 const PRESETS = [
@@ -52,7 +53,7 @@ const SINCE = [
 ] as const;
 
 // Only used to look up NIP-65 outboxes when verifying missing users
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 

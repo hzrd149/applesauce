@@ -20,11 +20,12 @@ import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
 import { BehaviorSubject, map, Observable, defer, of, catchError } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {

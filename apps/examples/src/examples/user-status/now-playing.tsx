@@ -25,13 +25,14 @@ import { BehaviorSubject, debounceTime, ignoreElements, map, merge, share, switc
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
 const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });

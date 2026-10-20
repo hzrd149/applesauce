@@ -27,8 +27,9 @@ import "applesauce-content/text/lightning";
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 const NoteAuthorPubkeyContext = createContext<string | undefined>(undefined);

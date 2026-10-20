@@ -33,8 +33,9 @@ import {
 import PubkeyPicker from "../../components/pubkey-picker";
 import RelayAddForm from "../../components/add-relay-form";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 const STORAGE_GRAPH = "social-graph";

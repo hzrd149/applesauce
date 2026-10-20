@@ -43,8 +43,9 @@ import { combineLatest, defer, map, materialize, of, scan, startWith, tap } from
 
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const kinds = [DATE_BASED_CALENDAR_EVENT_KIND, TIME_BASED_CALENDAR_EVENT_KIND];
 createEventLoaderForStore(eventStore, pool, {

@@ -22,6 +22,7 @@ import { useState } from "react";
 import { map, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 type RepositoryFavorite = {
   pointer: AddressPointer;
@@ -29,7 +30,7 @@ type RepositoryFavorite = {
   favoritedBy: FavoriteGitRepos[];
 };
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, {

@@ -31,7 +31,7 @@ import "leaflet/dist/leaflet.css";
 import RelayPicker from "../../components/relay-picker";
 
 // Create an event store for all events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
@@ -47,6 +47,7 @@ import L from "leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({

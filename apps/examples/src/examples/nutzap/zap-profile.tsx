@@ -29,9 +29,10 @@ import { of } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Global state
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const actions = new ActionRunner(eventStore, signer, (event, relays) =>

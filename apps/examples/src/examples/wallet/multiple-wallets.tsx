@@ -50,9 +50,10 @@ import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // ---- Shared app infrastructure (owned by the app, reused by every backend) ----
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 // Encrypted proof recovery is shared by this account's wallet backends.
 const account$ = new BehaviorSubject<string | null>(null);

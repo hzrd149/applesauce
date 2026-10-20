@@ -21,9 +21,10 @@ import RelayPicker from "../../components/relay-picker";
 // Make sure casts are registered
 import "applesauce-wallet/casts";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Create an event store for all events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();

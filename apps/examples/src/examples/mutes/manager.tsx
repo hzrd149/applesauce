@@ -40,6 +40,7 @@ import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
@@ -47,7 +48,7 @@ const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const account$ = new BehaviorSubject<string | null>(null);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Loads profiles, mute lists, and muted notes on demand

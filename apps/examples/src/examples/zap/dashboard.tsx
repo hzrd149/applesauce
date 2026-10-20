@@ -38,10 +38,11 @@ import {
 
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Loads profiles, relay lists and zapped events on demand

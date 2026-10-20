@@ -26,13 +26,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
 const markdownComponents = {
   a: ({ ...props }: any) => <a target="_blank" rel="noopener noreferrer" {...props} />,
 };
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const actions = new ActionRunner(eventStore, signer, async (event, relays) => {

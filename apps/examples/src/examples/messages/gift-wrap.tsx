@@ -67,6 +67,7 @@ import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 // NIP-59 randomizes gift wrap timestamps up to two days into the past
@@ -92,7 +93,7 @@ const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const user$ = new BehaviorSubject<User | null>(null);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const cache = await openDB();
 

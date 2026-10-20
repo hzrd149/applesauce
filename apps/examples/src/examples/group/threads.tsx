@@ -24,8 +24,9 @@ import { of } from "rxjs";
 
 import GroupPicker from "../../components/group-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 const signer = new ExtensionSigner();

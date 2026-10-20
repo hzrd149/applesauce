@@ -16,9 +16,10 @@ import { useState } from "react";
 import { lastValueFrom, defer, from, map, catchError, of, startWith } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create unified event loader for the store

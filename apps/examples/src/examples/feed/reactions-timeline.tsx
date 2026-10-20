@@ -21,9 +21,10 @@ import { Filter, kinds, NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Setup event store
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create a relay pool for connections
 const pool = new RelayPool();

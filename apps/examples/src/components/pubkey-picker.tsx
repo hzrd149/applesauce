@@ -36,6 +36,7 @@ import {
 } from "rxjs";
 import RelayPicker from "./relay-picker";
 import { lookupRelays$ } from "../settings";
+import { verifyEvent } from "../extra/verifier";
 
 // Common relay URLs that support NIP-50 search
 const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]);
@@ -44,7 +45,7 @@ const SEARCH_RELAYS = relaySet(["wss://relay.ditto.pub", "wss://antiprimal.net"]
 const OPEN_RANKING_PROVIDERS = ["https://ranking.vertexlab.io", DEFAULT_OPEN_RANKING_PROVIDER];
 
 // Create an event store for all events
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();

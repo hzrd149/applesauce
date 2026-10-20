@@ -34,6 +34,7 @@ import RelayPicker from "../../components/relay-picker";
 
 // when using Vite import the worker script directly (for production)
 import WorkerVite from "@snort/worker-relay/src/worker?worker";
+import { verifyEvent } from "../../extra/verifier";
 
 // The prebuilt development worker is an asset; production bundles the source worker.
 const devWorkerUrl = new URL("@snort/worker-relay/dist/esm/worker.mjs", import.meta.url);
@@ -47,7 +48,7 @@ const workerRelayReady = workerRelay.init({
 });
 
 // Setup event store and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create cache request function that loads from worker relay

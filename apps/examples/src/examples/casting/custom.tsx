@@ -21,6 +21,7 @@ import { useState } from "react";
 import { map, switchMap, of } from "rxjs";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 /**
  * STEP 1: Define your event kind and type
@@ -179,7 +180,7 @@ class Repository extends EventCast<RepositoryEvent> {
 }
 
 // Setup EventStore and RelayPool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Create an event loader for the store to load profiles

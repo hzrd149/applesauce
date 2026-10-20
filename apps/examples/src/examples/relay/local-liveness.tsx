@@ -25,6 +25,7 @@ import {
   timer,
 } from "rxjs";
 import { use$ } from "applesauce-react/hooks";
+import { verifyEvent } from "../../extra/verifier";
 
 const DEFAULT_RELAYS = [
   "wss://relay.damus.io/",
@@ -34,7 +35,7 @@ const DEFAULT_RELAYS = [
   "wss://offline.relay.invalid/",
 ];
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool({ keepAlive: 0, enablePing: true, pingFrequency: 15_000, pingTimeout: 15_000 });
 
 // Short timings so state changes are visible within a minute

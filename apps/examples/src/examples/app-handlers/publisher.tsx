@@ -39,6 +39,7 @@ import { BehaviorSubject, from, map, Observable, of, scan, shareReplay, startWit
 import JsonBlock from "../../components/json-block";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 const PLATFORMS: HandlerLinkPlatform[] = ["web", "ios", "android"];
@@ -69,7 +70,7 @@ function logout() {
 }
 
 // Shared infrastructure
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ProxySigner(signer$.pipe(defined()));
 

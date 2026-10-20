@@ -34,6 +34,7 @@ import {
 } from "rxjs";
 import { relayTimeline } from "../../extra/relay-timeline";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const MONITOR_RELAY = "wss://relay.nostr.watch/";
 const DEFAULT_MONITORS = [
@@ -42,7 +43,7 @@ const DEFAULT_MONITORS = [
 ];
 const NOTE_FILTER = { kinds: [1], limit: 1 };
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 // One pool reads monitor reports and opens the routed subscriptions; nothing probes relay health
 const pool = new RelayPool({ keepAlive: 0 });
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });

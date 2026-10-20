@@ -15,8 +15,9 @@ import { NostrEvent } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Resolve replaceable events (like the user's relay list) that aren't in the store yet

@@ -37,6 +37,7 @@ import UnlockView from "../../components/unlock-view";
 
 import SecureStorage from "../../extra/encrypted-storage";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Expiration times for notes and comments (in seconds from creation)
 // NIP-17 recommends shorter expirations for gift-wrapped messages to reduce relay storage
@@ -60,7 +61,7 @@ const user$ = new BehaviorSubject<User | undefined>(undefined);
 const expiration$ = new BehaviorSubject<string>(localStorage.getItem("note-expiration") ?? "3 days");
 
 // Setup event store and relay connection pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool({
   informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
 });

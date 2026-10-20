@@ -24,6 +24,7 @@ import { BehaviorSubject, catchError, filter, map, of, startWith } from "rxjs";
 import LoginView from "../../components/login-view";
 import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Torrents are spread across many relays, so the feed reads from a set of them instead of a single one.
 // Shared with the publish method so comments reach the same relays
@@ -32,7 +33,7 @@ const relays$ = new BehaviorSubject(["wss://relay.damus.io/", "wss://nos.lol/", 
 // The signed in account, only needed for commenting
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 

@@ -25,6 +25,7 @@ import { useMemo, useId } from "react";
 
 import { BehaviorSubject, map, of } from "rxjs";
 import { lookupRelays$ } from "../settings";
+import { verifyEvent } from "../extra/verifier";
 
 // Common relay URLs that users might want to use
 export const COMMON_RELAYS = relaySet([
@@ -41,7 +42,7 @@ export const COMMON_RELAYS = relaySet([
 const discoveryPool = new RelayPool();
 // Create a relay pool instance for fetching relay information documents
 const infoPool = new RelayPool();
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 
 // Create unified event loader for the store
 createEventLoaderForStore(eventStore, discoveryPool, {

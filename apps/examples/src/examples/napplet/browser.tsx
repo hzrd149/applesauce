@@ -13,8 +13,9 @@ import { RelayPool } from "applesauce-relay";
 import { useState } from "react";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 // Load author profiles and Blossom server lists on demand

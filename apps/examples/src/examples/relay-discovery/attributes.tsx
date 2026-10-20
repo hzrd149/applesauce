@@ -21,12 +21,13 @@ import { Chart } from "react-chartjs-2";
 
 import RelayPicker, { COMMON_RELAYS } from "../../components/relay-picker";
 import { relayTimeline } from "../../extra/relay-timeline";
+import { verifyEvent } from "../../extra/verifier";
 
 // Register ChartJS components
 ChartJS.register(WordCloudController, WordElement, CategoryScale, LinearScale, Title, Tooltip);
 
 // Create stores and relay pool
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool({
   informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
 });

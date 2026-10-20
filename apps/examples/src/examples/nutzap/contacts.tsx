@@ -26,6 +26,7 @@ import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 // Application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
@@ -33,7 +34,7 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
 // Global state
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), (event, relays) =>
   publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event),

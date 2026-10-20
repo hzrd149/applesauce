@@ -50,6 +50,7 @@ import {
 import RelayPicker from "../../components/relay-picker";
 import { historyWindows } from "../../extra/history-window";
 import { lookupRelays$ } from "../../settings";
+import { verifyEvent } from "../../extra/verifier";
 
 const NOTES = { kinds: [1] };
 // How far back in time each older page of the feed reaches
@@ -62,7 +63,7 @@ const COLUMN_WIDTH = 340;
 // The service gives up on a single relay after this long
 const ATTEMPT_TIMEOUT = 5000;
 
-const eventStore = new EventStore();
+const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 // This adapter creates its object store only when the database is first created.
 const countCache = new Keyv({
