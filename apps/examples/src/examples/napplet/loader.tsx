@@ -51,6 +51,7 @@ import {
   getZapSender,
   isValidNapplet,
   mergeBlossomServers,
+  normalizeBlossomServer,
   NAPPLET_KIND,
   NAPPLET_KINDS,
   NAPPLET_ROOT_KIND,
@@ -585,11 +586,29 @@ async function rasterize(svg: Uint8Array) {
 
 /** Resolves blossom:, nostr: and https: URLs to raw bytes and the content type their source declares */
 async function resolveResource(url: URL, servers: readonly string[], signal: AbortSignal) {
+  // Temporary compatibility for kehto's legacy blossom:sha256: resource URLs
+  if (url.protocol === "blossom:") url = new URL(url.href.replace(/^blossom:sha256:/i, "blossom:"));
+  else if (url.protocol === "https:" || url.protocol === "http:")
+    url.pathname = url.pathname.replace(/^\/sha256:(?=[0-9a-f])/i, "/");
+
   // BUD-10 blossom: URIs resolve against server hints and are hash-verified like the napplet itself
   if (url.protocol === "blossom:") {
-    const hints = [...url.searchParams.getAll("xs").map((s) => `https://${s}`), ...servers];
+    const hash = /^([0-9a-f]{64})(?:\.[^/]+)?$/.exec(url.pathname)?.[1];
+    if (!hash) throw new ResourceServiceError("invalid-request", "invalid Blossom hash");
+    const hints = url.searchParams.getAll("xs").flatMap((server) => {
+      const candidates = /^https?:\/\//i.test(server) ? [server] : [`https://${server}`, `http://${server}`];
+      return candidates.flatMap((candidate) => {
+        try {
+          return [normalizeBlossomServer(candidate).href];
+        } catch {
+          return [];
+        }
+      });
+    });
+    const preferred = await fromUser((u) => u.blossomServers$, [] as URL[]);
+    const all = mergeBlossomServers<string | URL>(hints, [...servers], preferred, FALLBACK_BLOSSOM).map(String);
     let type = "";
-    const bytes = await fetchBlob(hints.length ? hints : FALLBACK_BLOSSOM, url.pathname.slice(0, 64), (u) =>
+    const bytes = await fetchBlob(all, hash, (u) =>
       fetchBytes(u, (t) => (type = t)),
     );
     return { bytes, type };
