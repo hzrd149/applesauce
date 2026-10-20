@@ -39,6 +39,8 @@ export interface OptimisticEventVerifierOptions {
   historyDays?: number;
   /** The maximum entries in each recent-verification cache (default 10000) */
   cacheSize?: number;
+  /** The signature check used for sampled events, such as a faster WASM verifier (default nostr-tools verifyEvent) */
+  verifyEvent?: (event: NostrEvent) => boolean;
 }
 
 // `reset` is the time of the last detected invalid event, used to keep resets durable across instances
@@ -94,8 +96,9 @@ export class OptimisticEventVerifier {
   private readonly states = new Map<string, RelayState>();
   private readonly verified: LRU<boolean>;
   private readonly credited: LRU<boolean>;
-  private readonly options: Required<Omit<OptimisticEventVerifierOptions, "storage">>;
+  private readonly options: Required<Omit<OptimisticEventVerifierOptions, "storage" | "verifyEvent">>;
   private readonly storage?: OptimisticVerifierStorage;
+  private readonly checkSignature: (event: NostrEvent) => boolean;
   private readonly knownRelays = new BehaviorSubject<readonly string[]>([]);
   private readonly verifications = new Subject<OptimisticVerification>();
   private readonly dailyCap: number;
@@ -112,6 +115,7 @@ export class OptimisticEventVerifier {
    */
   constructor(options: OptimisticEventVerifierOptions = {}) {
     this.storage = options.storage;
+    this.checkSignature = options.verifyEvent ?? verifyEvent;
     this.options = {
       minimumVerificationRate: options.minimumVerificationRate ?? 0.1,
       verifiedEventsForTrust: options.verifiedEventsForTrust ?? 10_000,
@@ -340,7 +344,7 @@ export class OptimisticEventVerifier {
       sig: event.sig,
     };
     try {
-      if (!verifyEvent(clean)) return fail();
+      if (!this.checkSignature(clean)) return fail();
     } catch {
       return fail();
     }

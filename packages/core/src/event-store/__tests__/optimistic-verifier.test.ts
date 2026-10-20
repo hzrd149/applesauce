@@ -97,7 +97,10 @@ describe("OptimisticEventVerifier", () => {
 
   it("keeps a reset written by another instance sharing storage", async () => {
     const items = new Map([["applesauce:optimistic-verifier:v1:" + url, trusted]]);
-    const storage = { getItem: (key: string) => items.get(key) ?? null, setItem: (k: string, v: string) => items.set(k, v) };
+    const storage = {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (k: string, v: string) => items.set(k, v),
+    };
     const a = new OptimisticEventVerifier({ storage });
     const b = new OptimisticEventVerifier({ storage });
     a.getRelayState(url);
@@ -233,6 +236,14 @@ it("can require every uncached signature to be verified", async () => {
   const bad = event("strict");
   bad.sig = "0".repeat(128);
   expect(verifier.verifyEvent(bad)).toBe(false);
+});
+
+it("uses a custom signature check for sampled events", () => {
+  const check = vi.fn((e: NostrEvent) => e.content !== "forged");
+  const verifier = new OptimisticEventVerifier({ verifyEvent: check });
+  expect(verifier.verifyEvent(event())).toBe(true);
+  expect(verifier.verifyEvent(event("forged"))).toBe(false);
+  expect(check).toHaveBeenCalledTimes(2);
 });
 
 it.each([
