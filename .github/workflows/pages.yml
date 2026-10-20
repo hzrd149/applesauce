@@ -32,7 +32,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Download site
         uses: actions/download-artifact@v8
@@ -49,6 +49,14 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: "./docs"
+          # Skills discovery lives under .well-known, which v5 excludes by default.
+          include-hidden-files: true
+
+      - name: Verify skills in Pages artifact
+        run: |
+          tar -tf "$RUNNER_TEMP/artifact.tar" > "$RUNNER_TEMP/pages-files.txt"
+          grep -Fxq './.well-known/agent-skills/index.json' "$RUNNER_TEMP/pages-files.txt"
+          grep -Fxq './.well-known/agent-skills/applesauce.tar.gz' "$RUNNER_TEMP/pages-files.txt"
 
       - name: Deploy to GitHub Pages
         id: deployment

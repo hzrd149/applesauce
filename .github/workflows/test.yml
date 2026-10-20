@@ -15,7 +15,7 @@ jobs:
   test-node:
     name: Test on Node.js ${{ matrix.node-version }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       matrix:
@@ -51,7 +51,7 @@ jobs:
   test-react:
     name: Test applesauce-react on React ${{ matrix.react-major }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       matrix:
@@ -90,7 +90,7 @@ jobs:
   test-bun:
     name: Test on Bun ${{ matrix.bun-version }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     strategy:
       matrix:
