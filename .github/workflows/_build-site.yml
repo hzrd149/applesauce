@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: "pnpm"
@@ -32,7 +32,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download package dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-dist
 
@@ -46,7 +46,7 @@ jobs:
         run: tar -cf typedoc-out.tar docs/typedoc
 
       - name: Upload typedoc output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: typedoc-out
           path: typedoc-out.tar
@@ -59,12 +59,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: "pnpm"
@@ -73,7 +73,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download package dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-dist
 
@@ -87,7 +87,7 @@ jobs:
         run: tar -cf examples-dist.tar apps/examples/dist
 
       - name: Upload examples dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: examples-dist
           path: examples-dist.tar
@@ -100,12 +100,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: "pnpm"
@@ -114,7 +114,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download package dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-dist
 
@@ -128,7 +128,7 @@ jobs:
         run: tar -cf agent-skills-dist.tar apps/agent-skills/dist
 
       - name: Upload agent-skills dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-skills-dist
           path: agent-skills-dist.tar
@@ -141,12 +141,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: "pnpm"
@@ -155,7 +155,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download package dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-dist
 
@@ -171,7 +171,7 @@ jobs:
         run: tar -cf vitepress-dist.tar apps/docs/.vitepress/dist
 
       - name: Upload vitepress dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vitepress-dist
           path: vitepress-dist.tar
@@ -184,12 +184,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: "pnpm"
@@ -198,7 +198,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download package dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-dist
 
@@ -212,7 +212,7 @@ jobs:
         run: tar -cf llms-dist.tar apps/llms/dist
 
       - name: Upload llms dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llms-dist
           path: llms-dist.tar
@@ -225,27 +225,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download typedoc output
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: typedoc-out
 
       - name: Download examples dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: examples-dist
 
       - name: Download agent-skills dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: agent-skills-dist
 
       - name: Download vitepress dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vitepress-dist
 
       - name: Download llms dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: llms-dist
 
@@ -268,7 +268,7 @@ jobs:
         run: tar -cf site.tar docs
 
       - name: Upload site
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: site
           path: site.tar

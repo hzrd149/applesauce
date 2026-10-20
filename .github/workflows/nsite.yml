@@ -18,17 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download site
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: site
 
       - name: Download examples dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: examples-dist
 
       - name: Download vitepress dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: vitepress-dist
 
