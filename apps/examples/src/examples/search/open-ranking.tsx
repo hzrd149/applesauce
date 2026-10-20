@@ -10,7 +10,7 @@ import {
   OpenRanking,
   OpenRankingAlgorithm,
   OpenRankingSearchResult,
-} from "applesauce-extra";
+} from "applesauce-extra/open-ranking";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

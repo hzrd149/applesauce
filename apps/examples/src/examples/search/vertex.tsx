@@ -6,7 +6,7 @@
 import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { type SortMethod, Vertex } from "applesauce-extra";
+import { type SortMethod, Vertex } from "applesauce-extra/vertex";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

@@ -15,7 +15,7 @@ See [Relay Liveness](./liveness) for choosing a source and shared filtering patt
 Reuse the app's `EventStore` and `RelayPool`. Each monitor needs a trusted public key and at least one relay carrying its reports; `monitorA` and `monitorB` below are hex public keys or npubs.
 
 ```ts
-import { RemoteMonitorRelayLiveness } from "applesauce-extra";
+import { RemoteMonitorRelayLiveness } from "applesauce-extra/remote-monitor-relay-liveness";
 
 const health = new RemoteMonitorRelayLiveness(eventStore, {
   monitors: [

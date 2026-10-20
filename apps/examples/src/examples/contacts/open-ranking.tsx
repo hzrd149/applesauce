@@ -6,7 +6,12 @@
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
-import { DEFAULT_OPEN_RANKING_PROVIDER, OpenRanking, OpenRankingAlgorithm, OpenRankingStats } from "applesauce-extra";
+import {
+  DEFAULT_OPEN_RANKING_PROVIDER,
+  OpenRanking,
+  OpenRankingAlgorithm,
+  OpenRankingStats,
+} from "applesauce-extra/open-ranking";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

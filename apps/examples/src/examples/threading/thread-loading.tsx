@@ -11,7 +11,7 @@ import { castTimelineStream } from "applesauce-common/observable";
 import { castEvent, castUser, defined, EventStore } from "applesauce-core";
 import { Filter, kinds, mergeRelaySets, NostrEvent } from "applesauce-core/helpers";
 import { decodeEventPointer } from "applesauce-core/helpers/pointers";
-import { RemoteMonitorRelayLiveness } from "applesauce-extra";
+import { RemoteMonitorRelayLiveness } from "applesauce-extra/remote-monitor-relay-liveness";
 import {
   createEventLoaderForStore,
   createSyncLoader,

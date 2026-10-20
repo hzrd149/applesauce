@@ -8,7 +8,11 @@ import { RELAY_MONITOR_ANNOUNCEMENT_KIND } from "applesauce-common/helpers";
 import { castEvent, EventStore } from "applesauce-core";
 import { unixNow } from "applesauce-core/helpers";
 import { combineLatestByValue } from "applesauce-core/observable";
-import { RemoteMonitorRelayLiveness, type Nip66RelayObservation, type Nip66RelayStatus } from "applesauce-extra";
+import {
+  RemoteMonitorRelayLiveness,
+  type Nip66RelayObservation,
+  type Nip66RelayStatus,
+} from "applesauce-extra/remote-monitor-relay-liveness";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

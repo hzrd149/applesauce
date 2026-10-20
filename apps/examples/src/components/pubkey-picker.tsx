@@ -9,13 +9,9 @@ import {
 } from "applesauce-core/helpers";
 import { parseNIP05Address } from "applesauce-core/helpers/dns-identity";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import {
-  DEFAULT_OPEN_RANKING_PROVIDER,
-  OpenRanking,
-  OpenRankingAlgorithm,
-  PrimalCache,
-  Vertex,
-} from "applesauce-extra";
+import { DEFAULT_OPEN_RANKING_PROVIDER, OpenRanking, OpenRankingAlgorithm } from "applesauce-extra/open-ranking";
+import { PrimalCache } from "applesauce-extra/primal";
+import { Vertex } from "applesauce-extra/vertex";
 import { Identity, IdentityStatus } from "applesauce-loaders/helpers";
 import { createEventLoaderForStore, DnsIdentityLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";

@@ -6,7 +6,7 @@
 import { castUser } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { PrimalCache } from "applesauce-extra";
+import { PrimalCache } from "applesauce-extra/primal";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";

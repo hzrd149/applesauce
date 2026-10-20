@@ -27,7 +27,7 @@ liveness.connectToPool(pool);
 Alternatively, use the app's existing `EventStore` and explicitly trusted monitor identities:
 
 ```ts
-import { RemoteMonitorRelayLiveness } from "applesauce-extra";
+import { RemoteMonitorRelayLiveness } from "applesauce-extra/remote-monitor-relay-liveness";
 
 const liveness = new RemoteMonitorRelayLiveness(eventStore, {
   monitors: [{ pubkey: monitorPubkey, relays: monitorRelays }],
