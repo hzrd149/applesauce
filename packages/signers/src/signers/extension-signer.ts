@@ -1,3 +1,4 @@
+/// <reference path="../types/nostr-extensions.d.ts" />
 import { isHexKey } from "applesauce-core/helpers";
 import { EventTemplate, VerifiedEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { ISigner } from "../interop.js";

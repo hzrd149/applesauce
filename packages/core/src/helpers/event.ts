@@ -15,13 +15,13 @@ import { getOrComputeCachedValue, setCachedValue } from "./cache.js";
 
 // Re-export types from nostr-tools
 export {
-  EventTemplate,
+  type EventTemplate,
   finalizeEvent,
   getEventHash,
-  NostrEvent,
+  type NostrEvent,
   serializeEvent,
-  UnsignedEvent,
-  VerifiedEvent,
+  type UnsignedEvent,
+  type VerifiedEvent,
   verifiedSymbol,
   verifyEvent,
 } from "nostr-tools/pure";

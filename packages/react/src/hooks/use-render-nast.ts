@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { Root } from "applesauce-content/nast";
 import { ComponentMap, renderNast } from "../helpers/nast.js";
 
-export { ComponentMap };
+export type { ComponentMap };
 
 /** A hook to get the rendered output of a {@link Root} nostr syntax tree */
 export function useRenderNast(root: Root | undefined, components: ComponentMap): ReactElement | null {

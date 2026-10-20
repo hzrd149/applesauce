@@ -61,7 +61,7 @@ function publishPackages() {
 
 function release() {
   if (!values["skip-version"]) run("node", ["scripts/snapshot-version.mjs", tag]);
-  run("pnpm", ["prerelease-snapshot"]);
+  run("pnpm", ["npm:prerelease-snapshot"]);
   if (!values["verify-only"]) publishPackages();
 }
 

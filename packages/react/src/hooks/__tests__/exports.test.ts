@@ -5,7 +5,6 @@ describe("exports", () => {
   it("should export the expected functions", () => {
     expect(Object.keys(exports).sort()).toMatchInlineSnapshot(`
       [
-        "ComponentMap",
         "use$",
         "useAccountManager",
         "useAccounts",

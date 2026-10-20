@@ -6,7 +6,7 @@ import { buildLinkRenderer, LinkRenderer } from "../helpers/build-link-renderer.
 import { ComponentMap } from "../helpers/nast.js";
 import { useRenderNast } from "./use-render-nast.js";
 
-export { ComponentMap };
+export type { ComponentMap };
 
 type Options = {
   /** The key to cache the results under, passing null will disable */

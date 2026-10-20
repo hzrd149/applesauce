@@ -58,5 +58,6 @@ try {
 }
 
 validateSnapshotVersions();
+run(process.execPath, [join(root, "scripts/jsr-manifests.mjs")]);
 
 if (!skipInstall) run("pnpm", ["install", "--no-frozen-lockfile"]);

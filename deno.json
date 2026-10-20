@@ -1,0 +1,10 @@
+{
+  "workspace": ["packages/*"],
+  "nodeModulesDir": "none",
+  "lock": false,
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "react-jsx",
+    "noImplicitOverride": false
+  }
+}

@@ -8,7 +8,7 @@ import { WalletTokenFactory } from "../factories/tokens.js";
 import { NutzapFactory } from "../factories/nutzap.js";
 import { Couch } from "../helpers/couch.js";
 import { getNutzapInfoMints, verifyProofsLocked } from "../helpers/nutzap-info.js";
-import { getNutzapMint, getNutzapProofs, isValidNutzap, NutzapEvent } from "../helpers/nutzap.js";
+import { getNutzapMint, getNutzapProofs, isValidNutzap, type NutzapEvent } from "../helpers/nutzap.js";
 import { getUnlockedWallet } from "./common.js";
 
 // Make sure the nutzap$ is registered on the user class
