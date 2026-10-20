@@ -1,27 +1,72 @@
 /**
- * Boot a social client by discovering outboxes and syncing lists and metadata
- * @tags nip-51, nip-65, nip-77, outbox, sync
- * @related loader/sync-loader, app-data/manager, outbox/social-feed
+ * Boot a social client by hydrating a local cache, selecting contact outboxes, and syncing lists and metadata
+ * @tags nip-51, nip-65, nip-77, outbox, sync, cache
+ * @related loader/sync-loader, app-data/manager, outbox/social-feed, outbox/relay-selection, cache/nostr-idb
  */
 import { getRelaysFromList, PROFILE_BADGES_KIND, LOOKUP_RELAY_LIST_KIND } from "applesauce-common/helpers";
 import { castEvent, castUser, Profile } from "applesauce-common/casts";
-import { EventStore } from "applesauce-core";
-import { isValidProfile, getOutboxes, mergeRelaySets, kinds, type NostrEvent } from "applesauce-core/helpers";
-import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
+import { defined, EventStore, filterOptimalRelays, includeMailboxes, mapEventsToStore } from "applesauce-core";
+import {
+  createOutboxMap,
+  getOutboxes,
+  isFromCache,
+  isValidProfile,
+  kinds,
+  mergeRelaySets,
+  persistEventsToCache,
+  type Filter,
+  type NostrEvent,
+} from "applesauce-core/helpers";
+import { makeCacheRequest } from "applesauce-loaders/helpers";
+import { createSyncLoader, createUnifiedEventLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
+import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useState } from "react";
-import { concat, defer, ignoreElements } from "rxjs";
+import {
+  BehaviorSubject,
+  concat,
+  count,
+  defer,
+  distinctUntilChanged,
+  EMPTY,
+  filter,
+  ignoreElements,
+  map,
+  merge,
+  of,
+  switchMap,
+  tap,
+  throttleTime,
+} from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 
 const eventStore = new EventStore();
 const pool = new RelayPool();
 
-// Bootstrap NIP-65 through the ordinary lookup loader; metadata is synced from outboxes below.
-// A persistent client should hydrate this same store before starting network work.
-const loadEvent = createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
+// Events in the cache were verified before they were written, so skip re-verifying them on startup
+const verifyEvent = eventStore.verifyEvent!;
+eventStore.verifyEvent = (event) => isFromCache(event) || verifyEvent(event);
+
+// A local IndexedDB cache that every event arriving from relays is written to
+const cache = await openDB();
+const cacheRequest = (filters: Filter[]) => getEventsForFilters<NostrEvent>(cache, filters);
+persistEventsToCache(eventStore, (events) => addEvents(cache, events));
+
+/** Reads cached events into the store and emits how many were found */
+function hydrate(filters: Filter[]) {
+  return makeCacheRequest(cacheRequest, filters).pipe(mapEventsToStore(eventStore), count());
+}
+
+// Not attached to the store: startup loads everything explicitly, so store queries only reflect the cache and finished
+// syncs instead of fanning out a lookup for every contact without a relay list
+const loadEvent = createUnifiedEventLoader(pool, { eventStore, lookupRelays: lookupRelays$ });
 const sync = createSyncLoader({ eventStore, pool });
+
+// Outbox selection limits: how many relays the client connects to and how many relays cover each contact
+const MAX_CONNECTIONS = 30;
+const MAX_RELAYS_PER_USER = 4;
 
 // An explicit application scope: extend this for the features your client supports.
 // No public kind constant is available for picture curation sets yet.
@@ -68,8 +113,14 @@ const clientKinds = Object.keys(metadataKinds).map(Number);
 
 function startup(pubkey: string) {
   return concat(
-    // Finish the ordinary address lookup before selecting relays for metadata sync.
-    loadEvent({ kind: kinds.RelayList, pubkey }).pipe(ignoreElements()),
+    // Hydrate the store from the cache before any network work
+    hydrate([{ authors: [pubkey], kinds: clientKinds }]).pipe(ignoreElements()),
+    // A cached NIP-65 list is enough to pick outboxes; the outbox sync below refreshes it
+    defer(() =>
+      eventStore.hasReplaceable(kinds.RelayList, pubkey)
+        ? EMPTY
+        : loadEvent({ kind: kinds.RelayList, pubkey }).pipe(mapEventsToStore(eventStore), ignoreElements()),
+    ),
     defer(() => {
       const mailboxes = eventStore.getReplaceable(kinds.RelayList, pubkey);
       const blocked = eventStore.getReplaceable(kinds.BlockedRelaysList, pubkey);
@@ -85,6 +136,74 @@ function startup(pubkey: string) {
       return run.status$;
     }),
   );
+}
+
+/** Startup timings, recorded with tap so the selection pipeline stays what a client would ship */
+type StartupMetrics = {
+  /** Contact relay lists read from the cache */
+  cached?: number;
+  /** Milliseconds from startup until each milestone */
+  cachedAt?: number;
+  firstSelectionAt?: number;
+  refreshedAt?: number;
+  /** The relays picked by the first selection, before the refresh */
+  firstRelays?: string[];
+  /** How long the last selectOptimalRelays run took */
+  computeMs?: number;
+  computes: number;
+  refresh?: SyncLoaderStatus;
+};
+
+const metrics$ = new BehaviorSubject<StartupMetrics>({ computes: 0 });
+const record = (update: Partial<StartupMetrics>) => metrics$.next({ ...metrics$.value, ...update });
+
+/** Selects relays for a user's contacts from cached relay lists, then recomputes while lookup relays refresh them */
+function contactOutboxes(pubkey: string) {
+  return defer(() => {
+    const started = performance.now();
+    const elapsed = () => performance.now() - started;
+    let computeStart = 0;
+    metrics$.next({ computes: 0 });
+
+    return castUser(pubkey, eventStore).contacts$.pipe(
+      defined(),
+      // An empty list means the contact list has not loaded, and an empty authors filter would sync every relay list
+      filter((users) => users.length > 0),
+      map((users) => users.map((user) => user.pointer)),
+      // Only restart the cache read and the refresh when the followed pubkeys change
+      distinctUntilChanged((a, b) => a.map((user) => user.pubkey).join() === b.map((user) => user.pubkey).join()),
+      switchMap((contacts) => {
+        const relayLists = { kinds: [kinds.RelayList], authors: contacts.map((user) => user.pubkey) };
+
+        // Read cached relay lists into the store before the first selection
+        const hydrate$ = hydrate([relayLists]).pipe(tap((cached) => record({ cached, cachedAt: elapsed() })));
+
+        // NIP-77 against the hydrated store only transfers relay lists that changed since the last run
+        const refresh$ = defer(
+          () => sync({ relays: lookupRelays$.value, filter: relayLists, concurrency: 3, waitForAuth: false }).status$,
+        ).pipe(tap((refresh) => record({ refresh, refreshedAt: refresh.done ? elapsed() : undefined })));
+
+        const selection$ = of(contacts).pipe(
+          includeMailboxes(eventStore),
+          // Coalesce relay lists arriving from the refresh
+          throttleTime(250, undefined, { leading: true, trailing: true }),
+          tap(() => (computeStart = performance.now())),
+          filterOptimalRelays(MAX_CONNECTIONS, MAX_RELAYS_PER_USER),
+          tap((selection) => {
+            const { computes, firstRelays, firstSelectionAt } = metrics$.value;
+            record({
+              computeMs: performance.now() - computeStart,
+              computes: computes + 1,
+              firstSelectionAt: firstSelectionAt ?? elapsed(),
+              firstRelays: firstRelays ?? Object.keys(createOutboxMap(selection)),
+            });
+          }),
+        );
+
+        return concat(hydrate$.pipe(ignoreElements()), merge(selection$, refresh$.pipe(ignoreElements())));
+      }),
+    );
+  });
 }
 
 const groups: { name: string; color: string; kinds: number[] }[] = [
@@ -306,6 +425,109 @@ function StartupMap({
   );
 }
 
+function OutboxSelection({ pubkey }: { pubkey: string }) {
+  const selection = use$(() => contactOutboxes(pubkey), [pubkey]);
+  const { cached, cachedAt, firstSelectionAt, refreshedAt, firstRelays, computeMs, computes, refresh } = use$(metrics$);
+
+  if (!selection)
+    return (
+      <section aria-label="Contact outbox selection" className="border-t border-base-300 pt-6">
+        <h3 className="text-xl font-medium">Contact outboxes</h3>
+        <p className="py-4 text-base-content/60">Waiting for the contact list…</p>
+      </section>
+    );
+
+  const contacts = selection.length;
+  const outboxMap = createOutboxMap(selection);
+  const relays = Object.entries(outboxMap).sort((a, b) => b[1].length - a[1].length);
+  const initialRelays = new Set(firstRelays);
+  const dropped = [...initialRelays].filter((relay) => !outboxMap[relay]);
+  const covered = selection.filter((user) => user.relays?.length).length;
+  const lookups = Object.values(refresh?.relays ?? {});
+  const received = lookups.reduce((total, relay) => total + relay.count, 0);
+  const lookupFailures = lookups.filter((relay) => relay.state === "error");
+  const largest = relays[0]?.[1].length ?? 1;
+  const ms = (value?: number) => (value === undefined ? "…" : `${value.toFixed(0)} ms`);
+
+  const metrics = [
+    { label: "Cache", value: `${cached ?? 0} / ${contacts}`, detail: `relay lists read at ${ms(cachedAt)}` },
+    {
+      label: "First selection",
+      value: ms(firstSelectionAt),
+      detail: `${initialRelays.size} relays before the refresh`,
+    },
+    { label: "Compute", value: `${computeMs?.toFixed(1) ?? "…"} ms`, detail: `last of ${computes} selections` },
+    {
+      label: "Refresh",
+      value: refreshedAt === undefined ? "Syncing" : `${(refreshedAt / 1000).toFixed(1)} s`,
+      detail: `${received} relay lists from ${lookups.length} lookup relays`,
+    },
+    { label: "Coverage", value: `${covered} / ${contacts}`, detail: `contacts reachable on ${relays.length} relays` },
+  ];
+
+  return (
+    <section aria-label="Contact outbox selection" className="flex flex-col gap-4 border-t border-base-300 pt-6">
+      <div className="flex flex-wrap items-baseline gap-3">
+        <h3 className="text-xl font-medium">Contact outboxes</h3>
+        <span className="text-sm text-base-content/60">
+          Up to {MAX_CONNECTIONS} relays · {MAX_RELAYS_PER_USER} per contact
+        </span>
+      </div>
+      <div className="flex flex-wrap border-y border-base-300">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="min-w-40 flex-1 border-base-300 py-3 pr-4 not-last:border-r">
+            <p className="text-sm text-base-content/60">{metric.label}</p>
+            <p className="text-2xl font-semibold tabular-nums">{metric.value}</p>
+            <p className="text-sm text-base-content/60">{metric.detail}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-sm text-base-content/60">
+        Lookup relays:{" "}
+        {lookups
+          .map(
+            (relay) =>
+              `${relay.relay.replace(/^wss:\/\//, "")} ${relay.state}${relay.method === "negentropy" ? " (NIP-77)" : ""} · ${relay.count}`,
+          )
+          .join(", ") || "connecting…"}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {relays.map(([relay, users]) => (
+          <li key={relay} className="flex items-center gap-3">
+            <span className="w-64 truncate font-mono text-sm">{relay.replace(/^wss:\/\//, "")}</span>
+            <span className="h-2 grow bg-base-200">
+              <span className="block h-full bg-primary" style={{ width: `${(users.length / largest) * 100}%` }} />
+            </span>
+            <span className="w-12 text-right tabular-nums">{users.length}</span>
+            <span className={`w-28 text-sm ${initialRelays.has(relay) ? "text-base-content/50" : "text-success"}`}>
+              {initialRelays.has(relay) ? "before refresh" : "after refresh"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {!relays.length && (
+        <p className="text-sm">
+          {refreshedAt === undefined
+            ? "No cached relay lists yet, waiting for lookup relays…"
+            : "No contacts advertise outboxes."}
+        </p>
+      )}
+      {dropped.length > 0 && (
+        <p className="text-sm text-base-content/60">Dropped after refresh: {dropped.join(", ")}</p>
+      )}
+      {lookupFailures.length > 0 && (
+        <div role="alert" className="border-l-2 border-error pl-4">
+          {lookupFailures.map((relay) => (
+            <p key={relay.relay} className="text-sm">
+              {relay.relay}: {relay.error?.message}
+            </p>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function UserMetadata({ pubkey }: { pubkey: string }) {
   const status = use$(() => startup(pubkey), [pubkey]);
   const outboxes = use$(() => castUser(pubkey, eventStore).outboxes$, [pubkey]);
@@ -415,11 +637,14 @@ function UserMetadata({ pubkey }: { pubkey: string }) {
           ))}
         </div>
       )}
+      <OutboxSelection pubkey={pubkey} />
       <p className="text-sm text-base-content/60">
         The ring shows the mix of current stored metadata, not a completion percentage. Lookup relays use the example
-        shell’s shared settings to find NIP-65 first. Metadata then syncs only from advertised outboxes and stops when
-        those relays finish. Encrypted contents stay locked in this read-only demo. Feeds and messages load separately
-        when their views need them.
+        shell’s shared settings to find NIP-65 first, unless the cache already has it. Metadata then syncs only from
+        advertised outboxes and stops when those relays finish. Contact outboxes are selected from cached relay lists
+        first, then recomputed as a NIP-77 sync with the lookup relays fetches only the lists that changed. Reload the
+        page to see a warm start. Encrypted contents stay locked in this read-only demo. Feeds and messages load
+        separately when their views need them.
       </p>
     </div>
   );
