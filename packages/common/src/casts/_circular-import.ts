@@ -11,3 +11,5 @@ export * from "./git-repository.js";
 export * from "./relay-lists.js";
 export * from "./groups.js";
 export * from "./trusted-assertions.js";
+
+export * from "./report.js";

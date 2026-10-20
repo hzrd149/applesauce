@@ -1,3 +1,4 @@
+import { REPORT_KIND, isValidReport } from "../helpers/reports.js";
 import { castUser as coreCastUser, User } from "applesauce-core/casts";
 import { kinds, nprofileEncode } from "applesauce-core/helpers";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
@@ -62,6 +63,32 @@ Object.defineProperty(User.prototype, "nprofile", {
   },
   configurable: true,
   enumerable: false,
+});
+
+defineGetter("reports$", function (this: User) {
+  return this.$$ref("reports$", (store) =>
+    Circular.pipe(
+      switchMap(({ Report }) =>
+        store.timeline({ kinds: [REPORT_KIND], "#p": [this.pubkey] }).pipe(
+          map((events) => events.filter(isValidReport)),
+          castTimelineStream(Report, store),
+        ),
+      ),
+    ),
+  );
+});
+
+defineGetter("reportsSent$", function (this: User) {
+  return this.$$ref("reportsSent$", (store) =>
+    Circular.pipe(
+      switchMap(({ Report }) =>
+        store.timeline({ kinds: [REPORT_KIND], authors: [this.pubkey] }).pipe(
+          map((events) => events.filter(isValidReport)),
+          castTimelineStream(Report, store),
+        ),
+      ),
+    ),
+  );
 });
 
 defineGetter("profile$", function (this: User) {
@@ -296,6 +323,10 @@ defineGetter("trustedProviders$", function (this: User) {
 // ---------------------------------------------------------------------------
 declare module "applesauce-core/casts" {
   interface User {
+    /** Subscribes to reports referencing this user in the store */
+    get reports$(): ChainableObservable<import("./report.js").Report[]>;
+    /** Subscribes to reports published by this user in the store */
+    get reportsSent$(): ChainableObservable<import("./report.js").Report[]>;
     get profile$(): ChainableObservable<import("./profile.js").Profile | undefined>;
     get contacts$(): ChainableObservable<User[]>;
     get mutes$(): ChainableObservable<import("./mutes.js").Mutes | undefined>;

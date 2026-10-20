@@ -1,3 +1,6 @@
+import { Report } from "./report.js";
+import { REPORT_KIND, isValidReport } from "../helpers/reports.js";
+import { map } from "rxjs";
 import {
   EventPointer,
   getEventPointerFromQTag,
@@ -32,6 +35,16 @@ export class Note extends EventCast<KnownEvent<1>> {
     if (!isValidNote(event)) throw new Error("Invalid note");
     super(event, store);
   }
+  /** Subscribes to reports referencing this event in the store */
+  get reports$() {
+    return this.$$ref("reports$", (store) =>
+      store.timeline({ kinds: [REPORT_KIND], "#e": [this.id] }).pipe(
+        map((events) => events.filter(isValidReport)),
+        castTimelineStream(Report, store),
+      ),
+    );
+  }
+
   get references() {
     return getNip10References(this.event);
   }

@@ -60,21 +60,52 @@ The full set is `MuteUser`/`UnmuteUser`, `MuteThread`/`UnmuteThread`, `MuteWord`
 
 ## Reading reports
 
-The `Report` cast reads a report as either a user report or an event report.
+The `Report` cast exposes all explicitly reported targets through `targets`, preserving each target's reason. `reportedUsers`, `reportedEventPointers`, and `reportedEvents$` resolve multiple targets; event pointers also include the containing events of blob reports.
 
 ```ts
-const reports = use$(
-  () => eventStore.timeline({ kinds: [1984], "#p": [pubkey] }).pipe(castTimelineStream(Report, eventStore)),
-  [pubkey],
-);
+const reports = use$(() => castUser(pubkey, eventStore).reports$, [pubkey]);
+const sent = use$(() => castUser(pubkey, eventStore).reportsSent$, [pubkey]);
 
-report.reason; // ReportReason, e.g. "spam"
+report.targets; // { type: "user" | "event" | "blob", value, reason }[]
+report.isBlobReport;
 report.comment;
-report.reportedUser; // User
-const reported = use$(report.reportedEvent$); // only for event reports
+report.servers; // Supplied media server or direct file URLs
+const events = use$(report.reportedEvents$);
 ```
 
-`isUserReport` and `isEventReport` tell the two apart, and `blobs` and `servers` list reported media. The `getReported(event)` helper returns the same data from a raw event.
+`Note.reports$` returns reports referencing that note. These streams query the store; load kind 1984 events separately and add incoming events to the same store. User reports include reports of the user's events, since NIP-56 requires the author's `p` tag.
+
+The existing `reported`, `reason`, `reportedUser`, and `reportedEvent$` getters retain their single-target view. Use `targets` for reports with multiple reasons. `getReportTargets(event)` parses raw events, and `isValidReport(event)` checks the kind, identities, standard reasons, and required context before casting. Invalid reports are excluded from the user and note relationships.
+
+## Creating reports
+
+`ReportFactory` creates kind 1984 events and automatically includes the author when reporting an event or blob. Report reasons occupy the third tag entry; relay hints must not be placed there.
+
+```ts
+const factory = ReportFactory.create(pubkey, ReportReason.spam).content("Repeated spam");
+const eventReport = ReportFactory.create(note, ReportReason.illegal);
+const blobReport = ReportFactory.blob(hash, note, ReportReason.malware).server(
+  "https://media.example.com/path/file.jpg",
+);
+
+const signed = await factory.sign(signer);
+```
+
+Use `reportUser`, `reportEvent`, or `reportBlob` to add targets or update their reasons. `ReportFactory.modify(report)` preserves existing content and unrelated tags. `removeTarget(type, value)` removes matching tags, so preserve the required author and event context when removing targets. Reports are regular events; signing a modified report creates a new event rather than replacing the original.
+
+The corresponding `addReportUser`, `addReportEvent`, `addReportBlob`, `removeReportTarget`, `addReportServer`, and `removeReportServer` operations are exported from `applesauce-common/operations` for custom pipelines.
+
+## Integration
+
+The report actions sign and publish through the existing `ActionRunner`:
+
+```ts
+await actions.run(ReportUser, pubkey, ReportReason.spam, "Repeated spam");
+await actions.run(ReportEvent, note, ReportReason.illegal);
+await actions.run(ReportBlob, hash, note, ReportReason.malware, "Unsafe file", [mediaUrl]);
+```
+
+Import the actions from `applesauce-actions/actions`, `ReportFactory` from `applesauce-common/factories`, and `ReportReason` from `applesauce-common/helpers`. Actions publish to the reporter's NIP-65 outboxes and leave relay selection to the publisher when no outboxes are available. They do not send reports to the reported user's inboxes. The runner adds signed reports to its store, updating cast relationships.
 
 ## Best Practices
 
