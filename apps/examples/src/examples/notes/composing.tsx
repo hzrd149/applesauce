@@ -1,29 +1,28 @@
 /**
- * Compose and publish notes with media uploads to configured Blossom servers.
- * @tags nip-01, nip-65, compose, editor, nostr-editor, blossom, file-upload
- * @related notes/rendering, simple/profile-editor, blossom/server-manager
+ * Compose and publish notes with @ mentions and media uploads to configured Blossom servers.
+ * @tags nip-01, nip-65, compose, editor, nostr-editor, blossom, file-upload, mentions, open-ranking
+ * @related notes/rendering, notes/simple-composer, search/open-ranking, blossom/server-manager
  */
-import { publishEvent } from "../../extra/publish";
-
 import type { Editor } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { castUser, User } from "applesauce-common/casts";
 import { NoteFactory, type NoteTemplate } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
 
 import { relaySet } from "applesauce-core/helpers";
+import { DEFAULT_OPEN_RANKING_PROVIDER, OpenRanking } from "applesauce-extra/open-ranking";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import type { FileAttributes, NostrStorage, UploadTask } from "nostr-editor";
+import type { FileAttributes, FileUploadStorage, NostrStorage, UploadTask } from "nostr-editor";
 import { NostrExtension } from "nostr-editor";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { BehaviorSubject, catchError, map, of, switchMap, timer } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -42,8 +41,14 @@ const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
-/** Unsigned kind 1 draft ready to sign and publish */
-const draftNote$ = new BehaviorSubject<NoteTemplate | null>(null);
+/** Editor and unsigned kind 1 draft being reviewed before publishing */
+const draft$ = new BehaviorSubject<{ editor: Editor; template: NoteTemplate } | null>(null);
+
+// Known public Open Ranking providers used to search for @ mentions
+const PROVIDERS = [
+  { name: "Vertex", url: "https://ranking.vertexlab.io" },
+  { name: "Brainstorm", url: DEFAULT_OPEN_RANKING_PROVIDER },
+];
 
 const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
 
@@ -128,6 +133,108 @@ function nostrStorage(editor: Editor): NostrStorage {
   return (editor.storage as unknown as { nostr: NostrStorage }).nostr;
 }
 
+function fileUploader(editor: Editor) {
+  return (editor.storage as unknown as { fileUpload: FileUploadStorage }).fileUpload.uploader!;
+}
+
+/** Attached files that are still local blobs waiting to be uploaded */
+function pendingFiles(editor: Editor): FileAttributes[] {
+  return fileUploader(editor)
+    .getFiles()
+    .filter((f) => f.src.startsWith("blob:"));
+}
+
+function PaperclipIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+      />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
+    </svg>
+  );
+}
+
+/** Thumbnail of a local file with a badge marking it as waiting to upload */
+function PendingThumb({ file, src, uploading }: { file: File; src: string; uploading?: boolean }) {
+  return (
+    <div className="relative h-20 w-20 border border-base-300 rounded overflow-hidden" title={file.name}>
+      {file.type.startsWith("image/") ? (
+        <img src={src} alt={file.name} className="h-full w-full object-cover" />
+      ) : file.type.startsWith("video/") ? (
+        <video src={src} className="h-full w-full object-cover" />
+      ) : (
+        <span className="block p-2 text-sm font-mono break-all">{file.name}</span>
+      )}
+      <span className="absolute right-1 top-1 rounded-full bg-base-100 border border-base-300 p-1">
+        {uploading ? <span className="loading loading-spinner loading-xs block" /> : <UploadIcon />}
+      </span>
+    </div>
+  );
+}
+
+/** Renders nostr-editor's nprofile nodes as "@name" chips */
+function MentionChip({ node }: NodeViewProps) {
+  const profile = use$(() => castUser(node.attrs.pubkey, eventStore).profile$, [node.attrs.pubkey]);
+  return (
+    <NodeViewWrapper as="span" className="text-primary">
+      @{profile?.displayName ?? node.attrs.bech32.slice(0, 12) + "…"}
+    </NodeViewWrapper>
+  );
+}
+
+type MentionMatch = { query: string; from: number; to: number; left: number; top: number };
+
+/** Finds an "@query" being typed directly before the cursor */
+function findMention(editor: Editor): MentionMatch | null {
+  const { $from, empty } = editor.state.selection;
+  if (!empty) return null;
+  const before = $from.parent.textBetween(
+    Math.max(0, $from.parentOffset - 40),
+    $from.parentOffset,
+    undefined,
+    "\ufffc",
+  );
+  const match = before.match(/(?:^|\s)@([\w.-]{1,30})$/);
+  if (!match) return null;
+
+  const from = $from.pos - match[1].length - 1;
+  const coords = editor.view.coordsAtPos(from);
+  return { query: match[1], from, to: $from.pos, left: coords.left, top: coords.bottom };
+}
+
+function MentionOption({ pubkey, active, onSelect }: { pubkey: string; active: boolean; onSelect: () => void }) {
+  const profile = use$(() => castUser(pubkey, eventStore).profile$, [pubkey]);
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${active ? "bg-base-200" : ""}`}
+      // Prevent the editor from losing focus before the mention is inserted
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onSelect();
+      }}
+    >
+      <img
+        src={profile?.picture ?? `https://robohash.org/${pubkey}.png`}
+        className="w-6 h-6 rounded-full object-cover"
+        alt=""
+      />
+      <span className="truncate">{profile?.displayName ?? npubEncode(pubkey).slice(0, 16) + "…"}</span>
+    </button>
+  );
+}
+
 async function noteTemplateFromEditor(editor: Editor): Promise<NoteTemplate> {
   const content = editor.getText({ blockSeparator: "\n\n" }).trim();
   if (!content) throw new Error("Write something before continuing.");
@@ -140,9 +247,34 @@ async function noteTemplateFromEditor(editor: Editor): Promise<NoteTemplate> {
   return factory;
 }
 
-function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigner; onContinue: () => void }) {
+function ComposerBody({ user, signer }: { user: User; signer: ISigner }) {
   const [buildError, setBuildError] = useState<string | null>(null);
   const [mediaOptimization, setMediaOptimization] = useState(true);
+  const [provider, setProvider] = useState(PROVIDERS[0].url);
+  const [mention, setMention] = useState<MentionMatch | null>(null);
+  const [active, setActive] = useState(0);
+
+  // The signer authenticates point-of-view searches with Nostr Web Tokens
+  const ranking = useMemo(() => new OpenRanking(provider, { signer }), [provider, signer]);
+  const query = mention?.query;
+
+  // Search for the mention as the user types, debounced by restarting the timer whenever the query changes
+  const results = use$(() => {
+    if (!query) return undefined;
+    return timer(250).pipe(
+      switchMap(() => ranking.discover()),
+      switchMap((caps) => {
+        // Use the provider's first search algorithm, personalized to the user when it supports a point of view
+        const algorithm = caps["/search/pubkeys"]?.[0];
+        return ranking.userSearch(query, 8, {
+          algorithm: algorithm?.id,
+          pov: algorithm?.pov ? user.pubkey : undefined,
+        });
+      }),
+      catchError(() => of([])),
+    );
+  }, [ranking, query, user.pubkey]);
+  const suggestions = mention ? (results ?? []) : [];
 
   const blossomServers = use$(() => user.blossomServers$, [user.pubkey]);
 
@@ -157,8 +289,10 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
       extensions: [
         StarterKit,
         NostrExtension.configure({
+          extend: { nprofile: { addNodeView: () => ReactNodeViewRenderer(MentionChip) } },
           fileUpload: {
-            immediateUpload: true,
+            // Files stay local until the note is published
+            immediateUpload: false,
             allowedMimeTypes: [
               "image/jpeg",
               "image/png",
@@ -181,7 +315,13 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
       ],
       content: "",
       autofocus: true,
+      onUpdate: ({ editor }) => {
+        setMention(findMention(editor));
+        setActive(0);
+      },
+      onSelectionUpdate: ({ editor }) => setMention(findMention(editor)),
       editorProps: {
+        handleKeyDown: (_view, event) => mentionKeysRef.current(event),
         attributes: {
           class: "min-h-[220px] px-3 py-2 outline-none focus:outline-none max-w-none text-base leading-relaxed",
         },
@@ -190,40 +330,45 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
     [],
   );
 
+  const insertMention = (pubkey: string) => {
+    if (!editor || !mention) return;
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from: mention.from, to: mention.to }, [
+        { type: "nprofile", attrs: { type: "npub", bech32: npubEncode(pubkey), pubkey, relays: [] } },
+        { type: "text", text: " " },
+      ])
+      .run();
+    setMention(null);
+  };
+
+  // Keep a ref so the editor's keydown handler always sees the latest suggestions
+  const mentionKeysRef = useRef<(e: KeyboardEvent) => boolean>(() => false);
+  mentionKeysRef.current = (e) => {
+    if (!suggestions.length) return false;
+    if (e.key === "ArrowDown") setActive((i) => (i + 1) % suggestions.length);
+    else if (e.key === "ArrowUp") setActive((i) => (i - 1 + suggestions.length) % suggestions.length);
+    else if (e.key === "Enter" || e.key === "Tab")
+      insertMention(suggestions[Math.min(active, suggestions.length - 1)].pubkey);
+    else if (e.key === "Escape") setMention(null);
+    else return false;
+    return true;
+  };
+
   const handleContinue = useCallback(async () => {
     if (!editor) return;
     setBuildError(null);
     try {
       const template = await noteTemplateFromEditor(editor);
-      draftNote$.next(template);
-      onContinue();
+      draft$.next({ editor, template });
     } catch (e) {
       setBuildError(e instanceof Error ? e.message : "Could not build note");
     }
-  }, [editor, onContinue]);
+  }, [editor]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Compose note</h1>
-        <span className="text-sm text-base-content/60 font-mono">{npubEncode(user.pubkey).slice(0, 16)}…</span>
-      </div>
-      <p className="text-base-content/70 text-sm">
-        Use the editor to write a kind 1 note. Mentions, links, and hashtags are turned into the right Nostr content and
-        tags when you build the event. Drag and drop or attach images and videos — they are uploaded to your blossom
-        server automatically.
-      </p>
-      <label className="flex flex-wrap items-center gap-2 cursor-pointer text-sm text-base-content/80 w-fit">
-        <input
-          type="checkbox"
-          className="toggle toggle-sm"
-          checked={mediaOptimization}
-          onChange={() => setMediaOptimization((value) => !value)}
-        />
-        <span>
-          Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
-        </span>
-      </label>
       {buildError && <div className="text-error text-sm">{buildError}</div>}
       <div className="border border-base-300 rounded-lg bg-base-100 overflow-hidden">
         {editor ? (
@@ -235,19 +380,49 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
           <div className="flex items-center gap-2 px-3 py-2 border-t border-base-300">
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm btn-square"
               onClick={() => editor.commands.selectFiles()}
               title="Attach file"
             >
-              Attach file
+              <PaperclipIcon />
             </button>
-            <div className="ml-auto flex items-center gap-2">
+            <label className="select select-bordered select-sm w-36" title="Open Ranking provider for @ mentions">
+              <span className="text-base font-bold text-base-content">@</span>
+              <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+                {PROVIDERS.map((p) => (
+                  <option key={p.url} value={p.url}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm" title="BUD-05 media optimization">
+              <input
+                type="checkbox"
+                className="toggle toggle-sm"
+                checked={mediaOptimization}
+                onChange={() => setMediaOptimization((value) => !value)}
+              />
+              Optimize
+            </label>
+            <div className="ml-auto">
               <ServerAvatarStack servers={blossomServers?.length ? blossomServers : DEFAULT_BLOSSOM_SERVERS} />
-              {!blossomServers?.length && <span className="text-sm text-base-content/50">(default)</span>}
             </div>
           </div>
         )}
       </div>
+      {mention && suggestions.length > 0 && (
+        <ul
+          className="fixed z-50 w-64 border border-base-300 rounded-lg bg-base-100 overflow-hidden"
+          style={{ left: mention.left, top: mention.top + 4 }}
+        >
+          {suggestions.map((s, i) => (
+            <li key={s.pubkey}>
+              <MentionOption pubkey={s.pubkey} active={i === active} onSelect={() => insertMention(s.pubkey)} />
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex justify-end">
         <button type="button" className="btn btn-primary" onClick={handleContinue} disabled={!editor}>
           Review & publish
@@ -260,13 +435,13 @@ function ComposerBody({ user, signer, onContinue }: { user: User; signer: ISigne
 function PublishBody({
   user,
   signer,
+  editor,
   draft,
-  onBack,
 }: {
   user: User;
   signer: ISigner;
+  editor: Editor;
   draft: NoteTemplate;
-  onBack: () => void;
 }) {
   const mailboxes = use$(() => user.mailboxes$, [user.pubkey]);
   const publishRelays = useMemo(
@@ -274,49 +449,65 @@ function PublishBody({
     [mailboxes],
   );
 
-  const [publishing, setPublishing] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [lastResults, setLastResults] = useState<{ relay: string; ok: boolean; message?: string }[] | null>(null);
+
+  const pending = pendingFiles(editor);
+
+  // Hide local blob URLs from the text, the pending files are shown as thumbnails instead
+  const content = pending.reduce((text, f) => text.split(f.src).join(""), draft.content).trim();
 
   const handleBack = useCallback(() => {
     setLastResults(null);
     setPublishError(null);
-    draftNote$.next(null);
-    onBack();
-  }, [onBack]);
+    draft$.next(null);
+  }, []);
 
   const handlePublish = useCallback(async () => {
-    setPublishing(true);
     setPublishError(null);
     setLastResults(null);
     try {
-      const toSign = { ...draft, created_at: Math.floor(Date.now() / 1000) };
+      // Upload attachments only now that the draft has been reviewed
+      if (pendingFiles(editor).length > 0) {
+        setStatus("Uploading…");
+        await fileUploader(editor).start();
+      }
+
+      // Rebuild the draft so it contains the uploaded URLs and imeta tags
+      const template = await noteTemplateFromEditor(editor);
+      draft$.next({ editor, template });
+
+      setStatus("Signing…");
+      const toSign = { ...template, created_at: Math.floor(Date.now() / 1000) };
       const signed = await new NoteFactory((resolve) => resolve(toSign)).sign(signer);
-      const responses = await publishEvent(pool, publishRelays, signed);
-      eventStore.add(signed);
+
+      setStatus("Publishing…");
+      const responses = await pool.publish(publishRelays, signed);
       setLastResults(responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })));
+      if (responses.some((r) => r.ok)) eventStore.add(signed);
+      else setPublishError("No relay accepted the note");
     } catch (e) {
       setPublishError(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      setPublishing(false);
+      setStatus(null);
     }
-  }, [draft, publishRelays, signer]);
+  }, [editor, publishRelays, signer]);
+
+  const publishing = status !== null;
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Publish</h1>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={handleBack}>
-          Back to editor
-        </button>
-      </div>
-      <p className="text-base-content/70 text-sm">
-        This is the unsigned kind 1 draft from <code className="text-sm bg-base-200 px-1 rounded">NoteFactory</code>.
-        Signing uses your extension; events are sent to your NIP-65 outbox relays when available.
-      </p>
       <section className="border border-base-300 rounded-lg p-4 space-y-2">
         <h2 className="font-semibold text-sm text-base-content/60">Content</h2>
-        <pre className="whitespace-pre-wrap text-sm font-sans">{draft.content}</pre>
+        <pre className="whitespace-pre-wrap text-sm font-sans">{content}</pre>
+        {pending.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {pending.map((f) => (
+              <PendingThumb key={f.src} file={f.file} src={f.src} uploading={status === "Uploading…"} />
+            ))}
+          </div>
+        )}
       </section>
       <section className="border border-base-300 rounded-lg p-4 space-y-2">
         <h2 className="font-semibold text-sm text-base-content/60">Tags ({draft.tags.length})</h2>
@@ -337,9 +528,6 @@ function PublishBody({
             </li>
           ))}
         </ul>
-        {!mailboxes?.outboxes?.length && (
-          <p className="text-sm text-base-content/50">No outbox list loaded yet — using default relays.</p>
-        )}
       </section>
       {publishError && <div className="text-error text-sm">{publishError}</div>}
       {lastResults && (
@@ -358,7 +546,7 @@ function PublishBody({
       )}
       <div className="flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={handleBack} disabled={publishing}>
-          Edit again
+          Back
         </button>
         <button
           type="button"
@@ -366,7 +554,13 @@ function PublishBody({
           onClick={handlePublish}
           disabled={publishing || !!lastResults}
         >
-          {publishing ? <span className="loading loading-spinner loading-sm" /> : "Sign & publish"}
+          {publishing ? (
+            <>
+              <span className="loading loading-spinner loading-sm" /> {status}
+            </>
+          ) : (
+            "Sign & publish"
+          )}
         </button>
       </div>
     </div>
@@ -374,17 +568,15 @@ function PublishBody({
 }
 
 function SignedInFlow({ user, signer }: { user: User; signer: ISigner }) {
-  const draft = use$(draftNote$);
-  const screen = draft ? "publish" : "compose";
-  const goPublish = () => {};
-  const goCompose = () => draftNote$.next(null);
+  const draft = use$(draft$);
 
+  // Keep the editor mounted while reviewing so its pending files can be uploaded on publish
   return (
     <>
-      <div className={screen === "compose" ? "" : "hidden"}>
-        <ComposerBody user={user} signer={signer} onContinue={goPublish} />
+      <div className={draft ? "hidden" : ""}>
+        <ComposerBody user={user} signer={signer} />
       </div>
-      {screen === "publish" && draft && <PublishBody user={user} signer={signer} draft={draft} onBack={goCompose} />}
+      {draft && <PublishBody user={user} signer={signer} editor={draft.editor} draft={draft.template} />}
     </>
   );
 }

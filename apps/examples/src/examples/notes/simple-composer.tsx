@@ -1,10 +1,8 @@
 /**
- * Compose notes with live previews and Blossom file uploads.
- * @tags nip-01, nip-65, compose, preview, rendering, blossom, file-upload
- * @related notes/composing, notes/rendering, blossom/server-manager
+ * Compose notes with @ mentions, live previews, and Blossom file uploads.
+ * @tags nip-01, nip-65, compose, preview, rendering, blossom, file-upload, mentions, open-ranking
+ * @related notes/composing, notes/rendering, search/open-ranking, blossom/server-manager
  */
-import { publishEvent } from "../../extra/publish";
-
 import { castUser, User } from "applesauce-common/casts";
 import { NoteFactory } from "applesauce-common/factories";
 import { Link } from "applesauce-content/nast";
@@ -12,6 +10,7 @@ import "applesauce-content/text/cashu";
 import "applesauce-content/text/lightning";
 import { EventStore } from "applesauce-core";
 import { isAudioURL, isImageURL, isVideoURL, relaySet } from "applesauce-core/helpers";
+import { DEFAULT_OPEN_RANKING_PROVIDER, OpenRanking } from "applesauce-extra/open-ranking";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { ComponentMap, use$, useRenderedContent } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -20,7 +19,7 @@ import { multiServerMediaUpload, multiServerUpload } from "blossom-client-sdk/ac
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { BehaviorSubject, catchError, map, of, switchMap, timer } from "rxjs";
 
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
@@ -40,6 +39,47 @@ const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
 
 const DEFAULT_BLOSSOM_SERVERS = [new URL("https://blossom.primal.net")];
+
+// Known public Open Ranking providers used to search for @ mentions
+const PROVIDERS = [
+  { name: "Vertex", url: "https://ranking.vertexlab.io" },
+  { name: "Brainstorm", url: DEFAULT_OPEN_RANKING_PROVIDER },
+];
+
+/** A file attached to the note that has not been uploaded yet */
+type Attachment = { file: File; preview: string };
+
+type MentionMatch = { query: string; start: number; end: number };
+
+/** Finds an "@query" being typed directly before the textarea cursor */
+function findMention(textarea: HTMLTextAreaElement): MentionMatch | null {
+  const end = textarea.selectionStart;
+  if (end !== textarea.selectionEnd) return null;
+  const match = textarea.value.slice(0, end).match(/(?:^|\s)@([\w.-]{1,30})$/);
+  return match ? { query: match[1], start: end - match[1].length - 1, end } : null;
+}
+
+function MentionOption({ pubkey, active, onSelect }: { pubkey: string; active: boolean; onSelect: () => void }) {
+  const profile = use$(() => castUser(pubkey, eventStore).profile$, [pubkey]);
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm ${active ? "bg-base-200" : ""}`}
+      // Prevent the textarea from losing focus before the mention is inserted
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onSelect();
+      }}
+    >
+      <img
+        src={profile?.picture ?? `https://robohash.org/${pubkey}.png`}
+        className="w-6 h-6 rounded-full object-cover"
+        alt=""
+      />
+      <span className="truncate">{profile?.displayName ?? npubEncode(pubkey).slice(0, 16) + "…"}</span>
+    </button>
+  );
+}
 
 /** Upload a file to the user's blossom servers and return the URL */
 async function uploadToBlossom(
@@ -161,11 +201,79 @@ function NotePreview({ content }: { content: string }) {
   return <div className="whitespace-pre-wrap">{rendered}</div>;
 }
 
+function PaperclipIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+      />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16" />
+    </svg>
+  );
+}
+
+/** Thumbnail of a local file with a badge marking it as waiting to upload */
+function PendingThumb({
+  attachment: { file, preview },
+  uploading,
+  onRemove,
+}: {
+  attachment: Attachment;
+  uploading: boolean;
+  onRemove?: () => void;
+}) {
+  return (
+    <div className="relative h-20 w-20 border border-base-300 rounded overflow-hidden" title={file.name}>
+      {file.type.startsWith("image/") ? (
+        <img src={preview} alt={file.name} className="h-full w-full object-cover" />
+      ) : file.type.startsWith("video/") ? (
+        <video src={preview} className="h-full w-full object-cover" />
+      ) : (
+        <span className="block p-2 text-sm font-mono break-all">{file.name}</span>
+      )}
+      <span className="absolute left-1 top-1 rounded-full bg-base-100 border border-base-300 p-1">
+        {uploading ? <span className="loading loading-spinner loading-xs block" /> : <UploadIcon />}
+      </span>
+      {onRemove && (
+        <button
+          type="button"
+          className="btn btn-circle btn-sm absolute right-1 top-1 h-6 min-h-6 w-6"
+          onClick={onRemove}
+          title="Remove"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Previews a local attachment the same way the uploaded media will render */
+function AttachmentPreview({ attachment: { file, preview } }: { attachment: Attachment }) {
+  if (file.type.startsWith("image/")) return <img src={preview} className="max-h-64 rounded" alt={file.name} />;
+  if (file.type.startsWith("video/")) return <video src={preview} className="max-h-64 rounded" controls />;
+  if (file.type.startsWith("audio/")) return <audio src={preview} controls />;
+  return <div className="text-sm font-mono">{file.name}</div>;
+}
+
 function Composer({ user, signer }: { user: User; signer: ISigner }) {
   const [content, setContent] = useState("");
   const [tab, setTab] = useState<"write" | "preview">("write");
-  const [publishing, setPublishing] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [provider, setProvider] = useState(PROVIDERS[0].url);
+  const [mention, setMention] = useState<MentionMatch | null>(null);
+  const [active, setActive] = useState(0);
   const [mediaOptimization, setMediaOptimization] = useState(true);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
@@ -180,85 +288,102 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
     [mailboxes],
   );
 
-  const handleFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files?.length) return;
+  // The signer authenticates point-of-view searches with Nostr Web Tokens
+  const ranking = useMemo(() => new OpenRanking(provider, { signer }), [provider, signer]);
+  const query = mention?.query;
 
-      setUploading(true);
-      setPublishError(null);
-      try {
-        const urls: string[] = [];
-        for (const file of files) {
-          const url = await uploadToBlossom(file, signer, blossomServers, mediaOptimization);
-          urls.push(url);
-        }
+  // Search for the mention as the user types, debounced by restarting the timer whenever the query changes
+  const results = use$(() => {
+    if (!query) return undefined;
+    return timer(250).pipe(
+      switchMap(() => ranking.discover()),
+      switchMap((caps) => {
+        // Use the provider's first search algorithm, personalized to the user when it supports a point of view
+        const algorithm = caps["/search/pubkeys"]?.[0];
+        return ranking.userSearch(query, 8, {
+          algorithm: algorithm?.id,
+          pov: algorithm?.pov ? user.pubkey : undefined,
+        });
+      }),
+      catchError(() => of([])),
+    );
+  }, [ranking, query, user.pubkey]);
+  const suggestions = mention ? (results ?? []) : [];
 
-        // Insert URLs at cursor position or end
-        const textarea = textareaRef.current;
-        const insertText = urls.join("\n");
-        if (textarea) {
-          const pos = textarea.selectionStart ?? content.length;
-          const before = content.slice(0, pos);
-          const after = content.slice(pos);
-          const sep = before.length && !before.endsWith("\n") ? "\n" : "";
-          setContent(before + sep + insertText + (after.startsWith("\n") ? "" : "\n") + after);
-        } else {
-          setContent((c) => (c ? c + "\n" + insertText : insertText));
-        }
-      } catch (err) {
-        setPublishError(err instanceof Error ? err.message : "Upload failed");
-      } finally {
-        setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-      }
-    },
-    [content, signer, blossomServers, mediaOptimization],
-  );
+  const updateMention = () => {
+    if (textareaRef.current) setMention(findMention(textareaRef.current));
+  };
+
+  const insertMention = (pubkey: string) => {
+    if (!mention) return;
+    const text = `nostr:${npubEncode(pubkey)} `;
+    setContent(content.slice(0, mention.start) + text + content.slice(mention.end));
+    setMention(null);
+
+    // Move the cursor after the inserted mention once React has updated the textarea
+    const cursor = mention.start + text.length;
+    requestAnimationFrame(() => textareaRef.current?.setSelectionRange(cursor, cursor));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!suggestions.length) return;
+    if (e.key === "ArrowDown") setActive((i) => (i + 1) % suggestions.length);
+    else if (e.key === "ArrowUp") setActive((i) => (i - 1 + suggestions.length) % suggestions.length);
+    else if (e.key === "Enter" || e.key === "Tab")
+      insertMention(suggestions[Math.min(active, suggestions.length - 1)].pubkey);
+    else if (e.key === "Escape") setMention(null);
+    else return;
+    e.preventDefault();
+  };
+
+  // Files stay local with a preview URL until the note is published
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    setAttachments((list) => [...list, ...files.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+    setPublished(false);
+    e.target.value = "";
+  };
+
+  const removeAttachment = (attachment: Attachment) => {
+    URL.revokeObjectURL(attachment.preview);
+    setAttachments((list) => list.filter((a) => a !== attachment));
+  };
 
   const handlePublish = useCallback(async () => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    if (!trimmed && attachments.length === 0) return;
 
-    setPublishing(true);
     setPublishError(null);
     try {
-      const signed = await NoteFactory.create(trimmed).sign(signer);
-      await publishEvent(pool, publishRelays, signed);
+      // Upload attachments only once publishing starts
+      const urls: string[] = [];
+      for (const [i, { file }] of attachments.entries()) {
+        setStatus(`Uploading ${i + 1}/${attachments.length}…`);
+        urls.push(await uploadToBlossom(file, signer, blossomServers, mediaOptimization));
+      }
+
+      setStatus("Publishing…");
+      const signed = await NoteFactory.create([trimmed, ...urls].filter(Boolean).join("\n")).sign(signer);
+      const responses = await pool.publish(publishRelays, signed);
+      if (!responses.some((r) => r.ok))
+        throw new Error(responses.map((r) => `${r.from}: ${r.message ?? "rejected"}`).join("; "));
       eventStore.add(signed);
       setPublished(true);
       setContent("");
+      for (const a of attachments) URL.revokeObjectURL(a.preview);
+      setAttachments([]);
       setTab("write");
     } catch (e) {
       setPublishError(e instanceof Error ? e.message : "Publish failed");
     } finally {
-      setPublishing(false);
+      setStatus(null);
     }
-  }, [content, publishRelays, signer]);
+  }, [content, attachments, publishRelays, signer, blossomServers, mediaOptimization]);
+
+  const publishing = status !== null;
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold">Simple Composer</h1>
-        <span className="text-sm text-base-content/60 font-mono">{npubEncode(user.pubkey).slice(0, 16)}...</span>
-      </div>
-      <p className="text-base-content/70 text-sm">
-        Write a kind 1 note in the textarea. Toggle to preview to see how mentions, links, hashtags, and media will
-        render. The note is built with <code className="text-sm bg-base-200 px-1 rounded">NoteFactory</code> which
-        automatically creates the appropriate tags.
-      </p>
-      <label className="flex flex-wrap items-center gap-2 cursor-pointer text-sm text-base-content/80 w-fit">
-        <input
-          type="checkbox"
-          className="toggle toggle-sm"
-          checked={mediaOptimization}
-          onChange={() => setMediaOptimization((v) => !v)}
-        />
-        <span>
-          Media optimization <span className="text-base-content/50">(BUD-05 /media when the server supports it)</span>
-        </span>
-      </label>
-
       {/* Tabs */}
       <div role="tablist" className="tabs tabs-bordered">
         <button
@@ -281,24 +406,56 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
 
       {/* Content area */}
       {tab === "write" ? (
-        <textarea
-          ref={textareaRef}
-          className="w-full min-h-[220px] border border-base-300 rounded-lg bg-base-100 p-4 outline-none resize-y text-base leading-relaxed"
-          placeholder="What's on your mind?"
-          value={content}
-          onChange={(e) => {
-            setContent(e.target.value);
-            setPublished(false);
-          }}
-        />
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            className="w-full min-h-[220px] border border-base-300 rounded-lg bg-base-100 p-4 outline-none resize-y text-base leading-relaxed"
+            placeholder="What's on your mind?"
+            value={content}
+            onChange={(e) => {
+              setContent(e.target.value);
+              setMention(findMention(e.target));
+              setActive(0);
+              setPublished(false);
+            }}
+            onSelect={updateMention}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setMention(null)}
+          />
+          {suggestions.length > 0 && (
+            <ul className="absolute left-4 top-full z-10 -mt-2 w-64 border border-base-300 rounded-lg bg-base-100 overflow-hidden">
+              {suggestions.map((s, i) => (
+                <li key={s.pubkey}>
+                  <MentionOption pubkey={s.pubkey} active={i === active} onSelect={() => insertMention(s.pubkey)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       ) : (
-        <div className="border border-base-300 rounded-lg bg-base-100 p-4 min-h-[220px]">
+        <div className="border border-base-300 rounded-lg bg-base-100 p-4 min-h-[220px] space-y-2">
           <NotePreview content={content} />
+          {attachments.map((a) => (
+            <AttachmentPreview key={a.preview} attachment={a} />
+          ))}
+        </div>
+      )}
+
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {attachments.map((a) => (
+            <PendingThumb
+              key={a.preview}
+              attachment={a}
+              uploading={!!status?.startsWith("Uploading")}
+              onRemove={publishing ? undefined : () => removeAttachment(a)}
+            />
+          ))}
         </div>
       )}
 
       {publishError && <div className="text-error text-sm">{publishError}</div>}
-      {published && <div className="text-success text-sm">Note published successfully!</div>}
+      {published && <div className="text-success text-sm">Published</div>}
 
       {/* Footer */}
       <input
@@ -313,12 +470,32 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            className="btn btn-ghost btn-sm"
+            className="btn btn-ghost btn-sm btn-square"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={publishing}
+            title="Attach file"
           >
-            {uploading ? <span className="loading loading-spinner loading-sm" /> : "Attach file"}
+            <PaperclipIcon />
           </button>
+          <label className="select select-bordered select-sm w-36" title="Open Ranking provider for @ mentions">
+            <span className="text-base font-bold text-base-content">@</span>
+            <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {PROVIDERS.map((p) => (
+                <option key={p.url} value={p.url}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-sm" title="BUD-05 media optimization">
+            <input
+              type="checkbox"
+              className="toggle toggle-sm"
+              checked={mediaOptimization}
+              onChange={() => setMediaOptimization((v) => !v)}
+            />
+            Optimize
+          </label>
           <AvatarStack urls={(blossomServers ?? DEFAULT_BLOSSOM_SERVERS).map((s) => s.href)} />
         </div>
         <div className="flex items-center gap-3">
@@ -327,9 +504,15 @@ function Composer({ user, signer }: { user: User; signer: ISigner }) {
             type="button"
             className="btn btn-primary"
             onClick={handlePublish}
-            disabled={publishing || !content.trim()}
+            disabled={publishing || (!content.trim() && attachments.length === 0)}
           >
-            {publishing ? <span className="loading loading-spinner loading-sm" /> : "Publish"}
+            {publishing ? (
+              <>
+                <span className="loading loading-spinner loading-sm" /> {status}
+              </>
+            ) : (
+              "Publish"
+            )}
           </button>
         </div>
       </div>
