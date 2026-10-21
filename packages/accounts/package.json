@@ -50,9 +50,6 @@
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
-  "optionalDependencies": {
-    "nostr-signer-capacitor-plugin": "^0.0.5"
-  },
   "funding": {
     "type": "lightning",
     "url": "lightning:nostrudel@geyser.fund"
