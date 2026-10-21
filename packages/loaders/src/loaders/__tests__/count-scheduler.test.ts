@@ -219,7 +219,7 @@ it("coalesces failures from a burst into a single backoff episode", () => {
   replies[0].error(error("RelayClosedError", "rate-limited: busy"));
   vi.advanceTimersByTime(50);
   replies[1].error(error("RelayClosedError", "rate-limited: busy"));
-  expect(state().relays[0]).toMatchObject({ limit: 1, cooldownUntil: Date.now() + 950 });
+  expect(state().relays[0]).toMatchObject({ limit: 4, cooldownUntil: Date.now() + 950 });
 });
 
 it("does not treat high fixed latency as congestion and excludes readiness from samples", () => {
@@ -245,13 +245,13 @@ it("does not treat high fixed latency as congestion and excludes readiness from 
   expect(state().relays[0]).toMatchObject({
     latency: 200,
     baseline: expect.any(Number),
-    limit: 2,
+    limit: 8,
     cooldownUntil: 0,
     samples: 6,
   });
 });
 
-it("reduces admission on rising wire latency without cancelling running attempts", () => {
+it("keeps admission when wire latency rises", () => {
   vi.useFakeTimers();
   let latency = 20;
   const { request, state } = setup((_url, opts) =>
@@ -264,13 +264,12 @@ it("reduces admission on rising wire latency without cancelling running attempts
     request([urls[0]]).subscribe();
     vi.advanceTimersByTime(100);
   }
-  expect(state().relays[0].limit).toBe(2);
+  expect(state().relays[0].limit).toBe(8);
   latency = 200;
   const a = request([urls[0]]).subscribe();
   const b = request([urls[0]]).subscribe();
   vi.advanceTimersByTime(200);
-  expect(state().relays[0].limit).toBe(1);
-  expect(state().relays[0].cooldownUntil).toBe(0);
+  expect(state().relays[0]).toMatchObject({ limit: 8, cooldownUntil: 0 });
   a.unsubscribe();
   b.unsubscribe();
 });
@@ -288,12 +287,13 @@ it("coalesces a burst of rate limits and ignores successes from the previous gen
   replies[0].error(error("RelayClosedError", "rate-limited: slow down"));
   const until = state().relays[0].cooldownUntil;
   replies[1].next({ count: 1 });
-  expect(state().relays[0]).toMatchObject({ limit: 1, cooldownUntil: until, failure: "rate-limit" });
+  expect(state().relays[0]).toMatchObject({ limit: 4, cooldownUntil: until, failure: "rate-limit" });
   const probe = request([urls[0]]).subscribe({ error: () => {} });
   vi.advanceTimersByTime(999);
   expect(replies).toHaveLength(2);
   vi.advanceTimersByTime(1);
-  expect(replies).toHaveLength(3);
+  // The retried demand and the probe both fit in the halved limit
+  expect(replies).toHaveLength(4);
   probe.unsubscribe();
 });
 
@@ -310,7 +310,7 @@ it.each([
   const { request, state } = setup(() => throwError(() => failure));
   request([urls[0]]).subscribe({ error: () => {} });
   expect(state().relays[0].failure).toBe(category === "invalid-query" ? undefined : category);
-  expect(state().relays[0].limit).toBe(category === "transport" || category === "rate-limit" ? 1 : 2);
+  expect(state().relays[0].limit).toBe(category === "transport" || category === "rate-limit" ? 4 : 8);
   if (category === "invalid-query") expect(state().relays[0].cooldownUntil).toBe(0);
 });
 
@@ -348,7 +348,7 @@ it("refreshes stale latency baselines instead of treating a route change as cong
   latency = 200;
   request([urls[0]]).subscribe();
   vi.advanceTimersByTime(200);
-  expect(state().relays[0]).toMatchObject({ baseline: 200, latency: 200, limit: 2, cooldownUntil: 0 });
+  expect(state().relays[0]).toMatchObject({ baseline: 200, latency: 200, limit: 8, cooldownUntil: 0 });
 });
 
 it("grows under sustained demand while keeping every new admission within its effective limit", () => {
@@ -361,13 +361,58 @@ it("grows under sustained demand while keeping every new admission within its ef
       options?.onSent?.();
       return timer(20).pipe(map(() => ({ count: 1 })));
     },
-    { concurrency: 6 },
+    { concurrency: 64 },
   );
-  for (let i = 0; i < 100; i++) request([urls[0]]).subscribe();
+  for (let i = 0; i < 500; i++) request([urls[0]]).subscribe();
   vi.advanceTimersByTime(2000);
   expect(state()).toMatchObject({ active: 0, requests: 0 });
-  expect(state().relays[0].limit).toBeGreaterThan(2);
-  expect(state().relays[0].limit).toBeLessThanOrEqual(6);
+  expect(state().relays[0].limit).toBe(64);
+});
+
+it("grows linearly instead of doubling after a congestion signal", () => {
+  vi.useFakeTimers();
+  let limited = true;
+  const { request, state } = setup(
+    (_url, options) => {
+      if (limited) {
+        limited = false;
+        return throwError(() => error("RelayClosedError", "rate-limited: busy"));
+      }
+      options?.onSent?.();
+      return timer(20).pipe(map(() => ({ count: 1 })));
+    },
+    { concurrency: 64 },
+  );
+  request([urls[0]]).subscribe();
+  expect(state().relays[0].limit).toBe(4);
+  vi.advanceTimersByTime(2000);
+  for (let i = 0; i < 100; i++) request([urls[0]]).subscribe();
+  vi.advanceTimersByTime(100);
+  expect(state().relays[0].limit).toBe(5);
+});
+
+it("ranks a timed out relay lower without reducing admission or cooling it down", () => {
+  vi.useFakeTimers();
+  const seen: string[] = [];
+  const { request, state } = setup((url, options) => {
+    seen.push(url);
+    if (url === urls[0]) return NEVER;
+    options?.onSent?.();
+    return timer(20).pipe(map(() => ({ count: 1 })));
+  });
+  request([urls[1]]).subscribe();
+  vi.advanceTimersByTime(20);
+  request([urls[0]]).subscribe();
+  vi.advanceTimersByTime(5000);
+  expect(state().relays.find((r) => r.relay === urls[0])).toMatchObject({
+    failure: "timeout",
+    limit: 8,
+    cooldownUntil: 0,
+    latency: 5000,
+  });
+  seen.length = 0;
+  request().subscribe();
+  expect(seen).toEqual([urls[1]]);
 });
 
 it("rejects an overflowing attempt budget before admitting work", () => {

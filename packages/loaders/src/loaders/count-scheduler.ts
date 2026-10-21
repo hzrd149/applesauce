@@ -69,7 +69,7 @@ export interface CountRelayStatus {
 
 /** A classified COUNT failure independent of arbitrary relay notices */
 export type CountFailure =
-  "rate-limit" | "transport" | "auth" | "unsupported" | "invalid-query" | "malformed" | "refused";
+  "rate-limit" | "transport" | "timeout" | "auth" | "unsupported" | "invalid-query" | "malformed" | "refused";
 
 /** The activity of a shared count scheduler */
 export interface CountSchedulerStatus {
@@ -124,6 +124,7 @@ function classifyCountFailure(error: unknown): CountFailure {
   const name = error instanceof Error ? error.name : "";
   if (["AuthRequiredError", "AuthHandlerError", "AuthTimeoutError"].includes(name)) return "auth";
   if (name === "RelayCountResponseError") return "malformed";
+  if (name === "TimeoutError") return "timeout";
   if (name === "RelayClosedError") {
     const reason = (error as Error & { reason?: string }).reason ?? "";
     if (reason.startsWith("rate-limited:")) return "rate-limit";
@@ -153,7 +154,7 @@ function validateResponse(response: RelayCountResponse): RelayCountResponse {
 }
 
 /**
- * Creates balanced relay selection with conservative probes and demand-driven recovery
+ * Creates balanced relay selection with fast ramp-up and congestion-driven backoff
  * @throws if concurrency is not a positive safe integer
  */
 export function createCountScheduler(options: CountSchedulerOptions = {}): CountScheduler {
@@ -167,6 +168,7 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
     streak: number;
     updated: number;
     started: number;
+    slowStart: boolean;
     timer?: Subscription;
   };
   type Demand = {
@@ -230,15 +232,32 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
     const score = (s: RecordState) => (!s.samples && !s.active ? 0 : (s.active + 1) * (s.latency ?? cold));
     return eligible.sort((a, b) => score(a) - score(b) || a.started - b.started)[0];
   };
-  const fail = (state: RecordState, error: unknown, generation: number) => {
+  const sample = (state: RecordState, latency: number) => {
+    if (state.sampledAt !== undefined && clock.now() - state.sampledAt > 30_000) {
+      state.baseline = undefined;
+      state.latency = undefined;
+      state.updated = clock.now();
+    }
+    const value = Math.max(1, latency);
+    state.samples++;
+    state.sampledAt = clock.now();
+    state.baseline = state.baseline ? Math.min(value, state.baseline * 1.001) : value;
+    state.latency = state.latency ? state.latency * 0.8 + value * 0.2 : value;
+  };
+  const fail = (state: RecordState, error: unknown, generation: number, elapsed: number) => {
     if (state.generation !== generation) return;
     const category = classifyCountFailure(error);
     if (category === "invalid-query") return;
     state.failure = category;
+    // A slow relay is not congested; ranking it lower moves demand to faster relays.
+    if (category === "timeout") return sample(state, elapsed);
     state.generation++;
     state.streak = Math.min(6, state.streak + 1);
     const congestion = category === "transport" || category === "rate-limit";
-    if (congestion) state.limit = Math.max(1, Math.floor(state.limit / 2));
+    if (congestion) {
+      state.slowStart = false;
+      state.limit = Math.max(1, Math.floor(state.limit / 2));
+    }
     const random = (options.random ?? Math.random)();
     const jitter = Number.isFinite(random) ? Math.max(0, Math.min(1, random)) : 0.5;
     // Native timers truncate fractional milliseconds; never wake before the cooldown deadline.
@@ -258,21 +277,11 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
     state.failure = undefined;
     state.streak = 0;
     if (latency === undefined) return;
-    if (state.sampledAt !== undefined && clock.now() - state.sampledAt > 30_000) {
-      state.baseline = undefined;
-      state.latency = undefined;
+    sample(state, latency);
+    // Grow a saturated relay at most once per round trip, doubling until its first congestion signal.
+    if (state.active >= state.limit && clock.now() - state.updated >= Math.max(100, state.latency!)) {
       state.updated = clock.now();
-    }
-    const sample = Math.max(1, latency);
-    state.samples++;
-    state.sampledAt = clock.now();
-    state.baseline = state.baseline ? Math.min(sample, state.baseline * 1.001) : sample;
-    state.latency = state.latency ? state.latency * 0.8 + sample * 0.2 : sample;
-    if (state.samples >= 3 && clock.now() - state.updated >= Math.max(100, state.latency)) {
-      state.updated = clock.now();
-      if (state.samples >= 5 && state.latency > state.baseline * 1.5)
-        state.limit = Math.max(1, Math.floor(state.limit * 0.8));
-      else if (state.active >= state.limit) state.limit = Math.min(maximum, state.limit + 1);
+      state.limit = Math.min(maximum, state.slowStart ? state.limit * 2 : state.limit + 1);
     }
   };
   const scheduleRetry = () => {
@@ -318,7 +327,7 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
       state.active--;
       demand.active = false;
       if (attemptError !== undefined && !demand.subscriber.closed) {
-        fail(state, attemptError, generation);
+        fail(state, attemptError, generation, clock.now() - (sentAt ?? began));
         demand.options.diagnostic?.(classifyCountFailure(attemptError));
       } else if (!received) demand.options.diagnostic?.("cancelled");
       demand.options.diagnostic?.("transport-duration", clock.now() - began);
@@ -408,7 +417,7 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
             relay,
             maximum,
             active: 0,
-            limit: Math.min(2, maximum),
+            limit: Math.min(8, maximum),
             samples: 0,
             cooldownUntil: 0,
             owners: 0,
@@ -416,6 +425,7 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
             streak: 0,
             updated: -Infinity,
             started: 0,
+            slowStart: true,
           };
           records.set(relay, state);
         }
