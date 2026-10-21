@@ -36,6 +36,21 @@ async function defaultHandleAuth(url: string) {
   window.open(url, "auth", "width=400,height=600,resizable=no,status=no,location=no,toolbar=no,menubar=no");
 }
 
+/**
+ * Request methods whose params or results carry secrets or user content — the bunker pairing
+ * secret, event drafts, and encryption plaintexts. They are redacted from debug logs so an
+ * enabled `debug("applesauce*")` namespace cannot capture them.
+ */
+const SENSITIVE_LOG_METHODS = new Set<NostrConnectMethod>([
+  NostrConnectMethod.Connect,
+  NostrConnectMethod.CreateAccount,
+  NostrConnectMethod.SignEvent,
+  NostrConnectMethod.Nip04Encrypt,
+  NostrConnectMethod.Nip04Decrypt,
+  NostrConnectMethod.Nip44Encrypt,
+  NostrConnectMethod.Nip44Decrypt,
+]);
+
 export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   /** The relays to communicate over */
   relays: string[];
@@ -233,12 +248,12 @@ export class NostrConnectSigner implements ISigner {
     }
 
     // Reject pending requests since their responses can no longer be received
-    for (const request of this.requests.values()) request.reject(new Error("Closed"));
+    for (const request of this.requests.values()) request.defer.reject(new Error("Closed"));
 
     this.log("Closed");
   }
 
-  protected requests = new Map<string, Deferred<any>>();
+  protected requests = new Map<string, { defer: Deferred<any>; method: NostrConnectMethod }>();
   protected auths = new Set<string>();
   /** Timeout timers for pending requests */
   protected timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -251,7 +266,7 @@ export class NostrConnectSigner implements ISigner {
     this.timers.set(
       id,
       setTimeout(() => {
-        this.requests.get(id)?.reject(new Error(`Remote signer did not respond to ${method} request`));
+        this.requests.get(id)?.defer.reject(new Error(`Remote signer did not respond to ${method} request`));
       }, this.timeout),
     );
   }
@@ -288,10 +303,11 @@ export class NostrConnectSigner implements ISigner {
       }
 
       if (response.id) {
-        const p = this.requests.get(response.id);
-        if (!p) return;
+        const request = this.requests.get(response.id);
+        if (!request) return;
+        const { defer, method } = request;
         if (response.error) {
-          this.log("Got Error", response.id, response.result, response.error);
+          this.log("Got Error", response.id, response.error);
           if (response.result === "auth_url") {
             if (!this.auths.has(response.id)) {
               this.auths.add(response.id);
@@ -301,14 +317,14 @@ export class NostrConnectSigner implements ISigner {
                 try {
                   await this.onAuth(response.error);
                 } catch (e) {
-                  p.reject(e);
+                  defer.reject(e);
                 }
               }
             }
-          } else p.reject(new Error(response.error));
+          } else defer.reject(new Error(response.error));
         } else if (response.result !== undefined) {
-          this.log("Got Response", response.id, response.result);
-          p.resolve(response.result);
+          this.log("Got Response", response.id, SENSITIVE_LOG_METHODS.has(method) ? "[redacted]" : response.result);
+          defer.resolve(response.result);
         }
       }
     } catch (e) {}
@@ -348,10 +364,13 @@ export class NostrConnectSigner implements ISigner {
     const request: NostrConnectRequest<T> = { id, method, params };
     const encrypted = await this.signer.nip44.encrypt(this.remote, JSON.stringify(request));
     const event = await this.createRequestEvent(encrypted, this.remote, kind);
-    this.log(`Sending ${id} (${method}) ${JSON.stringify(params)}`);
+    this.log(
+      `Sending ${id} (${method})`,
+      SENSITIVE_LOG_METHODS.has(method) ? "[redacted]" : JSON.stringify(params),
+    );
 
     const p = createDefer<ConnectResponseResults[T]>();
-    this.requests.set(id, p);
+    this.requests.set(id, { defer: p, method });
 
     // Cleanup when the request is resolved, rejected, or timed out
     const cleanup = () => {
