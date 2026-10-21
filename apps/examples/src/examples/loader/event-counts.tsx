@@ -541,8 +541,8 @@ function CountSettings() {
         Apply settings
       </button>
       <p className="text-sm text-base-content/60">
-        Starts with up to two requests per relay and adapts toward a maximum of {settings.concurrency}. Every observed
-        metric remains requested until it is answered or its component unmounts.
+        Starts with up to eight requests per relay and ramps up toward a maximum of {settings.concurrency}. Every
+        observed metric remains requested until it is answered or its component unmounts.
       </p>
     </section>
   );

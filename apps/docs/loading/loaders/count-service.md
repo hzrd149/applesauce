@@ -81,7 +81,7 @@ Targets accept ordinary events with `id`, `kind`, and `created_at`. Supply an ex
 
 `relays` accepts a static array or an observable array. URLs are normalized and deduplicated; reordering the same set preserves work and cached results. Changing the set cancels obsolete requests and discards answers accepted under the previous set. Invalid WebSocket URLs are ignored; a configuration error clears the effective set until the service is recreated.
 
-The scheduler chooses one available relay per metric, favoring lower estimated outstanding work. Each relay starts with at most two active attempts and adapts toward `concurrency` as responses arrive. Structured rate limits and transport failures reduce admission and apply cooldowns. Refusals, authentication failures, and malformed responses allow other relays to answer. Arbitrary NOTICE text is not treated as a rate-limit instruction.
+The scheduler chooses one available relay per metric, favoring lower estimated outstanding work. Each relay starts with up to eight active attempts and doubles toward `concurrency` while it keeps answering. Only structured rate limits and transport failures reduce admission and apply cooldowns; slow answers and attempt timeouts make the scheduler prefer faster relays instead. Refusals, authentication failures, and malformed responses allow other relays to answer. Arbitrary NOTICE text is not treated as a rate-limit instruction.
 
 `attemptTimeout` bounds each dispatched attempt, including connection and authentication waits. There is no overall request deadline or queue-capacity rejection: observed metrics remain requested until answered or cancelled. Limit subscriptions to visible views to bound application demand.
 
