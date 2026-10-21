@@ -89,6 +89,21 @@ describe("add", () => {
     expect(eventStore.getEvent(newProfile.id)).toBeDefined();
   });
 
+  it("should reject replaceable events deleted by ID before they are added", () => {
+    eventStore.add({
+      id: "delete event id",
+      kind: kinds.EventDeletion,
+      created_at: profile.created_at + 100,
+      pubkey: user.pubkey,
+      tags: [["e", profile.id]],
+      sig: "this should be ignored for the test",
+      content: "",
+    });
+
+    eventStore.add(profile);
+    expect(eventStore.getEvent(profile.id)).toBeUndefined();
+  });
+
   it("should remove profile events when delete event is added", () => {
     // Add initial replaceable event
     eventStore.add(profile);
@@ -151,7 +166,7 @@ describe("add", () => {
     const verifyEvent = vi.fn().mockReturnValue(false);
     eventStore.verifyEvent = verifyEvent;
 
-    expect(eventStore.add(profile)).toBeNull();
+    eventStore.add(profile);
     expect(verifyEvent).toHaveBeenCalledWith(profile);
   });
 

@@ -81,6 +81,22 @@ describe("normal events", () => {
 });
 
 describe("replaceable events", () => {
+  it("should delete a replaceable event by exact ID", () => {
+    const profile = userA.profile();
+
+    deleteManager.add({
+      id: "delete-event-id",
+      kind: kinds.EventDeletion,
+      created_at: profile.created_at + 1,
+      pubkey: userA.pubkey,
+      tags: [["e", profile.id]],
+      sig: "sig",
+      content: "",
+    });
+
+    expect(deleteManager.check(profile)).toBe(true);
+  });
+
   it("should allow user to delete their own replaceable event by coordinate", () => {
     const profile = userA.profile({ name: "User A" });
 
