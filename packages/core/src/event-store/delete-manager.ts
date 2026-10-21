@@ -97,6 +97,9 @@ export class DeleteManager<E extends StoreEvent = NostrEvent> implements IDelete
   check(event: E): boolean {
     const author = event.pubkey;
 
+    // Check if that event id was deleted by the author (applies to all kinds)
+    if (this.deletedIds.get(author)?.has(event.id)) return true;
+
     if (isReplaceableKind(event.kind) || isAddressableKind(event.kind)) {
       const identifiers = this.deletedIdentifiers.get(author);
       if (!identifiers) return false;
@@ -107,13 +110,9 @@ export class DeleteManager<E extends StoreEvent = NostrEvent> implements IDelete
 
       // Check that the delete event timestamp is newer than the event
       return timestamp >= event.created_at;
-    } else {
-      const ids = this.deletedIds.get(author);
-      if (!ids) return false;
-
-      // Check if that event id was deleted by the author
-      return ids.has(event.id);
     }
+
+    return false;
   }
 
   /**
