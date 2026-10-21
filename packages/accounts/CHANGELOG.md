@@ -1,5 +1,11 @@
 # applesauce-accounts
 
+## 7.0.2
+
+### Patch Changes
+
+- ed67030: Remove the direct Capacitor signer plugin dependency from `AndroidNativeAccount` and use `AndroidNativeSigner` instead.
+
 ## 7.0.0
 
 ### Minor Changes

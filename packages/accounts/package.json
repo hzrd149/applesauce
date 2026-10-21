@@ -1,6 +1,6 @@
 {
   "name": "applesauce-accounts",
-  "version": "7.0.0",
+  "version": "7.0.2",
   "description": "A simple nostr account management system",
   "type": "module",
   "main": "dist/index.js",

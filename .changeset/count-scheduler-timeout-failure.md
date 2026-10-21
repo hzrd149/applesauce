@@ -1,5 +1,0 @@
----
-"applesauce-loaders": patch
----
-
-COUNT attempt timeouts report a new `timeout` failure and lower a relay's preference instead of applying a cooldown

@@ -1,5 +1,13 @@
 # applesauce-loaders
 
+## 7.0.2
+
+### Patch Changes
+
+- 1549b43: Count scheduler relays start with eight requests in flight and ramp up faster toward the concurrency limit
+- 1549b43: The count scheduler no longer lowers a relay's concurrency when its latency rises
+- 1549b43: COUNT attempt timeouts report a new `timeout` failure and lower a relay's preference instead of applying a cooldown
+
 ## 7.0.0
 
 ### Major Changes
