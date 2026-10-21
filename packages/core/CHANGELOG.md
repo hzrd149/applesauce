@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 7.0.3
+
+### Patch Changes
+
+- 703e4ed: Bound logger object inspection by depth, entry count, and output size, and stop re-expanding shared references so logging large or DOM-backed objects no longer freezes the main thread.
+
 ## 7.0.1
 
 ### Patch Changes
