@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 7.0.1
+
+### Patch Changes
+
+- 3f551df: Replace the optional native signer dependency with `capacitor-plugin-nostr-signer` and support its public key response.
+
 ## 7.0.0
 
 ### Minor Changes

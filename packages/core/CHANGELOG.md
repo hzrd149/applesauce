@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 7.0.1
+
+### Patch Changes
+
+- 539858e: Fix `DeleteManager` ignoring exact event id deletions for replaceable and addressable events
+
 ## 7.0.0
 
 ### Major Changes
