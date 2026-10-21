@@ -271,27 +271,95 @@ function safeString(value: unknown, fallback = "[Unformattable]"): string {
   }
 }
 
-function inspect(value: unknown, seen = new Set<unknown>()): string {
-  try {
-    if (value instanceof Error) return safeString(value);
-    if (typeof value === "string") return `'${value}'`;
-    if (typeof value === "bigint") return `${value}n`;
-    if (typeof value === "symbol" || typeof value === "function") return safeString(value);
-    if (value === null || typeof value !== "object") return safeString(value);
-    if (seen.has(value)) return "[Circular]";
+/** Nesting depth past which objects are summarized instead of expanded */
+const INSPECT_MAX_DEPTH = 5;
+/** Entries shown for a single object or array before the rest are elided */
+const INSPECT_MAX_ENTRIES = 50;
+/** Approximate characters a single inspected argument may produce */
+const INSPECT_MAX_LENGTH = 10_000;
+/** Characters shown for a single string value before it is truncated */
+const INSPECT_MAX_STRING = 1_000;
 
-    seen.add(value);
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const entries = Object.entries(descriptors)
-      .filter(([key, descriptor]) => key !== "length" && descriptor.enumerable)
-      .map(([key, descriptor]) => {
-        const item = "value" in descriptor ? inspect(descriptor.value, seen) : "[Getter]";
-        return Array.isArray(value) ? item : `${key}: ${item}`;
-      });
-    seen.delete(value);
-    return Array.isArray(value) ? `[ ${entries.join(", ")} ]` : `{ ${entries.join(", ")} }`;
+interface InspectContext {
+  /** Objects on the current traversal path */
+  ancestors: Set<object>;
+  /** Objects already expanded anywhere in this argument */
+  expanded: Set<object>;
+  /** Characters left before traversal stops */
+  remaining: number;
+}
+
+function emit(context: InspectContext, text: string): string {
+  context.remaining -= text.length;
+  return text;
+}
+
+function inspectPrimitive(value: unknown): string {
+  if (value instanceof Error) return safeString(value);
+  if (typeof value === "string")
+    return value.length > INSPECT_MAX_STRING ? `'${value.slice(0, INSPECT_MAX_STRING)}...'` : `'${value}'`;
+  if (typeof value === "bigint") return `${value}n`;
+  return safeString(value);
+}
+
+/** DOM nodes, windows, and sockets hold large internal graphs (including React fibers) that should never be walked */
+function isHostObject(value: object): boolean {
+  const EventTarget = (globalThis as { EventTarget?: abstract new () => object }).EventTarget;
+  return typeof EventTarget === "function" && value instanceof EventTarget;
+}
+
+function hostObjectName(value: object): string {
+  const name = (value as { constructor?: { name?: unknown } }).constructor?.name;
+  return typeof name === "string" && name ? name : Object.prototype.toString.call(value).slice(8, -1);
+}
+
+function* ownEnumerableKeys(value: object): Generator<string> {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) yield String(index);
+    return;
+  }
+  // for...in stops early with the loop instead of materializing every descriptor up front
+  for (const key in value) if (Object.prototype.hasOwnProperty.call(value, key)) yield key;
+}
+
+function inspect(
+  value: unknown,
+  context: InspectContext = { ancestors: new Set(), expanded: new Set(), remaining: INSPECT_MAX_LENGTH },
+  depth = 0,
+): string {
+  try {
+    if (value === null || typeof value !== "object" || value instanceof Error)
+      return emit(context, inspectPrimitive(value));
+    if (context.ancestors.has(value)) return emit(context, "[Circular]");
+    if (context.expanded.has(value)) return emit(context, "[Ref]");
+    if (isHostObject(value)) return emit(context, `[${hostObjectName(value)}]`);
+
+    const array = Array.isArray(value);
+    if (depth >= INSPECT_MAX_DEPTH) return emit(context, array ? "[Array]" : "[Object]");
+
+    context.expanded.add(value);
+    context.ancestors.add(value);
+    try {
+      const entries: string[] = [];
+      for (const key of ownEnumerableKeys(value)) {
+        if (entries.length >= INSPECT_MAX_ENTRIES || context.remaining <= 0) {
+          entries.push(array ? `... ${value.length - Number(key)} more` : "...");
+          break;
+        }
+
+        // Read descriptors so getters are reported instead of invoked
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor?.enumerable) continue;
+
+        context.remaining -= array ? 2 : key.length + 4;
+        const item = "value" in descriptor ? inspect(descriptor.value, context, depth + 1) : emit(context, "[Getter]");
+        entries.push(array ? item : `${key}: ${item}`);
+      }
+      return array ? `[ ${entries.join(", ")} ]` : `{ ${entries.join(", ")} }`;
+    } finally {
+      context.ancestors.delete(value);
+    }
   } catch {
-    seen.delete(value);
     return "[Uninspectable]";
   }
 }

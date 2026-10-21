@@ -123,6 +123,89 @@ describe("logger", () => {
     expect(calls[1]).toBe("applesauce [Uninspectable]");
   });
 
+  describe("object inspection", () => {
+    function capture(...args: unknown[]): string {
+      const calls: string[] = [];
+      setLoggerSink((message) => calls.push(message));
+      enableLoggerNamespaces("applesauce");
+      logger(...args);
+      return calls[0];
+    }
+
+    it("expands shared references once instead of once per path", () => {
+      let value: object = { leaf: true };
+      for (let i = 0; i < 24; i++) value = { left: value, right: value };
+
+      const start = performance.now();
+      const message = capture("shared", value);
+
+      expect(performance.now() - start).toBeLessThan(100);
+      expect(message.length).toBeLessThan(15_000);
+      expect(message).toContain("right: [Ref]");
+    });
+
+    it("marks shared siblings as references and ancestors as circular", () => {
+      const shared = { id: 1 };
+      const circular: Record<string, unknown> = { a: shared, b: shared };
+      circular.self = circular;
+
+      expect(capture(circular)).toBe("applesauce { a: { id: 1 }, b: [Ref], self: [Circular] }");
+    });
+
+    it("summarizes objects nested past the depth limit", () => {
+      let value: object = { leaf: true };
+      for (let i = 0; i < 1_000; i++) value = { next: value };
+
+      expect(capture(value)).toBe("applesauce { next: { next: { next: { next: { next: [Object] } } } } }");
+    });
+
+    it("elides entries from large arrays and objects", () => {
+      const array = Array.from({ length: 100_000 }, (_, i) => i);
+      const object = Object.fromEntries(array.map((i) => [`key${i}`, i]));
+
+      expect(capture(array)).toMatch(/, 49, \.\.\. 99950 more \]$/);
+      expect(capture(object)).toMatch(/key49: 49, \.\.\. }$/);
+    });
+
+    it("stops traversal once the output budget is spent", () => {
+      const wide = Array.from({ length: 50 }, () => Array.from({ length: 50 }, () => "x".repeat(100)));
+
+      expect(capture(wide).length).toBeLessThan(15_000);
+    });
+
+    it("summarizes DOM-like host objects without walking their internals", () => {
+      class HTMLDivElement extends EventTarget {}
+      const element = new HTMLDivElement();
+      const fiber = vi.fn(() => ({}));
+      Object.defineProperty(element, "__reactFiber$abc", { enumerable: true, get: fiber });
+      Object.assign(element, { __reactProps$abc: { children: [element] } });
+
+      expect(capture("container %o", element)).toBe("applesauce container [HTMLDivElement]");
+      expect(capture({ ref: element })).toBe("applesauce { ref: [HTMLDivElement] }");
+      expect(fiber).not.toHaveBeenCalled();
+    });
+
+    it("reports getters without invoking them", () => {
+      const getter = vi.fn(() => 1);
+      const value = Object.defineProperty({}, "lazy", { enumerable: true, get: getter });
+
+      expect(capture(value)).toBe("applesauce { lazy: [Getter] }");
+      expect(getter).not.toHaveBeenCalled();
+    });
+
+    it("does not inspect arguments when the namespace is disabled", () => {
+      const calls: string[] = [];
+      const ownKeys = vi.fn(() => []);
+      setLoggerSink((message) => calls.push(message));
+      disableLoggerNamespaces();
+
+      logger("value %o", new Proxy({}, { ownKeys }));
+
+      expect(calls).toEqual([]);
+      expect(ownKeys).not.toHaveBeenCalled();
+    });
+  });
+
   it("escapes record delimiters in substitutions and extra values", () => {
     const calls: string[] = [];
     setLoggerSink((message) => calls.push(message));
