@@ -1,5 +1,4 @@
 import { AndroidNativeSigner } from "applesauce-signers/signers/android-native-signer";
-import { AppInfo, NostrSignerPlugin } from "nostr-signer-capacitor-plugin";
 import { BaseAccount } from "../account.js";
 import { SerializedAccount } from "../types.js";
 import { AccountManager } from "../manager.js";
@@ -16,8 +15,8 @@ export class AndroidNativeAccount<Metadata extends unknown> extends BaseAccount<
 > {
   static readonly type = "android-native";
 
-  static async getSignerApps() {
-    return (await NostrSignerPlugin.getInstalledSignerApps()).apps;
+  static getSignerApps(): ReturnType<typeof AndroidNativeSigner.getSignerApps> {
+    return AndroidNativeSigner.getSignerApps();
   }
 
   toJSON() {
@@ -34,7 +33,9 @@ export class AndroidNativeAccount<Metadata extends unknown> extends BaseAccount<
     return super.loadCommonFields(account, json);
   }
 
-  static async fromApp<Metadata extends unknown>(app: AppInfo): Promise<AndroidNativeAccount<Metadata>> {
+  static async fromApp<Metadata extends unknown>(app: {
+    packageName: string;
+  }): Promise<AndroidNativeAccount<Metadata>> {
     const signer = new AndroidNativeSigner(app.packageName);
     const pubkey = await signer.getPublicKey();
     return new AndroidNativeAccount<Metadata>(pubkey, signer);
