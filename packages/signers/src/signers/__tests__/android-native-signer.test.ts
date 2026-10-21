@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("nostr-signer-capacitor-plugin", () => ({
+vi.mock("capacitor-plugin-nostr-signer", () => ({
   NostrSignerPlugin: {
     setPackageName: vi.fn().mockResolvedValue(undefined),
     getPublicKey: vi.fn().mockResolvedValue({
-      npub: "npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefp92",
+      pubkey: "npub1qy352euf40x77qfrg4ncn27dauqjx3t83x4ummcpydzk0zdtehhstefp92",
       package: "",
     }),
     getInstalledSignerApps: vi.fn().mockResolvedValue({ apps: [] }),
   },
 }));
 
-import { NostrSignerPlugin } from "nostr-signer-capacitor-plugin";
+import { NostrSignerPlugin } from "capacitor-plugin-nostr-signer";
 import { AndroidNativeSigner } from "../android-native-signer.js";
 
 const PACKAGE = "com.greenart7c3.amber";

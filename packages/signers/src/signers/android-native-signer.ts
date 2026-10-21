@@ -8,7 +8,7 @@ import {
   verifyEvent,
 } from "applesauce-core/helpers";
 import { nanoid } from "nanoid";
-import { NostrSignerPlugin, Permission } from "nostr-signer-capacitor-plugin";
+import { NostrSignerPlugin, Permission } from "capacitor-plugin-nostr-signer";
 import { ISigner } from "../interop.js";
 
 export class AndroidNativeSigner implements ISigner {
@@ -55,7 +55,7 @@ export class AndroidNativeSigner implements ISigner {
     if (!this.pubkey) {
       const result = await NostrSignerPlugin.getPublicKey(this.packageName, this.permissions);
 
-      const pubkey = normalizeToPubkey(result.npub);
+      const pubkey = normalizeToPubkey(result.pubkey);
       if (!pubkey) throw new Error("Invalid public key");
       this.pubkey = pubkey;
     }
