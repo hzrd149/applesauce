@@ -14,6 +14,9 @@ export const CAST_REF_SYMBOL = Symbol.for("cast-ref");
 /** A symbol used to store all the casts for an event */
 export const CASTS_SYMBOL = Symbol.for("casts");
 
+/** A symbol used to store the errors from casts that failed for an event */
+export const CAST_FAILURES_SYMBOL = Symbol.for("cast-failures");
+
 // The constructor parameter stays `NostrEvent` (the narrow type) so existing signed-event cast
 // constructors match exactly, while a rumor cast whose constructor accepts the wider `Rumor`
 // (⊇ NostrEvent) stays contravariantly compatible. Only the constraint and `castEvent`'s input
@@ -47,13 +50,26 @@ export function performCast<C extends EventCast<StoreEvent>, E extends StoreEven
   const existing = casts?.get(cls);
   if (existing) return existing;
 
+  // Rethrow a remembered failure so timelines don't re-validate and rebuild an error on every emission
+  const failures: Map<CastConstructor<C, E>, unknown> = Reflect.get(event, CAST_FAILURES_SYMBOL);
+  if (failures?.has(cls)) throw failures.get(cls);
+
   if (!store) {
     store = getParentEventStore(event) as unknown as CastRefEventStore<E>;
     if (!store) throw new Error("Event is not attached to an event store, an event store must be provided");
   }
 
   // Create a new instance of the class (the constructor reads only StoreEvent fields).
-  const cast = new cls(event as NostrEvent, store);
+  let cast: C;
+  try {
+    cast = new cls(event as NostrEvent, store);
+  } catch (error) {
+    // Constructors only validate the immutable event, so the same cast will always fail
+    if (!failures) setCachedValue(event, CAST_FAILURES_SYMBOL, new Map([[cls, error]]));
+    else failures.set(cls, error);
+    throw error;
+  }
+
   // The cast instance is derived from and bound to this specific event instance — identity-memo
   // shaped per cache.ts's taxonomy. D-13: this write's DESCRIPTOR migrates to setCachedValue (a
   // spread copy no longer inherits the Map by non-enumerability alone) — but the deeper defect

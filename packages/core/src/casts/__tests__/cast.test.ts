@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { EventStore } from "../../event-store/event-store.js";
-import { CASTS_SYMBOL, castEvent } from "../cast.js";
+import { NostrEvent } from "../../helpers/event.js";
+import { CASTS_SYMBOL, castEvent, CastRefEventStore } from "../cast.js";
 import { EventCast } from "../event.js";
 
 class NoteCast extends EventCast {}
@@ -37,5 +38,43 @@ describe("performCast (D-13, descriptor-only migration)", () => {
     const other = castEvent(event, OtherCast, store);
     expect(other).toBeInstanceOf(OtherCast);
     expect(other).not.toBe(castEvent(event, NoteCast, store));
+  });
+});
+
+describe("performCast failures", () => {
+  class RejectingCast extends EventCast {
+    static attempts = 0;
+    constructor(event: NostrEvent, store: CastRefEventStore) {
+      RejectingCast.attempts++;
+      throw new Error("Invalid event");
+      super(event, store);
+    }
+  }
+
+  it("remembers a failed cast and rethrows the same error without re-running the constructor", () => {
+    const user = new FakeUser();
+    const store = new EventStore();
+    const event = user.note("Test");
+    store.add(event);
+
+    let first: unknown;
+    try {
+      castEvent(event, RejectingCast, store);
+    } catch (error) {
+      first = error;
+    }
+
+    expect(() => castEvent(event, RejectingCast, store)).toThrow(first as Error);
+    expect(RejectingCast.attempts).toBe(1);
+  });
+
+  it("does not block other casts of the same event", () => {
+    const user = new FakeUser();
+    const store = new EventStore();
+    const event = user.note("Test");
+    store.add(event);
+
+    expect(() => castEvent(event, RejectingCast, store)).toThrow();
+    expect(castEvent(event, NoteCast, store)).toBeInstanceOf(NoteCast);
   });
 });
