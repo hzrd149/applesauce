@@ -27,7 +27,7 @@ import {
   type NostrEvent,
 } from "applesauce-core/helpers";
 import { watchEventsUpdates } from "applesauce-core/observable";
-import { createKehtoServices, type KehtoContext, type KehtoServiceName } from "applesauce-extra/kehto";
+import { createKehtoServices, type KehtoContext } from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -71,8 +71,6 @@ const SYNC_SPANS = [
   ["5 years", 5 * 365 * DAY],
   ["All time", 0],
 ] as const;
-// The napplet only needs messages, profiles and nip19 helpers
-const DISABLED_SERVICES: KehtoServiceName[] = ["outbox", "count", "upload", "lists", "resource"];
 
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
@@ -205,7 +203,6 @@ const kehtoContext: KehtoContext = {
 };
 
 const services = createKehtoServices(kehtoContext, {
-  disable: DISABLED_SERVICES,
   // The NIP-17 and NIP-04 protocols fail independently, so one broken backend still leaves the other readable
   dm: {
     onProtocolError: ({ protocol, operation, error }) => addLog("error", `${protocol} ${operation}`, String(error)),
@@ -229,7 +226,7 @@ services.dm = {
 };
 
 // The prepared services replace the defaults, so the host creates no duplicates
-const host = createKehtoHost(kehtoContext, { disable: DISABLED_SERVICES, services });
+const host = createKehtoHost(kehtoContext, { services });
 
 import.meta.hot?.dispose(() => host.destroy());
 

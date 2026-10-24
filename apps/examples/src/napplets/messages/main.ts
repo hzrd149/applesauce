@@ -12,6 +12,7 @@ const shell = requireDomain("shell");
 const dm = requireDomain("dm");
 const identity = requireDomain("identity");
 const common = requireDomain("common");
+const resource = requireDomain("resource");
 
 const PROTOCOL_LABELS: Record<string, string> = { nip17: "🎁 NIP-17", nip04: "✉️ NIP-04" };
 const STATUS_ICONS: Record<Bubble["status"], string> = {
@@ -87,12 +88,24 @@ function element<Tag extends keyof HTMLElementTagNameMap>(tag: Tag, className = 
 function avatar(pubkeys: string[]) {
   const node = element("span", "avatar", pubkeys.length === 0 ? "✎" : pubkeys.length > 1 ? "👥" : "");
   if (pubkeys.length === 1) {
-    getProfile(pubkeys[0]).then((profile) => {
-      if (!profile.picture) return;
-      const image = element("img", "avatar");
-      image.src = profile.picture;
-      node.replaceWith(image);
-    });
+    getProfile(pubkeys[0])
+      .then(async (profile) => {
+        if (!profile.picture) return;
+
+        // Remote images go through the host because the iframe only allows blob and data URLs
+        const picture = await resource.bytes(profile.picture);
+        const pictureUrl = URL.createObjectURL(picture);
+        const image = element("img", "avatar");
+        image.onload = () => {
+          URL.revokeObjectURL(pictureUrl);
+          node.replaceWith(image);
+        };
+        image.onerror = () => URL.revokeObjectURL(pictureUrl);
+        image.src = pictureUrl;
+      })
+      .catch(() => {
+        // Keep the placeholder when the host cannot fetch the picture
+      });
   }
   return node;
 }
@@ -358,17 +371,37 @@ function renderStatus(status?: DmStatus) {
   });
 }
 
-function conversationRow(selection: Selection, updatedAt?: number) {
-  const row = element("button", "conversation");
+type ConversationRow = {
+  node: HTMLButtonElement;
+  selection: Selection;
+  participantsKey: string;
+  timestamp: HTMLSpanElement;
+};
+
+const conversationRows = new Map<string, ConversationRow>();
+
+function updateConversationRow(key: string, selection: Selection, updatedAt?: number) {
+  const participantsKey = JSON.stringify(selection.participants);
+  let row = conversationRows.get(key);
+
+  if (!row || row.participantsKey !== participantsKey) {
+    const node = element("button", "conversation");
+    const timestamp = element("span", "muted");
+    const peers = others(selection.participants);
+    node.append(avatar(peers), names(peers), timestamp);
+
+    const createdRow = { node, selection, participantsKey, timestamp };
+    node.addEventListener("click", () => select(createdRow.selection));
+    row = createdRow;
+    conversationRows.set(key, row);
+  }
+
+  row.selection = selection;
   const isSelected = selected === selection || (!!selection.id && selected?.id === selection.id);
-  if (isSelected) row.classList.add("selected");
-
-  const peers = others(selection.participants);
-  row.append(avatar(peers), names(peers));
-  if (updatedAt) row.append(element("span", "muted", formatTime(updatedAt)));
-
-  row.addEventListener("click", () => select(selection));
-  return row;
+  row.node.classList.toggle("selected", isSelected);
+  row.timestamp.textContent = updatedAt ? formatTime(updatedAt) : "";
+  row.timestamp.hidden = !updatedAt;
+  return row.node;
 }
 
 function renderConversations() {
@@ -396,7 +429,24 @@ function renderConversations() {
   const draft: Row[] =
     selected && !selected.id && others(selected.participants).length ? [{ selection: selected }] : [];
 
-  nav.replaceChildren(...[notes, ...draft, ...rows].map((row) => conversationRow(row.selection, row.updatedAt)));
+  const activeKeys = new Set<string>();
+  const nodes = [notes, ...draft, ...rows].map(({ selection, updatedAt }) => {
+    const key = selection.id ?? `draft:${JSON.stringify([...selection.participants].sort())}`;
+    activeKeys.add(key);
+    return updateConversationRow(key, selection, updatedAt);
+  });
+
+  for (const [key, row] of conversationRows) {
+    if (activeKeys.has(key)) continue;
+    row.node.remove();
+    conversationRows.delete(key);
+  }
+
+  // Leave unchanged rows attached, moving only rows whose position changed
+  nodes.forEach((node, index) => {
+    if (nav.children[index] !== node) nav.insertBefore(node, nav.children[index] ?? null);
+  });
+  while (nav.children.length > nodes.length) nav.lastElementChild?.remove();
 }
 
 function messageBubble(bubble: Bubble, group: boolean) {
@@ -462,6 +512,9 @@ async function start() {
   const previous = subscriptionId;
   subscriptionId = undefined;
   if (previous) dm.unsubscribe(previous).catch(() => {});
+
+  conversationRows.clear();
+  $("conversations").replaceChildren();
 
   owner = "";
   refreshAgain = false;
