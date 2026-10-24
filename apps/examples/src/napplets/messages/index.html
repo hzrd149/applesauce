@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Messages demo</title>
+  </head>
+  <body>
+    <aside>
+      <div class="row bar">
+        <span id="owner" class="name">…</span>
+        <span id="protocols" class="row"></span>
+      </div>
+      <div class="row bar">
+        <input id="recipients" placeholder="npub1… npub1…" />
+        <button id="start" title="New conversation">➕</button>
+      </div>
+      <nav id="conversations"></nav>
+    </aside>
+
+    <main>
+      <div id="title" class="row bar"></div>
+      <div id="messages"></div>
+      <div id="composer" class="row bar">
+        <input id="content" placeholder="Message…" autocomplete="off" disabled />
+        <button id="send" title="dm.send" disabled>➤</button>
+      </div>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
