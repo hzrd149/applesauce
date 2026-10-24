@@ -54,6 +54,8 @@ export interface KehtoDmOptions {
   operationTimeout?: number;
   /** The age of a completed history snapshot before refreshing in milliseconds (default 30000) */
   historyMaxAge?: number;
+  /** The maximum wait for a running history load before answering with the messages loaded so far in milliseconds (default 1000) */
+  historyWait?: number;
   /** The delay before reconnecting a failed live protocol in milliseconds (default 1000) */
   retryDelay?: number;
   /** The callback reporting isolated protocol history or live failures */
@@ -247,25 +249,41 @@ export function createMultiProtocolDmAdapter(config: KehtoDmOptions): DmAdapter 
     if (history.loadedAt !== undefined && Date.now() - history.loadedAt < (config.historyMaxAge ?? 30000))
       return of(undefined);
 
-    const loading$ = defer(() => {
-      const controller = new AbortController();
-      const store = new DmMemoryStore();
-      return defer(() => protocol.session.messages$({ signal: controller.signal, windowId, history: true })).pipe(
+    const controller = new AbortController();
+    const store = new DmMemoryStore();
+    const loaded$ = new ReplaySubject<void>(1);
+    history.loading$ = loaded$;
+
+    // A replacement account session or closing the service cancels the load
+    const sessionEnded$ = merge(
+      protocol.protocol.session$.pipe(filter((session) => session !== protocol.session)),
+      closed$,
+    );
+
+    // The load runs detached from the request that started it, so decryption continues after requests answer early
+    defer(() => protocol.session.messages$({ signal: controller.signal, windowId, history: true }))
+      .pipe(
         tap((message) => storeMessage(protocol, message, store)),
         ignoreElements(),
         endWith(undefined),
         timeout({ first: operationTimeout }),
-        tap(() => {
-          history.loadedAt = Date.now();
-        }),
+        takeUntil(sessionEnded$),
+        throwIfEmpty(() => new Error("Account changed or DM service closed")),
         finalize(() => {
-          history.loading$ = undefined;
+          if (history.loading$ === loaded$) history.loading$ = undefined;
           controller.abort(new Error("DM history operation ended"));
         }),
-      );
-    }).pipe(shareReplay({ bufferSize: 1, refCount: true }));
-    history.loading$ = loading$;
-    return loading$;
+      )
+      .subscribe({
+        next: () => {
+          history.loadedAt = Date.now();
+          loaded$.next();
+        },
+        error: (error) => loaded$.error(error),
+        complete: () => loaded$.complete(),
+      });
+
+    return loaded$;
   }
 
   function history$() {
@@ -275,6 +293,8 @@ export function createMultiProtocolDmAdapter(config: KehtoDmOptions): DmAdapter 
       return forkJoin(
         active.map((protocol) =>
           loadHistory$(protocol, context.windowId).pipe(
+            // A slow history answers with the messages loaded so far, live subscribers receive the rest
+            timeout({ first: config.historyWait ?? 1000, with: () => of(undefined) }),
             catchError((error) => {
               failures.push(error);
               reportFailure(protocol, "history", error);

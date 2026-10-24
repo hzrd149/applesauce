@@ -284,6 +284,30 @@ describe("multi-protocol resilience and history", () => {
     expect((await second).conversations).toHaveLength(1);
   });
 
+  it("answers with partial history while a slow load keeps streaming in the background", async () => {
+    const custom = memoryProtocol("custom");
+    const history = new Subject<DmProtocolMessage>();
+    custom.read.mockImplementation(() => history);
+    const dm = compose([custom.protocol], { historyWait: 10 });
+
+    const conversations = dm.conversations();
+    await vi.waitFor(() => expect(custom.read).toHaveBeenCalledTimes(1));
+    history.next(message("first"));
+    const conversationId = (await conversations).conversations[0].id;
+    expect(history.observed).toBe(true);
+
+    history.next(message("second"));
+    expect((await dm.messages({ conversationId })).messages.map((entry) => entry.content)).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(custom.read).toHaveBeenCalledTimes(1);
+
+    // The detached load stops when the account session is replaced
+    custom.session$.next(undefined);
+    expect(history.observed).toBe(false);
+  });
+
   it("refreshes expired history and isolates replacement account sessions", async () => {
     const custom = memoryProtocol("custom", [message("old")]);
     const dm = compose([custom.protocol], { historyMaxAge: 0 });
