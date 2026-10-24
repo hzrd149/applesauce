@@ -182,7 +182,7 @@ Defaults are `limit: 100` and `prefetch: 100` events buffered past each side of 
 
 Keep the window stream subscribed to reuse coverage. A single finite `{ since, until }` is also accepted and completes when visible and buffer requests settle. Inspect `status$` to distinguish coverage from request failures or unpageable boundary seconds; completion alone does not guarantee coverage.
 
-`createOutboxTimelineLoader` follows the same contract for changing outbox maps. Cache and relay coverage stay independent. Events are stored before output deduplication, preserving relay metadata.
+`createTimelineLoader` also accepts an observable relay list or filter and reconciles changes like an outbox map: a relay added later receives the current window and unchanged relays keep their coverage. `createOutboxTimelineLoader` follows the same contract for changing outbox maps. Cache and relay coverage stay independent. Events are stored before output deduplication, preserving relay metadata.
 
 Numeric arguments, omitted windows, infinite bounds, directional block operators, and deprecated timeline wrappers are no longer supported. See the [timeline documentation](https://applesauce.build/loading/loaders/timeline-loader) for status details, operators, and migration guidance.
 

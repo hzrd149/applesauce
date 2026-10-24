@@ -871,3 +871,74 @@ describe("outbox author changes", () => {
     sub.unsubscribe();
   });
 });
+
+describe("reactive relays and filters", () => {
+  it("loads a relay added later for the current window without re-requesting the others", async () => {
+    const relays = new BehaviorSubject<string[]>([]);
+    const request = relay({ a: [event(150)], b: [event(160)] });
+    const seen: NostrEvent[] = [];
+    const sub = createTimelineLoader(
+      request,
+      relays,
+      { kinds: [1] },
+      { prefetch: 0 },
+    )(new BehaviorSubject(window(100, 200))).subscribe((event) => seen.push(event));
+    await flush();
+    expect(request).not.toHaveBeenCalled();
+    relays.next(["a"]);
+    await flush();
+    expect(seen.map((event) => event.created_at)).toEqual([150]);
+    const requestsToA = request.mock.calls.filter(([relays]) => relays[0] === "a").length;
+    relays.next(["a", "b"]);
+    await flush();
+    expect(seen.map((event) => event.created_at)).toEqual([150, 160]);
+    expect(request.mock.calls.filter(([relays]) => relays[0] === "a")).toHaveLength(requestsToA);
+    sub.unsubscribe();
+  });
+
+  it("retires the status of a removed relay and keeps the rest", async () => {
+    const relays = new BehaviorSubject(["a", "b"]);
+    const loader = createTimelineLoader(relay({}), relays, {}, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    const statusSub = loader.status$.subscribe((next) => {
+      statuses = next;
+    });
+    const sub = loader(new BehaviorSubject(window(100, 200))).subscribe();
+    await flush();
+    expect(statuses.map((status) => status.source).sort()).toEqual(["a", "b"]);
+    relays.next(["a"]);
+    await flush();
+    expect(statuses.map((status) => status.source)).toEqual(["a"]);
+    sub.unsubscribe();
+    statusSub.unsubscribe();
+  });
+
+  it("follows changing filters on the relays and the cache", async () => {
+    const filters = new BehaviorSubject<Filter>({ kinds: [1] });
+    const request = relay({ a: [event(150, 1), event(160, 2)] });
+    const cached = [event(140, 1), event(141, 2)];
+    const cache = vi.fn((filters: Filter[]) => of(...cached.filter((event) => matchFilter(filters[0], event))));
+    const seen: NostrEvent[] = [];
+    const sub = createTimelineLoader(request, ["a"], filters, { prefetch: 0, cache })(
+      new BehaviorSubject(window(100, 200)),
+    ).subscribe((event) => seen.push(event));
+    await flush();
+    expect(new Set(seen.map((event) => event.id))).toEqual(new Set(["1-150", "1-140"]));
+    filters.next({ kinds: [2] });
+    await flush();
+    expect(new Set(seen.map((event) => event.id))).toEqual(new Set(["1-150", "1-140", "2-160", "2-141"]));
+    sub.unsubscribe();
+  });
+
+  it("completes a single window once a late relay list has arrived", async () => {
+    const relays = new Subject<string[]>();
+    const request = relay({ a: [event(150)] });
+    const result = lastValueFrom(
+      createTimelineLoader(request, relays, {}, { prefetch: 0 })(window(100, 200)).pipe(toArray()),
+    );
+    await flush();
+    expect(request).not.toHaveBeenCalled();
+    relays.next(["a"]);
+    expect((await result).map((event) => event.created_at)).toEqual([150]);
+  });
+});
