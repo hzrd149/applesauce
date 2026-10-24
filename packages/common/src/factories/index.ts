@@ -55,6 +55,7 @@ export * from "./nostr-web-token.js";
 export * from "./root-napplet.js";
 export * from "./named-napplet.js";
 export * from "./napplet-snapshot.js";
+export * from "./napplet-handlers.js";
 export * from "./app-handler.js";
 export * from "./app-recommendation.js";
 

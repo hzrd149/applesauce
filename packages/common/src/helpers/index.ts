@@ -36,6 +36,7 @@ export * from "./lnurl.js";
 export * from "./messages.js";
 export * from "./mute.js";
 export * from "./napplet.js";
+export * from "./napplet-handlers.js";
 export * from "./nostr-web-token.js";
 export * from "./picture-post.js";
 export * from "./poll.js";

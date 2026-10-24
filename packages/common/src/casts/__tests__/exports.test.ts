@@ -40,6 +40,7 @@ describe("exports", () => {
         "NamedNapplet",
         "NamedNsite",
         "Napplet",
+        "NappletHandlers",
         "NappletSnapshot",
         "Note",
         "Nsite",

@@ -192,3 +192,42 @@ export function getNappletRootPointer(event: NostrEvent): AddressPointer | undef
   const tag = event.tags.find((t) => t[0] === "A" && t[1]);
   return (tag && getAddressPointerFromATag(tag)) || undefined;
 }
+
+/** A NAP-INTENT convention identity split into its archetype and intent */
+export type NappletConvention = { archetype: string; intent: string };
+
+/**
+ * Parses a `napplet:<archetype>/<intent>` convention identity
+ * @returns undefined if the identity is malformed or has a query or fragment
+ * @see https://github.com/napplet/naps/blob/master/naps/NAP-INTENT.md
+ */
+export function parseNappletConvention(identity: string): NappletConvention | undefined {
+  if (identity.includes("?") || identity.includes("#")) return undefined;
+
+  const match = identity.match(/^napplet:([^/]+)\/(.+)$/);
+  if (!match) return undefined;
+
+  return { archetype: match[1], intent: match[2] };
+}
+
+/**
+ * Creates a `napplet:<archetype>/<intent>` convention identity
+ * @throws if the resulting identity is malformed or has a query or fragment
+ */
+export function createNappletConvention(archetype: string, intent: string): string {
+  const identity = `napplet:${archetype}/${intent}`;
+
+  const parsed = parseNappletConvention(identity);
+  if (parsed?.archetype !== archetype) throw new Error(`Invalid napplet convention identity: ${identity}`);
+
+  return identity;
+}
+
+/** Checks if a manifest advertises a convention identity for its archetype */
+export function nappletSupportsConvention(manifest: NostrEvent, identity: string): boolean {
+  const convention = parseNappletConvention(identity);
+  if (!convention) return false;
+
+  if (!getNappletArchetypes(manifest).includes(convention.archetype)) return false;
+  return getNappletIntents(manifest).some((entry) => entry.intent === identity);
+}
