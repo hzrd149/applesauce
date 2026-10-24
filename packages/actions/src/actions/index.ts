@@ -13,6 +13,7 @@ export * from "./legacy-messages.js";
 export * from "./lists.js";
 export * from "./mailboxes.js";
 export * from "./mute.js";
+export * from "./napplet-handlers.js";
 export * from "./pins.js";
 export * from "./profile.js";
 export * from "./relay-sets.js";
