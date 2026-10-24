@@ -1,7 +1,7 @@
 import type { DmSendRequest } from "@kehto/services";
+import { getConversationParticipants, unlockGiftWrap } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { finalizeEvent, kinds, npubEncode, unixNow } from "applesauce-core/helpers";
-import { getConversationParticipants, unlockGiftWrap } from "applesauce-common/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, EMPTY, firstValueFrom, from, NEVER, of, Subject, throwError } from "rxjs";
@@ -16,7 +16,7 @@ import {
   type DmProtocolMessage,
   type DmProtocolSession,
   type KehtoDmOptions,
-} from "../kehto/services/dm.js";
+} from "../dm.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
 const bobKey = new Uint8Array(32).fill(2);

@@ -10,11 +10,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDmAdapterProtocol,
   createMultiProtocolDmAdapter,
-  useProtocol,
   firstMatchingRoute,
+  useProtocol,
   useProtocolWhenSupported,
   type KehtoDmOptions,
-} from "../kehto/services/dm.js";
+} from "../dm.js";
 
 const alice = "a".repeat(64);
 const bob = "b".repeat(64);

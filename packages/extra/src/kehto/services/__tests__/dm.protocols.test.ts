@@ -1,26 +1,26 @@
 import { type DmSendRequest } from "@kehto/services";
+import { LegacyMessageFactory } from "applesauce-common/factories";
+import { unlockLegacyMessage } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { finalizeEvent, kinds, unixNow } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { LegacyMessageFactory } from "applesauce-common/factories";
-import { unlockLegacyMessage } from "applesauce-common/helpers";
 import { BehaviorSubject, defer, from, NEVER, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDmOptions,
   createLegacyMessageProtocol,
   createWrappedMessageProtocol,
+  defaultDmRouter,
   firstMatchingRoute,
   useLastMessageProtocol,
   useProtocol,
   useProtocolWhenSupported,
-  defaultDmRouter,
   type DmOperationContext,
   type DmProtocolAdapter,
   type DmProtocolMessage,
   type DmProtocolSession,
-} from "../kehto/services/dm.js";
+} from "../dm.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
 const aliceSigner = new PrivateKeySigner(aliceKey);

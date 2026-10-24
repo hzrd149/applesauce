@@ -1,11 +1,11 @@
-import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
-import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { EventStore } from "applesauce-core";
 import { finalizeEvent } from "applesauce-core/helpers";
-import type { KehtoUploadOptions } from "../kehto/services/upload.js";
-import { createUploadOptions } from "../kehto/services/upload.js";
+import { PrivateKeySigner } from "applesauce-signers";
+import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import { BehaviorSubject } from "rxjs";
+import { describe, expect, it, vi } from "vitest";
+import type { KehtoUploadOptions } from "../upload.js";
+import { createUploadOptions } from "../upload.js";
 
 vi.mock("blossom-client-sdk/actions/multi-server", () => ({ multiServerUpload: vi.fn() }));
 
@@ -50,7 +50,10 @@ describe("Kehto Blossom uploads", () => {
   });
 
   it("fails without configured servers", async () => {
-    const uploader = createUploadOptions({ ...state(new BehaviorSubject<string[]>([])), fallbackServers: undefined }).uploader!;
+    const uploader = createUploadOptions({
+      ...state(new BehaviorSubject<string[]>([])),
+      fallbackServers: undefined,
+    }).uploader!;
     expect(await uploader.upload({ data: new Blob(["x"]) }, ctx)).toMatchObject({
       ok: false,
       error: "No Blossom servers configured",

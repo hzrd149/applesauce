@@ -4,7 +4,7 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, NEVER, throwError } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { createCommonOptions } from "../kehto/services/common.js";
+import { createCommonOptions } from "../common.js";
 
 function setup() {
   const signer = new PrivateKeySigner(new Uint8Array(32).fill(1));

@@ -5,11 +5,7 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, NEVER, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  createDmOptions,
-  createWrappedMessageProtocol,
-  type NostrMessageProtocolOptions,
-} from "../kehto/services/dm.js";
+import { createDmOptions, createWrappedMessageProtocol, type NostrMessageProtocolOptions } from "../dm.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
 const bobKey = new Uint8Array(32).fill(2);
