@@ -100,3 +100,51 @@ describe("registry", () => {
     expect(adapter.services?.identity).toBeDefined();
   });
 });
+
+describe("shell composition", () => {
+  it("keeps transport hooks when a host adds scoped relay support", async () => {
+    const openScopedRelay = vi.fn();
+    const adapter = createKehtoShellAdapter(await create(), { overrides: { relayPool: { openScopedRelay } } });
+    adapters.push(adapter);
+    expect(adapter.relayPool.openScopedRelay).toBe(openScopedRelay);
+    expect(adapter.relayPool.getRelayPool()).toBeDefined();
+    const cleanup = vi.fn();
+    adapter.relayPool.trackSubscription("test", cleanup);
+    adapter.relayPool.untrackSubscription("test");
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("advertises added services and uses replacements instead of defaults", async () => {
+    const replacement = {
+      descriptor: { name: "lists", version: "1.0.0" },
+      handleMessage: vi.fn(),
+      onUnregistered: vi.fn(),
+    };
+    const link = { descriptor: { name: "link", version: "1.0.0" }, handleMessage: vi.fn() };
+    const adapter = createKehtoShellAdapter(await create(), {
+      disable: ["upload"],
+      services: { lists: replacement, link },
+    });
+    adapters.push(adapter);
+    expect(adapter.services?.lists).toBe(replacement);
+    expect(adapter.services?.upload).toBeUndefined();
+    expect(adapter.upload).toBeUndefined();
+    expect(adapter.link?.isAvailable()).toBe(true);
+    adapter.stop();
+    adapter.stop();
+    expect(replacement.onUnregistered).toHaveBeenCalledOnce();
+  });
+
+  it("can release transport snapshots after the runtime unregisters services", async () => {
+    const replacement = {
+      descriptor: { name: "lists", version: "1.0.0" },
+      handleMessage: vi.fn(),
+      onUnregistered: vi.fn(),
+    };
+    const adapter = createKehtoShellAdapter(await create(), { services: { lists: replacement } });
+    adapters.push(adapter);
+    replacement.onUnregistered();
+    adapter.stop({ services: false });
+    expect(replacement.onUnregistered).toHaveBeenCalledOnce();
+  });
+});

@@ -16,6 +16,11 @@
       "require": "./dist/kehto/index.js",
       "types": "./dist/kehto/index.d.ts"
     },
+    "./kehto/host": {
+      "import": "./dist/kehto/host/index.js",
+      "require": "./dist/kehto/host/index.js",
+      "types": "./dist/kehto/host/index.d.ts"
+    },
     "./nspam": {
       "import": "./dist/nspam/index.js",
       "require": "./dist/nspam/index.js",
@@ -74,11 +79,15 @@
     "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
+    "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
     "@kehto/shell": "^0.24.4"
   },
   "peerDependenciesMeta": {
+    "@kehto/nip": {
+      "optional": true
+    },
     "@kehto/runtime": {
       "optional": true
     },
@@ -91,6 +100,7 @@
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
+    "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
     "@kehto/shell": "^0.24.4",

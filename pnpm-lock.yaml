@@ -741,6 +741,9 @@ importers:
       '@hirez_io/observer-spy':
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
+      '@kehto/nip':
+        specifier: ^0.7.0
+        version: 0.7.0
       '@kehto/runtime':
         specifier: ^0.26.0
         version: 0.26.0(@napplet/core@0.34.0)(@napplet/nap@0.34.0(typescript@7.0.2))

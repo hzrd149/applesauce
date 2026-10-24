@@ -3,14 +3,7 @@
  * @tags nip-5d, napplet, nip-44, nip-65, cache, outbox
  * @related napplet/browser, napplet/store, outbox/client-startup, cache/nostr-idb
  */
-import {
-  fetchBlob,
-  getNappletCatalogId,
-  openNappletArtifactCache,
-  parseNappletManifest,
-  resolveNapplet,
-  type ResolvedNapplet,
-} from "@kehto/nip/5d";
+import { getNappletCatalogId, openNappletArtifactCache, parseNappletManifest } from "@kehto/nip/5d";
 import {
   createCatalogIntentResolver,
   createIntentService,
@@ -22,20 +15,8 @@ import {
   manifestToIntentCatalogEntry,
   type IntentDispatchParams,
 } from "@kehto/services";
-import {
-  createShellBridge,
-  denyNappletControllerAccess,
-  originRegistry,
-  prepareNappletSrcdoc,
-  resolveShellEnvironment,
-  type ShellEnvironment,
-} from "@kehto/shell";
-import {
-  createKehtoShellAdapter,
-  createResourceOptions,
-  kehtoAccount$,
-  type KehtoContext,
-} from "applesauce-extra/kehto";
+import { createResourceOptions, kehtoAccount$, type KehtoContext } from "applesauce-extra/kehto";
+import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { castEvent, castUser, Napplet, User } from "applesauce-common/casts";
 import {
   isValidNapplet,
@@ -63,22 +44,7 @@ import { Bell, Database, LogOut, Play, ShieldCheck, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { useState } from "react";
 import { useSearchParams } from "react-router";
-import {
-  BehaviorSubject,
-  catchError,
-  concatMap,
-  defaultIfEmpty,
-  distinctUntilChanged,
-  filter,
-  firstValueFrom,
-  map,
-  merge,
-  type Observable,
-  of,
-  skip,
-  take,
-  timeout,
-} from "rxjs";
+import { BehaviorSubject, catchError, concatMap, filter, from, map, merge, of, take } from "rxjs";
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
 import { verifyEvent } from "../../extra/verifier";
@@ -103,16 +69,6 @@ const pubkey$ = new BehaviorSubject("");
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 const FALLBACK_BLOSSOM = ["https://blossom.primal.net/"];
 
-/** Waits briefly for a defined value, so answers already in the store or cache return immediately */
-function settle<T>(value$: Observable<T | undefined>, fallback: T, ms = 4000): Promise<T> {
-  const value = value$.pipe(
-    filter((v): v is T => v !== undefined),
-    timeout({ first: ms }),
-    catchError(() => of(fallback)),
-  );
-  return firstValueFrom(value.pipe(defaultIfEmpty(fallback)));
-}
-
 // ---- Prompts, toasts and panes: plain module state rendered by the UI below
 
 type Prompt = { label: string; windowId: string; resolve: (ok: boolean) => void };
@@ -131,14 +87,9 @@ const removeToast = (id: string) => toasts$.next(toasts$.value.filter((t) => t.i
 type Pane = {
   windowId: string;
   napplet: Napplet;
-  resolved: ResolvedNapplet;
-  environment: ShellEnvironment;
-  source: "cache" | "blossom";
+  instance: KehtoNappletInstance;
   ms: number;
   badge$: BehaviorSubject<number>;
-  window?: Window;
-  loaded: Promise<void>;
-  onLoad: () => void;
 };
 const panes$ = new BehaviorSubject<Pane[]>([]);
 const paneFor = (windowId: string) => panes$.value.find((p) => p.windowId === windowId);
@@ -150,7 +101,7 @@ const grants = new Set<string>(JSON.parse(localStorage.getItem("napplet-grants")
 
 async function approve(windowId: string, template: EventTemplate) {
   const pane = paneFor(windowId);
-  const key = pane ? `${pane.resolved.manifest.catalogId}:${pane.resolved.aggregateHash}` : windowId;
+  const key = pane ? `${pane.instance.resolved.manifest.catalogId}:${pane.instance.resolved.aggregateHash}` : windowId;
   if (grants.has(key)) return;
   if (!(await ask(windowId, `Sign kind ${template.kind} events`))) throw new Error("User denied");
   grants.add(key);
@@ -163,7 +114,10 @@ function getTheme() {
   const v = (name: string) => css.getPropertyValue(`--color-${name}`).trim();
   return { colors: { background: v("base-100"), text: v("base-content"), primary: v("primary") } };
 }
-const theme = createThemeService({ initialTheme: getTheme(), onBroadcast: (env) => bridge.publishTheme(env.theme) });
+const theme = createThemeService({
+  initialTheme: getTheme(),
+  onBroadcast: (env) => host.bridge.publishTheme(env.theme),
+});
 
 const notify = createNotifyService({
   present: ({ windowId, notificationId: id, message, emit }) =>
@@ -186,24 +140,17 @@ const keys = createKeysService();
 
 // ---- NAP-RESOURCE: every byte is fetched and verified by the host
 
-/** Fetches a Blossom blob from the first server that returns bytes matching the hash */
-const fetchBytes = async (url: string, onType?: (type: string) => void) => {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status}`);
-  onType?.(res.headers.get("content-type") ?? "");
-  return new Uint8Array(await res.arrayBuffer());
-};
-
 /** Opens the handler napplet for an intent and delivers the request once its document loads */
 async function deliverIntent({ handler, sender, archetype, action, convention, payload }: IntentDispatchParams) {
   const event = eventStore.getByFilters({ kinds: NAPPLET_KINDS }).find((e) => getNappletCatalogId(e) === handler);
   if (!event) throw new Error("Handler not found");
   const pane = await openNapplet(event);
-  await pane.loaded;
-  pane.window?.postMessage(
-    { type: "intent.deliver", delivery: { sender, archetype, action, convention, payload } },
-    "*",
-  );
+  await pane.instance.whenReady();
+  const delivered = pane.instance.send({
+    type: "intent.deliver",
+    delivery: { sender, archetype, action, convention, payload },
+  });
+  if (!delivered) throw new Error("Intent delivery denied or target closed");
 }
 
 const intent = createIntentService({
@@ -219,7 +166,7 @@ const intent = createIntentService({
       }),
     targets: { accept: (params) => ({ completion: deliverIntent(params) }) },
   }),
-  resolveSender: (windowId) => paneFor(windowId)?.resolved.manifest.catalogId,
+  resolveSender: (windowId) => paneFor(windowId)?.instance.resolved.manifest.catalogId,
 });
 
 // ---- Shell bridge
@@ -262,30 +209,20 @@ const resource = createResourceService({
   },
 });
 
-const adapter = createKehtoShellAdapter(kehtoContext, {
-  overrides: {
-    intent: { isAvailable: () => true },
-    link: { isAvailable: () => true },
-    services: { theme: theme.handler, notify, link, intent, keys, resource },
-  },
+const host = createKehtoHost(kehtoContext, {
+  cache: artifactCache,
+  services: { theme: theme.handler, notify, link, intent, keys, resource },
 });
 
-const bridge = createShellBridge(adapter);
-window.addEventListener("message", bridge.handleMessage);
-
-// Push theme and account changes to every running napplet
+// Push theme changes; the host forwards account changes automatically
 const themeObserver = new MutationObserver(() => theme.publishTheme(getTheme()));
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
-const identitySub = pubkey$.pipe(distinctUntilChanged(), skip(1)).subscribe((p) => bridge.publishIdentityChanged(p));
 
 import.meta.hot?.dispose(() => {
   panes$.value.forEach(closeNapplet);
-  window.removeEventListener("message", bridge.handleMessage);
   themeObserver.disconnect();
-  adapter.stop();
-  identitySub.unsubscribe();
   keys.destroy();
-  bridge.destroy();
+  host.destroy();
 });
 
 // ---- Napplet lifecycle
@@ -293,67 +230,24 @@ import.meta.hot?.dispose(() => {
 async function openNapplet(event: NostrEvent): Promise<Pane> {
   const napplet = castEvent(event, Napplet, eventStore);
   const start = performance.now();
-  let source: Pane["source"] = "cache";
 
-  // kehto verifies the signature and every blob hash; applesauce supplies the author's Blossom servers
-  const resolved = await resolveNapplet({
-    event,
-    cache: artifactCache,
-    fetchBlob: async (hash, servers) => {
-      source = "blossom";
-      const author = await settle(napplet.author.blossomServers$, [], servers.length ? 0 : 2000);
-      const all = mergeBlossomServers<string | URL>([...servers], author).map(String);
-      return fetchBlob(all.length ? all : FALLBACK_BLOSSOM, hash, fetchBytes);
-    },
-  });
-
-  // Unsupported domains don't block loading; napplets check window.napplet and degrade gracefully
-  const environment = resolveShellEnvironment(adapter, { dTag: resolved.dTag, aggregateHash: resolved.aggregateHash });
-
-  let onLoad = () => {};
-  const loaded = new Promise<void>((resolve) => (onLoad = resolve));
-  const windowId = `napp-${crypto.randomUUID()}`;
-  const ms = performance.now() - start;
+  // The host verifies artifacts, selects Blossom servers, and owns each iframe lifecycle.
+  const instance = await host.resolve(event);
   const pane: Pane = {
-    windowId,
+    windowId: instance.windowId,
     napplet,
-    resolved,
-    environment,
-    source,
-    ms,
+    instance,
+    ms: performance.now() - start,
     badge$: new BehaviorSubject(0),
-    loaded,
-    onLoad,
   };
   panes$.next([...panes$.value, pane]);
   return pane;
 }
 
-/** Registers the iframe window with kehto before any napplet code can run */
-function mountNapplet(pane: Pane, iframe: HTMLIFrameElement | null) {
-  if (!iframe?.contentWindow || pane.window) return;
-  const { windowId, resolved, environment } = pane;
-  const identity = { dTag: resolved.dTag, aggregateHash: resolved.aggregateHash };
-  const register = () => {
-    pane.window = iframe.contentWindow!;
-    originRegistry.register(pane.window, windowId, identity);
-    originRegistry.setEnvironment(pane.window, environment);
-  };
-  denyNappletControllerAccess(iframe);
-  register();
-  iframe.addEventListener("load", () => {
-    // Assigning srcdoc can replace the window, so register it again before resolving
-    if (originRegistry.getWindowId(iframe.contentWindow!) !== windowId) register();
-    pane.onLoad();
-  });
-  iframe.srcdoc = prepareNappletSrcdoc(resolved.indexHtml, { domains: environment.capabilities.domains });
-}
-
 function closeNapplet(pane: Pane) {
-  bridge.runtime.destroyWindow(pane.windowId);
-  bridge.runtime.sessionRegistry.unregister(pane.windowId);
-  originRegistry.unregister(pane.windowId);
-  panes$.next(panes$.value.filter((p) => p !== pane));
+  pane.instance.destroy();
+  panes$.next(panes$.value.filter((current) => current !== pane));
+  for (const prompt of prompts$.value.filter((current) => current.windowId === pane.windowId)) answer(prompt, false);
 }
 
 // ---- UI
@@ -421,6 +315,14 @@ function NappletItem({ napplet }: { napplet: Napplet }) {
 function NappletPane({ pane }: { pane: Pane }) {
   const prompts = use$(prompts$)?.filter((p) => p.windowId === pane.windowId) ?? [];
   const badge = use$(pane.badge$);
+  const initializationError = use$(
+    () =>
+      from(pane.instance.whenReady()).pipe(
+        map(() => null),
+        catchError((error) => of(error instanceof Error ? error : new Error(String(error)))),
+      ),
+    [pane],
+  );
 
   return (
     <div className="flex flex-col min-w-96 flex-1 border-r border-base-300">
@@ -429,8 +331,8 @@ function NappletPane({ pane }: { pane: Pane }) {
         <span className="font-semibold truncate">{title(pane.napplet)}</span>
         {badge ? <span className="badge badge-primary">{badge}</span> : null}
         <span className="flex-1" />
-        <span className="badge badge-success gap-1 whitespace-nowrap" title={pane.resolved.aggregateHash}>
-          {pane.source === "cache" ? <Database className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+        <span className="badge badge-success gap-1 whitespace-nowrap" title={pane.instance.resolved.aggregateHash}>
+          {pane.instance.source === "cache" ? <Database className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
           {Math.round(pane.ms)}ms
         </span>
         <button aria-label="Close" className="btn btn-sm btn-ghost btn-square" onClick={() => closeNapplet(pane)}>
@@ -448,8 +350,12 @@ function NappletPane({ pane }: { pane: Pane }) {
           </button>
         </div>
       ))}
+      {initializationError === undefined && <p className="p-2">Starting napplet…</p>}
+      {initializationError && <p className="p-2 text-error">{initializationError.message}</p>}
       <iframe
-        ref={(iframe) => mountNapplet(pane, iframe)}
+        ref={(iframe) => {
+          if (iframe) pane.instance.mount(iframe);
+        }}
         sandbox="allow-scripts"
         className="flex-1"
         title={title(pane.napplet)}
