@@ -98,6 +98,28 @@ describe("outbox", () => {
     expect(sink.event).toHaveBeenCalledTimes(1);
   });
 
+  it("limits relays per author and reroutes live reads when the host changes the limit", async () => {
+    const carolKey = new Uint8Array(32).fill(3);
+    const carol = getPublicKey(carolKey);
+    event(carolKey, kinds.RelayList, [
+      ["r", "wss://one.relay.com/", "write"],
+      ["r", "wss://two.relay.com/", "write"],
+      ["r", "wss://three.relay.com/", "write"],
+    ]);
+    const maxRelaysPerUser = new BehaviorSubject(1);
+    const router = createOutboxRouter(await create({ relaySelection: { maxRelaysPerUser } }));
+
+    expect((await router.resolveRelays({ authors: [carol] })).relays).toHaveLength(1);
+    const subscription = router.subscribe([{ authors: [carol] }], {}, { event: vi.fn(), closed: vi.fn() });
+    await vi.waitFor(() => expect(pool.req).toHaveBeenLastCalledWith([expect.any(String)], [{ authors: [carol] }]));
+
+    maxRelaysPerUser.next(3);
+    await vi.waitFor(() => expect(pool.req.mock.lastCall?.[0]).toHaveLength(3));
+
+    subscription.close();
+    expect(maxRelaysPerUser.observed).toBe(false);
+  });
+
   it("switches inbox relays with the account and releases settings subscriptions on close", async () => {
     const signer$ = new BehaviorSubject<PrivateKeySigner | undefined>(signer);
     const fallbackRelays = new BehaviorSubject(["wss://fallback.relay.com/"]);

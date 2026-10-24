@@ -51,7 +51,7 @@ export function createKehtoServices(context: KehtoContext, options?: KehtoServic
   const services: ServiceRegistry = {};
   const account$ = kehtoAccount$(context);
   const pubkey = account$.pipe(map((account) => account?.pubkey));
-  const { eventStore, pool, timeout, fallbackRelays, approve } = context;
+  const { eventStore, pool, timeout, fallbackRelays, relaySelection, approve } = context;
 
   if (isEnabled("dm")) {
     let sendingWindow: string | undefined;
@@ -77,10 +77,20 @@ export function createKehtoServices(context: KehtoContext, options?: KehtoServic
 
   if (isEnabled("identity"))
     services.identity = createIdentityService(
-      createIdentityOptions({ eventStore, pool, account$, timeout, fallbackRelays, ...options?.identity }),
+      createIdentityOptions({
+        eventStore,
+        pool,
+        account$,
+        timeout,
+        fallbackRelays,
+        relaySelection,
+        ...options?.identity,
+      }),
     );
   if (isEnabled("count"))
-    services.count = createCountService(createCountOptions({ eventStore, pool, pubkey, timeout, fallbackRelays }));
+    services.count = createCountService(
+      createCountOptions({ eventStore, pool, pubkey, timeout, fallbackRelays, relaySelection }),
+    );
   if (isEnabled("common"))
     services.common = createCommonService(
       createCommonOptions({ eventStore, pool, account$, timeout, fallbackRelays, approve, ...options?.common }),
@@ -114,6 +124,7 @@ export function createKehtoServices(context: KehtoContext, options?: KehtoServic
         account$,
         timeout,
         fallbackRelays,
+        relaySelection,
         approve,
         decrypt: context.decrypt,
         decryptionCache: context.decryptionCache,

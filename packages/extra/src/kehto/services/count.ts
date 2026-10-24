@@ -4,7 +4,8 @@ import type { Observable } from "rxjs";
 import type { CountServiceOptions } from "@kehto/services";
 import type { Filter } from "applesauce-core/helpers";
 import { combineLatest, defaultIfEmpty, defer, lastValueFrom, switchMap, take, takeUntil, timer } from "rxjs";
-import { selectReadRelays } from "../foundation/relays.js";
+import { relaySelection$, selectReadRelays } from "../foundation/relays.js";
+import type { KehtoRelaySelectionOptions } from "../types.js";
 import { configured$, errorMessage } from "../helpers.js";
 
 /** Options for {@link createCountOptions} */
@@ -19,6 +20,8 @@ export interface KehtoCountOptions {
   timeout?: number;
   /** The relays used when user relay lists are unavailable */
   fallbackRelays?: string[] | Observable<string[]>;
+  /** The limits for selecting authors' outbox relays */
+  relaySelection?: KehtoRelaySelectionOptions;
 }
 
 /** Creates {@link CountServiceOptions} that send NIP-45 COUNT requests through the relay pool */
@@ -34,10 +37,20 @@ export function createCountOptions(config: KehtoCountOptions): CountServiceOptio
           return { ok: false, error: "count timeout must be positive and at most 2147483647 ms" };
 
         const outcomes = await lastValueFrom(
-          combineLatest([configured$(config.pubkey, undefined), configured$(config.fallbackRelays, [])]).pipe(
+          combineLatest([
+            configured$(config.pubkey, undefined),
+            configured$(config.fallbackRelays, []),
+            relaySelection$(config.pool, config.relaySelection),
+          ]).pipe(
             take(1),
-            switchMap(([pubkey, fallbackRelays]) => {
-              const relays = selectReadRelays(config.eventStore, filters as Filter[], pubkey, fallbackRelays);
+            switchMap(([pubkey, fallbackRelays, selection]) => {
+              const relays = selectReadRelays(
+                config.eventStore,
+                filters as Filter[],
+                pubkey,
+                fallbackRelays,
+                selection,
+              );
               return defer(() => config.pool.count(relays, filters as Filter[]));
             }),
             // Complete with the latest partial snapshot even when another relay never settles.

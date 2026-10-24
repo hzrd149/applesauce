@@ -4,7 +4,7 @@ import type { Filter } from "applesauce-core/helpers";
 import { kehtoAccount$ } from "../foundation/account.js";
 import { decryptForNapplet$ } from "../foundation/encryption.js";
 import { createKehtoRelayPool } from "../foundation/pool.js";
-import { selectRelayTier } from "../foundation/relays.js";
+import { relaySelection$, selectRelayTier } from "../foundation/relays.js";
 import { createKehtoSigner } from "../foundation/signer.js";
 import { configured$, latest } from "../helpers.js";
 import { createKehtoServices, type KehtoServicesOptions } from "../services.js";
@@ -43,6 +43,7 @@ export function createKehtoShellAdapter(
 ): KehtoShellAdapter {
   const account = latest(kehtoAccount$(context), undefined);
   const fallbackRelays = latest(configured$(context.fallbackRelays, []), []);
+  const selection = latest(relaySelection$(context.pool, context.relaySelection), {});
   const relayPool = createKehtoRelayPool(context, (event) => decryptForNapplet$(context, event));
   const subscriptions = new Map<string, () => void>();
   const services = createKehtoServices(context, {
@@ -58,6 +59,7 @@ export function createKehtoShellAdapter(
       stopped = true;
       account.stop();
       fallbackRelays.stop();
+      selection.stop();
       for (const cleanup of subscriptions.values()) cleanup();
       subscriptions.clear();
       if (stopOptions?.services !== false) {
@@ -77,7 +79,13 @@ export function createKehtoShellAdapter(
       publishToScopedRelay: () => false,
       // Kehto's NostrFilter is structurally a NIP-01 filter
       selectRelayTier: (filters) =>
-        selectRelayTier(context.eventStore, filters as Filter[], account.get()?.pubkey, fallbackRelays.get()),
+        selectRelayTier(
+          context.eventStore,
+          filters as Filter[],
+          account.get()?.pubkey,
+          fallbackRelays.get(),
+          selection.get(),
+        ),
     },
     relayConfig: {
       addRelay: () => {},

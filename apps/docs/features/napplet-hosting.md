@@ -92,6 +92,15 @@ const host = createKehtoHost(context, {
 
 The default shell does not implement scoped relays, relay-setting mutations, NIP-66 suggestions, window creation, or forwarded hotkeys. Those hooks exist for host integration. Normal relay traffic uses the shared applesauce pool and store.
 
+### Outbox relay selection
+
+Napplet reads through NAP-OUTBOX select relays from the authors' NIP-65 outboxes, limited to 12 connections and 3 relays per author by default. Pass numbers or observables to tune the limits; open subscriptions reroute when they change:
+
+```ts
+const pool = new RelayPool({ liveness }); // Unhealthy outboxes are replaced by healthy ones
+const host = createKehtoHost({ ...context, pool, relaySelection: { maxConnections: 20, maxRelaysPerUser: max$ } });
+```
+
 ### Caching and artifact fetching
 
 Pass an application-owned artifact cache, or customize resolution for one instance:

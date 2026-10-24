@@ -3,13 +3,14 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { KehtoAccount } from "../foundation/account.js";
 import type { IdentityServiceOptions } from "@kehto/services";
+import type { KehtoRelaySelectionOptions } from "../types.js";
 import { castUser, type Profile, type User } from "applesauce-common/casts";
 import { getZapAmount, getZapRequest, getZapSender } from "applesauce-common/helpers";
 import { kinds } from "applesauce-core/helpers";
 import { firstValueFrom, type Observable } from "rxjs";
 import { kehtoAccount$ } from "../foundation/account.js";
 import { queryThroughStore } from "../foundation/pool.js";
-import { getStoredInboxes, selectReadRelays } from "../foundation/relays.js";
+import { getStoredInboxes, relaySelection$, selectReadRelays } from "../foundation/relays.js";
 import { createKehtoSigner } from "../foundation/signer.js";
 import { configured$, settle } from "../helpers.js";
 
@@ -27,6 +28,8 @@ export interface KehtoIdentityOptions {
   timeout?: number;
   /** The relays used when user relay lists are unavailable */
   fallbackRelays?: string[] | Observable<string[]>;
+  /** The limits for selecting authors' outbox relays */
+  relaySelection?: KehtoRelaySelectionOptions;
   /** The application block-list provider, overriding useMutesForBlocks when supplied */
   getBlocked?: IdentityServiceOptions["getBlocked"];
   /** Whether public muted pubkeys also supply blocks when no application provider is supplied (default false) */
@@ -93,7 +96,10 @@ export function createIdentityOptions(config: KehtoIdentityOptions): IdentitySer
       const inboxes = getStoredInboxes(eventStore, pubkey);
       const account = await firstValueFrom(kehtoAccount$(config));
       const fallbackRelays = await firstValueFrom(configured$(config.fallbackRelays, []));
-      const relays = inboxes.length ? inboxes : selectReadRelays(eventStore, filters, account?.pubkey, fallbackRelays);
+      const selection = await firstValueFrom(relaySelection$(config.pool, config.relaySelection));
+      const relays = inboxes.length
+        ? inboxes
+        : selectReadRelays(eventStore, filters, account?.pubkey, fallbackRelays, selection);
       const zaps = await queryThroughStore(config, relays, filters, 100);
       return zaps.map((zap) => ({
         eventId: zap.id,

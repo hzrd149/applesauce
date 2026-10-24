@@ -3,7 +3,7 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
 import type { KehtoAccount } from "../foundation/account.js";
-import type { KehtoSignRequest } from "../types.js";
+import type { KehtoRelaySelectionOptions, KehtoSignRequest } from "../types.js";
 import type { EncryptedContentCache } from "applesauce-common/helpers";
 import type { OutboxQueryOptions, OutboxRelayPlan, OutboxRouter } from "@kehto/services";
 import {
@@ -34,6 +34,7 @@ import { publishThroughStore, queryThroughStore, subscribeThroughStore } from ".
 import {
   getStoredInboxes,
   getStoredOutboxes,
+  relaySelection$,
   selectReadRelays,
   selectWriteRelays,
 } from "../foundation/relays.js";
@@ -54,6 +55,8 @@ export interface KehtoOutboxOptions {
   timeout?: number;
   /** The relays used when user relay lists are unavailable */
   fallbackRelays?: string[] | Observable<string[]>;
+  /** The limits for selecting authors' outbox relays */
+  relaySelection?: KehtoRelaySelectionOptions;
   /** The host callback approving a napplet signing request */
   approve?: (request: KehtoSignRequest) => boolean | Promise<boolean>;
   /** Whether reads decrypt encrypted event content (default true) */
@@ -87,13 +90,14 @@ export async function planOutboxRelays(
 ): Promise<OutboxRelayPlan> {
   const account = await firstValueFrom(kehtoAccount$(config));
   const fallback = await firstValueFrom(configured$(config.fallbackRelays, []));
+  const selection = await firstValueFrom(relaySelection$(config.pool, config.relaySelection));
 
   if (pubkeys.length === 0)
     return {
       relays:
         direction === "write"
           ? selectWriteRelays(config.eventStore, account?.pubkey, fallback)
-          : selectReadRelays(config.eventStore, [{}], account?.pubkey, fallback),
+          : selectReadRelays(config.eventStore, [{}], account?.pubkey, fallback, selection),
       source: "policy",
     };
 
@@ -102,7 +106,7 @@ export async function planOutboxRelays(
   const missingAuthors = pubkeys.filter((pubkey) => !eventStore.hasReplaceable(kinds.RelayList, pubkey));
   const relays =
     direction === "read"
-      ? selectReadRelays(config.eventStore, [{ authors: pubkeys }], account?.pubkey, fallback)
+      ? selectReadRelays(config.eventStore, [{ authors: pubkeys }], account?.pubkey, fallback, selection)
       : mergeRelaySets(...pubkeys.map((pubkey) => getStoredInboxes(config.eventStore, pubkey)));
 
   return {
@@ -112,7 +116,7 @@ export async function planOutboxRelays(
   };
 }
 
-/** Observes author outboxes and fallback settings for the lifetime of a read */
+/** Observes author outboxes, fallback settings, and selection limits for the lifetime of a read */
 function readRelays$(config: KehtoOutboxOptions, filters: Filter[], options?: OutboxQueryOptions) {
   if (options?.relays?.length) return of(options.relays);
 
@@ -126,14 +130,18 @@ function readRelays$(config: KehtoOutboxOptions, filters: Filter[], options?: Ou
     ),
   );
 
-  return combineLatest([users$, inboxes$, fallbackRelays$]).pipe(
-    map(([users, inboxes, fallback]) => {
+  return combineLatest([users$, inboxes$, fallbackRelays$, relaySelection$(config.pool, config.relaySelection)]).pipe(
+    map(([users, inboxes, fallback, selection]) => {
       const defaults = mergeRelaySets(...inboxes.map((user) => user.relays), fallback);
       if (users.length === 0) return defaults;
 
-      const selected = selectOptimalRelays(setFallbackRelays(users, defaults), {
-        maxConnections: 12,
-        maxRelaysPerUser: 3,
+      const { maxConnections = 12, maxRelaysPerUser = 3, filterRelays } = selection;
+      const healthyUsers = filterRelays
+        ? users.map((user) => (user.relays ? { ...user, relays: filterRelays(user.relays) } : user))
+        : users;
+      const selected = selectOptimalRelays(setFallbackRelays(healthyUsers, defaults), {
+        maxConnections,
+        maxRelaysPerUser,
       });
       return mergeRelaySets(selected.flatMap((user) => user.relays ?? []));
     }),
