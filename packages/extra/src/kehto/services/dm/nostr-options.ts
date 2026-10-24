@@ -21,6 +21,8 @@ export interface NostrMessageProtocolOptions {
   decryptionTimeout?: number;
   /** The maximum wait for approval and send preparation in milliseconds (default 120000) */
   actionTimeout?: number;
+  /** Whether to mirror the latest observed conversation message lifetime on sends (default false) */
+  mirrorExpiration?: boolean;
   /** The fallback read relays and legacy delivery relays, never used for NIP-17 publication */
   fallbackRelays?: string[] | Observable<string[]>;
   /** The host approval callback receiving the plaintext message template before encryption or signing */

@@ -28,6 +28,7 @@ import {
 import { kehtoAccount$, type KehtoAccount } from "../../foundation/account.js";
 import { subscribeThroughStore } from "../../foundation/pool.js";
 import { configured$, settle } from "../../helpers.js";
+import { DmExpirationTracker } from "./expiration.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { publishAcceptedMessage } from "./publication.js";
 import type {
@@ -131,11 +132,16 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
     };
   }
 
-  async function decrypt(event: NostrEvent, owner: KehtoAccount): Promise<DmProtocolMessage | undefined> {
+  async function decrypt(
+    event: NostrEvent,
+    owner: KehtoAccount,
+    expiration: DmExpirationTracker,
+  ): Promise<DmProtocolMessage | undefined> {
     if (event.pubkey !== owner.pubkey && !event.tags.some((tag) => tag[0] === "p" && tag[1] === owner.pubkey)) return;
     const correspondent = getLegacyMessageCorrespondent(event, owner.pubkey);
     if (!correspondent) return;
     const content = await unlockLegacyMessage(event, owner.pubkey, owner.signer);
+    if (config.mirrorExpiration) expiration.observe(event, [owner.pubkey, correspondent]);
     return {
       id: event.id,
       participants: [...new Set([owner.pubkey, correspondent])],
@@ -146,7 +152,7 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
     };
   }
 
-  function readMessage$(event: NostrEvent, owner: KehtoAccount) {
+  function readMessage$(event: NostrEvent, owner: KehtoAccount, expiration: DmExpirationTracker) {
     return defer(() => {
       let pending = pendingDecryptions.get(owner.signer);
       if (!pending) {
@@ -155,7 +161,7 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
       }
       let decryption = pending.get(event.id);
       if (!decryption) {
-        decryption = decrypt(event, owner);
+        decryption = decrypt(event, owner, expiration);
         pending.set(event.id, decryption);
         // Unresolved signer promises stay shared when an individual reader times out.
         const release = () => pending.delete(event.id);
@@ -169,7 +175,7 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
     );
   }
 
-  function messages$(owner: KehtoAccount, context: DmReadContext) {
+  function messages$(owner: KehtoAccount, context: DmReadContext, expiration: DmExpirationTracker) {
     return defer(() => {
       context.signal.throwIfAborted();
       let active = true;
@@ -213,7 +219,7 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
           defer(() => {
             context.signal.throwIfAborted();
             if (!active) return EMPTY;
-            return readMessage$(event, owner);
+            return readMessage$(event, owner, expiration);
           }),
         ),
         finalize(() => {
@@ -223,7 +229,12 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
     });
   }
 
-  function prepareSend$(request: DmSendRequest, owner: KehtoAccount, context: DmOperationContext) {
+  function prepareSend$(
+    request: DmSendRequest,
+    owner: KehtoAccount,
+    context: DmOperationContext,
+    expiration: DmExpirationTracker,
+  ) {
     return defer(() => {
       let active = true;
       const assertCurrent = () => {
@@ -235,12 +246,14 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
         assertCurrent();
         const participants = [...new Set([...request.recipients, owner.pubkey])];
         const recipient = request.recipients.find((key) => key !== owner.pubkey) ?? owner.pubkey;
+        const createdAt = unixNow();
+        const expirationTags = config.mirrorExpiration ? expiration.tags(participants, createdAt) : [];
         const template = {
           kind: kinds.EncryptedDirectMessage,
           pubkey: owner.pubkey,
-          created_at: unixNow(),
+          created_at: createdAt,
           content: request.content,
-          tags: [["p", recipient]],
+          tags: [["p", recipient], ...expirationTags],
         };
         assertCurrent();
         const rumor = { ...template, id: getEventHash(template) };
@@ -248,7 +261,9 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
           throw new Error("User denied");
         assertCurrent();
 
-        const event = await LegacyMessageFactory.create(recipient, request.content).sign(owner.signer);
+        let factory = LegacyMessageFactory.create(recipient, request.content).created(createdAt);
+        if (expirationTags.length) factory = factory.expiration(Number(expirationTags[0][1]));
+        const event = await factory.sign(owner.signer);
         assertCurrent();
         const [inboxes, outboxes] = await Promise.all([
           deliveryRelays(recipient),
@@ -295,11 +310,12 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
       }
       if (currentAccount?.signer !== account.signer || currentAccount.pubkey !== account.pubkey) {
         currentAccount = account;
+        const expiration = new DmExpirationTracker();
         currentSession = {
           ownerPubkey: account.pubkey,
           discover$: (request, context) => defer(() => discover(request, account, context)),
-          messages$: (context) => messages$(account, context),
-          prepareSend$: (request, context) => prepareSend$(request, account, context),
+          messages$: (context) => messages$(account, context, expiration),
+          prepareSend$: (request, context) => prepareSend$(request, account, context, expiration),
         };
       }
       return currentSession;

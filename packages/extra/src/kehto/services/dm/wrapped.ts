@@ -27,6 +27,7 @@ import {
 import { kehtoAccount$, type KehtoAccount } from "../../foundation/account.js";
 import { subscribeThroughStore } from "../../foundation/pool.js";
 import { configured$, settle } from "../../helpers.js";
+import { DmExpirationTracker } from "./expiration.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { DmPublicationError, publishAcceptedMessage, type DmPublicationResult } from "./publication.js";
 import type {
@@ -137,10 +138,15 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
     };
   }
 
-  async function decrypt(event: NostrEvent, owner: KehtoAccount): Promise<DmProtocolMessage | undefined> {
+  async function decrypt(
+    event: NostrEvent,
+    owner: KehtoAccount,
+    expiration: DmExpirationTracker,
+  ): Promise<DmProtocolMessage | undefined> {
     const rumor = await unlockGiftWrap(event, owner.signer);
     const participants = getConversationParticipants(rumor);
     if (rumor.kind !== kinds.PrivateDirectMessage || !participants.includes(owner.pubkey)) return;
+    if (config.mirrorExpiration) expiration.observe(rumor, participants);
     return {
       id: rumor.id,
       participants,
@@ -151,7 +157,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
     };
   }
 
-  function readMessage$(event: NostrEvent, owner: KehtoAccount) {
+  function readMessage$(event: NostrEvent, owner: KehtoAccount, expiration: DmExpirationTracker) {
     return defer(() => {
       let pending = pendingDecryptions.get(owner.signer);
       if (!pending) {
@@ -160,7 +166,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       }
       let decryption = pending.get(event.id);
       if (!decryption) {
-        decryption = decrypt(event, owner);
+        decryption = decrypt(event, owner, expiration);
         pending.set(event.id, decryption);
         // Unresolved signer promises stay shared when an individual reader times out.
         const release = () => pending.delete(event.id);
@@ -174,7 +180,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
     );
   }
 
-  function messages$(owner: KehtoAccount, context: DmReadContext) {
+  function messages$(owner: KehtoAccount, context: DmReadContext, expiration: DmExpirationTracker) {
     return defer(() => {
       context.signal.throwIfAborted();
       let active = true;
@@ -197,7 +203,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
           defer(() => {
             context.signal.throwIfAborted();
             if (!active) return EMPTY;
-            return readMessage$(event, owner);
+            return readMessage$(event, owner, expiration);
           }),
         ),
         finalize(() => {
@@ -249,6 +255,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
     owner: KehtoAccount,
     context: DmOperationContext,
     cache: WrappedSendCache,
+    expiration: DmExpirationTracker,
   ) {
     return defer(() => {
       let active = true;
@@ -281,11 +288,13 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
 
         const participants = [...new Set([...request.recipients, owner.pubkey])];
         // In NIP-17 every p tag is a recipient, so note mention operations must not run here.
+        const createdAt = unixNow();
+        const expirationTags = config.mirrorExpiration ? expiration.tags(participants, createdAt) : [];
         const template = {
           kind: kinds.PrivateDirectMessage,
           pubkey: owner.pubkey,
-          created_at: unixNow(),
-          tags: [...new Set(request.recipients)].map((recipient) => ["p", recipient]),
+          created_at: createdAt,
+          tags: [...new Set(request.recipients)].map((recipient) => ["p", recipient]).concat(expirationTags),
           content: request.content,
         };
         assertCurrent();
@@ -348,12 +357,13 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       }
       if (currentAccount?.signer !== account.signer || currentAccount.pubkey !== account.pubkey) {
         currentAccount = account;
+        const expiration = new DmExpirationTracker();
         const cache: WrappedSendCache = { deliveries: new Map(), preparing: new Set() };
         currentSession = {
           ownerPubkey: account.pubkey,
           discover$: (request, context) => defer(() => discover(request, account, context)),
-          messages$: (context) => messages$(account, context),
-          prepareSend$: (request, context) => prepareSend$(request, account, context, cache),
+          messages$: (context) => messages$(account, context, expiration),
+          prepareSend$: (request, context) => prepareSend$(request, account, context, cache, expiration),
         };
       }
       return currentSession;
