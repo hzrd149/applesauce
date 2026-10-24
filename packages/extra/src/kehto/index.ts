@@ -18,7 +18,7 @@ import { createKehtoRelayPool } from "./foundation/pool.js";
 import { selectRelayTier } from "./foundation/relays.js";
 import { createKehtoSigner } from "./foundation/signer.js";
 import { configured$, latest } from "./helpers.js";
-import { createCommonOptions } from "./services/common.js";
+import { createCommonOptions, type KehtoCommonOptions } from "./services/common.js";
 import { createCountOptions } from "./services/count.js";
 import { createDmOptions } from "./services/dm.js";
 import { createIdentityOptions } from "./services/identity.js";
@@ -49,6 +49,8 @@ export type KehtoServiceName = "identity" | "outbox" | "count" | "common" | "upl
 export interface KehtoServicesOptions {
   /** Services to leave out of the registry */
   disable?: KehtoServiceName[];
+  /** Approval and signing deadline for common social actions */
+  common?: Pick<KehtoCommonOptions, "actionTimeout">;
   /** Resource resolution options and application protocol handlers */
   resource?: Omit<KehtoResourceOptions, "eventStore" | "pubkey">;
 }
@@ -91,7 +93,7 @@ export function createKehtoServices(context: KehtoContext, options?: KehtoServic
     services.count = createCountService(createCountOptions({ eventStore, pool, pubkey, timeout, fallbackRelays }));
   if (isEnabled("common"))
     services.common = createCommonService(
-      createCommonOptions({ eventStore, pool, account$, timeout, fallbackRelays, approve }),
+      createCommonOptions({ eventStore, pool, account$, timeout, fallbackRelays, approve, ...options?.common }),
     );
   if (isEnabled("upload"))
     services.upload = createUploadService(

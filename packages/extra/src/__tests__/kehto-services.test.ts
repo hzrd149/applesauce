@@ -298,7 +298,12 @@ describe("common", () => {
 
   it("uses a shared account stream without a signer dependency", async () => {
     const account$ = new BehaviorSubject({ signer, pubkey: alice });
-    const common = createCommonOptions({ eventStore: store, pool: pool as unknown as RelayPool, account$ });
+    const common = createCommonOptions({
+      eventStore: store,
+      pool: pool as unknown as RelayPool,
+      account$,
+      timeout: 50,
+    });
 
     const first = await common.follow!([bob], { windowId: "w" });
     expect(first.event?.pubkey).toBe(alice);
