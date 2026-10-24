@@ -83,6 +83,7 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@napplet/core": "^0.34.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "@types/create-torrent": "^6.1.1",

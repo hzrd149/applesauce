@@ -477,6 +477,9 @@ importers:
         specifier: ^4.3.5
         version: 4.6.7
     devDependencies:
+      '@napplet/core':
+        specifier: ^0.34.0
+        version: 0.34.0
       '@tailwindcss/typography':
         specifier: ^0.5.20
         version: 0.5.20(tailwindcss@4.3.3)

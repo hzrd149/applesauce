@@ -263,7 +263,7 @@ export default function LoginView({ onLogin }: { onLogin: (signer: ISigner, pubk
   );
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base-200 px-4 py-6">
+    <div className="flex min-h-full grow items-center justify-center bg-base-200 px-4 py-6">
       <div className="w-full max-w-sm bg-base-100 p-4">
         <div className="space-y-4">
           <div>
