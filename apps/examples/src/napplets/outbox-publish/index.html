@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Outbox publish</title>
+  </head>
+  <body>
+    <section>
+      <div class="row">
+        <span id="user" class="name">…</span>
+      </div>
+      <textarea id="content" placeholder="Write a note">Hello from an outbox napplet</textarea>
+      <div class="row">
+        <input id="recipient" placeholder="Mention npub or nprofile" title="Adds a p tag and the user's inboxes" />
+        <button id="add-recipient" title="toInboxes">Mention</button>
+      </div>
+      <div class="row">
+        <label class="badge" title="toOutbox"><input id="to-outbox" type="checkbox" checked /> My outboxes</label>
+        <input id="extra-relays" placeholder="wss://extra.relay (optional)" title="relays" />
+      </div>
+    </section>
+
+    <section>
+      <h3>Fanout</h3>
+      <div id="plan"></div>
+      <div class="row">
+        <span class="badge" title="relays the note will be sent to">Relays <span id="relay-total">0</span></span>
+        <span class="flex"></span>
+        <button id="publish" title="outbox.publish">Publish</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Results</h3>
+      <div id="results" class="row"></div>
+      <div id="readback" class="row"></div>
+    </section>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
