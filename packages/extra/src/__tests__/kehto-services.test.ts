@@ -218,6 +218,53 @@ describe("count", () => {
     expect(pool.count.mock.lastCall?.[0]).toContain("wss://bob-in.relay.com/");
   });
 
+  it("returns partial counts at the deadline and releases the relay subscription", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => vi.useRealTimers());
+    const responses = new Subject<any>();
+    pool.count.mockReturnValue(responses);
+    const count = createCountOptions(await create());
+    const result = count.count({ filters: [{ kinds: [1] }], windowId: "w" });
+
+    responses.next({ "wss://a.relay.com/": { ok: true, value: { count: 3 } } });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(await result).toMatchObject({ ok: true, count: 3 });
+    expect(responses.observed).toBe(false);
+  });
+
+  it("bounds settings that never emit", async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => vi.useRealTimers());
+    const settings = new Subject<string>();
+    const count = createCountOptions({ ...(await create()), pubkey: settings });
+    const result = count.count({ filters: [{ kinds: [1] }], windowId: "w" });
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(await result).toMatchObject({ ok: false });
+    expect(settings.observed).toBe(false);
+    expect(pool.count).not.toHaveBeenCalled();
+  });
+
+  it("rejects broad requests before contacting relays", async () => {
+    const count = createCountOptions(await create());
+    expect(await count.count({ filters: [{}], windowId: "w" })).toMatchObject({ ok: false });
+    expect(await count.count({ filters: [], windowId: "w" })).toMatchObject({ ok: false });
+    expect(pool.count).not.toHaveBeenCalled();
+  });
+
+  it("ignores malformed counts without losing a valid zero", async () => {
+    pool.count.mockReturnValue(
+      of({
+        "wss://a.relay.com/": { ok: true, value: { count: Infinity } },
+        "wss://b.relay.com/": { ok: true, value: { count: 0 } },
+      }),
+    );
+    const count = createCountOptions(await create());
+    expect(await count.count({ filters: [{ kinds: [1] }], windowId: "w" })).toMatchObject({ ok: true, count: 0 });
+  });
+
   it("reports the largest relay count", async () => {
     pool.count.mockReturnValue(
       of({
