@@ -6,7 +6,11 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, of, Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createKehtoServices, createKehtoShellAdapter } from "../kehto/index.js";
-import { createDmOptions } from "../kehto/services/dm.js";
+import {
+  createDmOptions,
+  createWrappedMessageProtocol,
+  type NostrMessageProtocolOptions,
+} from "../kehto/services/dm.js";
 import { unlockGiftWrap } from "applesauce-common/helpers";
 import { createListsOptions } from "../kehto/services/lists.js";
 import { createResourceOptions } from "../kehto/services/resource.js";
@@ -21,6 +25,30 @@ const bobKey = new Uint8Array(32).fill(2);
 const alice = getPublicKey(aliceKey);
 const bob = getPublicKey(bobKey);
 const signer = new PrivateKeySigner(aliceKey);
+
+function createTestDmOptions(options: NostrMessageProtocolOptions & { getWindowId?: () => string | undefined }) {
+  for (const key of [aliceKey, bobKey]) {
+    const pubkey = getPublicKey(key);
+    if ([...options.eventStore.getByFilters({ kinds: [kinds.DirectMessageRelaysList], authors: [pubkey] })].length)
+      continue;
+    options.eventStore.add(
+      finalizeEvent(
+        {
+          kind: kinds.DirectMessageRelaysList,
+          created_at: unixNow(),
+          content: "",
+          tags: [["relay", "wss://dm.relay.com/"]],
+        },
+        key,
+      ),
+    );
+  }
+  return createDmOptions({
+    protocols: [createWrappedMessageProtocol({ fallbackRelays: ["wss://fallback.relay.com/"], ...options })],
+    routingTimeout: 200,
+    getWindowId: options.getWindowId,
+  });
+}
 
 function fakePool() {
   return {
@@ -377,7 +405,7 @@ describe("registry", () => {
 describe("remaining write services", () => {
   it("round-trips encrypted DMs and tears down live subscriptions", async () => {
     const state = await create({ fallbackRelays: ["wss://fallback.relay.com/"] });
-    const dm = createDmOptions(state).adapter;
+    const dm = createTestDmOptions(state).adapter;
     const result = await dm.send({ recipients: [bob], content: "hello" });
     expect(result.ok).toBe(true);
     const gifts = [...store.getByFilters({ kinds: [kinds.GiftWrap] })];
@@ -397,7 +425,7 @@ describe("remaining write services", () => {
   });
 
   it("assigns unique DM subscription IDs without Web Crypto", async () => {
-    const dm = createDmOptions(await create()).adapter;
+    const dm = createTestDmOptions(await create()).adapter;
     vi.stubGlobal("crypto", undefined);
     onTestFinished(() => {
       dm.close?.();
@@ -417,7 +445,7 @@ describe("remaining write services", () => {
   it("cancels the old DM subscription immediately on logout", async () => {
     const signer$ = new BehaviorSubject<PrivateKeySigner | undefined>(signer);
     event(aliceKey, kinds.DirectMessageRelaysList, [["relay", "wss://dm.relay.com/"]]);
-    const dm = createDmOptions(await create({ signer: signer$ })).adapter;
+    const dm = createTestDmOptions(await create({ signer: signer$ })).adapter;
     const live = await dm.subscribe({}, vi.fn());
     const relayMessages = pool.req.mock.results.at(-1)!.value;
     expect(relayMessages.observed).toBe(true);
@@ -432,7 +460,7 @@ describe("remaining write services", () => {
 
   it("does not publish a DM when approval is denied", async () => {
     const approve = vi.fn(() => false);
-    const dm = createDmOptions({ ...(await create({ approve })), getWindowId: () => "window" }).adapter;
+    const dm = createTestDmOptions({ ...(await create({ approve })), getWindowId: () => "window" }).adapter;
     await expect(dm.send({ recipients: [bob], content: "secret" })).rejects.toThrow("User denied");
     expect(approve).toHaveBeenCalledWith(expect.objectContaining({ windowId: "window" }));
     expect(pool.publish).not.toHaveBeenCalled();
@@ -589,7 +617,7 @@ describe("DM request isolation", () => {
   it("captures the requesting window before asynchronous signing work", async () => {
     const approve = vi.fn((_request: { windowId?: string }) => false);
     let windowId = "first";
-    const dm = createDmOptions({ ...(await create({ approve })), getWindowId: () => windowId }).adapter;
+    const dm = createTestDmOptions({ ...(await create({ approve })), getWindowId: () => windowId }).adapter;
     const first = dm.send({ recipients: [bob], content: "one" });
     windowId = "second";
     const second = dm.send({ recipients: [bob], content: "two" });

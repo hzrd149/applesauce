@@ -20,7 +20,12 @@ import { createKehtoSigner } from "./foundation/signer.js";
 import { configured$, latest } from "./helpers.js";
 import { createCommonOptions, type KehtoCommonOptions } from "./services/common.js";
 import { createCountOptions } from "./services/count.js";
-import { createDmOptions } from "./services/dm.js";
+import {
+  createDmOptions,
+  createWrappedMessageProtocol,
+  createLegacyMessageProtocol,
+  type KehtoDmOptions,
+} from "./services/dm.js";
 import { createIdentityOptions } from "./services/identity.js";
 import { createListsOptions } from "./services/lists.js";
 import { createOutboxRouter } from "./services/outbox.js";
@@ -49,6 +54,8 @@ export type KehtoServiceName = "identity" | "outbox" | "count" | "common" | "upl
 export interface KehtoServicesOptions {
   /** Services to leave out of the registry */
   disable?: KehtoServiceName[];
+  /** Message protocol adapters and functional send routing */
+  dm?: Partial<KehtoDmOptions>;
   /** Approval and signing deadline for common social actions */
   common?: Pick<KehtoCommonOptions, "actionTimeout">;
   /** Resource resolution options and application protocol handlers */
@@ -67,12 +74,12 @@ export function createKehtoServices(context: KehtoContext, options?: KehtoServic
     let sendingWindow: string | undefined;
     const dm = createDmService(
       createDmOptions({
-        eventStore,
-        pool,
-        account$,
-        timeout,
-        fallbackRelays,
-        approve,
+        ...options?.dm,
+        protocols: options?.dm?.protocols ?? [
+          createWrappedMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve }),
+          createLegacyMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve }),
+        ],
+        routingTimeout: options?.dm?.routingTimeout ?? timeout,
         getWindowId: () => sendingWindow,
       }),
     );
