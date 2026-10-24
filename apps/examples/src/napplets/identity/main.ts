@@ -42,13 +42,10 @@ async function refresh() {
   $("npub").textContent = npub;
   $("name").textContent = npub.slice(0, 12) + "…";
 
-  identity.getProfile().then(
-    (profile) => {
-      const name = profile?.displayName || profile?.name;
-      if (currentPubkey === pubkey && name) $("name").textContent = name;
-    },
-    () => {},
-  );
+  common.getProfile(pubkey).then((result) => {
+    const name = result.profile?.displayName || result.profile?.name;
+    if (currentPubkey === pubkey && name) $("name").textContent = name;
+  });
 
   common.follows().then((follows) => {
     if (currentPubkey === pubkey && follows.ok) $("follows").textContent = String(follows.pubkeys.length);
