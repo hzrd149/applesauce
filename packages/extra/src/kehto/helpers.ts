@@ -4,7 +4,7 @@ import { catchError, defaultIfEmpty, filter, firstValueFrom, isObservable, Obser
 export function settle<T>(value$: Observable<T | undefined>, fallback: T, ms: number): Promise<T> {
   return firstValueFrom(
     value$.pipe(
-      filter((v): v is T => v !== undefined),
+      filter((value): value is T => value !== undefined),
       timeout({ first: ms }),
       catchError(() => of(fallback)),
       defaultIfEmpty(fallback),
@@ -16,10 +16,17 @@ export function settle<T>(value$: Observable<T | undefined>, fallback: T, ms: nu
 export function latest<T>(input: T | Observable<T> | undefined, initial: T) {
   let value = initial;
   if (isObservable(input)) {
-    const sub = input.subscribe((v) => (value = v));
-    return { get: () => value, stop: () => sub.unsubscribe() };
+    const subscription = input.subscribe((nextValue) => {
+      value = nextValue;
+    });
+
+    return {
+      get: () => value,
+      stop: () => subscription.unsubscribe(),
+    };
   }
   if (input !== undefined) value = input;
+
   return { get: () => value, stop: () => {} };
 }
 
@@ -28,4 +35,9 @@ export function errorMessage(err: unknown, fallback = "failed"): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   return fallback;
+}
+
+/** Observes a configured value or uses its default when omitted */
+export function configured$<T>(input: T | Observable<T> | undefined, fallback: T): Observable<T> {
+  return isObservable(input) ? input : of(input ?? fallback);
 }

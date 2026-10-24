@@ -1,3 +1,14 @@
+# Writing Code
+
+Prioritize human readability and follow the patterns in surrounding repository code so changes are quick to understand, review, and refactor.
+
+- Use descriptive names that explain a value's role; avoid generic names such as `base` or `status` when a more specific name helps.
+- Separate logical steps with blank lines, especially around validation, asynchronous work, and result handling.
+- Introduce intermediate variables when nested expressions obscure intent.
+- Keep control flow easy to scan; do not compress unrelated work into dense expressions or one-line callbacks.
+- Use helpers when they clarify a responsibility, without adding abstractions just to shorten a function.
+- Treat the short, compact examples in the documentation guidelines as documentation guidance, not a requirement to compress production code.
+
 # Writing Documentation
 
 ## Organization Strategy

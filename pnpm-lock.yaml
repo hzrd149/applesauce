@@ -725,6 +725,9 @@ importers:
 
   packages/extra:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
       applesauce-core:
         specifier: ^7.0.0
         version: link:../core
@@ -769,6 +772,9 @@ importers:
       applesauce-signers:
         specifier: ^7.0.0
         version: link:../signers
+      blossom-client-sdk:
+        specifier: ^5.1.0
+        version: 5.1.0(hls.js@1.7.3)
 
   packages/loaders:
     dependencies:

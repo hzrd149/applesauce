@@ -61,6 +61,7 @@
     "dist"
   ],
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "applesauce-core": "^7.0.0",
     "rxjs": "^7.8.2"
   },
@@ -69,7 +70,8 @@
     "applesauce-common": "^7.0.0",
     "applesauce-loaders": "^7.0.0",
     "applesauce-relay": "^7.0.0",
-    "applesauce-signers": "^7.0.0"
+    "applesauce-signers": "^7.0.0",
+    "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
     "@kehto/runtime": "^0.26.0",
