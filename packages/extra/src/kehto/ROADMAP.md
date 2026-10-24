@@ -3,24 +3,29 @@
 Integrations that let an app already using applesauce host [Kehto](https://github.com/kehto/web) napplets with almost no setup:
 
 ```ts
-const services = createKehtoServices({ pool, eventStore, signer: accounts.active$, lookupRelays: lookupRelays$ });
-const bridge = createShellBridge({ ...adapter, services });
+const adapter = createKehtoShellAdapter({ pool, eventStore, signer: accounts.active$, lookupRelays: lookupRelays$ });
+const bridge = createShellBridge(adapter);
+window.addEventListener("message", bridge.handleMessage);
 ```
+
+Apps that build their own `ShellAdapter` can take only the registry: `createShellBridge({ ...adapter, services: createKehtoServices(ctx) })`.
 
 `@kehto/services` handles NAP wire bookkeeping (correlation, per-window subscriptions, teardown) and delegates the real work to host callbacks. This folder supplies those callbacks from applesauce.
 
 ## Prior art
 
-- `apps/examples/src/examples/napplet/loader.tsx` hand-wires every service on applesauce: store-backed `RelayPoolLike`, signer approval, identity via `castUser`, a custom `OutboxRouter` on store loaders, common via actions, Blossom upload and resource. It is the first consumer to migrate to `createKehtoServices` and the main source to extract integrations from.
+- `apps/examples/src/examples/napplet/loader.tsx` hand-wires every service on applesauce: store-backed `RelayPoolLike`, signer approval, identity via `castUser`, a custom `OutboxRouter` on store loaders, common via actions, Blossom upload and resource. Most of this folder is extracted from it, and it is the first consumer to migrate.
 - `kehto-web/apps/playground/src/playground-relay-service.ts` wraps `RelayPool`, `RelayLiveness`, `EventStore` and `createAddressLoader` behind a `relay` service.
 
 ## Layers
 
-1. **Foundation** (`foundation/`): pure applesauce → Kehto shape adapters. They never import Kehto at runtime.
-2. **Service integrations** (`services/<nap>.ts`): one `create<Nap>Options(ctx: KehtoContext)` per NAP. Each returns the options object for the matching `@kehto/services` factory and is unit-tested by calling its callbacks directly.
+1. **Foundation** (`foundation/`): applesauce → Kehto adapters with no Kehto runtime import.
+   - `createKehtoState(ctx)` tracks the latest signer, pubkey and fallback relays. It also wires `createEventLoaderForStore` with `lookupRelays` when the store has no loader.
+   - `relays.ts` selects relays from stored NIP-65 lists. `signer.ts` handles signing approval. `pool.ts` provides the store-backed subscribe, query and publish.
+2. **Service integrations** (`services/<nap>.ts`): one `create<Nap>Options(state)` per NAP. Each returns the options for the matching `@kehto/services` factory and is unit-tested by calling its callbacks directly.
 3. **Registry** (`index.ts`):
-   - `createKehtoServices(ctx, overrides?)` calls the `@kehto/services` factories and returns a `ServiceRegistry`. A service is skipped when its context is missing (no `signer` → no identity, common or lists).
-   - `createKehtoShellHooks(ctx)` supplies the `relayPool` and `auth` parts of the shell's `ShellAdapter`.
+   - `createKehtoServices(ctx | state, { disable? })` returns a `ServiceRegistry`.
+   - `createKehtoShellAdapter(ctx | state, { disable?, overrides? })` returns a complete `ShellAdapter`, with the registry included.
 
 `@kehto/runtime`, `@kehto/services` and `@kehto/shell` are optional peers. Only this subpath imports them.
 
@@ -28,50 +33,59 @@ const bridge = createShellBridge({ ...adapter, services });
 
 `KehtoContext` accepts plain values or observables for anything that changes at runtime:
 
-- `signer`: an `ISigner` or an observable of one. Pass `AccountManager.active$` so napplets follow account switches. Kehto's `AuthHooks.getSigner()` is synchronous, so the integration keeps the latest emitted signer internally.
-- `lookupRelays`: `string[]` or `Observable<string[]>`. These are passed through to the store's loaders (`createEventLoaderForStore` / address loader `lookupRelays`) for profile and relay-list lookups.
-- `fallbackRelays`: `string[]` or `Observable<string[]>`. These are used when a request has no outbox or relay hints. Kehto's `selectRelayTier()` and outbox planning are synchronous or one-shot, so the integration reads the latest emitted value.
+- `signer`: an `ISigner` or an observable of one. Pass `AccountManager.active$` so napplets follow account switches. Kehto's `AuthHooks.getSigner()` is synchronous, so the state keeps the latest emitted signer and its resolved pubkey.
+- `lookupRelays`: `string[]` or `Observable<string[]>`. These are passed to the event loader the state creates. They are unused when the app already set `eventStore.eventLoader`.
+- `fallbackRelays`: `string[]` or `Observable<string[]>`. These are used when a request has no outbox or relay hints. The latest emitted value is read synchronously.
+- `approve`: an optional host prompt for every napplet signing request. Signing is re-stamped with `created_at` after the prompt, because kehto rejects events older than 30 seconds.
+- `timeout`: how long reads wait for missing data before answering (default 4000ms).
 
 ## Tier 0: foundation
 
-| Seam | Kehto shape | Applesauce source | Status |
-| --- | --- | --- | --- |
-| Shell relay pool | `RelayPoolHooks` / `RelayPoolLike` (`subscription`, `request`, `publish`, `count`) | `RelayPool` | todo |
-| Outbox pool | `OutboxRelayPool` (`subscribe`, `publish`, `isAvailable`) | `RelayPool` | todo |
-| Cache | `CacheAdapter` / `createCacheService` (`query`, `store`, `isAvailable`) | `EventStore.getByFilters`, `add` | todo |
-| Signer | runtime `Signer` (NIP-07 shape: `getPublicKey`, `signEvent`, `nip04`, `nip44`) | `ctx.signer` (static or latest emitted) | todo |
-| Auth | `AuthHooks` (`getUserPubkey`, `getSigner(windowId?)`) | `ctx.signer`, caching the active pubkey on each emission | todo |
+| Seam             | Kehto shape                                                                    | Applesauce source                                              | Status        |
+| ---------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------- | ------------- |
+| Shell relay pool | `RelayPoolHooks` / `RelayPoolLike` (`subscription`, `request`, `publish`)      | `RelayPool.req` into the `EventStore`, `eventStore.filters()`  | done          |
+| Cache            | `WorkerRelayLike` / `CacheAdapter`                                             | not needed: the store-backed pool already serves cached events | n/a           |
+| Signer           | runtime `Signer` (NIP-07 shape: `getPublicKey`, `signEvent`, `nip04`, `nip44`) | `ctx.signer` (static or latest emitted) + `ctx.approve`        | done          |
+| Auth             | `AuthHooks` (`getUserPubkey`, `getSigner(windowId?)`)                          | `KehtoState.getPubkey()`, `createKehtoSigner`                  | done          |
+| Relay selection  | `selectRelayTier(filters)`                                                     | `selectOptimalRelays` over stored outboxes, user outboxes      | done          |
+| Outbox pool      | `OutboxRelayPool` for kehto's `createRelayPoolOutboxRouter`                    | `RelayPool`                                                    | not planned\* |
 
-The signer adapter needs a host approval hook (`approve(windowId, template)`). It must also re-stamp `created_at` after the prompt, because kehto rejects events older than 30 seconds.
+\* The applesauce `OutboxRouter` in `services/outbox.ts` replaces kehto's router, so it shares the store and its batched loaders.
 
 ## Tier 1: read path
 
-| NAP | Kehto factory | Applesauce source | Status |
-| --- | --- | --- | --- |
-| relay | `createRelayPoolService` | `RelayPool.subscription`, store dedupe, `fromRelay` seen-relay tracking | todo |
-| outbox | `createOutboxService` with an applesauce `OutboxRouter` | store loaders for kind 10002, `getOutboxes` / `getInboxes`, `eventStore.event()` for `getEvent`; compare against `createRelayPoolOutboxRouter` | todo |
-| count | `createCountService` | `RelayPool.count` | todo |
-| identity | `createIdentityService` | `castUser` `profile$`, `contacts$`, `mutes$`, `profileBadges$`; list kinds via `eventStore.replaceable`; zaps | todo |
+| NAP      | Kehto factory                                           | Applesauce source                                                                                             | Status |
+| -------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------ |
+| relay    | built-in runtime handler over `RelayPoolLike`           | `createKehtoRelayPool` (no `relay` service registered)                                                        | done   |
+| outbox   | `createOutboxService` with an applesauce `OutboxRouter` | store loaders for kind 10002, `getOutboxes` / `getInboxes`, `eventStore.event()` for `getEvent`               | done   |
+| count    | `createCountService`                                    | `RelayPool.count`, largest relay count wins                                                                   | done   |
+| identity | `createIdentityService`                                 | `castUser` `profile$`, `contacts$`, `mutes$`, `profileBadges$`; list kinds via `eventStore.replaceable`; zaps | done   |
 
 ## Tier 2: write path
 
-| NAP | Kehto factory | Applesauce source | Status |
-| --- | --- | --- | --- |
-| common | `createCommonService` (follow, unfollow, react, report) | `applesauce-actions` contacts and report, reaction factory | todo |
-| lists | `createListsService` | actions `lists`, `bookmarks`, `follow-sets`, `pins` | todo |
-| upload | `createUploadService` (`Uploader`) | blossom helpers and actions | todo |
-| resource | `createResourceService` (`blossom:` and `nostr:` resolvers) | blossom helpers with hash verification, `eventStore.event()` for `nostr:` | todo |
-| dm | `createDmService` | `wrapped-messages` actions, gift-wrap models | todo |
+| NAP      | Kehto factory                                               | Applesauce source                                                         | Status |
+| -------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- | ------ |
+| common   | `createCommonService` (follow, unfollow, react, report)     | `applesauce-actions` contacts and report, `ReactionFactory`               | done   |
+| upload   | `createUploadService` (`Uploader`)                          | kehto `createHttpUploader` on the user's `blossomServers$`                | done   |
+| lists    | `createListsService`                                        | actions `lists`, `bookmarks`, `follow-sets`, `pins`                       | todo   |
+| resource | `createResourceService` (`blossom:` and `nostr:` resolvers) | blossom helpers with hash verification, `eventStore.event()` for `nostr:` | todo   |
+| dm       | `createDmService`                                           | `wrapped-messages` actions, gift-wrap models                              | todo   |
+
+## Open questions
+
+- **Encrypted content:** the loader example decrypts NIP-04/44 events before napplets see them. The pool here passes events through unchanged, because decrypting with the user's signer for any napplet that can read is a policy decision for the host.
+- **Identity `getBlocked`:** not mapped, since there is no clear NIP-51 source.
+- **Scoped relays:** `openScopedRelay` and `publishToScopedRelay` are no-ops, so napplets always read through the shared pool.
 
 ## Out of scope
 
-These are host or browser concerns rather than Nostr data: keys, media, notify, theme, config, fs, gamepad, serial, ble, webrtc, intent, link and cvm.
+These are host or browser concerns rather than Nostr data: keys, media, notify, theme, config, fs, gamepad, serial, ble, webrtc, intent, link and cvm. Hosts add them through `overrides.services`.
 
 ## Stress testing
 
-Each tier is stress tested locally against real relays (these runs are not committed). Once relay and identity land, a napplet-hosting example in `apps/examples` follows. Targets:
+Each tier is stress tested locally against real relays (these runs are not committed). Migrating `napplet/loader.tsx` to `createKehtoShellAdapter` gives a live harness. Targets:
 
 - Subscription fan-out across many napplet windows sharing one pool
 - Window-destroy teardown leaving no open relay subscriptions
-- Cache hit rate vs relay round-trips for repeated identity and outbox reads
+- Store hit rate vs relay round-trips for repeated identity and outbox reads
 - Publish latency and failure reporting through runtime-mediated signing
