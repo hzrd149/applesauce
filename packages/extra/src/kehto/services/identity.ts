@@ -27,6 +27,10 @@ export interface KehtoIdentityOptions {
   timeout?: number;
   /** The relays used when user relay lists are unavailable */
   fallbackRelays?: string[] | Observable<string[]>;
+  /** The application block-list provider, overriding useMutesForBlocks when supplied */
+  getBlocked?: IdentityServiceOptions["getBlocked"];
+  /** Whether public muted pubkeys also supply blocks when no application provider is supplied (default false) */
+  useMutesForBlocks?: boolean;
 }
 
 /** NAP-IDENTITY list types mapped to their NIP-51 list kinds */
@@ -52,6 +56,11 @@ export function createIdentityOptions(config: KehtoIdentityOptions): IdentitySer
     return settle(select(user), fallback, config.timeout ?? 4000);
   }
 
+  async function getMutes(pubkey: string) {
+    const mutes = await readUser(pubkey, (user) => user.mutes$, undefined);
+    return Array.from(mutes?.pubkeys ?? []);
+  }
+
   return {
     getSigner: () => ({
       getPublicKey: async () => (await firstValueFrom(kehtoAccount$(config)))?.pubkey ?? "",
@@ -69,10 +78,8 @@ export function createIdentityOptions(config: KehtoIdentityOptions): IdentitySer
       const contacts = await readUser(pubkey, (user) => user.contacts$, []);
       return contacts.map((user) => user.pubkey);
     },
-    getMutes: async (pubkey) => {
-      const mutes = await readUser(pubkey, (user) => user.mutes$, undefined);
-      return Array.from(mutes?.pubkeys ?? []);
-    },
+    getMutes,
+    getBlocked: config.getBlocked ?? (config.useMutesForBlocks ? getMutes : undefined),
     getList: async (listType, pubkey) => {
       const kind = KEHTO_IDENTITY_LIST_KINDS[listType];
       if (kind === undefined) return [];

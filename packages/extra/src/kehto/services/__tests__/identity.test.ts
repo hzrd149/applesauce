@@ -60,6 +60,33 @@ describe("identity", () => {
     expect(await identity.getList!("unknown", alice, {} as any)).toEqual([]);
   });
 
+  it("leaves blocks application-defined by default", async () => {
+    event(aliceKey, kinds.Mutelist, [["p", bob]]);
+    const identity = createIdentityOptions(await create());
+
+    expect(identity.getBlocked).toBeUndefined();
+    expect(await identity.getMutes!(alice, {} as any)).toEqual([bob]);
+  });
+
+  it("optionally uses public muted pubkeys for blocks", async () => {
+    event(aliceKey, kinds.Mutelist, [["p", bob], ["word", "spam"], ["t", "noise"]]);
+    const identity = createIdentityOptions({ ...(await create()), useMutesForBlocks: true });
+
+    expect(await identity.getBlocked!(alice, {} as any)).toEqual([bob]);
+    expect(await identity.getBlocked!(bob, {} as any)).toEqual([]);
+  });
+
+  it("prioritizes the application provider and forwards the request", async () => {
+    event(aliceKey, kinds.Mutelist, [["p", bob]]);
+    const getBlocked = vi.fn(async () => [alice]);
+    const identity = createIdentityOptions({ ...(await create()), getBlocked, useMutesForBlocks: true });
+    const message = { type: "identity.getBlocked", id: "blocks" } as any;
+
+    expect(await identity.getBlocked!(bob, message)).toEqual([alice]);
+    expect(getBlocked).toHaveBeenCalledWith(bob, message);
+    expect(await identity.getMutes!(alice, {} as any)).toEqual([bob]);
+  });
+
   it("returns null for a missing profile after the timeout", async () => {
     const identity = createIdentityOptions(await create());
     expect(await identity.getProfile!(bob, {} as any)).toBeNull();
