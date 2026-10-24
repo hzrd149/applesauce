@@ -18,6 +18,7 @@ import {
   COMMENT_KIND,
   getNappletIdentifier,
   getNappletParentPointer,
+  isValidNapplet,
   NAPPLET_KIND,
   NAPPLET_ROOT_KIND,
   NAPPLET_SNAPSHOT_KIND,
@@ -51,14 +52,19 @@ import {
   count,
   defer,
   distinctUntilChanged,
+  EMPTY,
+  expand,
+  from,
   last,
   map,
   merge,
+  mergeMap,
   Observable,
   of,
   shareReplay,
   startWith,
   switchMap,
+  toArray,
 } from "rxjs";
 import JsonBlock from "../../components/json-block";
 import LoginView from "../../components/login-view";
@@ -246,6 +252,11 @@ function TagBadges({ values, onClick }: { values: string[]; onClick?: (value: st
 
 // ---------- Store listing ----------
 
+/** Manifests requested per page from the selected relay */
+const PAGE_SIZE = 100;
+/** Valid napplets to collect before paging stops, since other apps also publish kind 35129 events */
+const TARGET_NAPPLETS = 100;
+
 /** Builds the relay filter, returning null when the author and contacts filters cannot overlap */
 function buildFilter(filters: Filters, contacts: string[] | undefined): Filter | null {
   let authors = filters.author ? [filters.author] : undefined;
@@ -253,7 +264,7 @@ function buildFilter(filters: Filters, contacts: string[] | undefined): Filter |
   if (authors?.length === 0) return null;
 
   // Snapshots are only listed under the napplet they derive from
-  const filter: Filter = { kinds: [NAPPLET_ROOT_KIND, NAPPLET_KIND], limit: 100 };
+  const filter: Filter = { kinds: [NAPPLET_ROOT_KIND, NAPPLET_KIND], limit: PAGE_SIZE };
   if (authors) filter.authors = authors;
   if (filters.query) filter.search = filters.query;
   if (filters.archetype) filter["#z"] = [filters.archetype];
@@ -261,29 +272,51 @@ function buildFilter(filters: Filters, contacts: string[] | undefined): Filter |
   return filter;
 }
 
+/** Requests older pages of manifests until enough valid napplets load or the relay runs out of events */
+function requestNappletPages(relay: string, filter: Filter): Observable<NostrEvent> {
+  return defer(() => {
+    let valid = 0;
+    const page = (until?: number) =>
+      pool
+        .relay(relay)
+        .request(until === undefined ? filter : { ...filter, until })
+        .pipe(toArray());
+
+    return page().pipe(
+      expand((events) => {
+        valid += events.filter(isValidNapplet).length;
+
+        // A short page means the relay has no older events
+        if (events.length < PAGE_SIZE || valid >= TARGET_NAPPLETS) return EMPTY;
+
+        const oldest = Math.min(...events.map((event) => event.created_at));
+        return page(oldest - 1);
+      }),
+      mergeMap((events) => from(events)),
+    );
+  });
+}
+
 /** Requests matching manifests from the selected relay and tracks loading, completion and errors */
 function searchNapplets(relay: string, filter: Filter): Observable<Results> {
-  return pool
-    .relay(relay)
-    .request(filter)
-    .pipe(
-      mapEventsToStore(eventStore),
-      mapEventsToTimeline(),
-      // Keep only the newest revision of each replaceable napplet
-      map((events) => [...new Map(events.map((e) => [getEventUID(e), e] as const)).values()]),
-      castTimelineStream(Napplet, eventStore),
-      connect((napplets$) =>
-        merge(
-          napplets$.pipe(map((napplets): Results => ({ status: "loading", napplets }))),
-          napplets$.pipe(
-            last(undefined, [] as Napplet[]),
-            map((napplets): Results => ({ status: "ready", napplets })),
-          ),
+  return requestNappletPages(relay, filter).pipe(
+    mapEventsToStore(eventStore),
+    mapEventsToTimeline(),
+    // Keep only the newest revision of each replaceable napplet
+    map((events) => [...new Map(events.map((e) => [getEventUID(e), e] as const)).values()]),
+    castTimelineStream(Napplet, eventStore),
+    connect((napplets$) =>
+      merge(
+        napplets$.pipe(map((napplets): Results => ({ status: "loading", napplets }))),
+        napplets$.pipe(
+          last(undefined, [] as Napplet[]),
+          map((napplets): Results => ({ status: "ready", napplets })),
         ),
       ),
-      startWith<Results>({ status: "loading", napplets: [] }),
-      catchError((error) => of<Results>({ status: "error", error: String(error?.message ?? error), napplets: [] })),
-    );
+    ),
+    startWith<Results>({ status: "loading", napplets: [] }),
+    catchError((error) => of<Results>({ status: "error", error: String(error?.message ?? error), napplets: [] })),
+  );
 }
 
 function NappletTile({ napplet, select, update }: { napplet: Napplet; select: Select; update: Update }) {
