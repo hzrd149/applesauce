@@ -12,6 +12,7 @@ import type { BookmarkPointer } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import {
   decodePointer,
+  encodePointer,
   getDisplayName,
   getOrComputeCachedValue,
   getProfilePicture,
@@ -30,6 +31,7 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
+import { Check, Copy, Lock, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import {
   auditTime,
@@ -73,12 +75,12 @@ type Bookmark = { pointer: BookmarkPointer; hidden: boolean };
 /** A bookmark with the relays it is being loaded from and its cast once found */
 type Loaded = Bookmark & { relays?: string[]; item?: Note | Article };
 
-const MEDIA: { value: Media; icon: string; label: string }[] = [
-  { value: "image", icon: "🖼️", label: "Images" },
-  { value: "video", icon: "🎬", label: "Videos" },
-  { value: "audio", icon: "🎵", label: "Audio" },
-  { value: "link", icon: "🔗", label: "Links" },
-  { value: "quote", icon: "💬", label: "Quotes" },
+const MEDIA: { value: Media; label: string }[] = [
+  { value: "image", label: "Images" },
+  { value: "video", label: "Videos" },
+  { value: "audio", label: "Audio" },
+  { value: "link", label: "Links" },
+  { value: "quote", label: "Quotes" },
 ];
 
 const keyOf = (pointer: BookmarkPointer) =>
@@ -229,17 +231,32 @@ function ArticlePreview({ article }: { article: Article }) {
   );
 }
 
+/** Encodes the bookmark as a nevent or naddr, with the relays it was seen on as hints */
+function getNip19(pointer: BookmarkPointer, item?: Note | Article) {
+  const relays = mergeRelaySets(item?.seen, pointer.relays).slice(0, 3);
+  return encodePointer({ ...(item?.pointer ?? pointer), relays });
+}
+
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+
+  return (
+    <button className="btn btn-ghost btn-sm btn-square" title={value} onClick={copy}>
+      {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+    </button>
+  );
+}
+
 function BookmarkRow({ bookmark, onRemove }: { bookmark: Loaded; onRemove?: () => void }) {
   const { pointer, hidden, relays, item } = bookmark;
-  const media = item ? getMedia(item.event) : undefined;
 
   return (
     <div className="flex items-start gap-3 border-b border-base-300 p-3 last:border-b-0">
-      <span className="w-5 shrink-0 text-center" title={hidden ? "Hidden" : "Public"}>
-        {isAddressPointer(pointer) ? "📄" : "📝"}
-        {hidden && <div>🔒</div>}
-      </span>
-
       <div className="min-w-0 flex-1">
         {item instanceof Article ? (
           <ArticlePreview article={item} />
@@ -254,17 +271,14 @@ function BookmarkRow({ bookmark, onRemove }: { bookmark: Loaded; onRemove?: () =
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {MEDIA.filter((m) => media?.has(m.value)).map((m) => (
-          <span key={m.value} title={m.label}>
-            {m.icon}
-          </span>
-        ))}
+        {hidden && <Lock className="h-4 w-4 opacity-60" aria-label="Hidden" />}
+        <CopyButton value={getNip19(pointer, item)} />
         <span className="badge badge-ghost" title={relays?.join("\n")}>
-          📡 {relays?.length ?? "…"}
+          {relays ? `${relays.length} relays` : "…"}
         </span>
         {onRemove && (
           <button className="btn btn-ghost btn-sm btn-square" title="Remove" onClick={onRemove}>
-            ✕
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -306,14 +320,10 @@ function AddBookmark({ user }: { user: User }) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
         />
-        <button
-          type="button"
-          className={`btn btn-square ${hidden ? "btn-active" : ""}`}
-          title={hidden ? "Hidden" : "Public"}
-          onClick={() => setHidden(!hidden)}
-        >
-          {hidden ? "🔒" : "🌐"}
-        </button>
+        <label className="label">
+          <input type="checkbox" className="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
+          Hidden
+        </label>
         <button className="btn btn-primary" disabled={!pointer || adding}>
           {adding ? <span className="loading loading-spinner loading-sm" /> : "Add"}
         </button>
@@ -335,7 +345,7 @@ function Account({ user }: { user: User }) {
       <Avatar user={user} size="h-8 w-8" />
       <Name user={user} />
       <span className="ms-auto badge badge-ghost" title={outboxes?.join("\n")}>
-        📡 {outboxes?.length ?? "…"}
+        {outboxes ? `${outboxes.length} outboxes` : "…"}
       </span>
       <button className="btn btn-sm btn-ghost" onClick={logout}>
         Logout
@@ -431,7 +441,7 @@ function BookmarkManager({ user }: { user: User }) {
           <Section title="Content">
             {MEDIA.map((m) => (
               <Toggle key={m.value} active={media.has(m.value)} onClick={() => setMedia(toggle(media, m.value))}>
-                {m.icon} {m.label}
+                {m.label}
                 <span className="ms-auto opacity-60">{stats.media.get(m.value) ?? 0}</span>
               </Toggle>
             ))}
@@ -459,9 +469,9 @@ function BookmarkManager({ user }: { user: User }) {
 
         {list?.hasHidden && !hidden && (
           <div className="flex items-center gap-2 border-b border-base-300 p-3">
-            <span>🔒</span>
             <button className="btn btn-sm" onClick={unlock} disabled={unlocking}>
-              {unlocking ? <span className="loading loading-spinner loading-sm" /> : "Unlock hidden"}
+              {unlocking ? <span className="loading loading-spinner loading-sm" /> : <Lock className="h-4 w-4" />}
+              Unlock hidden bookmarks
             </button>
           </div>
         )}
