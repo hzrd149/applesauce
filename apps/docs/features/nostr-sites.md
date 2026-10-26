@@ -1,10 +1,10 @@
 ---
-description: Find, serve, and publish static websites and napplets stored as Nostr manifests
+description: Find, serve, and publish static websites stored as Nostr manifests
 ---
 
-# Sites & Napplets
+# Nostr Sites
 
-An **nsite** is a static website whose manifest event maps each path to the sha256 of a file stored on Blossom servers (NIP-5A). A **napplet** is a sandboxed app published the same way as a single `index.html` artifact (NIP-5D). Both come in three forms: a root site per user, named sites, and immutable snapshots of either.
+An **nsite** is a static website whose manifest event maps each path to the sha256 of a file stored on Blossom servers (NIP-5A). Sites come in three forms: a root site per user, named sites, and immutable snapshots. Sandboxed applications have their own [Napplets documentation](../napplets/index.md).
 
 ## Finding a user's sites
 
@@ -57,23 +57,11 @@ const snapshot = await NsiteSnapshotFactory.create(updated).sign(signer);
 
 Use `RootNsiteFactory.create(files)` for a root site. Copy a site with `RootNsiteFactory.copy(site)` or `NamedNsiteFactory.copy(site, identifier)`. Named identifiers are 1–13 lowercase letters, digits, or hyphens and cannot end in a hyphen. Snapshots require an aggregate hash on the source and keep it unchanged.
 
-## Napplets
-
-Napplet casts expose the manifest's `artifactHash`, `title`, `description`, `icon`, `archetypes`, `intents`, and required and optional domains. User casts gain `napplet$` and `napplets$`, root and named casts list `snapshots$` and `lineage$`, and snapshots resolve `parent$` and `root$`.
-
-```ts
-const root = await RootNappletFactory.create(artifactHash, "A feed viewer").sign(signer);
-const named = await NamedNappletFactory.create("feed", artifactHash, "A feed viewer").sign(signer);
-const snapshot = await NappletSnapshotFactory.create(named).sign(signer);
-```
-
-Use the matching factory's `modify(event)` to update a manifest. Unlike nsites, a napplet snapshot can be made from another snapshot and keeps its parent and root lineage.
-
-**Examples:** [Nsite Feed](https://applesauce.build/examples/#/example/nsite/feed), [Napplet Browser](https://applesauce.build/examples/#/example/napplet/browser)
-
 ## Integration
 
-Use the [napplet host](./napplet-hosting.md) to resolve verified manifests and run multiple napplets with a shared applesauce context.
+Use the manifest's `servers$` with your Blossom client to fetch the file returned by `resolvePath()`. Compare its SHA-256 hash with the manifest entry before serving it.
+
+**Example:** [Nsite Feed](https://applesauce.build/examples/#/example/nsite/feed)
 
 ## Best Practices
 

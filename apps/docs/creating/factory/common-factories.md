@@ -53,7 +53,7 @@ const contacts = await ContactsFactory.create().addContact(friend).addContact(ot
 
 ### Feature-specific factories
 
-Factories for specific features are documented on their feature pages, such as [Sites & Napplets](/features/nostr-sites), [Git](/features/git), and [App Handlers](/features/app-handlers).
+Factories for specific features are documented on their feature pages, such as [Nostr Sites](/features/nostr-sites), [Napplets](/napplets/manifests), [Git](/features/git), and [App Handlers](/features/app-handlers).
 
 ## Integration
 

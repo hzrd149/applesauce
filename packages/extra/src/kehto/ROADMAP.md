@@ -1,6 +1,6 @@
 # Kehto follow-ups
 
-The applesauce service integrations and optional browser host are implemented. See [Hosting napplets](../../../../../apps/docs/features/napplet-hosting.md) for setup, extension points, and lifecycle ownership, and the [loader example](../../../../../apps/examples/src/examples/napplet/loader.tsx) for a complete host.
+The applesauce service integrations and optional browser host are implemented. See [Hosting napplets](../../../../../apps/docs/napplets/hosting.md) for setup, extension points, and lifecycle ownership, and the [loader example](../../../../../apps/examples/src/examples/napplet/loader.tsx) for a complete host.
 
 The browser host and lower-level shell adapter live in `host/`; the service registry lives in `services.ts`. Scoped relays and UI/device services remain application extensions.
 

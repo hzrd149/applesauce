@@ -63,25 +63,25 @@ cast.store; // Event store reference
 
 Each feature page shows how to read its casts alongside the loaders, factories, and actions that go with them.
 
-| Casts                                                                | Feature                                                |
-| -------------------------------------------------------------------- | ------------------------------------------------------ |
-| `Note`                                                               | [Notes & Threads](/features/notes-and-threads)         |
-| `Article`                                                            | [Articles](/features/articles)                         |
-| `Comment`                                                            | [Comments](/features/comments)                         |
-| `Profile`                                                            | [Profiles](/features/profiles)                         |
-| `Reaction`, `Share`                                                  | [Reactions & Reposts](/features/reactions-and-reposts) |
-| `Zap`, `ZapGoal`                                                     | [Zaps](/features/zaps)                                 |
-| `Mutes`, `Report`                                                    | [Mutes & Reports](/features/moderation)                |
-| `BookmarksList`, `BookmarksSet`                                      | [Bookmarks](/features/bookmarks)                       |
-| `FavoriteRelays`, `SearchRelays`, `BlockedRelays`, `LookupRelayList` | [Relay Lists](/features/relay-lists)                   |
-| `GroupsList`                                                         | [Groups](/features/groups)                             |
-| `Stream`, `StreamChatMessage`                                        | [Live Streams](/features/live-streams)                 |
-| `GitRepository`, `GitIssue`, `GitPullRequest`, `GitPatch`            | [Git](/features/git)                                   |
-| `CodeSnippet`                                                        | [Code Snippets](/features/code-snippets)               |
-| `Torrent`                                                            | [Torrents](/features/torrents)                         |
-| `RelayMonitor`, `RelayDiscovery`                                     | [Relay Monitoring](/features/relay-monitoring)         |
-| `Nsite`, `Napplet`                                                   | [Sites & Napplets](/features/nostr-sites)              |
-| `AppHandler`, `AppRecommendation`                                    | [App Handlers](/features/app-handlers)                 |
+| Casts                                                                | Feature                                                               |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `Note`                                                               | [Notes & Threads](/features/notes-and-threads)                        |
+| `Article`                                                            | [Articles](/features/articles)                                        |
+| `Comment`                                                            | [Comments](/features/comments)                                        |
+| `Profile`                                                            | [Profiles](/features/profiles)                                        |
+| `Reaction`, `Share`                                                  | [Reactions & Reposts](/features/reactions-and-reposts)                |
+| `Zap`, `ZapGoal`                                                     | [Zaps](/features/zaps)                                                |
+| `Mutes`, `Report`                                                    | [Mutes & Reports](/features/moderation)                               |
+| `BookmarksList`, `BookmarksSet`                                      | [Bookmarks](/features/bookmarks)                                      |
+| `FavoriteRelays`, `SearchRelays`, `BlockedRelays`, `LookupRelayList` | [Relay Lists](/features/relay-lists)                                  |
+| `GroupsList`                                                         | [Groups](/features/groups)                                            |
+| `Stream`, `StreamChatMessage`                                        | [Live Streams](/features/live-streams)                                |
+| `GitRepository`, `GitIssue`, `GitPullRequest`, `GitPatch`            | [Git](/features/git)                                                  |
+| `CodeSnippet`                                                        | [Code Snippets](/features/code-snippets)                              |
+| `Torrent`                                                            | [Torrents](/features/torrents)                                        |
+| `RelayMonitor`, `RelayDiscovery`                                     | [Relay Monitoring](/features/relay-monitoring)                        |
+| `Nsite`, `Napplet`                                                   | [Nostr Sites](/features/nostr-sites), [Napplets](/napplets/manifests) |
+| `AppHandler`, `AppRecommendation`                                    | [App Handlers](/features/app-handlers)                                |
 
 The full list of casts is in the [reference](https://applesauce.build/typedoc/modules/applesauce-common.Casts.html).
 

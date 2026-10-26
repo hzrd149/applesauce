@@ -243,3 +243,9 @@ pnpm install applesauce-wallet-connect
 ```
 
 :::
+
+## Extra
+
+The `applesauce-extra` package includes service integrations through separate entry points.
+
+Use `applesauce-extra/kehto/host` to [host napplets](../napplets/hosting.md) with your existing store, pool, and account. Use `applesauce-extra/kehto` for individual Kehto service adapters. Manifest discovery and handler preferences live in `applesauce-common`; start with the [napplet guide](../napplets/index.md).
