@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add signer-backed Kehto NIP-17 direct messaging with store-backed history and live subscriptions
+Add Kehto direct messaging over NIP-17 and legacy NIP-04 with store-backed history and live subscriptions

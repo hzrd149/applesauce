@@ -1,4 +1,5 @@
 ---
 "applesauce-extra": minor
 ---
-Add an optional Kehto browser host for verified artifacts and concurrent napplet lifecycles
+
+Add an optional Kehto browser host for running verified napplets
