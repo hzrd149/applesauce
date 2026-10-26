@@ -909,22 +909,39 @@ function createLoader(
 }
 
 /**
- * Creates a reactive window loader for multiple relays and an optional cache
+ * Creates a reactive window loader for multiple relays and an optional cache.
+ * Relays and filters can be observables; changed relays and filters are reconciled like an outbox map,
+ * so a relay added later receives the current window and unchanged relays keep their coverage.
  * @throws if batch or prefetch options are invalid
  */
 export function createTimelineLoader(
   pool: UpstreamPool,
-  relays: string[],
-  filters: TimelessFilter[] | TimelessFilter,
+  relays: string[] | Observable<string[]>,
+  filters: TimelessFilter[] | TimelessFilter | Observable<TimelessFilter[] | TimelessFilter>,
   opts?: TimelineLoaderOptions,
 ): TimelineLoader {
+  const filters$ = (isObservable(filters) ? filters : of(filters)).pipe(
+    map((filters) => (Array.isArray(filters) ? filters : [filters])),
+  );
+  const relayMap$ = combineLatest([isObservable(relays) ? relays : of(relays), filters$]).pipe(
+    map(([relays, filters]): FilterMap => Object.fromEntries(relays.map((relay) => [relay, filters]))),
+  );
+  const cacheMap$ = filters$.pipe(map((filters): FilterMap => ({ cache: filters })));
   return createLoader(
     (windows, settings) =>
       windows.pipe(
         connect((source) =>
           merge(
-            source.pipe(loadBlocksFromRelays(pool, relays, filters, settings)),
-            settings.cache ? source.pipe(loadBlocksFromCache(settings.cache, filters, settings)) : EMPTY,
+            source.pipe(loadBlocksFromFilterMap(pool, relayMap$, settings)),
+            settings.cache
+              ? source.pipe(
+                  reconcileFilterMap(
+                    cacheMap$,
+                    (_source, filters$, opts) => loadCacheWindows(settings.cache!, filters$, opts),
+                    settings,
+                  ),
+                )
+              : EMPTY,
           ),
         ),
       ),

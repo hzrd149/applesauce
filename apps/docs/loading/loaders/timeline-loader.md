@@ -118,6 +118,20 @@ const loader = createTimelineLoader(pool, relays, filter, {
 });
 ```
 
+### Reactive relays and filters
+
+`createTimelineLoader` also takes an observable relay list or an observable filter, for relay sets that are resolved after the timeline is displayed (a user's NIP-65 list, per-app relay overrides) or filters whose authors grow as a follow list loads:
+
+```ts
+const relays$ = new BehaviorSubject<string[]>([]);
+const loader = createTimelineLoader(pool, relays$, { kinds: [1] }, { eventStore });
+const sub = loader(windows$).subscribe();
+
+relays$.next(["wss://relay.example.com"]); // Loads the current window from the added relay
+```
+
+Relays and filters are reconciled like an outbox map: a relay added later receives the current window, an unchanged relay keeps its requests and coverage, a removed relay retires its coverage and status, and the cache follows the same filter changes.
+
 ### Outbox maps
 
 `createOutboxTimelineLoader` takes an `OutboxMap` (relay → users) or an observable of one. Build it from `ProfilePointer[]` with `createOutboxMap`, filtering relays through a `RelayLiveness` tracker first; pass the same tracker as `liveness` to report failing relays:
