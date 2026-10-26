@@ -24,6 +24,9 @@ import {
   NAPPLET_KIND,
   NAPPLET_ROOT_KIND,
   NAPPLET_SNAPSHOT_KIND,
+  createNappletConvention,
+  nappletSupportsConvention,
+  parseNappletConvention,
 } from "../napplet.js";
 
 const user = new FakeUser();
@@ -183,5 +186,31 @@ describe("per-kind validators", () => {
     expect(isValidRootNapplet(snapshot)).toBe(false);
     expect(isValidNappletSnapshot(snapshot)).toBe(true);
     expect(isValidNappletSnapshot(named())).toBe(false);
+  });
+});
+
+describe("napplet conventions", () => {
+  it("parses convention identities", () => {
+    expect(parseNappletConvention("napplet:profile/edit")).toEqual({ archetype: "profile", intent: "edit" });
+    expect(parseNappletConvention("napplet:profile/edit?x=1")).toBeUndefined();
+    expect(parseNappletConvention("napplet:profile/edit#top")).toBeUndefined();
+    expect(parseNappletConvention("napplet:profile")).toBeUndefined();
+    expect(parseNappletConvention("web:profile/edit")).toBeUndefined();
+  });
+
+  it("creates convention identities", () => {
+    expect(createNappletConvention("profile", "edit")).toBe("napplet:profile/edit");
+    expect(() => createNappletConvention("profile", "edit?x=1")).toThrow();
+    expect(() => createNappletConvention("a/b", "edit")).toThrow();
+  });
+
+  it("checks if a manifest supports a convention", () => {
+    const event = named([
+      ["z", "feed"],
+      ["i", "napplet:feed/open"],
+    ]);
+    expect(nappletSupportsConvention(event, "napplet:feed/open")).toBe(true);
+    expect(nappletSupportsConvention(event, "napplet:feed/edit")).toBe(false);
+    expect(nappletSupportsConvention(named([["i", "napplet:feed/open"]]), "napplet:feed/open")).toBe(false);
   });
 });

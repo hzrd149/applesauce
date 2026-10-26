@@ -11,6 +11,16 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./kehto": {
+      "import": "./dist/kehto/index.js",
+      "require": "./dist/kehto/index.js",
+      "types": "./dist/kehto/index.d.ts"
+    },
+    "./kehto/host": {
+      "import": "./dist/kehto/host/index.js",
+      "require": "./dist/kehto/host/index.js",
+      "types": "./dist/kehto/host/index.d.ts"
+    },
     "./nspam": {
       "import": "./dist/nspam/index.js",
       "require": "./dist/nspam/index.js",
@@ -56,16 +66,44 @@
     "dist"
   ],
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "applesauce-core": "^7.0.0",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
+    "applesauce-actions": "^7.0.0",
     "applesauce-common": "^7.0.0",
+    "applesauce-loaders": "^7.0.0",
     "applesauce-relay": "^7.0.0",
-    "applesauce-signers": "^7.0.0"
+    "applesauce-signers": "^7.0.0",
+    "blossom-client-sdk": "^5.1.0"
+  },
+  "peerDependencies": {
+    "@kehto/nip": "^0.7.0",
+    "@kehto/runtime": "^0.26.0",
+    "@kehto/services": "^0.25.1",
+    "@kehto/shell": "^0.24.4"
+  },
+  "peerDependenciesMeta": {
+    "@kehto/nip": {
+      "optional": true
+    },
+    "@kehto/runtime": {
+      "optional": true
+    },
+    "@kehto/services": {
+      "optional": true
+    },
+    "@kehto/shell": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
+    "@kehto/nip": "^0.7.0",
+    "@kehto/runtime": "^0.26.0",
+    "@kehto/services": "^0.25.1",
+    "@kehto/shell": "^0.24.4",
     "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"

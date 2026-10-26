@@ -234,6 +234,7 @@ export default defineConfig({
           { text: "Relay Lists", link: "/features/relay-lists" },
           { text: "Relay Monitoring", link: "/features/relay-monitoring" },
           { text: "Sites & Napplets", link: "/features/nostr-sites" },
+          { text: "Napplet Hosting", link: "/features/napplet-hosting" },
           { text: "Spam Filtering", link: "/features/spam-filtering" },
           { text: "Torrents", link: "/features/torrents" },
           { text: "User Statuses", link: "/features/user-statuses" },

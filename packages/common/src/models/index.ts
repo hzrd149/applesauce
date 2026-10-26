@@ -26,3 +26,4 @@ export * from "applesauce-core/models";
 import "./__register__.js";
 
 export * from "./nsite.js";
+export * from "./napplet-handlers.js";

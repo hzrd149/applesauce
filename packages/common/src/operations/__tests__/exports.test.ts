@@ -38,6 +38,7 @@ describe("exports", () => {
         "LiveStream",
         "MediaAttachment",
         "Napplet",
+        "NappletHandlers",
         "NostrWebToken",
         "Note",
         "PicturePost",

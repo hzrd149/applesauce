@@ -10,6 +10,7 @@ describe("exports", () => {
         "AsyncRumorStore",
         "BehaviorSubject",
         "CASTS_SYMBOL",
+        "CAST_FAILURES_SYMBOL",
         "CAST_REF_SYMBOL",
         "DeleteFactory",
         "DeleteManager",

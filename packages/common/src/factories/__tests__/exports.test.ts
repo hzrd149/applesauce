@@ -11,6 +11,7 @@ describe("manifest factory exports", () => {
       [
         "NamedNappletFactory",
         "NamedNsiteFactory",
+        "NappletHandlersFactory",
         "NappletSnapshotFactory",
         "NsiteSnapshotFactory",
         "RootNappletFactory",

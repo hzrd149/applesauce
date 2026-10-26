@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Identity demo</title>
+  </head>
+  <body>
+    <section>
+      <div class="row">
+        <span id="name" class="name">…</span>
+        <span class="badge" title="identity.changed pushes received">🔄 <span id="changes">0</span></span>
+        <span class="badge" title="common.follows">👥 <span id="follows">–</span></span>
+      </div>
+      <div id="npub" class="mono muted"></div>
+    </section>
+
+    <section>
+      <div class="row">
+        <input id="target" placeholder="npub, nprofile, note or nevent" />
+        <span id="target-type" class="badge">?</span>
+      </div>
+      <div id="target-name" class="muted"></div>
+      <div class="row">
+        <button data-action="follow" data-for="profile" title="common.follow">➕ Follow</button>
+        <button data-action="unfollow" data-for="profile" title="common.unfollow">➖ Unfollow</button>
+        <button data-action="like" data-for="event" title="common.react +">👍</button>
+        <button data-action="dislike" data-for="event" title="common.react -">👎</button>
+        <button data-action="report" data-for="any" title="common.report spam">🚩 Report</button>
+      </div>
+      <div id="results" class="mono"></div>
+    </section>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

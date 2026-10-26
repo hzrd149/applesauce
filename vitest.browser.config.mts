@@ -12,6 +12,7 @@ export default defineConfig({
   optimizeDeps: { include: ["rxjs"] },
   test: {
     include: [
+      "packages/extra/src/kehto/host/__tests__/host.browser.test.ts",
       "packages/core/src/helpers/__tests__/url.test.ts",
       "packages/core/src/helpers/__tests__/url-native.test.ts",
       "packages/relay/src/operators/__tests__/liveness.test.ts",

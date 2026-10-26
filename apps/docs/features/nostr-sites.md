@@ -71,6 +71,10 @@ Use the matching factory's `modify(event)` to update a manifest. Unlike nsites, 
 
 **Examples:** [Nsite Feed](https://applesauce.build/examples/#/example/nsite/feed), [Napplet Browser](https://applesauce.build/examples/#/example/napplet/browser)
 
+## Integration
+
+Use the [napplet host](./napplet-hosting.md) to resolve verified manifests and run multiple napplets with a shared applesauce context.
+
 ## Best Practices
 
 - Use `.file()` and `.removeFile()` instead of editing tags so the aggregate hash stays current

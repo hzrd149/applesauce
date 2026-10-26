@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Outbox relay selection</title>
+  </head>
+  <body>
+    <section>
+      <div class="row">
+        <input id="owner" placeholder="npub or nprofile" title="Select relays for this user's contacts" />
+        <button id="recompute" title="outbox.resolveRelays">Recompute</button>
+        <span id="progress" class="badge" title="per-author outbox.resolveRelays">Resolved 0/0</span>
+      </div>
+      <div class="row">
+        <span class="badge" title="contacts">Contacts <span id="authors">0</span></span>
+        <span class="badge" title="selected relays">Relays <span id="relay-count">0</span></span>
+        <span id="source" class="badge" title="outbox.resolveRelays source">?</span>
+        <span class="badge" title="covered by a selected relay">Covered <span id="covered">0</span></span>
+        <span class="badge" title="no NIP-65 relay list">Missing <span id="missing">0</span></span>
+        <span class="badge" title="has outboxes, none selected">Orphaned <span id="orphaned">0</span></span>
+      </div>
+    </section>
+
+    <section class="table">
+      <div class="table-row">
+        <h3>Relay</h3>
+        <h3>Users</h3>
+        <h3></h3>
+      </div>
+      <div id="relays"></div>
+    </section>
+
+    <section class="table">
+      <div class="table-row">
+        <h3>Relays per user</h3>
+        <h3>Users</h3>
+        <h3></h3>
+      </div>
+      <div id="distribution"></div>
+    </section>
+
+    <section>
+      <h3>No relay list</h3>
+      <div id="missing-users" class="avatars"></div>
+      <h3>Orphaned</h3>
+      <div id="orphaned-users" class="avatars"></div>
+    </section>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

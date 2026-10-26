@@ -20,6 +20,7 @@ export * from "./git-thread.js";
 export * from "./groups.js";
 export * from "./mutes.js";
 export * from "./napplet.js";
+export * from "./napplet-handlers.js";
 export * from "./note.js";
 export * from "./profile.js";
 export * from "./profile-badges.js";

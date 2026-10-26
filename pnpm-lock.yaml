@@ -453,6 +453,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      '@napplet/core':
+        specifier: ^0.34.0
+        version: 0.34.0
       '@tailwindcss/typography':
         specifier: ^0.5.20
         version: 0.5.20(tailwindcss@4.3.3)
@@ -695,6 +698,9 @@ importers:
 
   packages/extra:
     dependencies:
+      '@noble/hashes':
+        specifier: ^2.4.0
+        version: 2.4.0
       applesauce-core:
         specifier: ^7.0.0
         version: link:../core
@@ -705,6 +711,18 @@ importers:
       '@hirez_io/observer-spy':
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
+      '@kehto/nip':
+        specifier: ^0.7.0
+        version: 0.7.0
+      '@kehto/runtime':
+        specifier: ^0.26.0
+        version: 0.26.0(@napplet/core@0.34.0)(@napplet/nap@0.34.0(typescript@7.0.2))
+      '@kehto/services':
+        specifier: ^0.25.1
+        version: 0.25.1(@napplet/core@0.34.0)(@napplet/nap@0.34.0(typescript@7.0.2))
+      '@kehto/shell':
+        specifier: ^0.24.4
+        version: 0.24.4(@napplet/core@0.34.0)(@napplet/nap@0.34.0(typescript@7.0.2))
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3
@@ -715,15 +733,24 @@ importers:
         specifier: ^4.1.11
         version: 4.1.12(@types/node@22.20.5)(@vitest/browser-playwright@4.1.12)(@vitest/coverage-v8@4.1.12)(jsdom@30.0.1(@noble/hashes@2.4.0))(vite@8.3.5(@types/node@22.20.5)(esbuild@0.21.5)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
     optionalDependencies:
+      applesauce-actions:
+        specifier: ^7.0.0
+        version: link:../actions
       applesauce-common:
         specifier: ^7.0.0
         version: link:../common
+      applesauce-loaders:
+        specifier: ^7.0.0
+        version: link:../loaders
       applesauce-relay:
         specifier: ^7.0.0
         version: link:../relay
       applesauce-signers:
         specifier: ^7.0.0
         version: link:../signers
+      blossom-client-sdk:
+        specifier: ^5.1.0
+        version: 5.1.0(hls.js@1.7.3)
 
   packages/loaders:
     dependencies:
