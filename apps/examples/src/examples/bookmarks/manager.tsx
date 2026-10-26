@@ -1,434 +1,502 @@
 /**
- * Bookmarks Manager to create, manage, and organize bookmarks for notes and events
- * @tags nip-51, bookmarks, manager
- * @related feed/relay-timeline
+ * Manage your public and hidden NIP-51 bookmarks, loading each bookmarked article from its author's outboxes and each note from your inboxes and outboxes
+ * @tags nip-51, nip-65, bookmarks, manager, outbox, actions
+ * @related feed/relay-timeline, articles/blog
  */
-import NoteContent from "../../components/note-content";
-import { publishEvent } from "../../extra/publish";
-
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { BookmarkEvent, UnbookmarkEvent } from "applesauce-actions/actions";
-import { Article, castUser, Note, User } from "applesauce-common/casts";
+import { Article, BookmarksList, castUser, Note, User } from "applesauce-common/casts";
 import { castEventStream } from "applesauce-common/observable";
-import { defined, EventStore } from "applesauce-core";
+import type { BookmarkPointer } from "applesauce-common/helpers";
+import { EventStore } from "applesauce-core";
 import {
-  AddressPointer,
   decodePointer,
-  EventPointer,
+  getDisplayName,
+  getOrComputeCachedValue,
+  getProfilePicture,
   getReplaceableAddressFromPointer,
+  getTagValue,
   isAddressPointer,
-  isEventPointer,
+  isAudioURL,
+  isImageURL,
+  isStreamURL,
+  isVideoURL,
+  mergeRelaySets,
+  type NostrEvent,
+  Tokens,
 } from "applesauce-core/helpers";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
-import type { ISigner } from "applesauce-signers";
-import { NostrEvent } from "applesauce-core/helpers";
-import { useMemo, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
-import LoginView from "../../components/login-view";
+import { type ISigner } from "applesauce-signers";
+import { type ReactNode, useMemo, useState } from "react";
+import {
+  auditTime,
+  BehaviorSubject,
+  combineLatest,
+  distinctUntilChanged,
+  filter,
+  map,
+  type Observable,
+  of,
+  startWith,
+  switchMap,
+  timeout,
+} from "rxjs";
+
+import LoginView, { forgetActiveAccount } from "../../components/login-view";
+import NoteContent from "../../components/note-content";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
-// Setup application state
-const signer$ = new BehaviorSubject<ISigner | null>(null);
-const pubkey$ = new BehaviorSubject<string | null>(null);
-const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
-// Setup event store and relay pool
+const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
+const user$ = new BehaviorSubject<User | undefined>(undefined);
+
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+
+// Bookmarks load from the outbox relays passed as hints, popular relays are only a last resort
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
+
+// Publish to the relays the action picked (the user's outboxes), falling back when there are none
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error(responses[0]?.message ?? "No relay accepted the bookmarks");
 });
 
-// Create unified event loader for the store
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: lookupRelays$,
-  // Few hard coded relays to load articles and notes without relay hints
-  extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
-});
+type Kind = "all" | "notes" | "articles";
+type Media = "image" | "video" | "audio" | "link" | "quote";
+type Bookmark = { pointer: BookmarkPointer; hidden: boolean };
+/** A bookmark with the relays it is being loaded from and its cast once found */
+type Loaded = Bookmark & { relays?: string[]; item?: Note | Article };
 
-function BookmarkEventForm({ onAdd }: { onAdd: (event: NostrEvent, hidden: boolean) => Promise<void> }) {
-  const [input, setInput] = useState("");
+const MEDIA: { value: Media; icon: string; label: string }[] = [
+  { value: "image", icon: "🖼️", label: "Images" },
+  { value: "video", icon: "🎬", label: "Videos" },
+  { value: "audio", icon: "🎵", label: "Audio" },
+  { value: "link", icon: "🔗", label: "Links" },
+  { value: "quote", icon: "💬", label: "Quotes" },
+];
 
-  const [hidden, setHidden] = useState(false);
+const keyOf = (pointer: BookmarkPointer) =>
+  isAddressPointer(pointer) ? getReplaceableAddressFromPointer(pointer) : pointer.id;
 
-  const pointer = useMemo(() => {
-    if (!input.trim()) return null;
+/** Merges relay lists as they are discovered, falling back to no hints if none load */
+function discovered$(...sources: Observable<string[] | undefined>[]): Observable<string[]> {
+  return combineLatest(sources.map((relays$) => relays$.pipe(map((relays) => relays ?? [])))).pipe(
+    map((sets) => mergeRelaySets(...sets)),
+    distinctUntilChanged((a, b) => a.join() === b.join()),
+    // Wait for at least one relay so bookmarks don't skip straight to the fallback relays
+    filter((relays) => relays.length > 0),
+    timeout({ first: 10_000, with: () => of([]) }),
+  );
+}
 
-    try {
-      const result = decodePointer(input.trim().replace(/^nostr:/, ""));
-      if (result.type === "nevent") {
-        return result.data;
-      } else if (result.type === "naddr") {
-        return result.data;
-      }
-    } catch (error) {}
-    return null;
-  }, [input]);
+/** Picks the relays to load a bookmark from, growing as the outboxes it depends on are discovered */
+function bookmarkRelays$(user: User, pointer: BookmarkPointer): Observable<string[]> {
+  if (isAddressPointer(pointer)) return discovered$(of(pointer.relays), castUser(pointer.pubkey, eventStore).outboxes$);
 
-  const event = use$(() => (pointer ? eventStore.event(pointer) : undefined), [pointer]);
+  // Bookmarked "e" tags have no author, so search everywhere the user reads and writes
+  return discovered$(
+    of(pointer.relays),
+    pointer.author ? castUser(pointer.author, eventStore).outboxes$ : of([]),
+    user.inboxes$,
+    user.outboxes$,
+  );
+}
 
-  const handleAdd = async () => {
-    if (!event) return;
-    try {
-      await onAdd(event, hidden);
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to add bookmark");
-      return;
+/** Loads a bookmarked note or article from the given relays */
+function bookmark$(pointer: BookmarkPointer, relays: string[]): Observable<Note | Article | undefined> {
+  return isAddressPointer(pointer)
+    ? eventStore.replaceable({ ...pointer, relays }).pipe(castEventStream(Article, eventStore))
+    : eventStore.event({ ...pointer, relays }).pipe(castEventStream(Note, eventStore));
+}
+
+/** Loads a bookmark from its discovered relays and casts it to a note or article */
+function loaded$(user: User, bookmark: Bookmark): Observable<Loaded> {
+  const { pointer } = bookmark;
+  return bookmarkRelays$(user, pointer).pipe(
+    // Each newly discovered outbox re-requests the bookmark from the larger relay set
+    switchMap((relays) => bookmark$(pointer, relays).pipe(map((item) => ({ ...bookmark, relays, item })))),
+    startWith(bookmark),
+  );
+}
+
+/** Loads every public and hidden bookmark, newest first */
+function bookmarks$(user: User, list: BookmarksList | undefined, hidden: BookmarkPointer[] | undefined) {
+  // Newest bookmarks are appended to the end of the list
+  const bookmarks: Bookmark[] = [
+    ...(hidden ?? []).map((pointer) => ({ pointer, hidden: true })),
+    ...(list?.bookmarks ?? []).map((pointer) => ({ pointer, hidden: false })),
+  ].reverse();
+  if (bookmarks.length === 0) return of([]);
+
+  // Bookmarks resolve one by one, batch the re-renders
+  return combineLatest(bookmarks.map((b) => loaded$(user, b))).pipe(auditTime(100));
+}
+
+const MediaSymbol = Symbol("bookmark-media");
+
+/** Finds the kinds of media an event's content links to */
+function getMedia(event: NostrEvent): Set<Media> {
+  return getOrComputeCachedValue(event, MediaSymbol, () => {
+    const media = new Set<Media>();
+    if (getTagValue(event, "image")) media.add("image");
+    for (const [url] of event.content.matchAll(Tokens.link)) {
+      if (isImageURL(url)) media.add("image");
+      else if (isVideoURL(url) || isStreamURL(url)) media.add("video");
+      else if (isAudioURL(url)) media.add("audio");
+      else media.add("link");
     }
+    if (Tokens.nostrLink.test(event.content)) media.add("quote");
+    return media;
+  });
+}
 
-    // Clear input after add
-    setInput("");
-    setHidden(false);
+/** Toggles a value in a set, returning a new set */
+const toggle = <T,>(set: Set<T>, value: T) => {
+  const next = new Set(set);
+  if (!next.delete(value)) next.add(value);
+  return next;
+};
+
+function logout() {
+  // Stop the login view from restoring this account when it mounts again
+  forgetActiveAccount();
+  signer$.next(undefined);
+  user$.next(undefined);
+}
+
+/** Parses a pasted nevent, note or naddr */
+function parsePointer(input: string): BookmarkPointer | undefined {
+  try {
+    const result = decodePointer(input.trim().replace(/^nostr:/, ""));
+    if (result.type === "nevent" || result.type === "naddr") return result.data;
+    if (result.type === "note") return { id: result.data };
+  } catch {}
+  return undefined;
+}
+
+function Avatar({ user, size = "h-6 w-6" }: { user: User; size?: string }) {
+  const profile = use$(user.profile$);
+  return (
+    <img
+      src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)}
+      className={`${size} shrink-0 rounded-full`}
+    />
+  );
+}
+
+function Name({ user }: { user: User }) {
+  const profile = use$(user.profile$);
+  return <span className="min-w-0 truncate font-medium">{getDisplayName(profile, user.npub.slice(0, 12))}</span>;
+}
+
+function Byline({ user, time }: { user: User; time: Date }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <Avatar user={user} />
+      <Name user={user} />
+      <span className="opacity-60">{time.toLocaleDateString()}</span>
+    </div>
+  );
+}
+
+function NotePreview({ note }: { note: Note }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <Byline user={note.author} time={note.createdAt} />
+      <div className="line-clamp-4 whitespace-pre-wrap break-words">
+        <NoteContent event={note.event} maxLength={500} />
+      </div>
+    </div>
+  );
+}
+
+function ArticlePreview({ article }: { article: Article }) {
+  return (
+    <div className="flex min-w-0 gap-3">
+      {article.image && <img src={article.image} className="h-20 aspect-video shrink-0 object-cover" />}
+      <div className="flex min-w-0 flex-col gap-1">
+        <Byline user={article.author} time={article.publishedDate} />
+        <span className="font-semibold">{article.title || "Untitled"}</span>
+        <p className="line-clamp-2 text-sm opacity-70">{article.summary}</p>
+      </div>
+    </div>
+  );
+}
+
+function BookmarkRow({ bookmark, onRemove }: { bookmark: Loaded; onRemove?: () => void }) {
+  const { pointer, hidden, relays, item } = bookmark;
+  const media = item ? getMedia(item.event) : undefined;
+
+  return (
+    <div className="flex items-start gap-3 border-b border-base-300 p-3 last:border-b-0">
+      <span className="w-5 shrink-0 text-center" title={hidden ? "Hidden" : "Public"}>
+        {isAddressPointer(pointer) ? "📄" : "📝"}
+        {hidden && <div>🔒</div>}
+      </span>
+
+      <div className="min-w-0 flex-1">
+        {item instanceof Article ? (
+          <ArticlePreview article={item} />
+        ) : item ? (
+          <NotePreview note={item} />
+        ) : (
+          <div className="flex items-center gap-2 opacity-60">
+            <span className="loading loading-spinner loading-sm" />
+            <span className="truncate font-mono text-sm">{keyOf(pointer)}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {MEDIA.filter((m) => media?.has(m.value)).map((m) => (
+          <span key={m.value} title={m.label}>
+            {m.icon}
+          </span>
+        ))}
+        <span className="badge badge-ghost" title={relays?.join("\n")}>
+          📡 {relays?.length ?? "…"}
+        </span>
+        {onRemove && (
+          <button className="btn btn-ghost btn-sm btn-square" title="Remove" onClick={onRemove}>
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddBookmark({ user }: { user: User }) {
+  const [input, setInput] = useState("");
+  const [hidden, setHidden] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string>();
+
+  const pointer = useMemo(() => parsePointer(input), [input]);
+  const preview = use$(() => (pointer ? loaded$(user, { pointer, hidden: false }) : undefined), [user, pointer]);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pointer) return;
+    setAdding(true);
+    setError(undefined);
+    try {
+      // Bookmark the loaded event so the tag carries a relay hint
+      await actions.run(BookmarkEvent, preview?.item?.event ?? pointer, undefined, hidden);
+      setInput("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to add bookmark");
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
-    <>
-      <input
-        type="text"
-        className="input input-bordered w-full"
-        placeholder="Paste nevent or naddr here..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-      />
-
-      {pointer ? (
-        isEventPointer(pointer) ? (
-          <BookmarkNote pointer={pointer} />
-        ) : isAddressPointer(pointer) ? (
-          <BookmarkArticle pointer={pointer} />
-        ) : (
-          <div className="flex items-center gap-3">
-            <span className="loading loading-spinner" />
-            <span>Loading preview...</span>
-          </div>
-        )
-      ) : null}
-      <div className="flex gap-2 justify-end mt-2">
-        <label className="label">
-          <span className="label-text">Hidden</span>
-          <input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} />
-        </label>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!event}>
-          Add
+    <form onSubmit={add} className="flex flex-col border-b border-base-300">
+      <div className="flex gap-2 p-3">
+        <input
+          className="input input-bordered flex-1"
+          placeholder="nevent, note or naddr"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+        />
+        <button
+          type="button"
+          className={`btn btn-square ${hidden ? "btn-active" : ""}`}
+          title={hidden ? "Hidden" : "Public"}
+          onClick={() => setHidden(!hidden)}
+        >
+          {hidden ? "🔒" : "🌐"}
+        </button>
+        <button className="btn btn-primary" disabled={!pointer || adding}>
+          {adding ? <span className="loading loading-spinner loading-sm" /> : "Add"}
         </button>
       </div>
-    </>
+      {preview && (
+        <div className="border-t border-base-300">
+          <BookmarkRow bookmark={{ ...preview, hidden }} />
+        </div>
+      )}
+      {error && <div className="border-t border-base-300 p-3 text-sm text-error">{error}</div>}
+    </form>
   );
 }
 
-function BookmarkNote({ pointer, onRemove }: { pointer: EventPointer; onRemove?: () => void }) {
-  const note = use$(
-    () => eventStore.event(pointer).pipe(castEventStream(Note, eventStore)),
-    [pointer.id, pointer.relays?.join("|")],
-  );
-  const profile = use$(() => note?.author.profile$, [note]);
-
-  if (!note)
-    return (
-      <div role="alert" className="alert alert-vertical sm:alert-horizontal">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          className="stroke-info h-6 w-6 shrink-0"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          ></path>
-        </svg>
-        <div>
-          <h3 className="font-bold">Loading note {pointer.id}...</h3>
-        </div>
-        {onRemove && (
-          <button className="btn btn-sm btn-error" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
-    );
-
-  const displayName = profile?.displayName ?? note.author.npub.slice(0, 8) + "...";
-
+function Account({ user }: { user: User }) {
+  const outboxes = use$(user.outboxes$);
   return (
-    <div className="border border-base-300 bg-base-100 ">
-      <div className="p-4 space-y-3">
-        <div className="font-semibold flex gap-2 items-center">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${note.author.pubkey}.png`} alt={displayName} />
-            </div>
-          </div>
-          <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{note.createdAt.toLocaleString()}</div>
-        </div>
-        <NoteContent event={note.event} maxLength={500} />
-
-        {onRemove && (
-          <div className="flex gap-2 justify-end">
-            <button className="btn btn-sm btn-error" onClick={onRemove}>
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="flex items-center gap-2 border-t border-base-300 p-2">
+      <Avatar user={user} size="h-8 w-8" />
+      <Name user={user} />
+      <span className="ms-auto badge badge-ghost" title={outboxes?.join("\n")}>
+        📡 {outboxes?.length ?? "…"}
+      </span>
+      <button className="btn btn-sm btn-ghost" onClick={logout}>
+        Logout
+      </button>
     </div>
   );
 }
 
-function BookmarkArticle({ pointer, onRemove }: { pointer: AddressPointer; onRemove?: () => void }) {
-  const article = use$(
-    () => eventStore.replaceable(pointer).pipe(castEventStream(Article, eventStore)),
-    [getReplaceableAddressFromPointer(pointer), pointer.relays?.join("|")],
-  );
-  const profile = use$(() => article?.author.profile$, [article]);
-
-  if (!article)
-    return (
-      <div role="alert" className="alert alert-vertical sm:alert-horizontal">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          className="stroke-info h-6 w-6 shrink-0"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          ></path>
-        </svg>
-        <div>
-          <h3 className="font-bold">Loading article {getReplaceableAddressFromPointer(pointer)}...</h3>
-        </div>
-        {onRemove && (
-          <button className="btn btn-sm btn-error" onClick={onRemove}>
-            Remove
-          </button>
-        )}
-      </div>
-    );
-
-  const displayName = profile?.displayName ?? article.author.npub.slice(0, 8) + "...";
-
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border border-base-300 bg-base-100 ">
-      <div className="p-4 space-y-3">
-        <div className="font-semibold flex gap-2 items-center">
-          <div className="avatar">
-            <div className="w-10 rounded-full">
-              <img src={profile?.picture ?? `https://robohash.org/${article.author.pubkey}.png`} alt={displayName} />
-            </div>
-          </div>
-          <div>{displayName}</div>
-          <div className="ms-auto text-sm opacity-60">{article.publishedDate.toLocaleDateString()}</div>
-        </div>
-        <div className="flex gap-2 w-full">
-          {article.image && <img src={article.image} alt={article.title} className="h-48 object-cover aspect-video" />}
-          <div>
-            <h4 className="font-bold text-base mt-2">{article.title || "Untitled Article"}</h4>
-            <p className="line-clamp-5">{article.summary}</p>
-          </div>
-        </div>
-
-        {onRemove && (
-          <div className="flex gap-2 justify-end">
-            <button className="btn btn-sm btn-error" onClick={onRemove}>
-              Remove
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="flex flex-col gap-1 border-b border-base-300 p-3">
+      <span className="text-sm opacity-60">{title}</span>
+      {children}
     </div>
+  );
+}
+
+function Toggle({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button className={`btn btn-sm justify-start gap-2 ${active ? "btn-active" : "btn-ghost"}`} onClick={onClick}>
+      {children}
+    </button>
   );
 }
 
 function BookmarkManager({ user }: { user: User }) {
   const signer = use$(signer$);
-  const outboxes = use$(user.outboxes$);
+  const list = use$(user.bookmarks$);
+  const hidden = use$(() => list?.hidden$, [list]);
+  const bookmarks = use$(() => bookmarks$(user, list, hidden), [user, list, hidden]);
 
-  const bookmarks = use$(user.bookmarks$);
-
-  // Get hidden bookmarks if unlocked
-  const hasHidden = bookmarks?.hasHidden ?? false;
-  const hidden = use$(bookmarks?.hidden$);
-
-  // Get bookmarks
-  const notes = use$(user.bookmarks$.notes);
-  const articles = use$(user.bookmarks$.articles);
-  const hiddenNotes = useMemo(() => hidden?.filter((pointer) => isEventPointer(pointer)), [hidden]);
-  const hiddenArticles = useMemo(() => hidden?.filter((pointer) => isAddressPointer(pointer)), [hidden]);
-
+  const [kind, setKind] = useState<Kind>("all");
+  const [media, setMedia] = useState(new Set<Media>());
+  const [authors, setAuthors] = useState(new Set<string>());
   const [unlocking, setUnlocking] = useState(false);
+  const [error, setError] = useState<string>();
 
-  const handleAdd = async (event: NostrEvent, hidden: boolean) => {
-    if (!signer) return;
-
-    try {
-      await actions.run(BookmarkEvent, event, undefined, hidden);
-    } catch (err) {
-      throw err;
+  // Count kinds, media and authors across the loaded bookmarks
+  const stats = useMemo(() => {
+    const kinds = { all: 0, notes: 0, articles: 0 };
+    const media = new Map<Media, number>();
+    const authors = new Map<string, { user: User; count: number }>();
+    for (const b of bookmarks ?? []) {
+      kinds.all++;
+      kinds[isAddressPointer(b.pointer) ? "articles" : "notes"]++;
+      if (!b.item) continue;
+      for (const m of getMedia(b.item.event)) media.set(m, (media.get(m) ?? 0) + 1);
+      const author = authors.get(b.item.author.pubkey) ?? { user: b.item.author, count: 0 };
+      authors.set(author.user.pubkey, { ...author, count: author.count + 1 });
     }
-  };
+    return { kinds, media, authors: [...authors.values()].sort((a, b) => b.count - a.count) };
+  }, [bookmarks]);
 
-  const handleRemove = async (event: EventPointer | AddressPointer, hidden: boolean) => {
-    if (!signer) return;
+  // Media and author filters only match bookmarks that have loaded
+  const visible = (bookmarks ?? []).filter((b) => {
+    if (kind !== "all" && (kind === "articles") !== isAddressPointer(b.pointer)) return false;
+    if (media.size > 0 && !(b.item && [...getMedia(b.item.event)].some((m) => media.has(m)))) return false;
+    if (authors.size > 0 && !(b.item && authors.has(b.item.author.pubkey))) return false;
+    return true;
+  });
 
+  const unlock = async () => {
+    if (!list || !signer) return;
+    setUnlocking(true);
+    setError(undefined);
     try {
-      await actions.run(UnbookmarkEvent, event, undefined, hidden);
+      await list.unlock(signer);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove bookmark");
-    }
-  };
-
-  const handleUnlock = async () => {
-    if (!bookmarks || !signer || unlocking) return;
-
-    try {
-      setUnlocking(true);
-      await bookmarks.unlock(signer);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to unlock hidden bookmarks");
+      setError(err instanceof Error ? err.message : "Failed to unlock hidden bookmarks");
     } finally {
       setUnlocking(false);
     }
   };
 
+  const remove = (bookmark: Bookmark) =>
+    actions
+      .run(UnbookmarkEvent, bookmark.pointer, undefined, bookmark.hidden)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+
   return (
-    <div className="container mx-auto my-8 px-4 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Bookmark Manager</h1>
+    <div className="flex min-h-0 grow">
+      <aside className="flex w-72 shrink-0 flex-col border-e border-base-300">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Section title="Type">
+            {(["all", "notes", "articles"] as const).map((k) => (
+              <Toggle key={k} active={kind === k} onClick={() => setKind(k)}>
+                <span className="capitalize">{k}</span>
+                <span className="ms-auto opacity-60">{stats.kinds[k]}</span>
+              </Toggle>
+            ))}
+          </Section>
 
-      {/* Add Bookmark Form */}
-      <BookmarkEventForm onAdd={handleAdd} />
+          <Section title="Content">
+            {MEDIA.map((m) => (
+              <Toggle key={m.value} active={media.has(m.value)} onClick={() => setMedia(toggle(media, m.value))}>
+                {m.icon} {m.label}
+                <span className="ms-auto opacity-60">{stats.media.get(m.value) ?? 0}</span>
+              </Toggle>
+            ))}
+          </Section>
 
-      {/* Unlock Hidden Bookmarks */}
-      {hasHidden && !hidden && (
-        <div className="border border-base-300 bg-base-100  mb-6">
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Hidden Bookmarks Available</h3>
-                <p className="text-sm opacity-70">Unlock to view hidden bookmarks</p>
-              </div>
-              <button className="btn btn-primary" onClick={handleUnlock} disabled={unlocking || !signer}>
-                {unlocking ? <span className="loading loading-spinner" /> : "Unlock Hidden Bookmarks"}
-              </button>
-            </div>
-          </div>
+          <Section title="Authors">
+            {stats.authors.map(({ user, count }) => (
+              <Toggle
+                key={user.pubkey}
+                active={authors.has(user.pubkey)}
+                onClick={() => setAuthors(toggle(authors, user.pubkey))}
+              >
+                <Avatar user={user} />
+                <Name user={user} />
+                <span className="ms-auto opacity-60">{count}</span>
+              </Toggle>
+            ))}
+          </Section>
         </div>
-      )}
+        <Account user={user} />
+      </aside>
 
-      {!bookmarks ? (
-        outboxes && outboxes.length > 0 ? (
-          <div className="alert">
-            <span>Loading bookmarks from {outboxes.join(", ")}</span>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <AddBookmark user={user} />
+
+        {list?.hasHidden && !hidden && (
+          <div className="flex items-center gap-2 border-b border-base-300 p-3">
+            <span>🔒</span>
+            <button className="btn btn-sm" onClick={unlock} disabled={unlocking}>
+              {unlocking ? <span className="loading loading-spinner loading-sm" /> : "Unlock hidden"}
+            </button>
           </div>
+        )}
+
+        {error && <div className="border-b border-base-300 p-3 text-sm text-error">{error}</div>}
+
+        {!list || !bookmarks ? (
+          <div className="flex justify-center p-6">
+            <span className="loading loading-dots" />
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="p-6 text-center opacity-60">No bookmarks</div>
         ) : (
-          <div className="alert">
-            <span>Loading bookmarks...</span>
-          </div>
-        )
-      ) : null}
-
-      {/* Hidden Bookmarks List */}
-      <div className="space-y-2">
-        {hidden ? (
-          hidden.length === 0 ? (
-            <div className="alert alert-info">
-              <span>No bookmarks yet. Add a bookmark using the form above.</span>
-            </div>
-          ) : (
-            <h3 className="text-xl font-bold mb-3">Hidden Bookmarks ({hidden.length})</h3>
-          )
-        ) : null}
-
-        {hiddenNotes && hiddenNotes.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-3">Notes ({hiddenNotes.length})</h2>
-            <div className="space-y-2">
-              {hiddenNotes.map((pointer) => (
-                <BookmarkNote key={pointer.id} pointer={pointer} onRemove={() => handleRemove(pointer, true)} />
-              ))}
-            </div>
-          </div>
+          visible.map((bookmark) => (
+            <BookmarkRow
+              key={`${bookmark.hidden}:${keyOf(bookmark.pointer)}`}
+              bookmark={bookmark}
+              onRemove={() => remove(bookmark)}
+            />
+          ))
         )}
-
-        {hiddenArticles && hiddenArticles.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-3">Articles ({hiddenArticles.length})</h2>
-            <div className="space-y-2">
-              {hiddenArticles.map((pointer) => (
-                <BookmarkArticle
-                  key={getReplaceableAddressFromPointer(pointer)}
-                  pointer={pointer}
-                  onRemove={() => handleRemove(pointer, true)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Bookmarks List */}
-      <div className="space-y-2 mt-4">
-        {bookmarks ? (
-          bookmarks.bookmarks.length === 0 ? (
-            <div className="alert alert-info">
-              <span>No bookmarks yet. Add a bookmark using the form above.</span>
-            </div>
-          ) : (
-            <h3 className="text-xl font-bold mb-3">Bookmarks ({bookmarks.bookmarks.length})</h3>
-          )
-        ) : null}
-
-        {notes && notes.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-3">Notes ({notes.length})</h2>
-            <div className="space-y-2">
-              {notes.map((pointer) => (
-                <BookmarkNote key={pointer.id} pointer={pointer} onRemove={() => handleRemove(pointer, false)} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {articles && articles.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold mb-3">Articles ({articles.length})</h2>
-            <div className="space-y-2">
-              {articles.map((pointer) => (
-                <BookmarkArticle
-                  key={getReplaceableAddressFromPointer(pointer)}
-                  pointer={pointer}
-                  onRemove={() => handleRemove(pointer, false)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }
 
-export default function BookmarksExample() {
+export default function App() {
+  const signer = use$(signer$);
   const user = use$(user$);
 
-  const handleLogin = async (signer: ISigner, pubkey: string) => {
+  const handleLogin = (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
-    pubkey$.next(pubkey);
+    user$.next(castUser(pubkey, eventStore));
   };
 
-  // Show login view if not logged in
-  if (!user) return <LoginView onLogin={handleLogin} />;
-
-  // Show main bookmark manager view
-  return <BookmarkManager user={user} />;
+  if (!signer || !user) return <LoginView onLogin={handleLogin} />;
+  return <BookmarkManager key={user.pubkey} user={user} />;
 }
