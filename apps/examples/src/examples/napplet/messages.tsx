@@ -27,7 +27,13 @@ import {
   type NostrEvent,
 } from "applesauce-core/helpers";
 import { watchEventsUpdates } from "applesauce-core/observable";
-import { createKehtoServices, type KehtoContext } from "applesauce-extra/kehto";
+import {
+  createKehtoDmService,
+  createKehtoIdentityService,
+  createKehtoResourceService,
+  createKehtoCommonService,
+  type KehtoContext,
+} from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -202,12 +208,15 @@ const kehtoContext: KehtoContext = {
   approve: ({ template }) => approve(template),
 };
 
-const services = createKehtoServices(kehtoContext, {
+const services = {
+  identity: createKehtoIdentityService(kehtoContext),
+  resource: createKehtoResourceService(kehtoContext),
+  common: createKehtoCommonService(kehtoContext),
   // The NIP-17 and NIP-04 protocols fail independently, so one broken backend still leaves the other readable
-  dm: {
+  dm: createKehtoDmService(kehtoContext, {
     onProtocolError: ({ protocol, operation, error }) => addLog("error", `${protocol} ${operation}`, String(error)),
-  },
-});
+  }),
+};
 
 // Log the NAP-DM requests and results passing through the bridge
 const dm = services.dm!;
@@ -225,7 +234,7 @@ services.dm = {
   },
 };
 
-// The prepared services replace the defaults, so the host creates no duplicates
+// Register messaging and identity explicitly
 const host = createKehtoHost(kehtoContext, { services });
 
 import.meta.hot?.dispose(() => host.destroy());

@@ -1,11 +1,13 @@
 import type { NappletArtifactCache, ResolvedNapplet } from "@kehto/nip/5d";
 import type { NappletMessage, ShellBridge, ShellEnvironment } from "@kehto/shell";
 import type { NostrEvent } from "applesauce-core/helpers";
-import type { KehtoServicesOptions } from "../services.js";
+import type { ServiceRegistry } from "@kehto/runtime";
 import type { KehtoShellOverrides } from "./adapter.js";
 
 /** Options for an applesauce-backed browser napplet host */
-export interface KehtoHostOptions extends KehtoServicesOptions {
+export interface KehtoHostOptions {
+  /** The complete service registry, with no services included when omitted */
+  services?: ServiceRegistry;
   /** Partial shell hooks that extend the applesauce defaults */
   shell?: KehtoShellOverrides;
   /** The application-owned verified artifact cache */

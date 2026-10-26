@@ -27,69 +27,75 @@ The store, pool, accounts, relay lists, and approval UI belong to your applicati
 
 ## Service registry
 
-`createKehtoServices(context, options)` returns a Kehto service registry. Supply it to your existing shell adapter:
+Construct only the services your app supports and supply the complete registry to your existing shell adapter:
 
 ```ts
-import { createKehtoServices } from "applesauce-extra/kehto";
+import { createKehtoIdentityService, createKehtoOutboxService } from "applesauce-extra/kehto";
 import { createShellBridge } from "@kehto/shell";
 
-const services = createKehtoServices(context, { disable: ["upload"] });
+const services = {
+  identity: createKehtoIdentityService(context),
+  outbox: createKehtoOutboxService(context),
+};
 const bridge = createShellBridge({ ...existingAdapter, services });
 ```
 
 `existingAdapter` supplies your app's Kehto shell hooks. Creating a registry alone does not mount documents, register source windows, install a browser message listener, or deliver account changes.
 
-| Default service | Connects to                                                        |
-| --------------- | ------------------------------------------------------------------ |
-| `identity`      | Active identity, profiles, contacts, mutes, and application blocks |
-| `outbox`        | Event reads, subscriptions, and publishing                         |
-| `count`         | Relay counts                                                       |
-| `common`        | Social data and actions such as reactions and follows              |
-| `lists`         | List reads and mutations                                           |
-| `resource`      | Resource resolution and verified content retrieval                 |
-| `upload`        | Blossom uploads                                                    |
-| `dm`            | NIP-17 and legacy NIP-04 messaging                                 |
+| Constructor                  | Service    | Connects to                                                        |
+| ---------------------------- | ---------- | ------------------------------------------------------------------ |
+| `createKehtoIdentityService` | `identity` | Active identity, profiles, contacts, mutes, and application blocks |
+| `createKehtoOutboxService`   | `outbox`   | Event reads, subscriptions, and publishing                         |
+| `createKehtoCountService`    | `count`    | Relay counts                                                       |
+| `createKehtoCommonService`   | `common`   | Social data and actions such as reactions and follows              |
+| `createKehtoListsService`    | `lists`    | List reads and mutations                                           |
+| `createKehtoResourceService` | `resource` | Resource resolution and verified content retrieval                 |
+| `createKehtoUploadService`   | `upload`   | Blossom uploads                                                    |
+| `createKehtoDmService`       | `dm`       | NIP-17 and legacy NIP-04 messaging                                 |
 
 Availability of individual operations depends on the active signer and its encryption support. See [Messaging](./messaging.md) for protocol selection and routing.
 
 ### Customization
 
-Pass additional or replacement Kehto services through `services`. A replacement prevents the corresponding default from being constructed. `disable` suppresses defaults but does not remove explicitly supplied services.
+The registry is the complete set of services. Omit an entry to leave that service unavailable; the host and shell adapter construct no services automatically. Use ordinary object composition to add or replace entries:
 
 ```ts
-const services = createKehtoServices(context, {
-  disable: ["upload"],
-  identity: { getBlocked: (pubkey) => appBlocks.get(pubkey) ?? [] },
-  resource: { maxBytes: 5 * 1024 * 1024 },
-  services: { theme: theme.handler, intent: intentService },
-});
+const services = {
+  ...appServices,
+  identity: createKehtoIdentityService(context, {
+    getBlocked: (pubkey) => appBlocks.get(pubkey) ?? [],
+  }),
+  resource: createKehtoResourceService(context, { maxBytes: 5 * 1024 * 1024 }),
+  theme: theme.handler,
+  intent: intentService,
+};
 ```
 
 Here `appBlocks`, `theme`, and `intentService` are application-owned implementations. Custom services still need Kehto's matching capability hooks and protocol bindings. For domains outside the built-in dispatcher, Kehto also requires exact `messageCapabilities` mappings and explicit domain admission; registry membership alone is insufficient. See [Register a Service](https://kehto.github.io/web/docs/how-tos/register-service). Keep the registry fixed while documents run; their capability environment is established at initialization.
 
 ### Application block lists
 
-Identity blocks are application policy. Pass an `identity.getBlocked` provider through the service options; it receives the active account pubkey and original request and returns blocked pubkeys.
+Identity blocks are application policy. Pass a `getBlocked` provider to `createKehtoIdentityService`; it receives the active account pubkey and original request and returns blocked pubkeys.
 
 ```ts
-const services = createKehtoServices(context, {
-  identity: { getBlocked: (pubkey) => appBlocks.get(pubkey) ?? [] },
+const identity = createKehtoIdentityService(context, {
+  getBlocked: (pubkey) => appBlocks.get(pubkey) ?? [],
 });
 ```
 
-Alternatively, set `identity: { useMutesForBlocks: true }` to return public NIP-51 muted pubkeys as blocks. This uses the same reader as `getMutes` and does not decrypt private entries. An explicit `getBlocked` provider takes precedence. Without either option, Kehto returns an empty block list; applications decide how blocks affect filtering or delivery.
+Alternatively, pass `{ useMutesForBlocks: true }` to the identity constructor to return public NIP-51 muted pubkeys as blocks. This uses the same reader as `getMutes` and does not decrypt private entries. An explicit `getBlocked` provider takes precedence. Without either option, Kehto returns an empty block list; applications decide how blocks affect filtering or delivery.
 
 ## Integration
 
 ### Applesauce shell hooks
 
-Use `createKehtoShellAdapter` when you also want Applesauce's relay and signer hooks. It creates the default services internally and accepts the same service options, plus partial `overrides` for shell hooks:
+Use `createKehtoShellAdapter` when you also want Applesauce's relay and signer hooks. Pass the complete `services` registry and optional partial `overrides` for shell hooks:
 
 ```ts
 import { createKehtoShellAdapter } from "applesauce-extra/kehto";
 import { createShellBridge } from "@kehto/shell";
 
-const adapter = createKehtoShellAdapter(context, { disable: ["upload"] });
+const adapter = createKehtoShellAdapter(context, { services });
 const bridge = createShellBridge(adapter);
 window.addEventListener("message", bridge.handleMessage);
 
@@ -105,7 +111,9 @@ Let `bridge.destroy()` unregister attached services, then use `adapter.stop({ se
 
 ### Individual adapters
 
-For a smaller registry, compose Kehto services with the exported option helpers:
+Each constructor in the table above is exported from `applesauce-extra/kehto` and accepts the shared context. Identity, common, resource, and DM also accept service-specific options.
+
+For custom wiring, compose the exported option helpers with Kehto's own factories:
 
 ```ts
 import { createIdentityService } from "@kehto/services";

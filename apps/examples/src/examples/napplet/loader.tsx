@@ -15,7 +15,17 @@ import {
   manifestToIntentCatalogEntry,
   type IntentDispatchParams,
 } from "@kehto/services";
-import { createResourceOptions, kehtoAccount$, type KehtoContext } from "applesauce-extra/kehto";
+import {
+  createKehtoIdentityService,
+  createKehtoOutboxService,
+  createKehtoCommonService,
+  createKehtoCountService,
+  createKehtoListsService,
+  createKehtoUploadService,
+  createResourceOptions,
+  kehtoAccount$,
+  type KehtoContext,
+} from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { castEvent, castUser, Napplet, User } from "applesauce-common/casts";
 import {
@@ -211,7 +221,20 @@ const resource = createResourceService({
 
 const host = createKehtoHost(kehtoContext, {
   cache: artifactCache,
-  services: { theme: theme.handler, notify, link, intent, keys, resource },
+  services: {
+    identity: createKehtoIdentityService(kehtoContext),
+    outbox: createKehtoOutboxService(kehtoContext),
+    common: createKehtoCommonService(kehtoContext),
+    count: createKehtoCountService(kehtoContext),
+    lists: createKehtoListsService(kehtoContext),
+    upload: createKehtoUploadService(kehtoContext),
+    theme: theme.handler,
+    notify,
+    link,
+    intent,
+    keys,
+    resource,
+  },
 });
 
 // Push theme changes; the host forwards account changes automatically

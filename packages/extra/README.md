@@ -70,8 +70,15 @@ Applesauce connects Kehto's sandboxed napplets to your app's existing EventStore
 
 ```ts
 import { createKehtoHost } from "applesauce-extra/kehto/host";
+import { createKehtoIdentityService, createKehtoOutboxService } from "applesauce-extra/kehto";
 
-const host = createKehtoHost({ eventStore, pool, signer: accounts.active$ });
+const context = { eventStore, pool, signer: accounts.active$ };
+const host = createKehtoHost(context, {
+  services: {
+    identity: createKehtoIdentityService(context),
+    outbox: createKehtoOutboxService(context),
+  },
+});
 const instance = await host.resolve(manifestEvent);
 instance.mount(iframe);
 await instance.whenReady();
@@ -79,7 +86,7 @@ await instance.whenReady();
 
 Configure the store's event loader before creating the host. The application owns the iframe, permission UI, and signing approval policy. Call `instance.destroy()` before removing its iframe and `host.destroy()` when the host's owner ends.
 
-The host includes identity, outbox, count, common, upload, lists, resource, and DM services. Messaging defaults to NIP-17 and legacy NIP-04; custom protocols and send routing are optional.
+Choose services with individual constructors and pass the complete registry to the host. No services are created automatically. Add `dm: createKehtoDmService(context)` only when the app supports messaging; it defaults to NIP-17 and legacy NIP-04, with optional custom protocols and send routing.
 
 - [Napplets: manifests, discovery, and handlers](https://applesauce.build/napplets/)
 - [Hosting: setup, permissions, services, and lifecycle](https://applesauce.build/napplets/hosting)

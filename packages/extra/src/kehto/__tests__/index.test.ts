@@ -5,7 +5,17 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createKehtoServices, createKehtoShellAdapter } from "../index.js";
+import {
+  createKehtoIdentityService,
+  createKehtoOutboxService,
+  createKehtoCountService,
+  createKehtoCommonService,
+  createKehtoListsService,
+  createKehtoResourceService,
+  createKehtoUploadService,
+  createKehtoDmService,
+  createKehtoShellAdapter,
+} from "../index.js";
 import type { KehtoContext } from "../types.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
@@ -47,21 +57,31 @@ afterEach(() => {
 });
 
 describe("registry", () => {
-  it("creates every service unless disabled", async () => {
-    const state = await create();
-    expect(Object.keys(createKehtoServices(state)).sort()).toEqual([
-      "common",
-      "count",
-      "dm",
-      "identity",
-      "lists",
-      "outbox",
-      "resource",
-      "upload",
-    ]);
-    expect(
-      Object.keys(createKehtoServices(state, { disable: ["upload", "count", "lists", "resource", "dm"] })).sort(),
-    ).toEqual(["common", "identity", "outbox"]);
+  it("includes only the services supplied by the app", async () => {
+    const context = await create();
+    const services = {
+      identity: createKehtoIdentityService(context),
+      outbox: createKehtoOutboxService(context),
+    };
+    const adapter = createKehtoShellAdapter(context, { services });
+    adapters.push(adapter);
+    expect(Object.keys(adapter.services!).sort()).toEqual(["identity", "outbox"]);
+    expect(adapter.services!.dm).toBeUndefined();
+    expect(adapter.upload).toBeUndefined();
+    expect(services.identity.descriptor.name).toBe("identity");
+    expect(services.outbox.descriptor.name).toBe("outbox");
+  });
+
+  it("includes no implicit services", async () => {
+    const context = await create();
+    for (const options of [undefined, { services: {} }]) {
+      const adapter = createKehtoShellAdapter(context, options);
+      adapters.push(adapter);
+      expect(adapter.services).toEqual({});
+      expect(adapter.common).toBeUndefined();
+      expect(adapter.lists).toBeUndefined();
+      expect(adapter.upload).toBeUndefined();
+    }
   });
 
   it("keeps service creation lazy and stops shell snapshots without owning the host loader", async () => {
@@ -70,7 +90,17 @@ describe("registry", () => {
     const context = await create({ signer: signer$, fallbackRelays });
     const loader = vi.fn();
     store.eventLoader = loader;
-    createKehtoServices(context);
+    const constructors = [
+      createKehtoIdentityService,
+      createKehtoOutboxService,
+      createKehtoCountService,
+      createKehtoCommonService,
+      createKehtoListsService,
+      createKehtoResourceService,
+      createKehtoUploadService,
+      createKehtoDmService,
+    ];
+    for (const construct of constructors) construct(context);
     expect(signer$.observed).toBe(false);
     expect(fallbackRelays.observed).toBe(false);
 
@@ -97,7 +127,7 @@ describe("registry", () => {
     await vi.waitFor(() => expect(adapter.auth.getUserPubkey()).toBe(alice));
     expect(await adapter.auth.getSigner("w")?.getPublicKey()).toBe(alice);
     expect(adapter.relayPool.selectRelayTier([])).toEqual(["wss://alice.relay.com/"]);
-    expect(adapter.services?.identity).toBeDefined();
+    expect(adapter.services).toEqual({});
   });
 });
 
@@ -114,7 +144,7 @@ describe("shell composition", () => {
     expect(cleanup).toHaveBeenCalledOnce();
   });
 
-  it("advertises added services and uses replacements instead of defaults", async () => {
+  it("advertises app services and unregisters them once", async () => {
     const replacement = {
       descriptor: { name: "lists", version: "1.0.0" },
       handleMessage: vi.fn(),
@@ -122,7 +152,6 @@ describe("shell composition", () => {
     };
     const link = { descriptor: { name: "link", version: "1.0.0" }, handleMessage: vi.fn() };
     const adapter = createKehtoShellAdapter(await create(), {
-      disable: ["upload"],
       services: { lists: replacement, link },
     });
     adapters.push(adapter);

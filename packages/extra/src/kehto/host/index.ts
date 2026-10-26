@@ -23,7 +23,7 @@ export function createKehtoHost(context: KehtoContext, options: KehtoHostOptions
   const readyTimeout = options.readyTimeout ?? 10000;
   if (!Number.isFinite(readyTimeout) || readyTimeout <= 0) throw new Error("readyTimeout must be positive and finite");
 
-  const adapter = createKehtoShellAdapter(context, { ...options, overrides: options.shell });
+  const adapter = createKehtoShellAdapter(context, { services: options.services, overrides: options.shell });
   let runtimeContext: ServiceRuntimeContext | undefined;
   for (const [name, service] of Object.entries(adapter.services ?? {})) {
     adapter.services![name] = {

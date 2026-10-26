@@ -30,16 +30,27 @@ Skip this step if your store already has a loader. Create one host for the nappl
 
 ```ts
 import { createKehtoHost } from "applesauce-extra/kehto/host";
+import { createKehtoIdentityService, createKehtoOutboxService, type KehtoContext } from "applesauce-extra/kehto";
 
-const host = createKehtoHost({
+const context: KehtoContext = {
   eventStore,
   pool,
   signer: accounts.active$,
   fallbackRelays,
   fallbackBlossomServers,
   approve: ({ windowId, template }) => askToSign(windowId, template),
-});
+};
 
+const services = {
+  identity: createKehtoIdentityService(context),
+  outbox: createKehtoOutboxService(context),
+};
+const host = createKehtoHost(context, { services });
+```
+
+Resolve and mount a verified napplet artifact:
+
+```ts
 const instance = await host.resolve(manifestEvent);
 instance.mount(iframe); // A connected, application-owned iframe
 await instance.whenReady();
@@ -73,20 +84,20 @@ Instances represent one document. Mounting into another iframe requires a new in
 
 ## Integration
 
-### Included services
+### Choosing services
 
-The host creates identity, outbox, count, common, lists, resource, upload, and DM services automatically. See [Services & Adapters](./services.md#service-registry) for their responsibilities and configuration.
+Pass a complete `services` registry containing only the services your app supports. Omitting it creates a host with no NAP services. The example above provides identity and outbox; messaging is unavailable because there is no `dm` entry. See [Services & Adapters](./services.md#service-registry) for the available constructors.
 
-Pass `signer: accounts.active$` to follow login, logout, and account switches. Omit the signer for an anonymous host; operations requiring signing or decryption remain unavailable. See [Messaging](./messaging.md) to choose protocols and send routing, or use `disable: ["dm"]` to omit messaging.
+Pass `signer: accounts.active$` to follow login, logout, and account switches. Omit the signer for an anonymous host; operations requiring signing or decryption remain unavailable. See [Messaging](./messaging.md) to add DM support and choose protocols and send routing.
 
 ### Additional NAP services
 
-Add services by name, or replace an applesauce default with your own implementation:
+Add application services or replace entries using object composition:
 
 ```ts
 const host = createKehtoHost(context, {
-  disable: ["upload"],
   services: {
+    ...services,
     theme: theme.handler,
     notify: notifyService,
     intent: intentService,
@@ -95,7 +106,7 @@ const host = createKehtoHost(context, {
 });
 ```
 
-`theme`, `notifyService`, `intentService`, and `customResource` above are application-created Kehto services. An explicit service replaces the matching default before it is constructed. `disable` suppresses default creation; it does not remove an explicitly supplied service. Kehto computes capabilities from the final registry and shell hooks. Known service domains such as `intent` and `link` receive their required availability hooks automatically.
+`theme`, `notifyService`, `intentService`, and `customResource` above are application-created Kehto services. The supplied registry is used as-is; there are no implicit defaults to disable. Kehto computes capabilities from the final registry and shell hooks. Known service domains such as `intent` and `link` receive their required availability hooks automatically.
 
 Custom services still follow Kehto's registration, capability, and protocol requirements. Adding a registry entry does not invent a browser namespace binding or grant permissions. See [registering a service](https://kehto.github.io/web/docs/how-tos/register-service) for domain routing and extension requirements.
 
@@ -103,6 +114,7 @@ For custom shell behavior, supply partial hook groups. Unspecified methods retai
 
 ```ts
 const host = createKehtoHost(context, {
+  services,
   shell: {
     relayPool: {
       openScopedRelay,
@@ -122,7 +134,10 @@ Napplet reads through NAP-OUTBOX select relays from the authors' NIP-65 outboxes
 
 ```ts
 const pool = new RelayPool({ liveness }); // Unhealthy outboxes are replaced by healthy ones
-const host = createKehtoHost({ ...context, pool, relaySelection: { maxConnections: 20, maxRelaysPerUser: max$ } });
+const relayContext = { ...context, pool, relaySelection: { maxConnections: 20, maxRelaysPerUser: max$ } };
+const host = createKehtoHost(relayContext, {
+  services: { outbox: createKehtoOutboxService(relayContext) },
+});
 ```
 
 ### Caching and artifact fetching
@@ -133,7 +148,7 @@ Pass an application-owned artifact cache, or customize resolution for one instan
 import { openNappletArtifactCache } from "@kehto/nip/5d";
 
 const cache = await openNappletArtifactCache();
-const host = createKehtoHost(context, { cache });
+const host = createKehtoHost(context, { services, cache });
 const instance = await host.resolve(manifestEvent, {
   fetchBlob: (hash, servers) => fetchArtifact(hash, servers),
 });

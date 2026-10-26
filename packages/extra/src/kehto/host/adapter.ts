@@ -7,17 +7,24 @@ import { createKehtoRelayPool } from "../foundation/pool.js";
 import { relaySelection$, selectRelayTier } from "../foundation/relays.js";
 import { createKehtoSigner } from "../foundation/signer.js";
 import { configured$, latest } from "../helpers.js";
-import { createKehtoServices, type KehtoServicesOptions } from "../services.js";
 import type { KehtoContext } from "../types.js";
 
 /** Partial shell hook groups for extending the applesauce defaults */
 export type KehtoShellOverrides = {
-  [Key in keyof ShellAdapter]?: Key extends "services"
-    ? ServiceRegistry
-    : NonNullable<ShellAdapter[Key]> extends (...args: never[]) => unknown
-      ? ShellAdapter[Key]
-      : Partial<NonNullable<ShellAdapter[Key]>>;
+  [Key in Exclude<keyof ShellAdapter, "services">]?: NonNullable<ShellAdapter[Key]> extends (
+    ...args: never[]
+  ) => unknown
+    ? ShellAdapter[Key]
+    : Partial<NonNullable<ShellAdapter[Key]>>;
 };
+
+/** Options for composing an applesauce-backed shell adapter */
+export interface KehtoShellAdapterOptions {
+  /** The complete service registry, with no services included when omitted */
+  services?: ServiceRegistry;
+  /** Partial shell hooks that extend the applesauce defaults */
+  overrides?: KehtoShellOverrides;
+}
 
 /** Options for stopping an adapter whose services may be owned by a runtime */
 export interface KehtoStopOptions {
@@ -37,19 +44,13 @@ export interface KehtoShellAdapter extends ShellAdapter {
  * const bridge = createShellBridge(createKehtoShellAdapter({ pool, eventStore, signer: manager.active$ }));
  * window.addEventListener("message", bridge.handleMessage);
  */
-export function createKehtoShellAdapter(
-  context: KehtoContext,
-  options?: KehtoServicesOptions & { overrides?: KehtoShellOverrides },
-): KehtoShellAdapter {
+export function createKehtoShellAdapter(context: KehtoContext, options?: KehtoShellAdapterOptions): KehtoShellAdapter {
   const account = latest(kehtoAccount$(context), undefined);
   const fallbackRelays = latest(configured$(context.fallbackRelays, []), []);
   const selection = latest(relaySelection$(context.pool, context.relaySelection), {});
   const relayPool = createKehtoRelayPool(context, (event) => decryptForNapplet$(context, event));
   const subscriptions = new Map<string, () => void>();
-  const services = createKehtoServices(context, {
-    ...options,
-    services: { ...options?.services, ...options?.overrides?.services },
-  });
+  const services = { ...options?.services };
   const available = { isAvailable: () => true };
   let stopped = false;
 
@@ -121,8 +122,7 @@ export function createKehtoShellAdapter(
 
   const overrides = options?.overrides;
   if (overrides) {
-    for (const key of Object.keys(overrides) as (keyof ShellAdapter)[]) {
-      if (key === "services") continue;
+    for (const key of Object.keys(overrides) as (keyof KehtoShellOverrides)[]) {
       const value = overrides[key];
       const current = adapter[key];
       (adapter as unknown as Record<string, unknown>)[key] =

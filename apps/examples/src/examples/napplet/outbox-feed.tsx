@@ -8,7 +8,13 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { finalizeEvent, generateSecretKey, npubEncode } from "applesauce-core/helpers";
-import { createKehtoServices, type KehtoContext } from "applesauce-extra/kehto";
+import {
+  createKehtoIdentityService,
+  createKehtoResourceService,
+  createKehtoCommonService,
+  createKehtoOutboxService,
+  type KehtoContext,
+} from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -58,7 +64,12 @@ const kehtoContext: KehtoContext = {
 
 /** Wraps every applesauce service so the requests and results passing through the bridge are logged */
 function loggedServices() {
-  const services = createKehtoServices(kehtoContext);
+  const services: Record<string, ReturnType<typeof createKehtoIdentityService>> = {
+    identity: createKehtoIdentityService(kehtoContext),
+    resource: createKehtoResourceService(kehtoContext),
+    common: createKehtoCommonService(kehtoContext),
+    outbox: createKehtoOutboxService(kehtoContext),
+  };
 
   for (const [name, service] of Object.entries(services)) {
     services[name] = {

@@ -4,26 +4,30 @@ description: Configure messaging protocols and send routing for napplets hosted 
 
 # Napplet messaging
 
-The [napplet host](./hosting.md) includes a `dm` service backed by NIP-17 wrapped messages and legacy NIP-04 messages. Kehto's [`createDmService`](https://kehto.github.io/web/docs/api/modules/_kehto_services.html#dm-nap) handles request correlation, per-window subscriptions, and response envelopes; Applesauce supplies the message adapters. Your application chooses the transports, send policy, and signer.
+Add messaging explicitly with `createKehtoDmService`. It defaults to NIP-17 wrapped messages and legacy NIP-04 messages. Kehto's [`createDmService`](https://kehto.github.io/web/docs/api/modules/_kehto_services.html#dm-nap) handles request correlation, per-window subscriptions, and response envelopes; Applesauce supplies the message adapters. Your application chooses the transports, send policy, and signer.
 
-For the default setup, no separate DM adapter is needed. Pass your reactive signer and approval callback to `createKehtoHost`. To change protocols, pass `dm` in the host's second argument:
+Pass the service in the [host's registry](./hosting.md#choosing-services). To support only NIP-17:
 
 ```ts
 import { createKehtoHost } from "applesauce-extra/kehto/host";
-import { createWrappedMessageProtocol } from "applesauce-extra/kehto";
+import { createKehtoDmService, createWrappedMessageProtocol } from "applesauce-extra/kehto";
 
 const host = createKehtoHost(context, {
-  dm: { protocols: [createWrappedMessageProtocol(context)] },
+  services: {
+    dm: createKehtoDmService(context, {
+      protocols: [createWrappedMessageProtocol(context)],
+    }),
+  },
 });
 ```
 
-This example enables only NIP-17. The following sections cover standalone adapters and custom transports; use the host's defaults unless your app needs to change them.
+Use `createKehtoDmService(context)` to support both default protocols. Omit the `dm` registry entry entirely when your app does not support messaging.
 
 `createMultiProtocolDmAdapter` from `applesauce-extra/kehto` composes message protocol adapters into Kehto's existing `DmAdapter`; `createDmOptions` wraps it as service options. Wrapped NIP-17 and legacy NIP-04 adapters own their Nostr dependencies; custom adapters can use other transports and authentication.
 
 ## Usage
 
-Pass only the protocols the application supports. An empty array exposes an unavailable DM adapter; `disable: ["dm"]` omits the service entirely when using `createKehtoServices`.
+Pass only the protocols the application supports. An empty array exposes an unavailable DM adapter; omit the `dm` registry entry to leave out the service entirely.
 
 ```ts
 import { createDmOptions, createWrappedMessageProtocol, createLegacyMessageProtocol } from "applesauce-extra/kehto";
@@ -113,20 +117,20 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## Integration
 
-`createKehtoServices` defaults to wrapped and legacy adapters built from the host context. Override the whole protocol list to use custom-only messaging or a chosen subset:
+`createKehtoDmService` builds wrapped and legacy adapters from the shared context by default. Override the protocol list for custom-only messaging:
 
 ```ts
-import { createKehtoServices } from "applesauce-extra/kehto";
+import { createKehtoDmService } from "applesauce-extra/kehto";
 
-const services = createKehtoServices(context, {
-  dm: {
+const services = {
+  dm: createKehtoDmService(context, {
     protocols: [customProtocol],
     routeSend: useProtocol(customProtocol.id),
-  },
-});
+  }),
+};
 ```
 
-For standalone use, pass the returned options to Kehto's `createDmService(dm)`. `adapter.close()` owns the supplied protocol adapters and calls their optional `close` methods; create separate adapter instances for independently managed services.
+For standalone use, pass `createDmOptions(...)` to Kehto's `createDmService`. `adapter.close()` owns the supplied protocol adapters and calls their optional `close` methods; create separate adapter instances for independently managed services.
 
 ## Best Practices
 

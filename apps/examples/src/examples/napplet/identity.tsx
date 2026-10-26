@@ -8,7 +8,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { castUser, User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";
 import { finalizeEvent, generateSecretKey, npubEncode, type EventTemplate } from "applesauce-core/helpers";
-import { createKehtoServices, type KehtoContext } from "applesauce-extra/kehto";
+import { createKehtoIdentityService, createKehtoCommonService, type KehtoContext } from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
@@ -66,7 +66,10 @@ const kehtoContext: KehtoContext = {
 
 /** Wraps every applesauce service so the requests and results passing through the bridge are logged */
 function loggedServices() {
-  const services = createKehtoServices(kehtoContext);
+  const services: Record<string, ReturnType<typeof createKehtoIdentityService>> = {
+    identity: createKehtoIdentityService(kehtoContext),
+    common: createKehtoCommonService(kehtoContext),
+  };
 
   for (const [name, service] of Object.entries(services)) {
     services[name] = {
@@ -87,7 +90,7 @@ function loggedServices() {
   return services;
 }
 
-// Every default service is replaced by its logged copy, so the host creates no duplicates
+// Register only the services this napplet uses
 const host = createKehtoHost(kehtoContext, { services: loggedServices() });
 
 // The host pushes identity.changed itself, outside the services
