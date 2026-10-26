@@ -74,17 +74,6 @@ button:disabled {
   padding: 0 8px;
 }
 
-.relay {
-  border-left: 4px solid var(--relay-color);
-  border-radius: 4px;
-  padding: 0 6px;
-  background: color-mix(in srgb, var(--relay-color) 12%, transparent);
-}
-
-.relay.planned {
-  outline: 1px solid var(--relay-color);
-}
-
 .feed {
   gap: 0;
   padding: 0;
@@ -130,4 +119,25 @@ button:disabled {
 button.active {
   border-color: currentColor;
   font-weight: 600;
+}
+
+.avatar {
+  padding: 0;
+  overflow: hidden;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.author {
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+}
+
+.author:hover {
+  text-decoration: underline;
 }

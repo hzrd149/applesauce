@@ -7,7 +7,7 @@
   <body>
     <section>
       <div class="row">
-        <button id="follows-mode" title="common.follows">Follows</button>
+        <button id="follows-mode" disabled title="common.follows">Follows</button>
         <input id="author" placeholder="npub or nprofile" title="Read one author from their outboxes" />
         <span class="badge" title="authors">Authors <span id="authors">0</span></span>
         <span class="badge" title="outbox.resolveRelays relays">Relays <span id="plan-count">–</span></span>
@@ -15,7 +15,6 @@
         <span class="badge" title="authors without a NIP-65 relay list">Missing <span id="missing">0</span></span>
         <button id="refresh-plan" title="outbox.resolveRelays">Refresh</button>
       </div>
-      <div id="relays" class="row"></div>
     </section>
 
     <section id="feed" class="feed"></section>
