@@ -239,13 +239,9 @@ Releases are prepared, verified, and published locally. GitHub Actions may test 
 - Keep ordinary build and test CI, but do not add workflows or secrets that publish packages from GitHub Actions.
 - Remove obsolete release branches only after their commits are merged and their tags are reachable from `master`.
 
-# Building examples
+# Building Examples
 
-Never add drop shadows and avoid using cards, the UI looks better when its simple, clean and uses borders.
-
-# Using DaisyUI
-
-THERE IS NO `.form-control` class.
+Follow [`apps/examples/AGENTS.md`](apps/examples/AGENTS.md) when creating, upgrading, or reviewing examples in `apps/examples/`. It holds every example convention, including layout, styling, DaisyUI usage, data flow, and verification.
 
 # Working On Agent Skills
 

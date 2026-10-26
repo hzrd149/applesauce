@@ -7,6 +7,21 @@ These examples are reference implementations for developers and other agents. Wo
 - Build example pages, not standalone applications. The example shell app provides the surrounding layout and navigation.
 - Do not add app headers or footers to examples. Keep page content focused on the feature being demonstrated; feature-specific controls and section headings are appropriate.
 - Fill the available space with flexbox instead of viewport math. The example root is a child of a bounded flex column, so full-height layouts use `flex min-h-0 grow` and nested scroll areas use `min-h-0 flex-1 overflow-y-auto`; avoid `h-screen`, `min-h-screen`, and `h-[calc(100vh-...)]`.
+- Use the full width. Managers and browsers use a sidebar plus main pane: an `aside` (`w-72 shrink-0 border-e`) holding scrollable filters or a selection list with the account row pinned at the bottom, and a `main` (`min-w-0 flex-1 overflow-y-auto`) for the content. Avoid narrow centered `max-w-2xl` columns for list-heavy pages.
+- Separate list rows with `border-b border-base-300` instead of wrapping each item in a bordered box.
+- Keep explanatory prose out of the UI: no intro paragraphs, page titles, or "this happens when…" notes. Show state with badges and counts, and put details in `title` tooltips, such as an "8 relays" badge whose tooltip lists the relays.
+- Avoid emojis as icons; they add noise without meaning. Prefer short text labels, and use `lucide-react` icons sparingly for well-known actions such as remove, close, or locked state.
+- Give filters visible counts and make them toggles: single-choice segments for exclusive options, and multi-select toggles (stored as a `Set` in `useState`) for facets such as authors or media types.
+
+## File Structure
+
+- Examples are discovered automatically from `src/examples/<category>/<name>.tsx`; the default export is the page, and the route is `#/example/<category>/<name>`.
+- Model new examples on the most recently modified examples (`ls -t src/examples/*/*.tsx`), not the nearest older sibling in the same folder.
+- Start with a JSDoc header of one descriptive sentence, then `@tags` and `@related`. The header is parsed at build time for search and navigation, and `@related` takes `category/name` paths.
+- Order the module as imports, constants, module-level subjects, store/pool/loaders/actions, stream and helper functions, components, and the default export.
+- Keep each example self-contained. Inline its constants, helpers, and components instead of creating `src/helpers`, `src/components`, or `src/lib` modules. Shared imports are limited to basics such as `LoginView`, `PubkeyPicker`, `NoteContent`, `lookupRelays$`, and `extra/verifier`. If inlining makes a multi-mode example too large, split it into separate examples instead of lazy-loading local modules.
+- Built-in napplets for the `napplet/*` examples are the one exception: their sources live in `src/napplets/<name>/` and are imported as `index.html?napplet`.
+- Write data flow as module-level stream functions named with a `$` suffix that take casts or plain inputs, such as `bookmarks$(user, list)`, and subscribe to them with `use$(() => bookmarks$(user, list), [user, list])`.
 
 ## React and RxJS
 
@@ -22,6 +37,7 @@ These examples are reference implementations for developers and other agents. Wo
 - Keep accumulators inside `defer` or the subscription pipeline so each subscription starts with fresh state. Share streams with reference-counted sharing when multiple consumers need the same work.
 - Aim for examples without `useEffect`. Never use `useState` to mirror an observable or duplicate derived data. Use a ref callback for simple DOM setup such as opening a native dialog.
 - Call hooks unconditionally at the top level of components. Extract child components for subscriptions per list item; never call `use$` inside loops or conditional branches.
+- When the parent needs loaded items for filtering, counting, or sorting, load the list in one stream instead: `combineLatest` the per-item streams, start each with `startWith(item)` so unloaded items still render, batch re-renders with `auditTime`, and pass the results to rows as props. `combineLatest([])` never emits, so return `of([])` for empty lists.
 - Store every incoming event before throttling or debouncing UI emissions. Applying those operators to raw event arrivals can discard events.
 - Compose asynchronous work with operators such as `concatMap` or `mergeMap` when stream completion must await it. Async callbacks passed to `.subscribe()` or `.forEach()` are not awaited by RxJS.
 
@@ -46,6 +62,9 @@ return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 - Use `request()` for finite queries and `subscription()` for live updates. Reserve raw `req()` for examples that demonstrate protocol messages or custom lifecycle control.
 - Keep relay subscriptions scoped to their consumers and ensure changing inputs or unmounting tears them down.
 - Preserve pointer relay hints. User-focused examples should demonstrate NIP-65 routing: author outboxes for reading their published events and publishing their events, recipient inboxes for delivery, and fallback relays when needed. Relay-focused examples should use the selected relay.
+- Build relay sets as relay lists are discovered: `combineLatest` the pointer hints and the relevant `outboxes$`/`inboxes$` (mapping `undefined` to `[]`), merge them with `mergeRelaySets`, drop repeats with `distinctUntilChanged`, and `switchMap` into the load so new outboxes re-request from the larger set. When a pointer has no author, such as an `e` tag, search the current user's inboxes and outboxes.
+- Wait for at least one relay before loading, and keep any give-up `timeout` generous. Relay lists often arrive after the content that depends on them, and a short timeout drops the later update. Leave popular relays to the loader's `extraRelays` as a last resort instead of mixing them into the hints.
+- Define fallback relays once as a module-level `FALLBACK_RELAYS` constant.
 - Import public package APIs and use existing helpers, models, and operators before introducing custom implementations.
 
 ## User and Event Casts
@@ -61,6 +80,11 @@ return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 - Require typed factories for supported event creation and modification. Use `.modify(existing)` to preserve existing event data; reserve generic factories and manual operations for unsupported kinds or examples teaching those APIs.
 - Keep event and tag transformations composable and return new drafts or tag arrays instead of mutating existing events.
 - Reuse stable `AccountManager` and `ActionRunner` instances within their intended scope. Pass `manager.signer` to actions and factories so account changes propagate automatically.
+- For examples that need a signer, keep `signer$` and `user$` (a `castUser` cast) as module-level `BehaviorSubject`s, render `LoginView` while either is empty, and create the `ActionRunner` with `new ProxySigner(signer$)`. Key the main component by `user.pubkey` so account switches reset local state.
+- Provide a logout button in the account row. Logout calls `forgetActiveAccount()` so `LoginView` does not restore the account, then clears the subjects.
+- When signing is optional, such as browsing public data and signing in only to act, keep the page usable and open `LoginView` in a `<dialog className="modal">` from a sign-in button.
+- Read-only examples about another user take a `PubkeyPicker` with a sensible default pubkey instead of requiring login.
+- Publish with `pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event)` and throw unless `responses.some((r) => r.ok)`. Do not use the `extra/publish` helper.
 - Preserve relay lists supplied by actions to the publish function; apply fallback relays when no usable list is supplied.
 - Await signing and publishing, inspect relay verdicts, and distinguish rejected publishes from transport errors before reporting success. Treat sync completion as the end of work, not proof that every transfer succeeded.
 - Trigger signing prompts and encrypted-content unlocking from intentional user operations, never during render.
@@ -76,6 +100,12 @@ return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 - When handling spendable Cashu tokens, provide persistent recovery for multi-step spends and follow each action's recovery requirements. Keep sats and millisats explicit and check wallet capabilities before offering optional operations.
 - Stop wallets, caches, and services and close databases when their owner ends. Integrate cleanup into observable teardown or the owning lifecycle; do not dispose shared infrastructure from individual consumers.
 
+## Stress-Test Examples
+
+- Some examples double as permanent live-relay stress tests for loaders: `loader/timeline-scrubber`, `loader/social-graph`, `outbox/photo-gallery`, `relay-discovery/relay-directory`, and `threading/thread-loading`. Keep them during cleanups and use them for live checks after loader changes.
+- Default to the load an average client would create, and make heavier loads opt-in, such as selecting a few preset monitors instead of all of them.
+- Run benchmarks and stress scripts locally for numbers, report the results in the commit message, and delete them before committing.
+
 ## Review and Verification
 
 - Review examples for instructional clarity as well as functionality. Keep the reactive data flow easy to follow and avoid unnecessary abstractions or boilerplate.
@@ -83,5 +113,6 @@ return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 - Distinguish initial loading, missing data, successful empty results, and failures in the UI; do not turn every error into an empty result.
 - Check initial loading, empty results, errors, input changes, incoming event revisions, and subscription cleanup when those behaviors apply.
 - Run `pnpm --filter applesauce-examples exec tsc -b` and the examples build for changes that affect code or integration.
+- Check changed examples in a browser at `http://localhost:5173/#/example/<category>/<name>` (the `#` is required). For headless checks, import Playwright from `node_modules/.pnpm/playwright@*/node_modules/playwright` in a script outside the repo, inject a read-only `window.nostr` to log in as a real pubkey without signing, and re-run after edits settle because HMR reloads the page mid-check.
 - Keep the UI simple, with borders instead of cards or drop shadows. DaisyUI has no `.form-control` class.
 - Avoid small text. Use `text-sm` as the smallest size and skip `text-xs`, `btn-xs`, `badge-sm`, and tiny uppercase labels.
