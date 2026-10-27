@@ -11,6 +11,10 @@
       "require": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./messages": {
+      "import": "./dist/messages/index.js",
+      "types": "./dist/messages/index.d.ts"
+    },
     "./kehto": {
       "import": "./dist/kehto/index.js",
       "require": "./dist/kehto/index.js",

@@ -1,568 +1,367 @@
 /**
- * A personal notes app built on NIP-17 direct messages
- * @tags nip-17, nip-44, nip-59, notes, encryption, self-messaging, nip-77, negentropy
- * @related messages/gift-wrap
+ * Private notes and replies using an account-scoped WrappedMessagesClient
+ * @tags nip-17, nip-44, nip-59, notes, encryption, self-messaging, nip-77
+ * @related messages/gift-wrap, messages/legacy
  */
-import { ProxySigner } from "applesauce-accounts";
-import { ActionRunner } from "applesauce-actions";
-import { ReplyToWrappedMessage, SendWrappedMessage } from "applesauce-actions/actions";
 import { castUser, User } from "applesauce-common/casts";
-import {
-  getConversationParticipants,
-  getGiftWrapRumor,
-  getGiftWrapSeal,
-  getRumorGiftWraps,
-  getWrappedMessageParent,
-  Rumor,
-} from "applesauce-common/helpers";
-import { GiftWrapsModel, WrappedMessagesModel } from "applesauce-common/models";
+import { getWrappedMessageParent, type Rumor } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
-import {
-  getExpirationTimestamp,
-  getOrDecryptEncryptedContent,
-  kinds,
-  type NostrEvent,
-  notifyEventUpdate,
-  saveEncryptedContent,
-  unixNow,
-  unlockEncryptedContent,
-} from "applesauce-core/helpers";
-import { restoreEncryptedContentFromCache } from "applesauce-core/observable";
+import { getDisplayName, getProfilePicture, unixNow } from "applesauce-core/helpers";
+import { WrappedMessagesClient } from "applesauce-extra/messages";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
-import { RelayPool, SyncDirection } from "applesauce-relay";
-import Keyv from "keyv";
-import { KeyvIndexedDB } from "keyv-browser";
-import { type ISigner, ExtensionSigner } from "applesauce-signers";
-import clsx from "clsx";
-import { useMemo, useState } from "react";
-import { BehaviorSubject, map, mergeMap, scan, startWith, of, tap, materialize, timer } from "rxjs";
+import { RelayPool } from "applesauce-relay";
+import type { ISigner } from "applesauce-signers";
+import { Plus } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
+import { BehaviorSubject, combineLatest, concat, defer, finalize, map, NEVER, of, shareReplay, switchMap } from "rxjs";
 
-// Import helper components
-import LoginView from "../../components/login-view";
+import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
-
 import SecureStorage from "../../extra/encrypted-storage";
-import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
+import { lookupRelays$ } from "../../settings";
 
-const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+const EXPIRATIONS = [
+  { value: 0, label: "Never" },
+  { value: 86400, label: "1 day" },
+  { value: 3 * 86400, label: "3 days" },
+  { value: 7 * 86400, label: "1 week" },
+];
 
-// Expiration times for notes and comments (in seconds from creation)
-// NIP-17 recommends shorter expirations for gift-wrapped messages to reduce relay storage
-const EXPIRATIONS: Record<string, number> = {
-  "1 hour": 60 * 60,
-  "6 hours": 60 * 60 * 6,
-  "1 day": 60 * 60 * 24,
-  "3 days": 60 * 60 * 24 * 3,
-  "1 week": 60 * 60 * 24 * 7,
-  "2 weeks": 60 * 60 * 24 * 14,
-  "1 month": 60 * 60 * 24 * 30,
-};
-
-const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-
-// Subjects for holding the signer and user
 const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
+const storage$ = new BehaviorSubject<SecureStorage | undefined>(undefined);
 
-// Global expiration setting for all notes and comments (defaults to 3 days)
-const expiration$ = new BehaviorSubject<string>(localStorage.getItem("note-expiration") ?? "3 days");
-
-// Setup event store and relay connection pool
 const eventStore = new EventStore({ verifyEvent });
-const pool = new RelayPool({
-  informationCache: new Keyv({ store: new KeyvIndexedDB({ dbName: "applesauce-examples", storeName: "nip11" }) }),
-});
+const pool = new RelayPool();
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
-// Setup loaders for event store to load profiles
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: lookupRelays$,
-});
+// The stream owns the client; switching accounts or leaving the page disposes it
+const client$ = combineLatest([signer$, user$, storage$]).pipe(
+  switchMap(([signer, user, storage]) => {
+    if (!signer || !user || !storage) return of(undefined);
 
-// Setup an action runner for running pre-built actions
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
-  const storage = storage$.value;
-  const seal = getGiftWrapSeal(event);
-  if (storage) {
-    await saveEncryptedContent(event, storage);
-    if (seal) await saveEncryptedContent(seal, storage);
-  }
+    return defer(() => {
+      const client = new WrappedMessagesClient({
+        pubkey: user.pubkey,
+        signer,
+        eventStore,
+        pool,
+        decryptionCache: storage,
+      });
 
-  if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
-  if (!relays) throw new Error("No relays found");
-
-  const responses = await pool.publish(relays.length ? relays : FALLBACK_RELAYS, event);
-  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
-});
-
-// Create a in-memory set of failed gift wraps
-const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-gift-wraps") ?? "[]"));
-
-/** Restores both encrypted layers without prompting the signer */
-function restoreNotes$(pubkey: string, storage: SecureStorage) {
-  return eventStore.filters({ kinds: [kinds.GiftWrap], "#p": [pubkey] }).pipe(
-    restoreEncryptedContentFromCache(storage),
-    mergeMap((gift) => {
-      const seal = getGiftWrapSeal(gift);
-      if (!seal) return of(gift);
-
-      return of(seal).pipe(
-        restoreEncryptedContentFromCache(storage),
-        tap(() => {
-          // Seals are not stored directly, so notify the gift wrap's models as well
-          if (getGiftWrapRumor(gift)) notifyEventUpdate(gift);
-        }),
-        map(() => gift),
+      return defer(() => client.start()).pipe(
+        switchMap(() => concat(of(client), NEVER)),
+        finalize(() => client.dispose()),
       );
-    }, 8),
-  );
+    });
+  }),
+  shareReplay({ bufferSize: 1, refCount: true }),
+);
+
+/** Formats a timestamp as a time for today and a date otherwise */
+function formatShortTime(timestamp: number) {
+  const date = new Date(timestamp * 1000);
+  const isToday = date.toDateString() === new Date().toDateString();
+  return isToday ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : date.toLocaleDateString();
 }
 
-/** Unlocks and saves each layer before exposing the validated rumor */
-async function decryptGiftWrap(gift: NostrEvent, signer: ISigner, storage: SecureStorage) {
-  await getOrDecryptEncryptedContent(gift, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
-
-  const seal = getGiftWrapSeal(gift);
-  if (!seal) throw new Error("Failed to read seal in gift wrap");
-  await getOrDecryptEncryptedContent(seal, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
-
-  const rumor = getGiftWrapRumor(gift);
-  if (!rumor) throw new Error("Failed to read rumor in gift wrap");
-  notifyEventUpdate(gift);
-  return rumor;
+function logout() {
+  // Stop the login view from restoring this account when it mounts again
+  forgetActiveAccount();
+  signer$.next(undefined);
+  user$.next(undefined);
+  storage$.next(undefined);
 }
 
-// Format expiration timestamp for display
-function formatExpiration(expirationTimestamp: number | undefined, now: number): string | null {
-  if (!expirationTimestamp) return null;
-
-  const timeLeft = expirationTimestamp - now;
-
-  if (timeLeft <= 0) return "Expired";
-
-  const minutes = Math.floor(timeLeft / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `Expires in ${days}d`;
-  if (hours > 0) return `Expires in ${hours}h`;
-  if (minutes > 0) return `Expires in ${minutes}m`;
-  return "Expires soon";
-}
-
-function NoteForm({ user, className }: { user: User; className?: string }) {
-  const [note, setNote] = useState("");
-
-  const [sending, setSending] = useState(false);
-
-  const expiration = use$(expiration$);
-
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!note.trim()) return;
-
-    try {
-      setSending(true);
-
-      // Send wrapped message to self
-      await actions.run(SendWrappedMessage, user.pubkey, note.trim(), {
-        expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
-      });
-
-      setNote("");
-    } catch (err) {
-      console.error("Failed to create note:", err);
-    } finally {
-      setSending(false);
-    }
-  };
-
+function Avatar({ user, size = "h-6 w-6" }: { user: User; size?: string }) {
+  const profile = use$(user.profile$);
   return (
-    <form onSubmit={handleSend} className={clsx("flex flex-col gap-2", className)}>
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        disabled={sending}
-        placeholder="Write your note..."
-        className="textarea textarea-bordered grow min-h-24 w-full"
-        rows={3}
-      />
-      <div className="flex gap-2 justify-end items-center">
-        <button type="submit" className="btn btn-primary" disabled={sending}>
-          Create Note
-        </button>
-      </div>
-    </form>
+    <img
+      src={getProfilePicture(profile, `https://robohash.org/${user.pubkey}.png`)}
+      className={`${size} shrink-0 rounded-full`}
+    />
   );
 }
 
-function CommentForm({ note }: { note: Rumor }) {
-  const [comment, setComment] = useState("");
-
-  const [sending, setSending] = useState(false);
-
-  const expiration = use$(expiration$);
-
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!comment.trim()) return;
-
-    try {
-      setSending(true);
-
-      // Send reply to the note with expiration
-      await actions.run(ReplyToWrappedMessage, note, comment.trim(), {
-        expiration: expiration ? unixNow() + EXPIRATIONS[expiration] : undefined,
-      });
-
-      setComment("");
-    } catch (err) {
-      console.error("Failed to add comment:", err);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSend} className="flex gap-2 w-full mt-4">
-      <input
-        type="text"
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        disabled={sending}
-        placeholder="Add a comment..."
-        className="input input-bordered grow"
-      />
-      <button type="submit" className="btn btn-primary" disabled={sending}>
-        Comment
-      </button>
-    </form>
-  );
+function Name({ user }: { user: User }) {
+  const profile = use$(user.profile$);
+  return <span className="min-w-0 truncate font-medium">{getDisplayName(profile, user.npub.slice(0, 12))}</span>;
 }
 
-function CommentCard({ comment }: { comment: Rumor }) {
-  const expiration = useMemo(
-    () =>
-      getRumorGiftWraps(comment)
-        .map(getExpirationTimestamp)
-        .find((v) => typeof v === "number"),
-    [comment],
-  );
-
-  const now = use$(() => timer(0, 60_000).pipe(map(() => unixNow())), []) ?? unixNow();
-  const expirationText = formatExpiration(expiration, now);
-
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="border-l-2 border-base-300 pl-4 py-2">
-      <div className="whitespace-pre-line">{comment.content}</div>
-      <div className="flex items-center gap-2 mt-1">
-        <time className="text-sm opacity-50">{new Date(comment.created_at * 1000).toLocaleString()}</time>
-        {expirationText && (
-          <span className={clsx("text-sm", expirationText === "Expired" ? "text-error" : "opacity-50")}>
-            • {expirationText}
-          </span>
-        )}
-      </div>
+    <div className="flex flex-col gap-2 border-b border-base-300 p-3">
+      <span className="text-sm opacity-60">{title}</span>
+      {children}
     </div>
   );
 }
 
-function NoteCard({
+function Account({ user }: { user: User }) {
+  return (
+    <div className="flex items-center gap-2 border-t border-base-300 p-2">
+      <Avatar user={user} size="h-8 w-8" />
+      <Name user={user} />
+      <button className="btn btn-sm btn-ghost ms-auto" onClick={logout}>
+        Logout
+      </button>
+    </div>
+  );
+}
+
+function SyncStatus({ client }: { client: WrappedMessagesClient }) {
+  const auth = use$(client.authRequests$) ?? [];
+  const [authError, setAuthError] = useState<string>();
+  const stats = use$(client.decryptionState$);
+  const sync = use$(client.syncStatus$);
+  const [autoUnlock, setAutoUnlock] = useState(false);
+
+  // Reconcile older notes from the chosen date while one is selected
+  const [since, setSince] = useState<number>();
+  const history = use$(() => (since === undefined ? undefined : client.sync$({ since })), [client, since]);
+  const progress = history ?? sync;
+
+  const toggleAutoUnlock = () => {
+    client.setAutoUnlock(!autoUnlock);
+    setAutoUnlock(!autoUnlock);
+  };
+
+  return (
+    <Section title="Sync">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="badge badge-ghost">
+          {!progress?.done && <span className="loading loading-spinner loading-sm" />}
+          {progress?.loaded ?? 0} events
+        </span>
+        <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
+        {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
+      </div>
+      <button className={`btn btn-sm ${autoUnlock ? "btn-active" : ""}`} onClick={toggleAutoUnlock}>
+        {autoUnlock ? "Stop decrypting" : "Decrypt notes"}
+      </button>
+      {auth.map(({ url, state, error }) => (
+        <button
+          key={url}
+          className="btn btn-sm"
+          disabled={state === "authenticating" || !client.signer}
+          title={error ? String(error) : url}
+          onClick={async () => {
+            setAuthError(undefined);
+            try {
+              await client.authenticate(url);
+            } catch (error) {
+              setAuthError(String(error));
+            }
+          }}
+        >
+          {state === "authenticating" ? "Authenticating" : state === "failed" ? "Retry authentication" : "Authenticate"}{" "}
+          {new URL(url).hostname}
+        </button>
+      ))}
+      {authError && <p className="text-sm text-error">{authError}</p>}
+      <input
+        aria-label="Load history since"
+        title="Load history since"
+        type="date"
+        className="input input-sm"
+        onChange={(event) => {
+          const value = Date.parse(event.target.value);
+          setSince(Number.isFinite(value) ? Math.floor(value / 1000) : undefined);
+        }}
+      />
+    </Section>
+  );
+}
+
+function NoteRow({
   note,
-  comments,
-  selected,
+  replies,
+  active,
   onSelect,
 }: {
   note: Rumor;
-  comments: Rumor[];
-  selected: boolean;
+  replies: number;
+  active: boolean;
   onSelect: () => void;
 }) {
-  const truncatedContent = note.content.length > 200 ? note.content.slice(0, 200) + "..." : note.content;
-  const expiration = useMemo(
-    () =>
-      getRumorGiftWraps(note)
-        .map(getExpirationTimestamp)
-        .find((v) => typeof v === "number"),
-    [note],
-  );
-
-  const now = use$(() => timer(0, 60_000).pipe(map(() => unixNow())), []) ?? unixNow();
-  const expirationText = formatExpiration(expiration, now);
-
   return (
-    <div className="border border-base-300 rounded-lg p-4">
-      <div className="cursor-pointer" onClick={onSelect}>
-        <div className="whitespace-pre-line">{selected ? note.content : truncatedContent}</div>
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-2">
-            <time className="text-sm opacity-50">{new Date(note.created_at * 1000).toLocaleString()}</time>
-            {expirationText && (
-              <span className={clsx("text-sm", expirationText === "Expired" ? "text-error" : "opacity-50")}>
-                • {expirationText}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {comments.length > 0 && <span className="badge badge-md">{comments.length} comments</span>}
-          </div>
-        </div>
-      </div>
-
-      {selected && (
-        <div className="mt-4 space-y-2">
-          {comments.length > 0 && (
-            <div className="space-y-2">
-              {comments.map((comment) => (
-                <CommentCard key={comment.id} comment={comment} />
-              ))}
-            </div>
-          )}
-          <CommentForm note={note} />
-        </div>
-      )}
-    </div>
+    <button
+      className={`flex w-full flex-col gap-1 border-b border-base-300 p-3 text-left ${active ? "bg-base-200" : ""}`}
+      onClick={onSelect}
+    >
+      <span className="line-clamp-2 whitespace-pre-wrap break-words">{note.content}</span>
+      <span className="flex gap-2 text-sm opacity-60">
+        {formatShortTime(note.created_at)}
+        {replies > 0 && <span>· {replies} replies</span>}
+      </span>
+    </button>
   );
 }
 
-function RelayItem({ relay }: { relay: string }) {
-  const inst = useMemo(() => pool.relay(relay), [relay]);
-  const supported = use$(inst.supported$);
-  const icon = use$(inst.icon$);
-  const name = use$(inst.name$);
+function Editor({ client, parent, onSaved }: { client: WrappedMessagesClient; parent?: Rumor; onSaved?: () => void }) {
+  const [text, setText] = useState("");
+  const [expiration, setExpiration] = useState(3 * 86400);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
 
-  return (
-    <div className="flex gap-2 items-center">
-      <img src={icon} className="w-6 h-6 rounded-full" />
-      <p className={clsx("font-mono", { "decoration-line-through": !supported?.includes(77) })}>{name}</p>
-    </div>
-  );
-}
-function InlineRelayList({ relays }: { relays: string[] }) {
-  return (
-    <div className="flex gap-2 items-center">
-      {relays.map((relay) => (
-        <RelayItem key={relay} relay={relay} />
-      ))}
-    </div>
-  );
-}
+  const save = async () => {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(undefined);
 
-function NotesView({ user, storage }: { user: User; storage: SecureStorage }) {
-  const [selectedNoteId, setSelectedNoteId] = useState<string | undefined>(undefined);
+    try {
+      const expires = expiration ? unixNow() + expiration : undefined;
+      await client.send({
+        recipients: [client.pubkey],
+        content: text,
+        replyTo: parent?.id,
+        expiration: expires,
+        envelopeExpiration: expires,
+      });
 
-  use$(() => restoreNotes$(user.pubkey, storage), [user, storage]);
-
-  const signer = use$(signer$);
-  const [since, setSince] = useState<number>(unixNow() - EXPIRATIONS["2 weeks"]);
-  // 1 week ago
-  const expiration = use$(expiration$);
-  const failed = use$(failed$);
-
-  // Subscribe to the users nip-17 inboxes
-  const dmRelays = use$(user.directMessageRelays$);
-
-  // Negentropy sync NIP-17 direct messages since timestamp
-  const syncStatus = use$(
-    () =>
-      // If no DM relays, return EMPTY
-      !dmRelays?.length
-        ? of({ count: 0, loading: false, error: null as string | null })
-        : pool
-            .sync(dmRelays, eventStore, { kinds: [kinds.GiftWrap], "#p": [user.pubkey], since }, SyncDirection.RECEIVE)
-            .pipe(
-              materialize(),
-              scan(
-                (state, notification) =>
-                  notification.kind === "E"
-                    ? { ...state, loading: false, error: String(notification.error) }
-                    : notification.kind === "C"
-                      ? { ...state, loading: false }
-                      : { ...state, count: state.count + (notification.value.type === "received" ? 1 : 0) },
-                { count: 0, loading: true, error: null as string | null },
-              ),
-              startWith({ count: 0, loading: true, error: null as string | null }),
-            ),
-    // Resync when user, since, or DM relays change
-    [user.pubkey, since, dmRelays?.join(",")],
-  );
-
-  const synced = syncStatus?.count ?? 0;
-
-  // Select all unlocked gift wraps
-  const messages =
-    use$(
-      () =>
-        eventStore.model(WrappedMessagesModel, user.pubkey).pipe(
-          map((messages) =>
-            messages.filter(
-              // Filter down to only self-sent messages
-              (msg) => msg.pubkey === user.pubkey && getConversationParticipants(msg).every((p) => p === user.pubkey),
-            ),
-          ),
-        ),
-      [user.pubkey],
-    ) ?? [];
-
-  // Separate root notes from comments
-  const rootNotes = useMemo(
-    () => messages.filter((note) => !getWrappedMessageParent(note)).sort((a, b) => b.created_at - a.created_at),
-    [messages],
-  );
-
-  // Get comments for each note
-  const getCommentsForNote = (noteId: string) => {
-    return messages
-      .filter((note) => getWrappedMessageParent(note) === noteId)
-      .sort((a, b) => a.created_at - b.created_at);
-  };
-
-  const [unlocking, setUnlocking] = useState(false);
-
-  const locked = use$(
-    () =>
-      eventStore
-        .model(GiftWrapsModel, user.pubkey, false)
-        // Filter out the failed gift wraps
-        .pipe(map((events) => events.filter((e) => !failed.includes(e.id)))),
-    [user.pubkey, failed],
-  );
-
-  const unlock = async () => {
-    if (!locked || !signer) return;
-    setUnlocking(true);
-    for (const gift of locked) {
-      // Ignore previously failed gift wraps
-      if (failed$.value.includes(gift.id)) continue;
-
-      try {
-        await decryptGiftWrap(gift, signer, storage);
-      } catch (error) {
-        // Ignore errors
-        failed$.next([...failed$.value, gift.id]);
-      }
+      setText("");
+      onSaved?.();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setBusy(false);
     }
-    setUnlocking(false);
-  };
-
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const date = new Date(e.target.value);
-    setSince(Math.floor(date.getTime() / 1000));
-  };
-
-  const formatDateForInput = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
-    return date.toISOString().split("T")[0];
   };
 
   return (
-    <div className="flex flex-col bg-base-200 overflow-hidden h-screen">
-      <div className="flex flex-col gap-3 p-4 bg-base-100 border-b border-base-300">
-        <div className="flex gap-2 justify-between">
-          {dmRelays ? <InlineRelayList relays={dmRelays} /> : <p className="text-error">No DM relays found</p>}
-
-          <div className="flex gap-2 items-center">
-            {locked && locked.length > 0 && (
-              <button className="btn btn-primary ms-auto" onClick={unlock} disabled={unlocking}>
-                {unlocking ? "Unlocking..." : `Unlock pending (${locked.length})`}
-              </button>
-            )}
-
-            <div className="flex items-center gap-2 whitespace-pre">
-              <label>Sync from:</label>
-              <input
-                type="date"
-                className="input input-bordered"
-                value={formatDateForInput(since)}
-                onChange={handleDateChange}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label>Expiration:</label>
-              <select
-                className="select select-bordered"
-                value={expiration}
-                onChange={(e) => expiration$.next(e.target.value === "none" ? "" : e.target.value)}
-              >
-                <option value="">None</option>
-                {Object.keys(EXPIRATIONS).map((key) => (
-                  <option key={key} value={key}>
-                    {key}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-between">
-          <div className="text-sm opacity-70">
-            {rootNotes.length} notes •{" "}
-            {syncStatus?.error && (
-              <span role="alert" className="text-error">
-                {syncStatus.error}
-              </span>
-            )}{" "}
-            {synced} events synced • {messages.length} unlocked • {locked?.length ?? 0} locked • {failed.length} failed
-          </div>
-        </div>
+    <div className="flex flex-col gap-2 p-3">
+      <textarea
+        className="textarea w-full"
+        rows={parent ? 2 : 6}
+        placeholder={parent ? "Reply to note" : "Write a private note"}
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <select
+          aria-label="Note expiration"
+          title="Note expiration"
+          className="select w-36"
+          value={expiration}
+          onChange={(event) => setExpiration(Number(event.target.value))}
+        >
+          {EXPIRATIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <button className="btn btn-primary ms-auto" disabled={busy || !text.trim()} onClick={save}>
+          {busy ? <span className="loading loading-spinner loading-sm" /> : parent ? "Reply" : "Save note"}
+        </button>
       </div>
-
-      <div className="flex-1 overflow-y-auto p-4 max-w-3xl mx-auto space-y-4 w-full">
-        {rootNotes.length === 0 ? (
-          <div className="text-center py-12 text-base-content/50">
-            <p>No notes yet. Create your first note above!</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {rootNotes.map((note) => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                comments={getCommentsForNote(note.id)}
-                selected={selectedNoteId === note.id}
-                onSelect={() => setSelectedNoteId(selectedNoteId === note.id ? undefined : note.id)}
-              />
-            ))}
-          </div>
-        )}
-
-        <NoteForm className="w-full" user={user} />
-      </div>
+      {error && <p className="text-sm text-error">{error}</p>}
     </div>
   );
 }
 
-function App() {
-  use$(() => expiration$.pipe(tap((expiration) => localStorage.setItem("note-expiration", expiration))), []);
-  use$(() => failed$.pipe(tap((failed) => localStorage.setItem("failed-gift-wraps", JSON.stringify(failed)))), []);
-  const storage = use$(storage$);
+function Thread({ client, note, replies }: { client: WrappedMessagesClient; note: Rumor; replies: Rumor[] }) {
+  return (
+    <>
+      <div className="flex flex-col gap-2 border-b border-base-300 p-4">
+        <span className="text-sm opacity-60">{new Date(note.created_at * 1000).toLocaleString()}</span>
+        <p className="whitespace-pre-wrap break-words">{note.content}</p>
+      </div>
+      {replies.map((reply) => (
+        <div key={reply.id} className="flex flex-col gap-2 border-b border-base-300 p-4 ps-8">
+          <span className="text-sm opacity-60">{new Date(reply.created_at * 1000).toLocaleString()}</span>
+          <p className="whitespace-pre-wrap break-words">{reply.content}</p>
+        </div>
+      ))}
+      <Editor key={note.id} client={client} parent={note} />
+    </>
+  );
+}
+
+function Notes({ client, user }: { client: WrappedMessagesClient; user: User }) {
+  const notes = use$(() => client.conversation$(client.pubkey), [client]);
+  const error = use$(() => client.errors$.pipe(map((failure) => String(failure.error))), [client]);
+  const [selected, setSelected] = useState<string>();
+
+  // Split the self-conversation into top-level notes and their replies, oldest reply first
+  const { roots, replies } = useMemo(() => {
+    const roots: Rumor[] = [];
+    const replies = new Map<string, Rumor[]>();
+    for (const note of notes ?? []) {
+      const parent = getWrappedMessageParent(note);
+      if (!parent) roots.push(note);
+      else replies.set(parent, [note, ...(replies.get(parent) ?? [])]);
+    }
+    return { roots, replies };
+  }, [notes]);
+
+  const note = roots.find((note) => note.id === selected);
+
+  return (
+    <div className="flex min-h-0 grow">
+      <aside className="flex w-72 shrink-0 flex-col border-e border-base-300">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex items-center gap-2 border-b border-base-300 p-3">
+            <span className="badge badge-ghost">{roots.length} notes</span>
+            <button
+              className={`btn btn-sm ms-auto ${selected === undefined ? "btn-active" : ""}`}
+              onClick={() => setSelected(undefined)}
+            >
+              <Plus className="h-4 w-4" /> New note
+            </button>
+          </div>
+
+          <SyncStatus client={client} />
+
+          {notes === undefined ? (
+            <div className="flex justify-center p-6">
+              <span className="loading loading-dots" />
+            </div>
+          ) : roots.length === 0 ? (
+            <p className="p-6 text-center opacity-60">No notes</p>
+          ) : (
+            roots.map((root) => (
+              <NoteRow
+                key={root.id}
+                note={root}
+                replies={replies.get(root.id)?.length ?? 0}
+                active={selected === root.id}
+                onSelect={() => setSelected(root.id)}
+              />
+            ))
+          )}
+        </div>
+        <Account user={user} />
+      </aside>
+
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        {error && <div className="border-b border-base-300 p-3 text-sm text-error">{error}</div>}
+        {note ? (
+          <Thread client={client} note={note} replies={replies.get(note.id) ?? []} />
+        ) : (
+          <Editor client={client} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+export default function PersonalNotesExample() {
   const signer = use$(signer$);
   const user = use$(user$);
+  const storage = use$(storage$);
+  const client = use$(client$);
 
-  const handleUnlock = async (storage: SecureStorage, pubkey?: string) => {
-    storage$.next(storage);
-
-    if (pubkey) {
-      user$.next(castUser(pubkey, eventStore));
-      signer$.next(new ExtensionSigner());
-    }
-  };
-
-  const handleLogin = async (signer: ISigner, pubkey: string) => {
+  const handleLogin = (signer: ISigner, pubkey: string) => {
     signer$.next(signer);
     user$.next(castUser(pubkey, eventStore));
-    if (storage) await storage.setItem("pubkey", pubkey);
   };
 
-  // Show unlock view if storage is not initialized
-  if (!storage) return <UnlockView onUnlock={handleUnlock} />;
-
-  // Show login view if not logged in
   if (!signer || !user) return <LoginView onLogin={handleLogin} />;
+  if (!storage) return <UnlockView onUnlock={(storage) => storage$.next(storage)} />;
+  if (!client) return <span className="loading loading-spinner m-auto" />;
 
-  // Show notes view when both storage and login are ready
-  return <NotesView key={user.pubkey} user={user} storage={storage} />;
+  return <Notes key={user.pubkey} client={client} user={user} />;
 }
-
-export default App;

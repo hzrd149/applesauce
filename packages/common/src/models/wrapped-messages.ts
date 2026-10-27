@@ -22,11 +22,15 @@ export function WrappedMessagesModel(self: string): Model<Rumor[]> {
       watchEventsUpdates(store),
       // Get rumors and filter out locked
       map((rumors) =>
-        rumors
-          .map((gift) => getGiftWrapRumor(gift))
-          .filter((e) => !!e)
-          .filter((e) => e.kind === kinds.PrivateDirectMessage)
-          .sort((a, b) => b.created_at - a.created_at),
+        [
+          ...new Map(
+            rumors
+              .map((gift) => getGiftWrapRumor(gift))
+              .filter((e) => !!e)
+              .filter((e) => e.kind === kinds.PrivateDirectMessage && getConversationParticipants(e).includes(self))
+              .map((rumor) => [rumor.id, rumor]),
+          ).values(),
+        ].sort((a, b) => b.created_at - a.created_at),
       ),
     );
 }

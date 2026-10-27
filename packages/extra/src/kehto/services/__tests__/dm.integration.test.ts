@@ -42,7 +42,7 @@ function createTestDmOptions(options: NostrMessageProtocolOptions & { getWindowI
 
 function fakePool() {
   return {
-    req: vi.fn(() => new Subject()),
+    subscription: vi.fn(() => new Subject()),
     request: vi.fn(),
     publish: vi.fn(async (relays: string[]) => relays.map((from) => ({ from, ok: true }))),
     count: vi.fn(),
@@ -90,7 +90,7 @@ describe("remaining write services", () => {
     const live = await dm.subscribe({}, onMessage);
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1));
     await dm.unsubscribe(live.subscriptionId);
-    expect(pool.req.mock.results.at(-1)?.value.observed).toBe(false);
+    expect(pool.subscription.mock.results.at(-1)?.value.observed).toBe(false);
     dm.close?.();
   });
 });
@@ -109,9 +109,9 @@ describe("remaining write services", () => {
     expect(first.subscriptionId).not.toBe(second.subscriptionId);
 
     await dm.unsubscribe(first.subscriptionId);
-    expect(pool.req.mock.results.at(-1)!.value.observed).toBe(true);
+    expect(pool.subscription.mock.results.at(-1)!.value.observed).toBe(true);
     await dm.unsubscribe(second.subscriptionId);
-    expect(pool.req.mock.results.at(-1)!.value.observed).toBe(false);
+    expect(pool.subscription.mock.results.at(-1)!.value.observed).toBe(false);
   });
 });
 
@@ -121,7 +121,7 @@ describe("remaining write services", () => {
     event(aliceKey, kinds.DirectMessageRelaysList, [["relay", "wss://dm.relay.com/"]]);
     const dm = createTestDmOptions(await create({ signer: signer$ })).adapter;
     const live = await dm.subscribe({}, vi.fn());
-    const relayMessages = pool.req.mock.results.at(-1)!.value;
+    const relayMessages = pool.subscription.mock.results.at(-1)!.value;
     expect(relayMessages.observed).toBe(true);
 
     signer$.next(undefined);

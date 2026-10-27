@@ -11,21 +11,26 @@ export function LegacyMessagesGroups(
   self: string,
 ): Model<{ id: string; participants: string[]; lastMessage: NostrEvent }[]> {
   return (store) =>
-    store.timeline({ kinds: [kinds.EncryptedDirectMessage], "#p": [self] }).pipe(
-      map((messages) => {
-        const groups: Record<string, NostrEvent> = {};
-        for (const message of messages) {
-          const id = getConversationIdentifierFromMessage(message);
-          if (!groups[id] || groups[id].created_at < message.created_at) groups[id] = message;
-        }
+    store
+      .timeline([
+        { kinds: [kinds.EncryptedDirectMessage], "#p": [self] },
+        { kinds: [kinds.EncryptedDirectMessage], authors: [self] },
+      ])
+      .pipe(
+        map((messages) => {
+          const groups: Record<string, NostrEvent> = {};
+          for (const message of messages) {
+            const id = getConversationIdentifierFromMessage(message);
+            if (!groups[id] || groups[id].created_at < message.created_at) groups[id] = message;
+          }
 
-        return Object.values(groups).map((message) => ({
-          id: getConversationIdentifierFromMessage(message),
-          participants: getConversationParticipants(message),
-          lastMessage: message,
-        }));
-      }),
-    );
+          return Object.values(groups).map((message) => ({
+            id: getConversationIdentifierFromMessage(message),
+            participants: getConversationParticipants(message),
+            lastMessage: message,
+          }));
+        }),
+      );
 }
 
 /** Returns all legacy direct messages in a group */

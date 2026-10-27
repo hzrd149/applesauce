@@ -21,7 +21,7 @@ afterEach(() => {
 function setup(options: Partial<NostrMessageProtocolOptions> = {}) {
   const eventStore = new EventStore();
   const pool = {
-    req: vi.fn(() => new Subject()),
+    subscription: vi.fn(() => new Subject()),
     publish: vi.fn(async () => [{ ok: true }]),
   };
   const protocol = createWrappedMessageProtocol({
@@ -57,7 +57,7 @@ describe("kehto DM lifecycle", () => {
   it("follows DM relay list updates and tears down the previous request", async () => {
     const { dm, eventStore, pool } = setup();
     await dm.subscribe({}, vi.fn());
-    const previous = pool.req.mock.results.at(-1)!.value;
+    const previous = pool.subscription.mock.results.at(-1)!.value;
     eventStore.add(
       finalizeEvent(
         {
@@ -70,7 +70,7 @@ describe("kehto DM lifecycle", () => {
       ),
     );
     expect(previous.observed).toBe(false);
-    expect(pool.req.mock.calls.at(-1)?.[0]).toEqual(["wss://inbox.test/"]);
+    expect(pool.subscription.mock.calls.at(-1)?.[0]).toEqual(["wss://inbox.test/"]);
   });
 
   it("returns a subscription even when fallback relays never emit", async () => {
@@ -83,7 +83,7 @@ describe("kehto DM lifecycle", () => {
     const { dm, pool } = setup({ account$ });
     await expect(dm.subscribe({}, vi.fn())).rejects.toThrow();
     expect(account$.observed).toBe(false);
-    expect(pool.req).not.toHaveBeenCalled();
+    expect(pool.subscription).not.toHaveBeenCalled();
   });
 
   it("cancels pending setup when the service closes", async () => {
@@ -193,8 +193,8 @@ describe("kehto DM lifecycle", () => {
       ),
     );
     const history = dm.conversations({});
-    await vi.waitFor(() => expect(pool.req).toHaveBeenCalled());
-    const relayMessages = pool.req.mock.results.at(-1)!.value;
+    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
+    const relayMessages = pool.subscription.mock.results.at(-1)!.value;
     signer$.next(undefined);
     await expect(history).rejects.toThrow("Account changed");
     expect(relayMessages.observed).toBe(false);
@@ -207,7 +207,7 @@ describe("kehto DM lifecycle", () => {
       throw new Error("Consumer failed");
     });
     eventStore.add(await gift("hello"));
-    await vi.waitFor(() => expect(pool.req.mock.results.at(-1)!.value.observed).toBe(false));
+    await vi.waitFor(() => expect(pool.subscription.mock.results.at(-1)!.value.observed).toBe(false));
     // A failed consumer must not disable the adapter.
     const onMessage = vi.fn();
     await dm.subscribe({}, onMessage);
@@ -226,8 +226,8 @@ describe("kehto DM lifecycle", () => {
       completed = true;
       return result;
     });
-    await vi.waitFor(() => expect(pool.req).toHaveBeenCalled());
-    await vi.waitFor(() => expect(pool.req.mock.results.at(-1)!.value.observed).toBe(false));
+    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
+    await vi.waitFor(() => expect(pool.subscription.mock.results.at(-1)!.value.observed).toBe(false));
     expect(completed).toBe(false);
     delayed.resolve(await original(wrapped.pubkey, wrapped.content));
     expect((await history).conversations).toHaveLength(1);

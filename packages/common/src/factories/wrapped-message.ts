@@ -1,7 +1,7 @@
 import { blankEventTemplate, EventFactory } from "applesauce-core/factories";
 import { kinds, KnownEventTemplate } from "applesauce-core/helpers";
 import { includeNameValueTag } from "applesauce-core/operations/tags";
-import { setShortTextContent, TextContentOptions } from "applesauce-core/operations/content";
+import { includeEmojis, setContent, setContentWarning, TextContentOptions } from "applesauce-core/operations/content";
 import { setParent, setSubject } from "../operations/wrapped-message.js";
 import { Rumor } from "../helpers/gift-wrap.js";
 
@@ -18,7 +18,7 @@ export class WrappedMessageFactory extends EventFactory<kinds.PrivateDirectMessa
     const recipientList = typeof recipients === "string" ? [recipients] : recipients;
     let factory: WrappedMessageFactory = new WrappedMessageFactory((res) =>
       res(blankEventTemplate(kinds.PrivateDirectMessage)),
-    ).chain(setShortTextContent(message));
+    ).chain(setContent(message));
     for (const recipient of recipientList) {
       factory = factory.chain(includeNameValueTag(["p", recipient])) as WrappedMessageFactory;
     }
@@ -28,14 +28,18 @@ export class WrappedMessageFactory extends EventFactory<kinds.PrivateDirectMessa
   /** Creates a reply to a wrapped message */
   static reply(parent: Rumor | string, recipient: string, message: string): WrappedMessageFactory {
     return new WrappedMessageFactory((res) => res(blankEventTemplate(kinds.PrivateDirectMessage)))
-      .chain(setShortTextContent(message))
+      .chain(setContent(message))
       .chain(includeNameValueTag(["p", recipient]))
       .replyTo(parent) as WrappedMessageFactory;
   }
 
   /** Sets the text content of the message */
   text(content: string, options?: TextContentOptions) {
-    return this.chain(setShortTextContent(content, options));
+    // In NIP-17 every p tag is a recipient, including tags inferred from mentions.
+    let factory = this.chain(setContent(content));
+    if (options?.emojis) factory = factory.chain(includeEmojis(options.emojis));
+    if (options?.contentWarning !== undefined) factory = factory.chain(setContentWarning(options.contentWarning));
+    return factory;
   }
 
   /** Sets the parent message "e" tag for NIP-17 reply threading */

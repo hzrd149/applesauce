@@ -2,7 +2,95 @@
 
 A collection of stuff that doesn't fit into any applesauce package.
 
-Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`, `applesauce-extra/kehto`), so importing one doesn't load the others or their optional dependencies.
+Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`, `applesauce-extra/messages`, `applesauce-extra/kehto`), so importing one doesn't load the others or their optional dependencies.
+
+## Messaging clients
+
+`LegacyMessagesClient` (NIP-04) and `WrappedMessagesClient` (NIP-17) combine a shared store, pool and fixed account into ready-to-use messaging clients. Import them from `applesauce-extra/messages`; no Kehto dependencies are required.
+
+Each client owns its options, request types, lifecycle, and protocol orchestration independently in [`messages/legacy`](src/messages/legacy/) and [`messages/wrapped`](src/messages/wrapped/); protocol-neutral helper contracts and small utilities live in [`messages/common`](src/messages/common/).
+
+```ts
+const client = new WrappedMessagesClient({ pubkey, signer, eventStore, pool });
+await client.start();
+const subscription = client.conversation$([recipient]).subscribe(renderMessages);
+client.setAutoUnlock(true);
+await client.send({ recipients: [recipient], content: "Hello" });
+// When the owner ends:
+subscription.unsubscribe();
+client.dispose();
+```
+
+`start()` restores cached plaintext and starts recent-history and live loading; it does not wait for history or decryption to finish. Signer-backed decryption defaults to off. Use `unlock()` for loaded messages, `unlock(event)` to retry one event, or `setAutoUnlock(true)` for continuous decryption. Observe `status$`, `syncStatus$`, `relayStatus$`, `decryptionState$`, and `errors$` for progress and failures.
+
+`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
+
+Legacy sends take `{ recipient, content }` and use `LegacyMessagesClientOptions`; wrapped sends take `{ recipients, content }` and use `WrappedMessagesClientOptions`. Kehto's protocol adapters translate native events into normalized messages before the multi-protocol adapter merges them.
+
+### Authenticate message relays
+
+Both clients expose `authRequests$` and `authenticate(url)` for user-driven NIP-42 authentication. Requests are grouped by relay and include their context, state (`pending`, `authenticating`, or `failed`), and last error.
+
+```ts
+const requests = use$(client.authRequests$) ?? [];
+// From an explicit user action:
+await client.authenticate(requests[0].url);
+```
+
+Authentication uses the client's fixed-account signer and checks the relay verdict. Concurrent attempts for the same relay share one promise, and rejected attempts remain available for retry. Read-only clients expose requests but cannot authenticate.
+
+The optional `onAuthRequired` callback still runs after a request is recorded. Successful external authentication also clears requests. Requests belong to active reads, history syncs, or publications; ending an operation removes only its requests, and stopping the client clears all of them. Legacy conversations share their owner's authentication list.
+
+Authentication resumes operations still waiting for it; operations that already timed out need an explicit retry. Subscribing to `authRequests$` never prompts the signer.
+
+### Load a legacy conversation independently
+
+Each legacy client belongs to one fixed account. `conversation(pubkey)` returns a stable `LegacyConversation` with its own live loading, history progress, and decryption controls. Opening it does not require `client.start()` or an account-wide history download.
+
+```ts
+const conversation = client.conversation(recipient);
+const subscription = conversation.messages$.subscribe(renderMessages);
+await conversation.start();
+await conversation.loadHistory({ since, until });
+await conversation.unlock();
+await conversation.send({ content: "Hello" });
+subscription.unsubscribe();
+conversation.stop();
+```
+
+Cache and relay history queries are restricted to incoming and outgoing messages with that correspondent. `start()` loads the configured recent history window and follows live messages; older history is explicit. `messages$` returns native events already in the shared store and does not start network loading by itself.
+
+Use `client.start()` separately for account-wide inbox discovery. Stopping a conversation leaves other conversations running; stopping or disposing the client stops all its conversations. Disposing a conversation releases it permanently, and the next `client.conversation(pubkey)` lookup creates a fresh instance.
+
+`sync$({ since })` reconciles older history with progress; `loadHistory({ since })` returns its final status as a promise. Legacy history also accepts `correspondent`; wrapped history is mailbox-wide because participant metadata is encrypted. Wrapped date ranges include two days of envelope-timestamp overlap. A completed sync can contain failed relays; inspect its mailbox results.
+
+### Integration
+
+Configure the store's profile/relay-list loaders before creating the client. Supply `cacheRequest` for encrypted-event hydration and `decryptionCache` for private plaintext; the application owns event persistence and encryption at rest. Pass `onAuthRequired` and `authTimeout` to integrate relay authentication with your UI.
+
+Wrapped sends require kind-10050 relays for every participant, including the sender. `fallbackRelays` applies to reads and legacy delivery only. `expiration` tags the logical message; `envelopeExpiration` independently expires wrapped relay envelopes.
+
+```ts
+const prepared = await client.prepareSend({ recipients, content });
+try {
+  await prepared.publish();
+} catch (error) {
+  // Retain prepared and retry publish() after inspecting the failure.
+  // Wrapped failures expose per-recipient outcomes on WrappedMessagePublicationError.
+}
+```
+
+Retries reuse signed events and skip accepted wrapped envelopes. `clientMessageId` provides a bounded, in-memory retry window for repeated `send()` calls; it is scoped by the optional operation `scope`. Relay acceptance is not a recipient delivery receipt.
+
+### Best Practices
+
+- Create a new client when the account changes; avoid a signer proxy that changes identity.
+- Keep the shared pool and store alive when disposing an individual client.
+- Connect client ownership to observable teardown and consume its state through `use$` in React.
+- Pass an `AbortSignal` to cancellable operations; an already-issued signer or network request cannot be recalled.
+- Keep approval UI in the `approve` callback, which receives plaintext before encryption or signing.
+
+**Examples:** [`messages/gift-wrap`](../../apps/examples/src/examples/messages/gift-wrap.tsx), [`messages/legacy`](../../apps/examples/src/examples/messages/legacy.tsx), [`messages/personal-notes`](../../apps/examples/src/examples/messages/personal-notes.tsx)
 
 ## PrimalCache
 
