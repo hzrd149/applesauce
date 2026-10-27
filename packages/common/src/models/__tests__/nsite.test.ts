@@ -1,6 +1,6 @@
 import { firstValueFrom } from "rxjs";
 import { EventStore } from "applesauce-core/event-store";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { RootNsiteFactory } from "../../factories/root-nsite.js";
 import { NamedNsiteFactory } from "../../factories/named-nsite.js";
@@ -12,6 +12,11 @@ const user = new FakeUser();
 const files = [{ path: "/index.html", sha256: "a".repeat(64) }];
 
 describe("nsite models", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
   it("resolves site and snapshot pointers and queries aggregate hashes", async () => {
     const store = new EventStore();
     const site = await NamedNsiteFactory.create("blog", files).sign(user);
@@ -55,6 +60,7 @@ describe("nsite models", () => {
     store.add(site);
     store.add(await NsiteSnapshotFactory.create(site).sign(user));
     store.add(await RootNsiteFactory.create(files).sign(new FakeUser()));
+    await vi.advanceTimersByTimeAsync(16);
     expect(emissions.at(-1)).toEqual([site.id]);
     sub.unsubscribe();
   });

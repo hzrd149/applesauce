@@ -14,6 +14,7 @@ import { EventModel, FiltersModel, ReplaceableModel, TimelineModel } from "../mo
 import { ContactsModel } from "../models/contacts.js";
 import { MailboxesModel } from "../models/mailboxes.js";
 import { ProfileModel } from "../models/profile.js";
+import { TimelineOptions } from "../models/timeline.js";
 import { IAsyncEventStore, IEventStore, IEventSubscriptions, ModelConstructor } from "./interface.js";
 
 /**
@@ -141,9 +142,15 @@ export class EventModels<
     return this.replaceable(pointer);
   }
 
+  /**
+   * Creates a timeline using the legacy version-retention argument
+   * @deprecated Use timeline(filters, { includeOldVersion }) instead; the boolean argument will be removed in the next major release
+   */
+  timeline(filters: Filter | Filter[], includeOldVersion: boolean): Observable<E[]>;
   /** Creates a {@link TimelineModel} */
-  timeline(filters: Filter | Filter[], includeOldVersion = false): Observable<E[]> {
-    return this.model(TimelineModel<E>, filters, includeOldVersion);
+  timeline(filters: Filter | Filter[], options?: boolean | TimelineOptions): Observable<E[]>;
+  timeline(filters: Filter | Filter[], options: boolean | TimelineOptions = {}): Observable<E[]> {
+    return this.model(TimelineModel<E>, filters, options);
   }
 
   /** Subscribe to a users profile */

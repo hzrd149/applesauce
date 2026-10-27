@@ -2,7 +2,7 @@ import { EventStore } from "applesauce-core";
 import { finalizeEvent, generateSecretKey, type NostrEvent } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { type Observable, Subject } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { publishEvent } from "../publish";
 import { relayTimeline } from "../relay-timeline";
 
@@ -22,7 +22,13 @@ function setup() {
 }
 
 describe("relay timeline ownership", () => {
-  it("ingests events, follows revisions and excludes events from previously selected relays", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("ingests events, follows revisions and excludes events from previously selected relays", async () => {
     const { store, pool, relays } = setup();
     const unrelated = event(30023, 1, "previous relay");
     const selected = event(30023, 2, "selected relay");
@@ -39,8 +45,10 @@ describe("relay timeline ownership", () => {
     expect(states[states.length - 1]?.status).toBe("loading");
     relays.get("wss://one")!.next(selected);
     expect(store.hasEvent(selected.id)).toBe(true);
+    await vi.advanceTimersByTimeAsync(16);
     expect(states[states.length - 1]?.events.map((value) => value.id)).toEqual([selected.id]);
     store.add(latest);
+    await vi.advanceTimersByTimeAsync(16);
     expect(states[states.length - 1]?.events.map((value) => value.id)).toEqual([latest.id]);
     relays.get("wss://one")!.next("EOSE");
     expect(states[states.length - 1]?.status).toBe("live");
@@ -48,7 +56,7 @@ describe("relay timeline ownership", () => {
     expect(relays.get("wss://one")!.observed).toBe(false);
   });
 
-  it("isolates relay errors and tears down every relay on unsubscribe", () => {
+  it("isolates relay errors and tears down every relay on unsubscribe", async () => {
     const { store, pool, relays } = setup();
     let latest: TimelineState | undefined;
     const subscription = relayTimeline(store, pool, ["wss://one", "wss://two"], { kinds: [1] }).subscribe((state) => {
@@ -57,6 +65,7 @@ describe("relay timeline ownership", () => {
     relays.get("wss://one")!.error(new Error("Offline"));
     relays.get("wss://two")!.next(event());
     relays.get("wss://two")!.next("EOSE");
+    await vi.advanceTimersByTimeAsync(16);
     expect(latest?.errors).toEqual(["Offline"]);
     expect(latest?.status).toBe("live");
     expect(latest?.events).toHaveLength(1);

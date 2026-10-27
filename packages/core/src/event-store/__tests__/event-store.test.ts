@@ -1,6 +1,6 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { verifyEvent as nostrVerifyEvent, verifiedSymbol } from "nostr-tools/pure";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { setCachedValue } from "../../helpers/cache.js";
 import { EncryptedContentSymbol } from "../../helpers/encrypted-content.js";
@@ -602,6 +602,12 @@ describe("copySymbolsToDuplicateEvent gates payload symbols on source.id === des
 });
 
 describe("timeline", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    eventStore.dispose();
+    vi.useRealTimers();
+  });
+
   it("should emit an empty array if there are not events", () => {
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [1] }));
     expect(spy.getValues()).toEqual([[]]);
@@ -613,17 +619,20 @@ describe("timeline", () => {
     expect(spy.getValues()).toEqual([[profile]]);
   });
 
-  it("should emit new events", () => {
+  it("should coalesce new events into one snapshot", async () => {
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0, 1] }));
     eventStore.add(profile);
     eventStore.add(note);
-    expect(spy.getValues()).toEqual([[], [profile], [note, profile]]);
+    expect(spy.getValues()).toEqual([[]]);
+    await vi.advanceTimersByTimeAsync(16);
+    expect(spy.getValues()).toEqual([[], [note, profile]]);
   });
 
-  it("should remove event when its removed", () => {
+  it("should remove event when its removed", async () => {
     eventStore.add(profile);
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
     eventStore.remove(profile);
+    await vi.advanceTimersByTimeAsync(16);
     expect(spy.getValues()).toEqual([[profile], []]);
   });
 
@@ -642,35 +651,37 @@ describe("timeline", () => {
     expect(spy.getValues()).toEqual([[profile]]);
   });
 
-  it("should replace older replaceable events with newer versions", () => {
+  it("should replace older replaceable events with newer versions", async () => {
     eventStore.add(profile);
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
     const newer = user.profile({ name: "new-name" }, { created_at: profile.created_at + 1000 });
 
     eventStore.add(newer);
-
+    await vi.advanceTimersByTimeAsync(16);
     expect(spy.getValues()).toEqual([[profile], [newer]]);
   });
 
-  it("should keep old replaceable versions when requested", () => {
+  it("should keep old replaceable versions when requested", async () => {
     eventStore = new EventStore({ keepOldVersions: true });
     eventStore.add(profile);
     const newer = user.profile({ name: "new-name" }, { created_at: profile.created_at + 1000 });
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }, true));
 
     eventStore.add(newer);
-
+    await vi.advanceTimersByTimeAsync(16);
     expect(spy.getValues()).toEqual([[profile], [newer, profile]]);
   });
 
-  it("should return new array for every value", () => {
+  it("should return new array for every value", async () => {
     const first = user.note("first note");
     const second = user.note("second note");
     const third = user.note("third note");
     eventStore.add(first);
-    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
+    const spy = subscribeSpyTo(eventStore.timeline({ kinds: [1] }));
     eventStore.add(second);
+    await vi.advanceTimersByTimeAsync(16);
     eventStore.add(third);
+    await vi.advanceTimersByTimeAsync(16);
     const hasDuplicates = (arr: any[]) => {
       return new Set(arr).size !== arr.length;
     };
@@ -678,19 +689,19 @@ describe("timeline", () => {
     expect(hasDuplicates(spy.getValues())).toBe(false);
   });
 
-  it("should not append duplicate event ids from insert notifications", () => {
+  it("should not append duplicate event ids from insert notifications", async () => {
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [1] }));
     eventStore.add(note);
     eventStore.insert$.next(note);
-
+    await vi.advanceTimersByTimeAsync(16);
     expect(spy.getLastValue()).toEqual([note]);
   });
 
-  it("should not append duplicate replaceable event ids from insert notifications", () => {
+  it("should not append duplicate replaceable event ids from insert notifications", async () => {
     const spy = subscribeSpyTo(eventStore.timeline({ kinds: [0] }));
     eventStore.add(profile);
     eventStore.insert$.next(profile);
-
+    await vi.advanceTimersByTimeAsync(16);
     expect(spy.getLastValue()).toEqual([profile]);
   });
 });

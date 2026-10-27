@@ -30,7 +30,8 @@ function collectDeletedIds(tokens: NostrEvent[]): Set<string> {
  */
 export function WalletDeletedTokenIdsModel(pubkey: string): Model<Set<string>> {
   return (events) => {
-    return events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }).pipe(
+    // Spend exclusions must be visible immediately, before later token arrivals can affect the balance
+    return events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }, { batchWindow: false }).pipe(
       // Re-collect when a token unlocks so the decrypted-content fallback stays accurate
       watchEventsUpdates(events),
       map(collectDeletedIds),
@@ -42,7 +43,7 @@ export function WalletDeletedTokenIdsModel(pubkey: string): Model<Set<string>> {
 export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined): Model<NostrEvent[]> {
   return (events) => {
     return combineLatest([
-      events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }),
+      events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }, { batchWindow: false }),
       events.model(WalletDeletedTokenIdsModel, pubkey),
     ]).pipe(
       // remove deleted events
@@ -61,7 +62,7 @@ export function WalletTokensModel(pubkey: string, unlocked?: boolean | undefined
 export function WalletDeletedTokensModel(pubkey: string): Model<NostrEvent[]> {
   return (events) => {
     return combineLatest([
-      events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }),
+      events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }, { batchWindow: false }),
       events.model(WalletDeletedTokenIdsModel, pubkey),
     ]).pipe(map(([tokens, deleted]) => tokens.filter((token) => deleted.has(token.id))));
   };
@@ -72,7 +73,9 @@ export function WalletBalanceModel(pubkey: string): Model<Record<string, number>
   return (events) => {
     return combineLatest([
       // Watch for updates to the tokens so the balance recounts when a token unlocks
-      events.timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }).pipe(watchEventsUpdates(events)),
+      events
+        .timeline({ kinds: [WALLET_TOKEN_KIND], authors: [pubkey] }, { batchWindow: false })
+        .pipe(watchEventsUpdates(events)),
       events.model(WalletDeletedTokenIdsModel, pubkey),
     ]).pipe(
       // Ignore deleted tokens

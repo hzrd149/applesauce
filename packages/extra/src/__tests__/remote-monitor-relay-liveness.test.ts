@@ -26,7 +26,10 @@ const monitor = (key: Uint8Array, negatives = false): Nip66Monitor => ({
             : "unknown"
     : undefined,
 });
-function create(monitors = [monitor(a)], options: Partial<ConstructorParameters<typeof RemoteMonitorRelayLiveness>[1]> = {}) {
+function create(
+  monitors = [monitor(a)],
+  options: Partial<ConstructorParameters<typeof RemoteMonitorRelayLiveness>[1]> = {},
+) {
   const tracker = new RemoteMonitorRelayLiveness(store, { monitors, maxAge: 60_000, ...options });
   instances.push(tracker);
   return tracker;
@@ -43,7 +46,8 @@ function announce(key: Uint8Array, frequency: number) {
     key,
   );
 }
-const flush = () => vi.advanceTimersByTimeAsync(50);
+// Allow the default timeline window and the monitor's downstream audit window to settle
+const flush = () => vi.advanceTimersByTimeAsync(16 + 50);
 beforeEach(() => {
   vi.useFakeTimers({ now: 1_800_000_000_000 });
   store = new EventStore();

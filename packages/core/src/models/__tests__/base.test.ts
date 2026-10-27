@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { AsyncEventStore } from "../../event-store/async-event-store.js";
 import { EventMemory } from "../../event-store/event-memory.js";
@@ -237,9 +237,10 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(newer);
 
       const values: StoreEvent[][] = [];
-      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe(
-        (value) => values.push(value),
-      );
+      const sub = TimelineModel<StoreEvent>(
+        { kinds: [kinds.ShortTextNote] },
+        { batchWindow: false },
+      )(testStore.store as any).subscribe((value) => values.push(value));
       await flush();
 
       expect(values.at(-1)?.map((event) => event.id)).toEqual([newer.id, older.id]);
@@ -263,9 +264,10 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       await testStore.add(first);
 
       const values: StoreEvent[][] = [];
-      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.Metadata] })(testStore.store as any).subscribe((value) =>
-        values.push(value),
-      );
+      const sub = TimelineModel<StoreEvent>(
+        { kinds: [kinds.Metadata] },
+        { batchWindow: false },
+      )(testStore.store as any).subscribe((value) => values.push(value));
       await flush();
       const before = values.length;
 
@@ -276,6 +278,38 @@ describe.each(cases)("base models with $name", ({ create, makeEvent, makeReplace
       expect(values.length).toBe(before + 1);
       expect(values.at(-1)?.map((event) => event.id)).toEqual([second.id]);
       sub.unsubscribe();
+    });
+  });
+
+  describe("TimelineModel default batching", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("claims the initial snapshot and coalesces live insertions and removals", async () => {
+      const testStore = setup();
+      const first = makeEvent({ created_at: 1, content: "first" });
+      const second = makeEvent({ created_at: 2, content: "second" });
+      const third = makeEvent({ created_at: 3, content: "third" });
+      await testStore.add(first);
+
+      const values: StoreEvent[][] = [];
+      const sub = TimelineModel<StoreEvent>({ kinds: [kinds.ShortTextNote] })(testStore.store as any).subscribe(
+        (value) => values.push(value),
+      );
+      await flush();
+      expect(values).toEqual([[first]]);
+      expect(testStore.store.isClaimed(first)).toBe(true);
+
+      await testStore.add(second);
+      await testStore.add(third);
+      await testStore.remove(first);
+      expect(values).toEqual([[first]]);
+      await vi.advanceTimersByTimeAsync(16);
+      expect(values).toEqual([[first], [third, second]]);
+
+      sub.unsubscribe();
+      expect(testStore.store.isClaimed(second)).toBe(false);
+      expect(testStore.store.isClaimed(third)).toBe(false);
     });
   });
 

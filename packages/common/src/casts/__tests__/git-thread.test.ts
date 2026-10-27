@@ -1,6 +1,6 @@
 import { EventStore } from "applesauce-core/event-store";
 import { firstValueFrom } from "rxjs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { GitRepositoryFactory } from "../../factories/git-repository.js";
 import { GitAppliedStatusFactory } from "../../factories/git-applied-status.js";
@@ -34,6 +34,11 @@ async function setup() {
 }
 
 describe("git thread casts", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
   it("lists issues and pull requests on the repository", async () => {
     const { store, repo } = await setup();
     const cast = new GitRepository(repo, store);
@@ -47,10 +52,12 @@ describe("git thread casts", () => {
     expect(await firstValueFrom(cast.status$)).toBe("open");
 
     store.add(await GitAppliedStatusFactory.create(pr).created(200).sign(maintainer));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.status$)).toBe("applied");
 
     // Statuses from unrelated users are ignored
     store.add(await GitClosedStatusFactory.create(pr).created(300).sign(new FakeUser()));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.status$)).toBe("applied");
   });
 
@@ -71,6 +78,7 @@ describe("git thread casts", () => {
         ],
       }),
     );
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.updatedAt$)).toBe(150);
 
     const tags = [
@@ -80,6 +88,7 @@ describe("git thread casts", () => {
       ["k", "1618"],
     ];
     store.add(owner.event({ kind: COMMENT_KIND, created_at: 400, tags }));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.updatedAt$)).toBe(400);
     expect((await firstValueFrom(cast.comments$)).length).toBe(1);
 

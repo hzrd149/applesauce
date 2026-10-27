@@ -3,6 +3,7 @@ import { NostrEvent, StoreEvent } from "../helpers/event.js";
 import { Filter } from "../helpers/filter.js";
 import { AddressPointer, AddressPointerWithoutD, EventPointer, ProfilePointer } from "../helpers/pointers.js";
 import { ProfileContent } from "../helpers/profile.js";
+import type { TimelineOptions } from "../models/timeline.js";
 
 /** An event ID and timestamp used for set reconciliation */
 export type SyncPair = {
@@ -136,8 +137,13 @@ export interface IEventSubscriptions<E extends StoreEvent = NostrEvent> {
   addressable(pointer: AddressPointer): Observable<E | undefined>;
   /** Subscribe to a batch of events that match the filters */
   filters(filters: Filter | Filter[], onlyNew?: boolean): Observable<E>;
-  /** Subscribe to a sorted timeline of events that match the filters */
-  timeline(filters: Filter | Filter[], onlyNew?: boolean): Observable<E[]>;
+  /**
+   * Subscribes to a timeline using the legacy version-retention argument
+   * @deprecated Use timeline(filters, { includeOldVersion }) instead; the boolean argument will be removed in the next major release
+   */
+  timeline(filters: Filter | Filter[], includeOldVersion: boolean): Observable<E[]>;
+  /** Subscribes to a sorted timeline with an immediate initial snapshot and batched live updates */
+  timeline(filters: Filter | Filter[], options?: boolean | TimelineOptions): Observable<E[]>;
 
   /** Subscribe to a users profile */
   profile(user: string | ProfilePointer): Observable<ProfileContent | undefined>;

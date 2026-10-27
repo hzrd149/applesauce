@@ -3,7 +3,6 @@ import {
   distinctUntilChanged,
   EMPTY,
   filter,
-  finalize,
   from,
   identity,
   map,
@@ -13,7 +12,6 @@ import {
   MonoTypeOperatorFunction,
   Observable,
   of,
-  scan,
   startWith,
   switchMap,
   take,
@@ -22,18 +20,12 @@ import {
 
 import { IAsyncEventStore, IEventStore, IMissingEventLoader, Model } from "../event-store/interface.js";
 import { getKeyedRouter } from "../observable/keyed-router.js";
-import {
-  getEventUID,
-  getReplaceableIdentifier,
-  insertEventIntoDescendingList,
-  isReplaceable,
-  NostrEvent,
-  StoreEvent,
-} from "../helpers/event.js";
+import { getReplaceableIdentifier, NostrEvent, StoreEvent } from "../helpers/event.js";
 import { compileFilters, Filter } from "../helpers/filter.js";
 import { AddressPointer, AddressPointerWithoutD, EventPointer } from "../helpers/pointers.js";
-import { claimEvents } from "../observable/claim-events.js";
 import { claimLatest } from "../observable/claim-latest.js";
+
+export { TimelineModel, type TimelineOptions } from "./timeline.js";
 
 /** Gets a single event from both types of event stores and returns an observable that completes */
 function getEventFromStores<E extends StoreEvent = NostrEvent>(
@@ -179,113 +171,6 @@ export function ReplaceableModel<E extends StoreEvent = NostrEvent>(
       }),
       // claim latest event
       claimLatest(s),
-    );
-  };
-}
-
-/** A model that returns an array of sorted events matching the filters */
-export function TimelineModel<E extends StoreEvent = NostrEvent>(
-  filters: Filter | Filter[],
-  includeOldVersion?: boolean,
-): Model<E[], E> {
-  filters = Array.isArray(filters) ? filters : [filters];
-
-  return (store) => {
-    // Bridge cast: see EventModel's comment above.
-    const s = store as unknown as IEventStore<E> | IAsyncEventStore<E>;
-
-    const seen = new Map<string, E>();
-    const getTimelineUID = (event: E) => (includeOldVersion ? event.id : getEventUID(event));
-    const matches = compileFilters<E>(filters);
-
-    // get current events
-    return defer(() => {
-      const r = s.getTimeline(filters);
-      if (r instanceof Promise) return from(r);
-      else return of(r);
-    }).pipe(
-      // claim existing events
-      claimEvents(s),
-      // subscribe to newer events
-      mergeWith(
-        s.insert$.pipe(
-          filter(matches),
-          // claim all new events
-          claimEvents(s),
-        ),
-      ),
-      // subscribe to delete events
-      mergeWith(
-        s.remove$.pipe(
-          filter(matches),
-          map((e) => e.id),
-        ),
-      ),
-      // build a timeline
-      scan((timeline, event) => {
-        // filter out removed events from timeline
-        if (typeof event === "string") {
-          // Forget the removed event so the seen map does not grow unbounded on long-lived
-          // feeds. Only forget when the seen entry is the event being removed (not a newer
-          // replaceable version that happens to share a UID).
-          const index = timeline.findIndex((e) => e.id === event);
-          // Keep the same array when the event is not in the timeline, such as a replaced version
-          if (index === -1) return timeline;
-
-          const uid = getTimelineUID(timeline[index]);
-          if (seen.get(uid)?.id === event) seen.delete(uid);
-          const newTimeline = [...timeline];
-          newTimeline.splice(index, 1);
-          return newTimeline;
-        }
-
-        // initial timeline array
-        if (Array.isArray(event)) {
-          seen.clear();
-          for (const e of event) seen.set(getTimelineUID(e), e);
-          // Always return a new array instance to ensure UI libraries detect changes
-          return [...event];
-        }
-
-        const uid = getTimelineUID(event);
-        const existing = seen.get(uid);
-
-        // Ignore duplicate regular events and older replaceable versions.
-        if (
-          existing &&
-          (!isReplaceable(event.kind) || (!includeOldVersion && event.created_at < existing.created_at))
-        ) {
-          // Keep the same array so distinctUntilChanged skips the emission
-          return timeline;
-        }
-
-        // Copy only after checking whether the incoming event will be ignored.
-        const newTimeline = [...timeline];
-
-        // remove old replaceable events if enabled
-        if (!includeOldVersion && isReplaceable(event.kind)) {
-          // update latest version
-          seen.set(uid, event);
-          // remove old event from timeline
-          if (existing) {
-            const index = newTimeline.indexOf(existing);
-            if (index !== -1) newTimeline.splice(index, 1);
-          }
-        } else {
-          seen.set(uid, event);
-        }
-
-        // add event into timeline
-        // NOTE: insertEventIntoDescendingList is not in the CORE-04 list and stays NostrEvent-typed;
-        // bridge with a localized cast since it only reads `created_at` (present on every StoreEvent).
-        insertEventIntoDescendingList(newTimeline as unknown as NostrEvent[], event as unknown as NostrEvent);
-
-        return newTimeline;
-      }, [] as E[]),
-      // ignore changes that do not modify the timeline instance
-      distinctUntilChanged(),
-      // hacky hack to clear seen on unsubscribe
-      finalize(() => seen.clear()),
     );
   };
 }

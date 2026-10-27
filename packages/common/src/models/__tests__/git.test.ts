@@ -1,6 +1,6 @@
 import { EventStore } from "applesauce-core/event-store";
 import { firstValueFrom } from "rxjs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { GitRepositoryFactory } from "../../factories/git-repository.js";
 import { GitPatchFactory } from "../../factories/git-patch.js";
@@ -39,6 +39,11 @@ async function setup() {
 }
 
 describe("NIP-34 reactive integration", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
   it("resolves previous patches, series roots, original roots and ordered series", async () => {
     const { store, root, second, revision, revisedSecond, otherRevision } = await setup();
     const patch = new GitPatch(revisedSecond, store);
@@ -60,12 +65,15 @@ describe("NIP-34 reactive integration", () => {
     store.add(await GitClosedStatusFactory.create(root).created(400).sign(owner));
     expect(await firstValueFrom(accepted.status$)).toBe("closed");
     store.add(await GitAppliedStatusFactory.create(root).acceptedRevision(revision).created(500).sign(owner));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(accepted.status$)).toBe("applied");
     expect(await firstValueFrom(rejected.status$)).toBe("closed");
     expect((await firstValueFrom(accepted.statusEvent$))?.created_at).toBe(500);
     store.add(await GitOpenStatusFactory.create(root).created(600).sign(stranger));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(accepted.status$)).toBe("applied");
     store.add(await GitOpenStatusFactory.create(root).created(700).sign(author));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(rejected.status$)).toBe("open");
   });
 
@@ -122,6 +130,7 @@ describe("NIP-34 reactive integration", () => {
     const comment = await CommentFactory.create(root, "Review").created(500).sign(stranger);
     store.add(comment);
     store.add(stranger.event({ kind: 1111, created_at: 600, tags: [["E", root.id]] }));
+    await vi.advanceTimersByTimeAsync(16);
     expect((await firstValueFrom(cast.comments$)).map((event) => event.id)).toEqual([comment.id]);
     expect(await firstValueFrom(cast.updatedAt$)).toBe(500);
   });
@@ -139,6 +148,7 @@ describe("NIP-34 reactive integration", () => {
       .created(200)
       .sign(author);
     store.add(update);
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.state$)).toMatchObject({
       event: update,
       tipCommit: b,
@@ -169,12 +179,14 @@ describe("NIP-34 reactive integration", () => {
       ],
     });
     store.add(wrongAuthorTag);
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.latestTipCommit$)).toBe(b);
     expect((await firstValueFrom(cast.updates$)).map((event) => event.id)).toEqual([update.id]);
     expect(await firstValueFrom(cast.updatedAt$)).toBe(200);
     expect(states.at(-1)).toBe(b);
     // A newer update without merge-base clears the old optional value.
     store.add(await GitPullRequestUpdateFactory.create(pr, c, urls).created(500).sign(author));
+    await vi.advanceTimersByTimeAsync(16);
     expect(await firstValueFrom(cast.latestMergeBase$)).toBeUndefined();
     expect(await firstValueFrom(cast.latestTipCommit$)).toBe(c);
     subscription.unsubscribe();

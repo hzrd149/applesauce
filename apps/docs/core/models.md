@@ -50,7 +50,7 @@ console.log(first === second); // true
 
 `applesauce-core` includes a few common models:
 
-- [`TimelineModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of events that match filters
+- [`TimelineModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of matching events with batched live updates
 - [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a user's profile, see [Profiles](/features/profiles)
 - [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list, see [Follows](/features/follows)
 - [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox and outbox relays, see [Mailboxes & Outbox](/features/outbox)
@@ -62,6 +62,41 @@ console.log(first === second); // true
 - Git repository, thread, and patch models, see [Git](/features/git)
 
 See the full list in [the API docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html) and [applesauce-common models](https://applesauce.build/typedoc/modules/applesauce-common.Models.html).
+
+## Timeline snapshots
+
+`TimelineModel` and `eventStore.timeline()` emit an initial snapshot immediately when the store query resolves, then coalesce live changes into fixed **16 ms windows** by default. Every insertion and removal updates indexed membership and claims immediately; only snapshot construction and notification are delayed.
+
+At flush time, the model sorts pending additions and merges them with the previous sorted snapshot, excluding removed or replaced events. Sparse single-event additions use a binary insertion into a copied array, and removing nearly the entire timeline can rebuild only the small remainder. It does not re-sort the whole timeline for each ordinary batch.
+
+```ts
+const timeline$ = eventStore.timeline({ kinds: [1] });
+const immediate$ = eventStore.timeline({ kinds: [1] }, { batchWindow: false });
+const history$ = eventStore.timeline({ kinds: [0] }, { includeOldVersion: true });
+```
+
+- The initial snapshot emits immediately once the store query resolves, including when it is empty; previously emitted arrays are never mutated.
+- `batchWindow` starts on the first change, not after a period of silence. Set it to `false` for synchronous live updates, or another non-negative number of milliseconds to tune the window. **`0` still schedules asynchronously**; it does not disable batching.
+- Inserts and removals are all applied in arrival order. No input events are throttled or dropped.
+- Events sort newest first; among equal timestamps, later inserts come first. Current-only replaceable timelines use the NIP-01 winner: newest timestamp, then lowest event id.
+- Current-only timelines select one winning version per replaceable address, including in the initial snapshot. Set `includeOldVersion: true` to keep each stored version; the store must also retain those versions. The legacy boolean second argument is **deprecated** and will be removed in the next major release; it still controls version retention, not batching.
+- Completion flushes pending changes. Unsubscribe, error, and store disposal cancel pending notifications and release owned claims. Previously emitted arrays are not mutated.
+
+Replace `TimelineModel(filters, true)` with `TimelineModel(filters, { includeOldVersion: true })`, and `eventStore.timeline(filters, true)` with `eventStore.timeline(filters, { includeOldVersion: true })`. For the former `false` argument, omit it or use `{ includeOldVersion: false }`.
+
+### Integration
+
+Use the convenience method or `eventStore.model(TimelineModel, filters, options)` with either `EventStore` or `AsyncEventStore`; normal model caching, sharing, and keep-warm behavior apply. When an asynchronous initial query is pending, the model temporarily buffers and claims incoming inserts, then replays updates over the snapshot before its first emission. Canceling the subscription releases that buffer.
+
+Membership changes release superseded and removed events without waiting for the next notification. A previously emitted snapshot can still reference an event until the next flush or until its consumer releases that array.
+
+Wallet token models explicitly use immediate mode so spent-token exclusions and balance reads remain synchronous.
+
+### Best Practices
+
+- Use `{ batchWindow: false }` when consumers need every intermediate array or must read the updated timeline synchronously after `store.add()`. Cached batched models can replay the previous snapshot until their next flush.
+- Choose a scheduling window that matches the view's latency needs. Immutable snapshots still require copying their entries; batching does not make an unbounded feed free. Downstream `throttleTime()` reduces notifications, not upstream snapshot construction.
+- Keep sync filters narrow and reuse shared models instead of building overlapping global timelines.
 
 ## Custom Models
 

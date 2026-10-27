@@ -104,6 +104,24 @@ describe("WalletDeletedTokenIdsModel", () => {
 });
 
 describe("WalletBalanceModel", () => {
+  it("never counts spent proofs during a same-turn burst of newest-first tokens", async () => {
+    const spent = await buildToken(50, 1000);
+    const current = await buildToken(100, 2000, [spent.id]);
+    const deposit = await buildToken(70, 1500);
+    const balances: number[] = [];
+    const sub = events
+      .model(WalletBalanceModel, signer.pubkey)
+      .subscribe((balance) => balances.push(balance[mint] ?? 0));
+    events.add(current);
+    events.add(deposit);
+    events.add(spent);
+    expect(balances.at(-1)).toBe(170);
+    expect(Math.max(...balances)).toBe(170);
+    for (let index = 1; index < balances.length; index++)
+      expect(balances[index]).toBeGreaterThanOrEqual(balances[index - 1]);
+    sub.unsubscribe();
+  });
+
   it("does not double count tokens that have been replaced", async () => {
     const old1 = await addToken(50);
     const old2 = await addToken(50);
