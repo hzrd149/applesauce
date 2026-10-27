@@ -68,8 +68,61 @@ describe("identity", () => {
     expect(await identity.getMutes!(alice, {} as any)).toEqual([bob]);
   });
 
+  it.each([
+    [
+      "bookmarks",
+      kinds.BookmarkList,
+      [
+        ["e", "event"],
+        ["a", "address"],
+        ["t", "topic"],
+        ["r", "https://example.com"],
+      ],
+    ],
+    ["pins", kinds.Pinlist, [["e", "event"]]],
+    [
+      "interests",
+      kinds.InterestsList,
+      [
+        ["t", "topic"],
+        ["a", "address"],
+      ],
+    ],
+    ["communities", kinds.CommunitiesList, [["a", "address"]]],
+    [
+      "emojis",
+      kinds.UserEmojiList,
+      [
+        ["emoji", "smile", "https://example.com/smile.png"],
+        ["a", "address"],
+      ],
+    ],
+  ] as const)("returns only public item values for %s", async (listType, kind, items) => {
+    event(
+      aliceKey,
+      kind,
+      [
+        ...items.map((tag) => [...tag]),
+        ["title", "My list"],
+        ["description", "List description"],
+        ["image", "https://example.com/image.png"],
+        ["d", ""],
+        ["unknown", "not an item"],
+        ["e", ""],
+      ],
+      "private content",
+    );
+    const identity = createIdentityOptions(await create());
+
+    expect(await identity.getList!(listType, alice, {} as any)).toEqual(items.map((tag) => tag[1]));
+  });
+
   it("optionally uses public muted pubkeys for blocks", async () => {
-    event(aliceKey, kinds.Mutelist, [["p", bob], ["word", "spam"], ["t", "noise"]]);
+    event(aliceKey, kinds.Mutelist, [
+      ["p", bob],
+      ["word", "spam"],
+      ["t", "noise"],
+    ]);
     const identity = createIdentityOptions({ ...(await create()), useMutesForBlocks: true });
 
     expect(await identity.getBlocked!(alice, {} as any)).toEqual([bob]);

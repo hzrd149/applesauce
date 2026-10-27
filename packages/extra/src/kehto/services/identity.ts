@@ -45,6 +45,14 @@ export const KEHTO_IDENTITY_LIST_KINDS: Record<string, number> = {
   emojis: kinds.UserEmojiList,
 };
 
+const IDENTITY_LIST_TAGS: Record<string, string[]> = {
+  bookmarks: ["e", "a", "t", "r"],
+  pins: ["e"],
+  interests: ["t", "a"],
+  communities: ["a"],
+  emojis: ["emoji", "a"],
+};
+
 /** Maps a profile cast to the NAP profile shape */
 export function toNapProfile(profile: Profile) {
   const { name, about, picture, banner, nip05, lud16, website } = profile.metadata;
@@ -87,7 +95,8 @@ export function createIdentityOptions(config: KehtoIdentityOptions): IdentitySer
       const kind = KEHTO_IDENTITY_LIST_KINDS[listType];
       if (kind === undefined) return [];
       const list = await settle(eventStore.replaceable(kind, pubkey), undefined, config.timeout ?? 4000);
-      const tags = list?.tags.filter((tag) => tag[0] !== "d" && tag[1]);
+      const itemTags = IDENTITY_LIST_TAGS[listType];
+      const tags = list?.tags.filter((tag) => itemTags.includes(tag[0]) && tag[1]);
       return tags?.map((tag) => tag[1]) ?? [];
     },
     getZaps: async (pubkey) => {

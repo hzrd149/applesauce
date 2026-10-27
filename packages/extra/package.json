@@ -21,6 +21,11 @@
       "require": "./dist/kehto/host/index.js",
       "types": "./dist/kehto/host/index.d.ts"
     },
+    "./kehto/services/cvm": {
+      "import": "./dist/kehto/services/cvm.js",
+      "require": "./dist/kehto/services/cvm.js",
+      "types": "./dist/kehto/services/cvm.d.ts"
+    },
     "./nspam": {
       "import": "./dist/nspam/index.js",
       "require": "./dist/nspam/index.js",

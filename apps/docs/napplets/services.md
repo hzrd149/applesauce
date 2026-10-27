@@ -55,6 +55,56 @@ const bridge = createShellBridge({ ...existingAdapter, services });
 
 Availability of individual operations depends on the active signer and its encryption support. See [Messaging](./messaging.md) for protocol selection and routing.
 
+### ContextVM
+
+Import ContextVM separately so its Nostr transport stays out of services-only bundles:
+
+```ts
+import { createKehtoCvmService } from "applesauce-extra/kehto/services/cvm";
+
+const services = {
+  cvm: createKehtoCvmService(context, {
+    defaultRelays: ["wss://relay.contextvm.org"],
+    timeoutMs: 10000,
+  }),
+};
+```
+
+Register this entry in the host's complete service registry. It supports server discovery, MCP requests, and server notifications through Kehto's NAP-CVM service and encrypted Nostr transport. Configure discovery/default relays explicitly; the transport also accepts server and query relay hints.
+
+Each window gets its own ephemeral client key and sessions, sharing only the host pool and EventStore. Closing one window's server session does not close another's. The active account and `context.approve` are not used for transport signing; account authentication and payment handling are not supplied by this adapter.
+
+The runtime releases transports on window destruction and service removal. Call `service.dispose()` when using the service standalone; it does not close the shared pool or clear the store. Kehto owns MCP initialization, correlation, encryption, and streaming behavior; see its [services reference](https://kehto.github.io/web/docs/packages/services).
+
+For custom service wiring, use `createCvmOptions` with Kehto's own factory:
+
+```ts
+import { createCvmService } from "@kehto/services";
+import { createCvmOptions } from "applesauce-extra/kehto/services/cvm";
+
+const options = createCvmOptions(context, { defaultRelays });
+const service = createCvmService(options);
+// When the owner ends:
+service.dispose();
+```
+
+Each options result owns one transport and ephemeral identity, not isolated per-window sessions. Create separate results for independent owners, or use `createKehtoCvmService` for automatic window isolation. Kehto's raw service exposes `dispose()` rather than `onUnregistered`; custom wiring must arrange disposal when removing the service. If the options are never attached to a service, call `options.transport.dispose()` yourself.
+
+Use `createCvmTransport` to access discovery and MCP requests directly, without a NAP service:
+
+```ts
+import { createCvmTransport } from "applesauce-extra/kehto/services/cvm";
+
+const transport = createCvmTransport(context, { defaultRelays });
+try {
+  const servers = await transport.discover({ search: "tools" });
+} finally {
+  transport.dispose();
+}
+```
+
+Disposal closes owned subscriptions and rejects pending MCP requests; new requests and discovery calls reject after disposal. Shared relay connections and cached events remain available to the rest of your app.
+
 ### Customization
 
 The registry is the complete set of services. Omit an entry to leave that service unavailable; the host and shell adapter construct no services automatically. Use ordinary object composition to add or replace entries:
@@ -85,6 +135,18 @@ const identity = createKehtoIdentityService(context, {
 
 Alternatively, pass `{ useMutesForBlocks: true }` to the identity constructor to return public NIP-51 muted pubkeys as blocks. This uses the same reader as `getMutes` and does not decrypt private entries. An explicit `getBlocked` provider takes precedence. Without either option, Kehto returns an empty block list; applications decide how blocks affect filtering or delivery.
 
+### Custom list definitions
+
+`createKehtoListsService(context, { lists })` replaces the default supported lists with your definitions. Each definition declares its kind, type, addressability, privacy support, supported item types, and item-tag mapping. Use the exported `KEHTO_LISTS` to select or extend the defaults:
+
+```ts
+const lists = createKehtoListsService(context, {
+  lists: KEHTO_LISTS.filter((list) => list.type === "bookmarks"),
+});
+```
+
+Identity list reads remain public-only and return recognized item values, excluding list metadata.
+
 ## Integration
 
 ### Applesauce shell hooks
@@ -111,7 +173,7 @@ Let `bridge.destroy()` unregister attached services, then use `adapter.stop({ se
 
 ### Individual adapters
 
-Each constructor in the table above is exported from `applesauce-extra/kehto` and accepts the shared context. Identity, common, resource, and DM also accept service-specific options.
+Each constructor in the table above is exported from `applesauce-extra/kehto` and accepts the shared context. Identity, common, lists, resource, and DM also accept service-specific options. ContextVM uses the separate `applesauce-extra/kehto/services/cvm` entry point.
 
 For custom wiring, compose the exported option helpers with Kehto's own factories:
 

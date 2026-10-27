@@ -20,7 +20,7 @@ import {
   type KehtoDmOptions,
 } from "./services/dm.js";
 import { createIdentityOptions, type KehtoIdentityOptions } from "./services/identity.js";
-import { createListsOptions } from "./services/lists.js";
+import { createListsOptions, type KehtoListsOptions } from "./services/lists.js";
 import { createOutboxRouter } from "./services/outbox.js";
 import { createResourceOptions, type KehtoResourceOptions } from "./services/resource.js";
 import { createUploadOptions } from "./services/upload.js";
@@ -110,11 +110,16 @@ export function createKehtoUploadService(context: KehtoContext): ServiceHandler 
 }
 
 /** Creates an applesauce-backed Kehto lists service */
-export function createKehtoListsService(context: KehtoContext): ServiceHandler {
+export function createKehtoListsService(
+  context: KehtoContext,
+  options?: Pick<KehtoListsOptions, "lists">,
+): ServiceHandler {
   const account$ = kehtoAccount$(context);
   const { eventStore, pool, timeout, fallbackRelays, approve } = context;
 
-  return createListsService(createListsOptions({ eventStore, pool, account$, timeout, fallbackRelays, approve }));
+  return createListsService(
+    createListsOptions({ eventStore, pool, account$, timeout, fallbackRelays, approve, ...options }),
+  );
 }
 
 /** Creates an applesauce-backed Kehto resource service */

@@ -5,7 +5,7 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createKehtoShellAdapter } from "../../index.js";
+import { createKehtoListsService, createKehtoShellAdapter } from "../../index.js";
 import type { KehtoContext } from "../../types.js";
 import { createListsOptions } from "../lists.js";
 
@@ -48,6 +48,31 @@ afterEach(() => {
 });
 
 describe("remaining write services", () => {
+  it("exposes custom list definitions through the service constructor", async () => {
+    const service = createKehtoListsService(await create(), {
+      lists: [
+        {
+          kind: 30001,
+          type: "custom",
+          addressable: true,
+          privateItems: false,
+          supportedItemTypes: ["word"],
+          tags: { word: "word" },
+        },
+      ],
+    });
+    const send = vi.fn();
+    service.handleMessage("w", { type: "lists.supported", id: "supported" }, send);
+
+    await vi.waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          lists: [expect.objectContaining({ kind: 30001, type: "custom" })],
+        }),
+      ),
+    );
+  });
+
   it("adds and removes list items while preserving unrelated tags", async () => {
     event(aliceKey, kinds.BookmarkList, [["title", "Saved"]]);
     const lists = createListsOptions(await create());
