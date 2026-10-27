@@ -11,23 +11,24 @@ import {
   getLegacyMessageCorrespondent,
   getLegacyMessageParent,
   groupMessageEvents,
-  isEncryptedContentFromCache,
-  persistEncryptedContent,
   unlockLegacyMessage,
 } from "applesauce-common/helpers";
 import { LegacyMessagesGroup } from "applesauce-common/models";
 import { defined, EventStore } from "applesauce-core";
 import {
+  getOrDecryptEncryptedContent,
+  isEncryptedContentFromCache,
   isEncryptedContentUnlocked,
   kinds,
   mergeRelaySets,
   NostrEvent,
   persistEventsToCache,
+  saveEncryptedContent,
   unixNow,
 } from "applesauce-core/helpers";
 import { npubEncode, ProfilePointer } from "applesauce-core/helpers/pointers";
 import { EncryptedContentModel } from "applesauce-core/models";
-import { watchEventsUpdates } from "applesauce-core/observable";
+import { restoreEncryptedContentFromCache, watchEventsUpdates } from "applesauce-core/observable";
 import {
   createEventLoaderForStore,
   createOutboxTimelineLoader,
@@ -98,11 +99,6 @@ const db = await openDB();
 const cache: CacheRequest = (filters) => getEventsForFilters(db, filters) as Promise<NostrEvent[]>;
 persistEventsToCache(eventStore, (events) => addEvents(db, events));
 
-// Keep decrypted messages in encrypted storage so they only need to be decrypted once
-// Signing out drops the storage, so read only users never see restored plaintext
-const noStorage = { getItem: async () => null, setItem: async () => {} };
-persistEncryptedContent(eventStore, storage$.pipe(map((storage) => storage ?? noStorage)));
-
 // Messages the signer could not decrypt, remembered so they don't prompt again
 const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-legacy-messages") ?? "[]"));
 failed$.subscribe((ids) => localStorage.setItem("failed-legacy-messages", JSON.stringify(ids)));
@@ -153,6 +149,8 @@ const sync = createSyncLoader({ eventStore, pool });
 
 // Publish to the recipient's inboxes chosen by the action, and to our outboxes so our other clients find the message
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
+  if (storage$.value) await saveEncryptedContent(event, storage$.value);
+
   const outboxes = await user$.value?.outboxes$.$first(1000, undefined);
   const responses = await pool.publish(mergeRelaySets(relays, outboxes), event);
   if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
@@ -200,13 +198,20 @@ const allMessages = (user: User) => [
   { kinds: [kinds.EncryptedDirectMessage], authors: [user.pubkey] },
 ];
 
+/** Restores private plaintext only while the signed-in user's storage is available */
+function restoreMessages$(user: User, storage: SecureStorage) {
+  return eventStore.filters(allMessages(user)).pipe(restoreEncryptedContentFromCache(storage));
+}
+
 /** Decrypts every locked message one at a time, including ones that arrive later */
-function decryptMessages(user: User, signer: ISigner) {
+function decryptMessages(user: User, signer: ISigner, storage: SecureStorage) {
   return eventStore.filters(allMessages(user)).pipe(
     filter((message) => !isEncryptedContentUnlocked(message) && !failed$.value.includes(message.id)),
     concatMap((message) =>
       // Returns the restored content if the cache unlocked the message while it was queued
-      defer(() => unlockLegacyMessage(message, user.pubkey, signer)).pipe(
+      defer(() =>
+        getOrDecryptEncryptedContent(message, storage, (event) => unlockLegacyMessage(event, user.pubkey, signer)),
+      ).pipe(
         map(() => true),
         catchError(() => {
           failed$.next([...failed$.value, message.id]);
@@ -547,10 +552,11 @@ function MessageContent({ message, self, onReply }: { message: NostrEvent; self:
 
   const decrypt = async () => {
     const signer = signer$.value;
-    if (!signer) return;
+    const storage = storage$.value;
+    if (!signer || !storage) return;
     try {
       setError(undefined);
-      await unlockLegacyMessage(message, self.pubkey, signer);
+      await getOrDecryptEncryptedContent(message, storage, (event) => unlockLegacyMessage(event, self.pubkey, signer));
       failed$.next(failed$.value.filter((id) => id !== message.id));
     } catch (err) {
       if (!failed$.value.includes(message.id)) failed$.next([...failed$.value, message.id]);
@@ -717,13 +723,14 @@ function Conversation({ self, other }: { self: User; other: User }) {
 /** Decryption cache stats and a button that decrypts every locked message */
 function DecryptPanel({ user }: { user: User }) {
   const signer = use$(signer$);
+  const storage = use$(storage$);
   const stats = use$(() => decryptionStats(user), [user]);
 
   // Decrypting prompts the signer, so it only starts when the user asks
   const [decrypting, setDecrypting] = useState(false);
   const decrypted = use$(
-    () => (decrypting && signer ? decryptMessages(user, signer) : of(undefined)),
-    [decrypting, user, signer],
+    () => (decrypting && signer && storage ? decryptMessages(user, signer, storage) : undefined),
+    [decrypting, user, signer, storage],
   );
 
   return (
@@ -823,6 +830,10 @@ function ToolsDrawer({ user, history }: { user: User; history?: History }) {
 }
 
 function Inbox({ user }: { user: User }) {
+  const storage = use$(storage$);
+  // Read-only browsing never restores private plaintext
+  use$(() => (storage ? restoreMessages$(user, storage) : undefined), [user, storage]);
+
   const [selected, setSelected] = useState<string>();
   const other = useMemo(() => selected && castUser(selected, eventStore), [selected]);
   const start = useMemo(() => unixNow(), [user]);

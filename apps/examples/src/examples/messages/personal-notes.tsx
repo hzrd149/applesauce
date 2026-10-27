@@ -9,15 +9,25 @@ import { ReplyToWrappedMessage, SendWrappedMessage } from "applesauce-actions/ac
 import { castUser, User } from "applesauce-common/casts";
 import {
   getConversationParticipants,
+  getGiftWrapRumor,
+  getGiftWrapSeal,
   getRumorGiftWraps,
   getWrappedMessageParent,
-  persistEncryptedContent,
   Rumor,
-  unlockGiftWrap,
 } from "applesauce-common/helpers";
 import { GiftWrapsModel, WrappedMessagesModel } from "applesauce-common/models";
-import { defined, EventStore } from "applesauce-core";
-import { getExpirationTimestamp, unixNow } from "applesauce-core/helpers";
+import { EventStore } from "applesauce-core";
+import {
+  getExpirationTimestamp,
+  getOrDecryptEncryptedContent,
+  kinds,
+  type NostrEvent,
+  notifyEventUpdate,
+  saveEncryptedContent,
+  unixNow,
+  unlockEncryptedContent,
+} from "applesauce-core/helpers";
+import { restoreEncryptedContentFromCache } from "applesauce-core/observable";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool, SyncDirection } from "applesauce-relay";
@@ -25,9 +35,8 @@ import Keyv from "keyv";
 import { KeyvIndexedDB } from "keyv-browser";
 import { type ISigner, ExtensionSigner } from "applesauce-signers";
 import clsx from "clsx";
-import { kinds } from "applesauce-core/helpers";
 import { useMemo, useState } from "react";
-import { BehaviorSubject, map, scan, startWith, of, tap, materialize, timer } from "rxjs";
+import { BehaviorSubject, map, mergeMap, scan, startWith, of, tap, materialize, timer } from "rxjs";
 
 // Import helper components
 import LoginView from "../../components/login-view";
@@ -73,6 +82,13 @@ createEventLoaderForStore(eventStore, pool, {
 
 // Setup an action runner for running pre-built actions
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (event, relays) => {
+  const storage = storage$.value;
+  const seal = getGiftWrapSeal(event);
+  if (storage) {
+    await saveEncryptedContent(event, storage);
+    if (seal) await saveEncryptedContent(seal, storage);
+  }
+
   if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
   if (!relays) throw new Error("No relays found");
 
@@ -80,11 +96,42 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (ev
   if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
-// Persist encrypted content to the storage backend
-persistEncryptedContent(eventStore, storage$.pipe(defined()));
-
 // Create a in-memory set of failed gift wraps
 const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-gift-wraps") ?? "[]"));
+
+/** Restores both encrypted layers without prompting the signer */
+function restoreNotes$(pubkey: string, storage: SecureStorage) {
+  return eventStore.filters({ kinds: [kinds.GiftWrap], "#p": [pubkey] }).pipe(
+    restoreEncryptedContentFromCache(storage),
+    mergeMap((gift) => {
+      const seal = getGiftWrapSeal(gift);
+      if (!seal) return of(gift);
+
+      return of(seal).pipe(
+        restoreEncryptedContentFromCache(storage),
+        tap(() => {
+          // Seals are not stored directly, so notify the gift wrap's models as well
+          if (getGiftWrapRumor(gift)) notifyEventUpdate(gift);
+        }),
+        map(() => gift),
+      );
+    }, 8),
+  );
+}
+
+/** Unlocks and saves each layer before exposing the validated rumor */
+async function decryptGiftWrap(gift: NostrEvent, signer: ISigner, storage: SecureStorage) {
+  await getOrDecryptEncryptedContent(gift, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
+
+  const seal = getGiftWrapSeal(gift);
+  if (!seal) throw new Error("Failed to read seal in gift wrap");
+  await getOrDecryptEncryptedContent(seal, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
+
+  const rumor = getGiftWrapRumor(gift);
+  if (!rumor) throw new Error("Failed to read rumor in gift wrap");
+  notifyEventUpdate(gift);
+  return rumor;
+}
 
 // Format expiration timestamp for display
 function formatExpiration(expirationTimestamp: number | undefined, now: number): string | null {
@@ -302,8 +349,10 @@ function InlineRelayList({ relays }: { relays: string[] }) {
   );
 }
 
-function NotesView({ user }: { user: User }) {
+function NotesView({ user, storage }: { user: User; storage: SecureStorage }) {
   const [selectedNoteId, setSelectedNoteId] = useState<string | undefined>(undefined);
+
+  use$(() => restoreNotes$(user.pubkey, storage), [user, storage]);
 
   const signer = use$(signer$);
   const [since, setSince] = useState<number>(unixNow() - EXPIRATIONS["2 weeks"]);
@@ -388,7 +437,7 @@ function NotesView({ user }: { user: User }) {
       if (failed$.value.includes(gift.id)) continue;
 
       try {
-        await unlockGiftWrap(gift, signer);
+        await decryptGiftWrap(gift, signer, storage);
       } catch (error) {
         // Ignore errors
         failed$.next([...failed$.value, gift.id]);
@@ -513,7 +562,7 @@ function App() {
   if (!signer || !user) return <LoginView onLogin={handleLogin} />;
 
   // Show notes view when both storage and login are ready
-  return <NotesView user={user} />;
+  return <NotesView key={user.pubkey} user={user} storage={storage} />;
 }
 
 export default App;

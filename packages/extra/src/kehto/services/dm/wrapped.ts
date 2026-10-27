@@ -2,8 +2,23 @@ import type { DmSendRequest } from "@kehto/services";
 import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
 import { GiftWrapFactory } from "applesauce-common/factories";
-import { getConversationParticipants, unlockGiftWrap } from "applesauce-common/helpers";
-import { getEventHash, kinds, unixNow, type NostrEvent } from "applesauce-core/helpers";
+import {
+  getConversationParticipants,
+  getGiftWrapSeal,
+  unlockGiftWrap,
+  unlockSeal,
+  type Rumor,
+} from "applesauce-common/helpers";
+import {
+  getEventHash,
+  isEncryptedContentUnlocked,
+  kinds,
+  notifyEventUpdate,
+  setEncryptedContentCache,
+  unlockEncryptedContent,
+  unixNow,
+  type NostrEvent,
+} from "applesauce-core/helpers";
 import {
   catchError,
   combineLatest,
@@ -28,6 +43,7 @@ import { kehtoAccount$, type KehtoAccount } from "../../foundation/account.js";
 import { subscribeThroughStore } from "../../foundation/pool.js";
 import { configured$, settle } from "../../helpers.js";
 import { DmExpirationTracker } from "./expiration.js";
+import { restoreMessageContent, saveMessageContent } from "./encryption.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { DmPublicationError, publishAcceptedMessage, type DmPublicationResult } from "./publication.js";
 import type {
@@ -143,7 +159,26 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
     owner: KehtoAccount,
     expiration: DmExpirationTracker,
   ): Promise<DmProtocolMessage | undefined> {
-    const rumor = await unlockGiftWrap(event, owner.signer);
+    if (!event.tags.some((tag) => tag[0] === "p" && tag[1] === owner.pubkey)) return;
+
+    // Restore each encryption layer before asking the signer to decrypt a cache miss.
+    let rumor: Rumor;
+    if (config.decryptionCache) {
+      await restoreMessageContent(event, config.decryptionCache);
+      if (!isEncryptedContentUnlocked(event)) await unlockEncryptedContent(event, event.pubkey, owner.signer);
+
+      const seal = getGiftWrapSeal(event);
+      if (!seal) throw new Error("Failed to read seal in gift wrap");
+
+      await restoreMessageContent(seal, config.decryptionCache);
+      rumor = await unlockSeal(seal, owner.signer);
+      notifyEventUpdate(event);
+
+      await saveMessageContent(event, config.decryptionCache);
+      await saveMessageContent(seal, config.decryptionCache);
+    } else {
+      rumor = await unlockGiftWrap(event, owner.signer);
+    }
     const participants = getConversationParticipants(rumor);
     if (rumor.kind !== kinds.PrivateDirectMessage || !participants.includes(owner.pubkey)) return;
     if (config.mirrorExpiration) expiration.observe(rumor, participants);
@@ -317,6 +352,13 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
           assertCurrent();
           const event = await GiftWrapFactory.create(owner.signer, participant, rumor);
           assertCurrent();
+          if (config.decryptionCache && participant === owner.pubkey) {
+            const seal = getGiftWrapSeal(event)!;
+            setEncryptedContentCache(seal, JSON.stringify(rumor));
+            await saveMessageContent(event, config.decryptionCache);
+            await saveMessageContent(seal, config.decryptionCache);
+            assertCurrent();
+          }
           publications.push({ recipient: participant, event, relays, accepted: false });
         }
         const message: DmProtocolMessage = {

@@ -10,28 +10,32 @@ import { castUser, User } from "applesauce-common/casts";
 import {
   getConversationParticipants,
   getGiftWrapRumor,
+  getGiftWrapSeal,
   getRumorGiftWraps,
   getRumorSeals,
   groupMessageEvents,
   isGiftWrapUnlocked,
-  persistEncryptedContent,
   Rumor,
-  unlockGiftWrap,
 } from "applesauce-common/helpers";
 import { GiftWrapsModel, WrappedMessagesGroup, WrappedMessagesGroups } from "applesauce-common/models";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
   getDisplayName,
+  getOrDecryptEncryptedContent,
   getExpirationTimestamp,
   getProfilePicture,
   getTagValue,
   isSameURL,
   kinds,
   markFromCache,
+  notifyEventUpdate,
   persistEventsToCache,
+  saveEncryptedContent,
   type NostrEvent,
   unixNow,
+  unlockEncryptedContent,
 } from "applesauce-core/helpers";
+import { restoreEncryptedContentFromCache } from "applesauce-core/observable";
 import {
   createEventLoaderForStore,
   createSyncLoader,
@@ -52,12 +56,14 @@ import {
   EMPTY,
   filter,
   map,
+  mergeMap,
   Observable,
   of,
   scan,
   startWith,
   switchMap,
   take,
+  tap,
 } from "rxjs";
 
 import JsonBlock from "../../components/json-block";
@@ -103,9 +109,6 @@ createEventLoaderForStore(eventStore, pool, {
   cacheRequest: (filters) => getEventsForFilters(cache, filters),
 });
 
-// Decrypted rumors are saved to PIN-encrypted storage so each gift wrap is only decrypted once
-persistEncryptedContent(eventStore, storage$.pipe(defined()));
-
 // Gift wraps the signer could not decrypt, remembered so they don't prompt again
 const failed$ = new BehaviorSubject<string[]>(JSON.parse(localStorage.getItem("failed-gift-wraps") ?? "[]"));
 failed$.subscribe((ids) => localStorage.setItem("failed-gift-wraps", JSON.stringify(ids)));
@@ -128,6 +131,13 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(define
   };
 
   try {
+    const storage = storage$.value;
+    const seal = getGiftWrapSeal(event);
+    if (storage) {
+      await saveEncryptedContent(event, storage);
+      if (seal) await saveEncryptedContent(seal, storage);
+    }
+
     const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
     if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
     record({ ok: true });
@@ -189,14 +199,48 @@ function liveInbox(user: User) {
     );
 }
 
+/** Restores both encrypted layers without prompting the signer */
+function restoreInbox$(pubkey: string, storage: SecureStorage) {
+  return eventStore.filters({ kinds: [kinds.GiftWrap], "#p": [pubkey] }).pipe(
+    restoreEncryptedContentFromCache(storage),
+    mergeMap((gift) => {
+      const seal = getGiftWrapSeal(gift);
+      if (!seal) return of(gift);
+
+      return of(seal).pipe(
+        restoreEncryptedContentFromCache(storage),
+        tap(() => {
+          // Seals are not stored directly, so notify the gift wrap's models as well
+          if (getGiftWrapRumor(gift)) notifyEventUpdate(gift);
+        }),
+        map(() => gift),
+      );
+    }, 8),
+  );
+}
+
+/** Unlocks and saves each layer before exposing the validated rumor */
+async function decryptGiftWrap(gift: NostrEvent, signer: ISigner, storage: SecureStorage) {
+  await getOrDecryptEncryptedContent(gift, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
+
+  const seal = getGiftWrapSeal(gift);
+  if (!seal) throw new Error("Failed to read seal in gift wrap");
+  await getOrDecryptEncryptedContent(seal, storage, (event) => unlockEncryptedContent(event, event.pubkey, signer));
+
+  const rumor = getGiftWrapRumor(gift);
+  if (!rumor) throw new Error("Failed to read rumor in gift wrap");
+  notifyEventUpdate(gift);
+  return rumor;
+}
+
 /** Decrypts every locked gift wrap one at a time, including ones that arrive later */
-function decryptInbox(pubkey: string, signer: ISigner) {
+function decryptInbox(pubkey: string, signer: ISigner, storage: SecureStorage) {
   return eventStore.filters({ kinds: [kinds.GiftWrap], "#p": [pubkey] }).pipe(
     filter((gift) => !isGiftWrapUnlocked(gift) && !failed$.value.includes(gift.id)),
     concatMap((gift) =>
       defer(async () => {
         // The gift wrap may have been restored from encrypted storage while it was queued
-        if (!isGiftWrapUnlocked(gift)) await unlockGiftWrap(gift, signer);
+        await decryptGiftWrap(gift, signer, storage);
         return true;
       }).pipe(
         catchError(() => {
@@ -729,12 +773,13 @@ function Conversation({ self, conversation }: { self: string; conversation: stri
   );
 }
 
-function Inbox({ user, signer }: { user: User; signer: ISigner }) {
+function Inbox({ user, signer, storage }: { user: User; signer: ISigner; storage: SecureStorage }) {
   const profile = use$(user.profile$);
   const [conversation, setConversation] = useState(user.pubkey);
   const [drawer, setDrawer] = useState(true);
 
   // The inbox streams live here so collapsing the drawer doesn't stop syncing or decrypting
+  use$(() => restoreInbox$(user.pubkey, storage), [user, storage]);
   const status = use$(() => startInbox(user), [user]);
   use$(() => liveInbox(user), [user]);
   const authRequests = use$(authRequests$);
@@ -742,8 +787,8 @@ function Inbox({ user, signer }: { user: User; signer: ISigner }) {
   // Decrypting prompts the signer, so it only starts when the user asks
   const [decrypting, setDecrypting] = useState(false);
   const decrypted = use$(
-    () => (decrypting ? decryptInbox(user.pubkey, signer) : of(undefined)),
-    [decrypting, user, signer],
+    () => (decrypting ? decryptInbox(user.pubkey, signer, storage) : undefined),
+    [decrypting, user, signer, storage],
   );
 
   return (
@@ -818,5 +863,5 @@ export default function DirectMessagesExample() {
       </div>
     );
 
-  return <Inbox key={user.pubkey} user={user} signer={signer} />;
+  return <Inbox key={user.pubkey} user={user} signer={signer} storage={storage} />;
 }

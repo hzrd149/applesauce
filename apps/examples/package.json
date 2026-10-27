@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@contextvm/sdk": "0.13.10",
+    "@contextvm/mcp-sdk": "1.30.0",
     "@cashu/cashu-ts": "^4.12.0",
     "@hookform/resolvers": "^3.10.0",
     "@kehto/nip": "^0.7.0",
@@ -50,6 +52,7 @@
     "lucide-react": "^1.61.0",
     "nanoid": "^5.1.16",
     "ngeohash": "^0.6.4",
+    "nostr-double-ratchet": "0.0.183",
     "nostr-editor": "^1.2.0",
     "nostr-idb": "^5.1.0",
     "nostr-social-graph": "^1.0.36",

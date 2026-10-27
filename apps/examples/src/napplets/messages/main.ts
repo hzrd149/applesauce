@@ -14,10 +14,9 @@ const identity = requireDomain("identity");
 const common = requireDomain("common");
 const resource = requireDomain("resource");
 
-const PROTOCOL_LABELS: Record<string, string> = { nip17: "🎁 NIP-17", nip04: "✉️ NIP-04" };
 const STATUS_ICONS: Record<Bubble["status"], string> = {
   pending: "⏳",
-  sent: "✓",
+  sent: "Submitted",
   delivered: "✓✓",
   received: "",
   failed: "⚠️",
@@ -51,6 +50,7 @@ let bubbles: Bubble[] | Error | undefined;
 // The host firewall limits how many requests a napplet makes, so refreshes are coalesced and profiles cached
 const PROFILE_RETRY = 15_000;
 const REFRESH_DELAY = 1000;
+const CONVERSATION_REFRESH_INTERVAL = 10_000;
 
 const profiles = new Map<string, Promise<Profile>>();
 let refreshing: Promise<void> | undefined;
@@ -204,6 +204,8 @@ async function refreshConversations() {
 
 /** Refreshes the conversation list, coalescing bursts into one request at a time */
 function scheduleRefresh() {
+  if (!owner) return;
+
   if (refreshing) {
     refreshAgain = true;
     return;
@@ -354,11 +356,6 @@ recipientsInput.addEventListener("input", () => recipientsInput.setCustomValidit
 // ---- Rendering
 
 function renderStatus(status?: DmStatus) {
-  const protocols = $("protocols");
-  protocols.replaceChildren(
-    ...(status?.implementations ?? []).map((id) => element("span", "badge", PROTOCOL_LABELS[id] ?? id)),
-  );
-
   const ownerName = $("owner");
   if (!status?.available || !owner) {
     ownerName.textContent = "🔒";
@@ -464,7 +461,9 @@ function messageBubble(bubble: Bubble, group: boolean) {
   const meta = element("div", "meta");
   meta.append(element("span", "", formatTime(bubble.createdAt)));
   const icon = element("span", "", STATUS_ICONS[bubble.status]);
-  icon.title = bubble.error ?? bubble.status;
+  icon.title =
+    bubble.error ??
+    (bubble.status === "sent" ? "Submitted to the host; recipient delivery is not confirmed" : bubble.status);
   meta.append(icon);
 
   const request = bubble.request;
@@ -507,7 +506,8 @@ function renderMessages() {
 // ---- Lifecycle
 
 /** Resets the napplet for the current account and starts live delivery */
-async function start() {
+async function start(preserveSelection = false) {
+  const previousSelection = preserveSelection ? selected : undefined;
   const run = ++generation;
   const previous = subscriptionId;
   subscriptionId = undefined;
@@ -541,9 +541,10 @@ async function start() {
 
   subscriptionId = subscription?.subscriptionId;
   scheduleRefresh();
+  if (previousSelection?.participants.includes(owner)) select(previousSelection);
 }
 
-// Messages stream in here as the host decrypts them, from every conversation and protocol
+// Messages stream in here as the host decrypts them, from every conversation
 dm.onMessage((message, id) => {
   if (id !== subscriptionId) return;
   if (selected?.id === message.conversationId) upsertBubble(message);
@@ -551,6 +552,12 @@ dm.onMessage((message, id) => {
 });
 
 shell.ready().then(() => {
+  // NAP-DM currently has no availability-change or subscription-ended notification.
+  $("refresh").addEventListener("click", () => start(true));
+  const refreshInterval = window.setInterval(() => {
+    if (!document.hidden) scheduleRefresh();
+  }, CONVERSATION_REFRESH_INTERVAL);
+  window.addEventListener("pagehide", () => window.clearInterval(refreshInterval), { once: true });
   identity.onChanged(() => start());
   start();
 });

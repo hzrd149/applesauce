@@ -32,15 +32,15 @@ import type { KehtoContext } from "./types.js";
  */
 export function createKehtoDmService(context: KehtoContext, options?: Partial<KehtoDmOptions>): ServiceHandler {
   const account$ = kehtoAccount$(context);
-  const { eventStore, pool, timeout, fallbackRelays, approve } = context;
+  const { eventStore, pool, timeout, fallbackRelays, approve, decryptionCache } = context;
 
   let sendingWindow: string | undefined;
   const dm = createDmService(
     createDmOptions({
       ...options,
       protocols: options?.protocols ?? [
-        createWrappedMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve }),
-        createLegacyMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve }),
+        createWrappedMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve, decryptionCache }),
+        createLegacyMessageProtocol({ eventStore, pool, account$, timeout, fallbackRelays, approve, decryptionCache }),
       ],
       routingTimeout: options?.routingTimeout ?? timeout,
       getWindowId: () => sendingWindow,

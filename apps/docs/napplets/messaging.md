@@ -44,6 +44,21 @@ NIP-17 supports groups and self messages. Legacy messages support one peer or se
 
 NIP-17 publication requires nonempty kind-10050 relay advertisements for every participant, including the sender's backup copy. Missing or empty advertisements prevent sending; configured fallback relays are used only for reading wrapped messages. Content mentions never add recipients or change the requested text.
 
+## Decrypted content cache
+
+Pass an `EncryptedContentCache` as `decryptionCache` to either Nostr protocol adapter to reuse decrypted content across reloads:
+
+```ts
+const nostr = { eventStore, pool, signer, decryptionCache };
+const protocols = [createWrappedMessageProtocol(nostr), createLegacyMessageProtocol(nostr)];
+```
+
+`createKehtoDmService(context)` forwards `context.decryptionCache` to both default adapters. Custom protocol lists must receive the cache explicitly.
+
+The adapters await cache restoration before asking the signer to decrypt and persist newly decrypted content afterward. Keys are event IDs, compatible with `persistEncryptedContent`: legacy entries contain message text, gift-wrap entries contain serialized seals, and seal entries contain serialized rumors. Both NIP-17 layers must be cached to avoid all decryption calls after a reload. The sender's own copy is also cached during send preparation.
+
+Provide secure storage, such as the encrypted storage used in the [messaging examples](/examples/), since cache values are decrypted content. The host controls storage access and its account lifecycle; the adapters do not add account prefixes or manage storage encryption. Cache read failures fall back to the signer, and write failures do not prevent delivery. Event persistence remains separate from this plaintext cache.
+
 ## Custom Protocols and Routing
 
 A `DmProtocolAdapter` supplies a unique `id` and a reactive `session$`. Its stable session implements `discover$`, `messages$`, and `prepareSend$`. Sessions use a common owner identity so their normalized conversations can be combined.
@@ -114,6 +129,78 @@ The bridge reads every conversation/message page, preserves protocol-owned group
 Pass a reactive adapter stream to invalidate sessions when authentication changes. Wrapped adapters must use the same normalized owner identity. Closing the bridge closes every adapter it has observed unless `closeAdapter: false` delegates ownership to the host.
 
 Existing adapters own their send approval and publication behavior. The bridge invokes `send()` only after routing selects it, but cannot split or cancel the work inside that call. Native Applesauce adapters offer separate preparation/publication stages, signer support without raw secret keys, shared EventStore decryption caching, and reactive mailbox discovery. Runtime persistence for NDR and other stateful protocols stays owned by the application/runtime.
+
+## NDR Transport
+
+`createNdrTransport` supplies the published `nostr-double-ratchet@0.0.183` runtime's relay and owner-signing hooks without taking over its protocol state. Import it separately from `applesauce-extra/kehto/services/dm/ndr`:
+
+```ts
+import { NdrRuntime } from "nostr-double-ratchet";
+import { createNdrTransport } from "applesauce-extra/kehto/services/dm/ndr";
+
+const transport = createNdrTransport(context, {
+  ownerPubkey,
+  signer,
+  relays: ndrRelays,
+  onSubscriptionError: reportError,
+});
+const runtime = new NdrRuntime({ ...transport, storage });
+await runtime.initForOwner(ownerPubkey);
+```
+
+Supply an account-bound signer and explicit discovery/delivery relays. NDR device and session keys do not necessarily have NIP-65 mailboxes. The transport preserves device-signed envelopes and uses the signer only for unsigned events belonging to `ownerPubkey`, filling NDR's empty owner-pubkey placeholder when necessary; it does not request the account's secret key or automatically approve registration or messaging.
+
+Incoming signed events are verified before reaching the runtime and shared EventStore. Fetches merge cached and relay events, deduplicate by event ID, and finish at relay completion or `fetchTimeoutMs` (default 4000). Live subscriptions replay matching cached events and continue with network/store updates; failures call `onSubscriptionError`. Each subscription deduplicates independently, so a later subscription can replay history for recovery.
+
+Publication resolves only when at least one relay accepts the exact signed envelope; all-relay rejection fails without caching the publication. `actionTimeoutMs` bounds signing/publication (default 60000). A timeout or disposal cannot retract a signature prompt or an event already submitted to a relay, but prevents subsequent transport steps and late cache writes.
+
+The runtime still owns device registration, invitations, ratchet state, and its delivery queue. Configure durable account-scoped storage and the runtime's enqueue/outbox hooks separately; an NDR runtime send may mean queued locally, not acknowledged by a relay. Restoring encrypted relay events alone does not restore advanced ratchet state or application message history.
+
+Attach runtime message consumers before initialization, then complete registration/invite setup explicitly. Feed the initialized runtime into Kehto's `createNdrDmAdapter` and compose it with `createDmAdapterProtocol` as above. Applications must arrange message approval and recipient discovery; the transport has no napplet window context. Filter non-chat runtime events before presenting a chat history.
+
+On toggle-off, account change, or owner teardown, call both `runtime.close()` and `transport.dispose()`. Disposing the transport stops subscriptions and rejects pending fetch/sign/publication work without closing the shared pool or clearing persistent protocol state. The factory does not follow a reactive signer automatically; dispose and recreate it when authentication changes.
+
+### Testing in the messages example
+
+Open [Napplet messages](https://applesauce.build/examples/#/example/napplet/messages) in two browser profiles with different accounts:
+
+1. Unlock storage and log in, then enable **NDR** in each profile.
+2. Configure the same NDR relays and apply them; the example uses its fallback relay set initially.
+3. Click **Register device & publish invite** for each new device and approve the signer request. The status becomes **ready**; existing devices can republish their invites with **Publish invite**.
+4. Select **NDR** under **Routing**, press **Refresh messages** in the napplet, open a conversation using the other account's npub, and send a message. The host asks for message approval before handing it to NDR.
+5. Reply from the second profile, then reload, unlock, and re-enable NDR to test recovery. Device keys, ratchet state, message history, and pending signed publications are stored in account-scoped encrypted storage.
+
+All example protocols start disabled. Expand a protocol's settings using its header and enable it independently of the other protocols. The generic napplet never inspects protocol labels or message-id prefixes.
+
+After changing enabled protocols or device readiness, press **Refresh messages** in the napplet. The installed NAP-DM API has no availability-change or subscription-ended notification, and the composer invalidates existing subscriptions when protocol sessions change. Refresh uses only Kehto's public status, subscription, and history APIs; the example does not use custom iframe messages or polling to hide this limitation.
+
+**Auto** preserves the existing routing policy; selecting NDR explicitly never silently falls back to NIP-17/NIP-04. This first NDR example supports one other recipient, not groups or notes to self. All outgoing messages use the generic **Submitted** status; for NDR this means a local runtime handoff, with separate relay-acceptance entries in the host's **Debug** log. Neither confirms peer receipt.
+
+Turning NDR off cancels its pending approvals and subscriptions without deleting state. A Web Lock prevents two tabs from writing the same account's NDR state; use different browser profiles for independent devices. The last 100 client message IDs are retained for retry deduplication within one runtime/window scope, not across reloads or toggle cycles.
+
+## Cordn coordinator transport
+
+`createCordnCoordinator` from `applesauce-extra/kehto/services/dm/cordn` provides the host-side coordinator connection, not an MLS runtime or a `DmProtocolAdapter`. Install its optional peers `@contextvm/sdk@0.13.10` and `@contextvm/mcp-sdk@1.30.0`. It uses the shared pool and store without changing the generic CVM service's ephemeral identity defaults.
+
+```ts
+const coordinator = createCordnCoordinator(context, {
+  ownerPubkey,
+  signer, // Account-bound signer with NIP-44, including extension or bunker signers
+  coordinatorPubkey,
+  relays: ["wss://your-coordinator-relay.example/"],
+});
+try {
+  const packages = await coordinator.listKeyPackages();
+} finally {
+  await coordinator.close();
+}
+```
+
+Key-package publication and welcome retrieval use the account identity; listing, key-package consumption, welcome storage, and encrypted group-message operations use a separate ephemeral caller. Requests use encrypted ephemeral gift wraps, bounded deadlines, and relay-acceptance checks. A transport/request failure closes the client; create a new instance to retry. Close it when its owning account or protocol ends.
+
+The runtime consuming this client must verify consumed key-package publication events and their credential bindings, perform real MLS encryption and sender authentication, and durably persist MLS state and cursors before acknowledging welcomes. No base64-JSON message fallback is provided.
+
+Cordn integration is shelved and its controls are not shown in the messages example. The coordinator client remains available separately; automated coverage uses a local in-memory ContextVM server, not a live Cordn deployment.
 
 ## Integration
 

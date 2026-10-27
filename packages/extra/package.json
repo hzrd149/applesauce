@@ -26,6 +26,15 @@
       "require": "./dist/kehto/services/cvm.js",
       "types": "./dist/kehto/services/cvm.d.ts"
     },
+    "./kehto/services/dm/ndr": {
+      "import": "./dist/kehto/services/dm/ndr.js",
+      "require": "./dist/kehto/services/dm/ndr.js",
+      "types": "./dist/kehto/services/dm/ndr.d.ts"
+    },
+    "./kehto/services/dm/cordn": {
+      "import": "./dist/kehto/services/dm/cordn.js",
+      "types": "./dist/kehto/services/dm/cordn.d.ts"
+    },
     "./nspam": {
       "import": "./dist/nspam/index.js",
       "require": "./dist/nspam/index.js",
@@ -84,12 +93,21 @@
     "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
+    "@contextvm/sdk": "0.13.10",
+    "@contextvm/mcp-sdk": "1.30.0",
     "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
-    "@kehto/shell": "^0.24.4"
+    "@kehto/shell": "^0.24.4",
+    "nostr-double-ratchet": "0.0.183"
   },
   "peerDependenciesMeta": {
+    "@contextvm/sdk": {
+      "optional": true
+    },
+    "@contextvm/mcp-sdk": {
+      "optional": true
+    },
     "@kehto/nip": {
       "optional": true
     },
@@ -101,14 +119,20 @@
     },
     "@kehto/shell": {
       "optional": true
+    },
+    "nostr-double-ratchet": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@contextvm/sdk": "0.13.10",
+    "@contextvm/mcp-sdk": "1.30.0",
     "@hirez_io/observer-spy": "^2.2.0",
     "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
     "@kehto/shell": "^0.24.4",
+    "nostr-double-ratchet": "0.0.183",
     "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"

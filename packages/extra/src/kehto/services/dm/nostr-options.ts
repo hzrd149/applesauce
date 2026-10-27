@@ -1,4 +1,5 @@
 import type { EventStore } from "applesauce-core";
+import type { EncryptedContentCache } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
@@ -19,6 +20,8 @@ export interface NostrMessageProtocolOptions {
   timeout?: number;
   /** The maximum wait for decrypting one message in milliseconds (default 60000) */
   decryptionTimeout?: number;
+  /** The persistent decrypted event content cache keyed by event ID */
+  decryptionCache?: EncryptedContentCache;
   /** The maximum wait for approval and send preparation in milliseconds (default 120000) */
   actionTimeout?: number;
   /** Whether to mirror the latest observed conversation message lifetime on sends (default false) */

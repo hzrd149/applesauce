@@ -2,8 +2,20 @@ import { describe, expect, it } from "vitest";
 import * as kehto from "../index.js";
 import * as host from "../host/index.js";
 import * as cvm from "../services/cvm.js";
+import * as ndr from "../services/dm/ndr.js";
+import * as cordn from "../services/dm/cordn.js";
 
 describe("exports", () => {
+  it("exports the Cordn coordinator separately", () => {
+    expect(Object.keys(cordn)).toEqual(["createCordnCoordinator"]);
+  });
+  it("exports the NDR transport separately", () => {
+    expect(Object.keys(ndr).sort()).toMatchInlineSnapshot(`
+      [
+        "createNdrTransport",
+      ]
+    `);
+  });
   it("exports the expected Kehto functions and constants", () => {
     expect(Object.keys(kehto).sort()).toMatchInlineSnapshot(`
       [

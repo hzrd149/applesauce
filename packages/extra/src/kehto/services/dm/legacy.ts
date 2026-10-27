@@ -3,7 +3,15 @@ import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
 import { LegacyMessageFactory } from "applesauce-common/factories";
 import { getLegacyMessageCorrespondent, unlockLegacyMessage } from "applesauce-common/helpers";
-import { getEventHash, kinds, unixNow, type Filter, type NostrEvent } from "applesauce-core/helpers";
+import {
+  getEncryptedContent,
+  getEventHash,
+  kinds,
+  setEncryptedContentCache,
+  unixNow,
+  type Filter,
+  type NostrEvent,
+} from "applesauce-core/helpers";
 import {
   catchError,
   combineLatest,
@@ -29,6 +37,7 @@ import { kehtoAccount$, type KehtoAccount } from "../../foundation/account.js";
 import { subscribeThroughStore } from "../../foundation/pool.js";
 import { configured$, settle } from "../../helpers.js";
 import { DmExpirationTracker } from "./expiration.js";
+import { restoreMessageContent, saveMessageContent } from "./encryption.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { publishAcceptedMessage } from "./publication.js";
 import type {
@@ -140,7 +149,9 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
     if (event.pubkey !== owner.pubkey && !event.tags.some((tag) => tag[0] === "p" && tag[1] === owner.pubkey)) return;
     const correspondent = getLegacyMessageCorrespondent(event, owner.pubkey);
     if (!correspondent) return;
-    const content = await unlockLegacyMessage(event, owner.pubkey, owner.signer);
+    await restoreMessageContent(event, config.decryptionCache);
+    const content = getEncryptedContent(event) ?? (await unlockLegacyMessage(event, owner.pubkey, owner.signer));
+    await saveMessageContent(event, config.decryptionCache);
     if (config.mirrorExpiration) expiration.observe(event, [owner.pubkey, correspondent]);
     return {
       id: event.id,
@@ -265,6 +276,11 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
         if (expirationTags.length) factory = factory.expiration(Number(expirationTags[0][1]));
         const event = await factory.sign(owner.signer);
         assertCurrent();
+        if (config.decryptionCache) {
+          setEncryptedContentCache(event, request.content);
+          await saveMessageContent(event, config.decryptionCache);
+          assertCurrent();
+        }
         const [inboxes, outboxes] = await Promise.all([
           deliveryRelays(recipient),
           settle(castUser(owner.pubkey, config.eventStore).outboxes$, [], wait),
