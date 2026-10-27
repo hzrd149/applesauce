@@ -1,13 +1,14 @@
 /**
- * Full-page admin dashboard for the NutWallet class with wallet management and debugging panels
+ * Admin dashboard for the NIP-60 Cashu wallet implementation with management and debugging panels
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
- * @related wallet/wallet
+ * @related cashu-wallet/cashu-wallet
  */
 import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
 import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";
 
 import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
+import { castUser } from "applesauce-common/casts";
 import { parseBolt11, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore } from "applesauce-core";
 import { Filter, NostrEvent, persistEventsToCache, unixNow, generateSecretKey } from "applesauce-core/helpers";
@@ -23,7 +24,7 @@ import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-conne
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
 import { NostrIDB } from "nostr-idb";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   combineLatest,
@@ -40,18 +41,31 @@ import {
   catchError,
 } from "rxjs";
 
-import LoginView from "../../components/login-view";
+import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import QRCode from "../../components/qr-code";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://relay.ditto.pub"];
+const SUGGESTED_MINTS = ["https://mint.minibits.cash/Bitcoin", "https://mint2.nutmix.cash", "https://21mint.me"];
+const SECTIONS = [
+  "Overview",
+  "Send",
+  "Receive",
+  "Deposit",
+  "Withdraw",
+  "Tokens",
+  "History",
+  "Connect",
+  "Settings",
+] as const;
+type Section = (typeof SECTIONS)[number];
+
 // ---- Application infrastructure (owned by the app, not the wallet) ----
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 const session$ = new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>(null);
-const signer$ = session$.pipe(map((session) => session?.signer ?? null));
-const pubkey$ = session$.pipe(map((session) => session?.pubkey ?? null));
 
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
@@ -71,12 +85,10 @@ persistEventsToCache(eventStore, (events) => Promise.all(events.map((event) => c
 // Bootstrap loader for wallet + mailbox events
 createEventLoaderForStore(eventStore, pool, {
   lookupRelays: lookupRelays$,
-  extraRelays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
+  extraRelays: FALLBACK_RELAYS,
   cacheRequest,
 });
 
-const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://relay.ditto.pub"];
-const SUGGESTED_MINTS = ["https://mint.minibits.cash/Bitcoin", "https://mint2.nutmix.cash", "https://21mint.me"];
 
 // ---- Nostr Wallet Connect service (lets external NWC apps use this cashu wallet) ----
 // Bind the wallet service transport to the shared relay pool
@@ -336,38 +348,38 @@ function StatusBadge({ status }: { status: WalletStatus }) {
     [WalletStatus.Ready]: "badge-success",
     [WalletStatus.Missing]: "badge-error",
   };
-  return <span className={`badge badge-lg ${map[status]}`}>{status}</span>;
+  return <span className={`badge ${map[status]}`}>{status}</span>;
 }
 
 function Indicator({ label, active }: { label: string; active: boolean }) {
   return (
-    <span className={`badge badge-lg ${active ? "badge-primary" : "badge-ghost"} gap-2`}>
+    <span className={`badge ${active ? "badge-primary" : "badge-ghost"} gap-2`}>
       {active && <span className="loading loading-spinner loading-sm" />}
       {label}
     </span>
   );
 }
 
-function Panel({ title, action, children }: { title?: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Panel({ title, action, children }: { title?: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="border border-base-300 bg-base-100">
+    <section className="min-w-0 border-b border-base-300">
       {(title || action) && (
-        <div className="flex items-center gap-2 border-b border-base-300 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-4">
           {title && <h2 className="font-semibold">{title}</h2>}
           <span className="flex-1" />
           {action}
         </div>
       )}
       <div className="p-4">{children}</div>
-    </div>
+    </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="border border-base-300 p-4">
+    <div className="p-4">
       <div className="text-sm text-base-content/60">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
+      <div className="mt-1 font-semibold">{value}</div>
     </div>
   );
 }
@@ -406,41 +418,49 @@ function LockControls({ wallet }: { wallet: NutWallet }) {
   );
 }
 
-// ---- Header / status bar ----
-function Header({ wallet }: { wallet: NutWallet }) {
+// ---- Sidebar status and account ----
+function WalletControls({ wallet }: { wallet: NutWallet }) {
   const status = use$(wallet.status$) ?? WalletStatus.Idle;
   const loading = use$(wallet.loadingState$);
   const syncing = use$(wallet.syncingState$);
   const busy = use$(wallet.busy$);
   const unlocked = use$(wallet.unlocked$);
-  const error = use$(wallet.errorState$);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Wallet Admin</h1>
-          <div className="font-mono text-sm text-base-content/60 break-all">{wallet.pubkey}</div>
-        </div>
-        <span className="flex-1" />
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={status} />
-          <Indicator label="Loading" active={!!loading} />
-          <Indicator label="Syncing" active={!!syncing} />
-          <Indicator label="Busy" active={!!busy} />
-          <span className={`badge badge-lg ${unlocked ? "badge-success" : "badge-ghost"}`}>
-            {unlocked ? "Unlocked" : "Locked"}
-          </span>
-          <button className="btn" onClick={() => wallet.resync()}>
-            Resync
-          </button>
-        </div>
+    <div className="space-y-3 border-b border-base-300 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge status={status} />
+        <Indicator label="Loading" active={!!loading} />
+        <Indicator label="Syncing" active={!!syncing} />
+        <Indicator label="Busy" active={!!busy} />
+        <span className={`badge ${unlocked ? "badge-success" : "badge-ghost"}`}>
+          {unlocked ? "Unlocked" : "Locked"}
+        </span>
       </div>
-      {error && (
-        <div className="alert alert-error">
-          <span>{error.message}</span>
-        </div>
-      )}
+      <LockControls wallet={wallet} />
+      <button className="btn btn-sm btn-ghost w-full" onClick={() => wallet.resync()} disabled={!!syncing}>
+        Resync
+      </button>
+    </div>
+  );
+}
+
+function Account({ wallet }: { wallet: NutWallet }) {
+  const profile = use$(() => castUser(wallet.pubkey, eventStore).profile$, [wallet.pubkey]);
+
+  const logout = () => {
+    forgetActiveAccount();
+    session$.next(null);
+  };
+
+  return (
+    <div className="flex items-center gap-2 border-t border-base-300 p-3">
+      <span className="min-w-0 flex-1 truncate" title={wallet.pubkey}>
+        {profile?.displayName || profile?.name || wallet.pubkey.slice(0, 12)}
+      </span>
+      <button className="btn btn-sm btn-ghost" onClick={logout}>
+        Logout
+      </button>
     </div>
   );
 }
@@ -464,10 +484,10 @@ function RelayTable({ wallet }: { wallet: NutWallet }) {
           {relays.map((relay) => (
             <tr key={relay.url}>
               <td className="font-mono">{relay.url}</td>
-              <td>{relay.connected ? "🟢" : "🔴"}</td>
-              <td>{relay.ready ? "🟢" : "🔴"}</td>
-              <td>{relay.authenticated ? "🟢" : "—"}</td>
-              <td>{relay.negentropy === undefined ? "?" : relay.negentropy ? "🟢" : "🔴"}</td>
+              <td>{relay.connected ? "Connected" : "Disconnected"}</td>
+              <td>{relay.ready ? "Ready" : "Waiting"}</td>
+              <td>{relay.authenticated ? "Authenticated" : "—"}</td>
+              <td>{relay.negentropy === undefined ? "Unknown" : relay.negentropy ? "Supported" : "Unsupported"}</td>
             </tr>
           ))}
           {relays.length === 0 && (
@@ -527,8 +547,8 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
   const connected = relays.filter((r) => r.connected).length;
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div>
+      <div className="grid grid-cols-2 border-b border-base-300 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Total balance" value={`${total} sats`} />
         <Stat label="Tokens" value={tokenCount} />
         <Stat label="History" value={historyCount} />
@@ -537,11 +557,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
         <Stat label="Couch" value={couchTokens.length} />
       </div>
 
-      <Panel title="Lock controls">
-        <LockControls wallet={wallet} />
-      </Panel>
-
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid xl:grid-cols-2">
         <Panel title="Balance by mint">
           <BalanceTable wallet={wallet} />
         </Panel>
@@ -603,7 +619,10 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
           </button>
         }
       >
-        <label className="label cursor-pointer justify-start gap-2">
+        <label
+          className="label cursor-pointer justify-start gap-2"
+          title="When off, spent tokens are marked via each new token's del field. Loading delete events is configured at startup."
+        >
           <input
             type="checkbox"
             className="toggle toggle-sm"
@@ -615,19 +634,7 @@ function OverviewSection({ wallet }: { wallet: NutWallet }) {
           />
           <span className="label-text">Publish delete events for spent tokens</span>
         </label>
-        <p className="text-sm text-base-content/60 mt-1 mb-4">
-          When off, spent token events are only marked deleted via each new token's <code>del</code> field and removed
-          later with cleanup. This toggle only affects publishing; whether delete events are loaded is set when the
-          wallet starts.
-        </p>
-        {staleCount > 0 ? (
-          <div className="text-base-content/60">
-            {staleCount} token event{staleCount === 1 ? "" : "s"} {staleCount === 1 ? "is" : "are"} marked deleted by a
-            newer token but still on relays. Cleanup publishes a single delete event to remove them.
-          </div>
-        ) : (
-          <div className="text-base-content/60">No token events waiting to be cleaned up</div>
-        )}
+        {staleCount === 0 && <div className="text-base-content/60">No token events waiting to be cleaned up</div>}
       </Panel>
     </div>
   );
@@ -652,7 +659,7 @@ function SendSection({ wallet }: { wallet: NutWallet }) {
   }, [wallet, amount, mint]);
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <Panel title="Send a Cashu token">
         {token ? (
           <div className="space-y-3">
@@ -708,7 +715,7 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
   }, [wallet, token]);
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <Panel title="Receive a Cashu token">
         <div className="space-y-4">
           <textarea
@@ -839,7 +846,7 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
   }, []);
 
   return (
-    <div className="max-w-2xl">
+    <div>
       {deposit?.error && (
         <p role="alert" className="text-error">
           {deposit.error}
@@ -934,7 +941,7 @@ function WithdrawSection({ wallet }: { wallet: NutWallet }) {
   }, [wallet, invoice, mint, mints]);
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <Panel title="Withdraw with Lightning">
         <div className="space-y-4">
           <textarea
@@ -979,10 +986,6 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
 
   return (
     <Panel title={`Tokens (${total})`}>
-      <p className="text-sm text-base-content/60 mb-3">
-        Each column is a wallet relay. 🟢 means the relay is storing the token event, 🔴 means it is missing — a column
-        full of 🔴 is a relay that is not storing your tokens.
-      </p>
       <div className="overflow-x-auto">
         <table className="table">
           <thead>
@@ -1010,11 +1013,15 @@ function TokensSection({ wallet }: { wallet: NutWallet }) {
                   <td className="font-mono text-sm" title={token.id}>
                     {token.id.slice(0, 8)}
                   </td>
-                  <td className="font-medium whitespace-nowrap">{token.unlocked ? `${token.amount} sats` : "🔒"}</td>
+                  <td className="font-medium whitespace-nowrap">
+                    {token.unlocked ? `${token.amount} sats` : "Locked"}
+                  </td>
                   <td className="font-mono">{token.unlocked && token.mint ? new URL(token.mint).hostname : "—"}</td>
                   {relays.map((url) => (
                     <td key={url} className="text-center" title={url}>
-                      {storedSet.has(url) ? "🟢" : "🔴"}
+                      <span className={storedSet.has(url) ? "text-success" : "text-error"}>
+                        {storedSet.has(url) ? "Stored" : "Missing"}
+                      </span>
                     </td>
                   ))}
                   <td className="text-right">
@@ -1113,7 +1120,7 @@ function ListEditor({
     <div className="space-y-3">
       <div className="space-y-2">
         {items.map((item) => (
-          <div key={item} className="flex items-center gap-2 border border-base-300 p-2">
+          <div key={item} className="flex items-center gap-2 border-b border-base-300 py-2">
             <span className="font-mono truncate flex-1">{item}</span>
             <button
               className="btn btn-sm btn-error"
@@ -1154,8 +1161,8 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
 
   return (
-    <div className="space-y-6">
-      <div className="grid lg:grid-cols-2 gap-6">
+    <div>
+      <div className="grid xl:grid-cols-2">
         <Panel title="Mints">
           <ListEditor
             items={mints}
@@ -1178,17 +1185,18 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
           <button className="btn" onClick={() => wallet.consolidateTokens()} disabled={ops.consolidate}>
             {ops.consolidate ? <span className="loading loading-spinner loading-sm" /> : "Consolidate tokens"}
           </button>
-          <button className="btn" onClick={() => wallet.rollover()} disabled={ops.rollover}>
+          <button
+            className="btn"
+            title="Swap every token for fresh proofs and record replaced token IDs in each new token's del field"
+            onClick={() => wallet.rollover()}
+            disabled={ops.rollover}
+          >
             {ops.rollover ? <span className="loading loading-spinner loading-sm" /> : "Rollover tokens"}
           </button>
           <button className="btn" onClick={() => wallet.syncTokens()} disabled={ops.sync}>
             {ops.sync ? <span className="loading loading-spinner loading-sm" /> : "Sync tokens"}
           </button>
         </div>
-        <p className="text-sm text-base-content/60 mt-3">
-          Rollover swaps every token for fresh proofs at its mint, recording the replaced token ids in each new token's{" "}
-          <code>del</code> field.
-        </p>
       </Panel>
     </div>
   );
@@ -1198,7 +1206,7 @@ function SettingsSection({ wallet }: { wallet: NutWallet }) {
 function CreateSection({ wallet }: { wallet: NutWallet }) {
   const ops = use$(wallet.operationsState$) ?? {};
   const [mints, setMints] = useState<string[]>([]);
-  const [relays, setRelays] = useState<string[]>(DEFAULT_RELAYS);
+  const [relays, setRelays] = useState<string[]>(FALLBACK_RELAYS);
   const [receiveNutzaps, setReceiveNutzaps] = useState(false);
 
   const handleCreate = useCallback(() => {
@@ -1211,9 +1219,9 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
   }, [wallet, mints, relays, receiveNutzaps]);
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="alert alert-warning">
-        <span>No wallet found. Create one below.</span>
+    <div>
+      <div className="border-b border-base-300 p-4">
+        <span className="badge badge-warning">No wallet found</span>
       </div>
 
       <Panel title="Mints">
@@ -1235,19 +1243,21 @@ function CreateSection({ wallet }: { wallet: NutWallet }) {
         <ListEditor items={relays} placeholder="wss://relay.example.com" onChange={(next) => setRelays(next)} />
       </Panel>
 
-      <label className="label cursor-pointer justify-start gap-3">
-        <input
-          type="checkbox"
-          className="checkbox"
-          checked={receiveNutzaps}
-          onChange={(e) => setReceiveNutzaps(e.target.checked)}
-        />
-        <span className="label-text">Generate P2PK key (for receiving nutzaps)</span>
-      </label>
+      <div className="space-y-4 p-4">
+        <label className="label cursor-pointer justify-start gap-3">
+          <input
+            type="checkbox"
+            className="checkbox"
+            checked={receiveNutzaps}
+            onChange={(e) => setReceiveNutzaps(e.target.checked)}
+          />
+          <span className="label-text">Generate P2PK key (for receiving nutzaps)</span>
+        </label>
 
-      <button className="btn btn-primary btn-wide" onClick={handleCreate} disabled={ops.create || mints.length === 0}>
-        {ops.create ? <span className="loading loading-spinner loading-sm" /> : "Create wallet"}
-      </button>
+        <button className="btn btn-primary btn-wide" onClick={handleCreate} disabled={ops.create || mints.length === 0}>
+          {ops.create ? <span className="loading loading-spinner loading-sm" /> : "Create wallet"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -1277,7 +1287,7 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
   const uri = service?.running ? service.getConnectURI() : null;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div>
       <Panel
         title="Nostr Wallet Connect"
         action={
@@ -1299,10 +1309,6 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <QRCode value={uri} size={200} className="rounded shrink-0" alt="Wallet connect QR code" />
             <div className="flex-1 space-y-3">
-              <p className="text-sm text-base-content/60">
-                Scan this code or paste the connection string into a Nostr Wallet Connect app to let it send and receive
-                lightning payments and cashu tokens with this wallet.
-              </p>
               <textarea className="textarea textarea-bordered w-full h-24 font-mono text-sm" value={uri} readOnly />
               <button className="btn btn-sm" onClick={() => navigator.clipboard.writeText(uri)}>
                 Copy connection string
@@ -1310,10 +1316,12 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
             </div>
           </div>
         ) : (
-          <p className="text-base-content/60">
-            Enable Nostr Wallet Connect to let external apps use this cashu wallet. The connection is saved in this
-            browser and restored automatically when you reload.
-          </p>
+          <span
+            className="badge badge-ghost"
+            title="Enable to connect external apps; saved connections restore on reload"
+          >
+            Disabled
+          </span>
         )}
       </Panel>
 
@@ -1333,10 +1341,6 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
           busy={busy}
           onChange={(next) => setEditedRelays(next)}
         />
-        <p className="mt-3 text-sm text-base-content/60">
-          The relays the service listens on. Changing them while connected restarts the service and updates the
-          connection string.
-        </p>
       </Panel>
 
       <Panel
@@ -1358,76 +1362,85 @@ function ConnectSection({ wallet }: { wallet: NutWallet }) {
             ))}
           </div>
         ) : (
-          <p className="text-base-content/60">
-            No requests yet. Connect an app and the requests it makes to this wallet will appear here.
-          </p>
+          <div className="text-base-content/60">No requests yet</div>
         )}
       </Panel>
     </div>
   );
 }
 
-const SECTIONS = [
-  "Overview",
-  "Send",
-  "Receive",
-  "Deposit",
-  "Withdraw",
-  "Tokens",
-  "History",
-  "Connect",
-  "Settings",
-] as const;
-type Section = (typeof SECTIONS)[number];
-
 function WalletDashboard({ wallet }: { wallet: NutWallet }) {
   const status = use$(wallet.status$) ?? WalletStatus.Idle;
+  const error = use$(wallet.errorState$);
+  const tokenCount = use$(wallet.tokenCount$);
+  const historyCount = use$(wallet.historyCount$);
   const [section, setSection] = useState<Section>("Overview");
 
   return (
-    <div className="flex flex-col gap-6 p-6 w-full">
-      <Header wallet={wallet} />
-
-      {status === WalletStatus.Missing ? (
-        <CreateSection wallet={wallet} />
-      ) : (
-        <>
-          <div role="tablist" className="tabs tabs-lift">
-            {SECTIONS.map((s) => (
+    <div className="flex min-h-0 grow">
+      <aside className="flex w-72 shrink-0 flex-col border-e border-base-300">
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <WalletControls wallet={wallet} />
+          <nav aria-label="Wallet sections" className="flex flex-col gap-1 p-3">
+            {SECTIONS.map((name) => (
               <button
-                key={s}
-                role="tab"
-                className={`tab ${section === s ? "tab-active" : ""}`}
-                onClick={() => setSection(s)}
+                key={name}
+                className={`btn btn-sm justify-start ${section === name ? "btn-active" : "btn-ghost"}`}
+                aria-current={section === name ? "page" : undefined}
+                disabled={status === WalletStatus.Missing}
+                onClick={() => setSection(name)}
               >
-                {s}
+                {name}
+                {name === "Tokens" && <span className="ms-auto opacity-60">{tokenCount ?? "…"}</span>}
+                {name === "History" && <span className="ms-auto opacity-60">{historyCount ?? "…"}</span>}
               </button>
             ))}
-          </div>
+          </nav>
+        </div>
+        <Account wallet={wallet} />
+      </aside>
 
-          {section === "Overview" && <OverviewSection wallet={wallet} />}
-          {section === "Send" && <SendSection wallet={wallet} />}
-          {section === "Receive" && <ReceiveSection wallet={wallet} />}
-          {section === "Deposit" && <DepositSection wallet={wallet} />}
-          {section === "Withdraw" && <WithdrawSection wallet={wallet} />}
-          {section === "Tokens" && <TokensSection wallet={wallet} />}
-          {section === "History" && <HistorySection wallet={wallet} />}
-          {section === "Connect" && <ConnectSection wallet={wallet} />}
-          {section === "Settings" && <SettingsSection wallet={wallet} />}
-        </>
-      )}
+      <main
+        aria-label={status === WalletStatus.Missing ? "Create wallet" : section}
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+      >
+        {error && (
+          <div role="alert" className="border-b border-base-300 p-4 text-error">
+            {error.message}
+          </div>
+        )}
+        {status === WalletStatus.Missing ? (
+          <CreateSection wallet={wallet} />
+        ) : status === WalletStatus.Idle || status === WalletStatus.Loading ? (
+          <div role="status" className="flex items-center justify-center gap-2 p-6">
+            <span className="loading loading-spinner loading-sm" />
+            Loading wallet…
+          </div>
+        ) : (
+          <>
+            {section === "Overview" && <OverviewSection wallet={wallet} />}
+            {section === "Send" && <SendSection wallet={wallet} />}
+            {section === "Receive" && <ReceiveSection wallet={wallet} />}
+            {section === "Deposit" && <DepositSection wallet={wallet} />}
+            {section === "Withdraw" && <WithdrawSection wallet={wallet} />}
+            {section === "Tokens" && <TokensSection wallet={wallet} />}
+            {section === "History" && <HistorySection wallet={wallet} />}
+            {section === "Connect" && <ConnectSection wallet={wallet} />}
+            {section === "Settings" && <SettingsSection wallet={wallet} />}
+          </>
+        )}
+      </main>
     </div>
   );
 }
 
 export default function WalletAdminExample() {
   const storage = use$(storage$);
-  const signer = use$(signer$);
-  const pubkey = use$(pubkey$);
+  const session = use$(session$);
   const wallet = use$(wallet$);
 
   if (!storage) return <UnlockView onUnlock={(s) => storage$.next(s)} />;
-  if (!signer || !pubkey)
+  if (!session)
     return (
       <LoginView
         onLogin={(s, p) => {
@@ -1443,5 +1456,5 @@ export default function WalletAdminExample() {
       </div>
     );
 
-  return <WalletDashboard wallet={wallet} />;
+  return <WalletDashboard key={wallet.pubkey} wallet={wallet} />;
 }

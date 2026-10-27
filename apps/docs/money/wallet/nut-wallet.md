@@ -114,7 +114,7 @@ await wallet.start();
 With a warm cache, the wallet loads and unlocks without a single decryption request to the signer.
 
 :::warning
-The cache stores **decrypted** content — including raw Cashu proofs. Plain `localStorage` is shown for brevity; a real app should encrypt the cache at rest (see the wallet/admin example's `SecureStorage`, which satisfies `EncryptedContentCache` directly).
+The cache stores **decrypted** content — including raw Cashu proofs. Plain `localStorage` is shown for brevity; a real app should encrypt the cache at rest (see the cashu-wallet/admin example's `SecureStorage`, which satisfies `EncryptedContentCache` directly).
 :::
 
 ## Tracking status

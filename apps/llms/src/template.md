@@ -331,7 +331,7 @@ Every example follows this pattern:
 
 **Badges (NIP-58)**: `badges/profile` (view badges), `badges/editor` (edit profile badge pins)
 
-**Wallet & payments**: `zap/zap-modal` (zap flow), `nwc/simple-wallet` (NWC pay), `wallet/wallet` (full Cashu wallet)
+**Wallet & payments**: `zap/zap-modal` (zap flow), `nwc/simple-wallet` (NWC pay), `cashu-wallet/cashu-wallet` (full NIP-60 Cashu wallet)
 
 **Negentropy sync**: `negentrapy/relay-difference` (cross-relay diff), `negentrapy/note-reactions` (sync reactions)
 

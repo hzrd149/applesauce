@@ -1,7 +1,7 @@
 /**
- * Full-featured Cashu wallet with token management, nutzaps, and Lightning integration
+ * Full-featured NIP-60 Cashu wallet with token management, nutzaps, and Lightning integration
  * @tags nip-60, nip-61, wallet, cashu, tokens, nutzaps
- * @related wallet/mint-discovery, nwc/simple-wallet
+ * @related cashu-wallet/mint-discovery, nwc/simple-wallet
  */
 import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
 import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";
@@ -1559,7 +1559,7 @@ function WalletManager({ user, wallet }: { user: User; wallet: NutWallet }) {
   return (
     <div className="container mx-auto my-8 px-4 max-w-2xl relative">
       <div className="flex gap-2 items-center">
-        <h1 className="text-3xl font-bold mb-6">Wallet Example</h1>
+        <h1 className="text-3xl font-bold mb-6">Cashu Wallet Example</h1>
         <label className="label ms-auto">
           <input
             type="checkbox"

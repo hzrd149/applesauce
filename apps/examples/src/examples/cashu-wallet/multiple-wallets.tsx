@@ -1,7 +1,7 @@
 /**
  * Minimal lightning wallet that switches between WebLN, NWC, and a NIP-60 Cashu backend
  * @tags wallet, lightning, nwc, webln, nip-60, cashu
- * @related wallet/wallet, wallet/admin
+ * @related cashu-wallet/cashu-wallet, cashu-wallet/admin
  */
 import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
 import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";

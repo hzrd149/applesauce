@@ -34,6 +34,7 @@ export type Category = {
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
+  "cashu-wallet": "Cashu Wallet",
   negentrapy: "Negentropy",
   nwc: "Nostr Wallet Connect",
   "rx-views": "RxJS views",

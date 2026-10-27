@@ -1,7 +1,7 @@
 /**
  * Discover and browse Cashu mint information and recommendations from the Nostr network
  * @tags wallet, mint, cashu, discovery
- * @related wallet/wallet
+ * @related cashu-wallet/cashu-wallet
  */
 import { castTimelineStream } from "applesauce-common/observable";
 import { relayTimeline } from "../../extra/relay-timeline";
