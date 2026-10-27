@@ -26,7 +26,6 @@ import { BehaviorSubject, from, map, of } from "rxjs";
 
 import JsonBlock from "../../components/json-block";
 import LoginView from "../../components/login-view";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -311,7 +310,8 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
     setError(null);
     try {
       const signed = await buildTorrent(form).sign(signer);
-      const responses = await publishEvent(pool, relays, signed);
+      const responses = await pool.publish(relays, signed);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
       eventStore.add(signed);
       setPublished({ event: signed, responses });
     } catch (err) {

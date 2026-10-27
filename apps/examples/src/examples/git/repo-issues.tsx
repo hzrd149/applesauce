@@ -14,7 +14,6 @@ import {
   type GitStatus,
 } from "applesauce-common/helpers";
 import { GitIssueFactory } from "applesauce-common/factories";
-import { publishEvent } from "../../extra/publish";
 import { GitRepositoryIssuesModel } from "applesauce-common/models";
 import { castEventStream, castTimelineStream } from "applesauce-common/observable";
 import { defined, EventStore } from "applesauce-core";
@@ -584,7 +583,8 @@ function IssueComposer({
       const event = await GitIssueFactory.create(repo?.event ?? pointer, subject.trim() || null, content).sign(signer);
       const outboxes = await user.outboxes$.$first(3000, []);
       const relays = relaySet(repo?.relays ?? pointer.relays ?? [], outboxes);
-      await publishEvent(pool, relays.length ? relays : ["wss://relay.ngit.dev/"], event);
+      const responses = await pool.publish(relays.length ? relays : ["wss://relay.ngit.dev/"], event);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
       eventStore.add(event);
       onPublished();
     } catch (error) {

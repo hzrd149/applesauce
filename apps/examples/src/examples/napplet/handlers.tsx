@@ -59,7 +59,6 @@ import {
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import RelayPicker from "../../components/relay-picker";
-import { publishEvent } from "../../extra/publish";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
 
@@ -85,7 +84,8 @@ const syncLoader = createSyncLoader({ eventStore, pool });
 
 // Actions publish the preferences to the user's outboxes
 const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 type LoadStatus = { loading: boolean; error?: string };

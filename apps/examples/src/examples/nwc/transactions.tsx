@@ -3,12 +3,11 @@
  * @tags nip-47, nwc, wallet, transactions
  * @related nwc/simple-wallet, nwc/wallet-info
  */
-import { publishEvent } from "../../extra/publish";
-
 import { Subject, defer, map, startWith, catchError, of, exhaustMap, scan } from "rxjs";
 
 import { hexToBytes } from "@noble/hashes/utils.js";
 import { use$ } from "applesauce-react/hooks";
+import type { NostrEvent } from "applesauce-core/helpers";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import { parseWalletConnectURI, supportsMethod, Transaction } from "applesauce-wallet-connect/helpers";
@@ -16,6 +15,13 @@ import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
+
+/** Publishes an event and throws unless at least one relay accepts it */
+async function publish(relays: string[], event: NostrEvent) {
+  const responses = await pool.publish(relays, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+  return responses;
+}
 
 function TransactionItem({ transaction }: { transaction: Transaction }) {
   const isIncoming = transaction.type === "incoming";
@@ -162,7 +168,7 @@ export default function TransactionsExample() {
         ...parsed,
         secret,
         subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: (relays, event) => publishEvent(pool, relays, event),
+        publishMethod: publish,
       });
 
       return walletConnect;

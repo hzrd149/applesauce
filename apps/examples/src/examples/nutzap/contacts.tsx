@@ -5,7 +5,6 @@
  */
 import UnlockView from "../../components/unlock-view";
 import { nutzapStorage$, prepareNutzap, resumeNutzap } from "../../extra/nutzap-quote";
-import { publishEvent } from "../../extra/publish";
 
 import { MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import { ProxySigner } from "applesauce-accounts";
@@ -28,6 +27,8 @@ import QRCode from "../../components/qr-code";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+
 // Application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -36,9 +37,10 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 // Global state
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
-const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), (event, relays) =>
-  publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event),
-);
+const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+});
 
 const cache = await openDB();
 function cacheRequest(filters: Filter[]) {

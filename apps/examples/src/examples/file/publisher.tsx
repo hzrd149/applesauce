@@ -3,8 +3,6 @@
  * @tags nip-94, nip-96, blossom, file-upload, publish, outbox
  * @related file/explorer, notes/simple-composer, blossom/server-manager
  */
-import { publishEvent } from "../../extra/publish";
-
 import { castEvent, castUser, FileMetadata, User } from "applesauce-common/casts";
 import { FileMetadataFactory } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
@@ -443,7 +441,8 @@ function Publisher({ user, signer }: { user: User; signer: ISigner }) {
     try {
       if (!preview?.factory) return;
       const signed = await preview.factory.sign(signer);
-      const responses = await publishEvent(pool, publishRelays, signed);
+      const responses = await pool.publish(publishRelays, signed);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
       eventStore.add(signed);
       setPublishedEvent(signed);
       setResults(responses.map((response) => ({ relay: response.from, ok: response.ok, message: response.message })));

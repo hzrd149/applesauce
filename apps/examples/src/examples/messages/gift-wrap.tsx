@@ -65,7 +65,6 @@ import LoginView from "../../components/login-view";
 import NoteContent from "../../components/note-content";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -129,7 +128,8 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(define
   };
 
   try {
-    await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
+    const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+    if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
     record({ ok: true });
   } catch (error) {
     record({ ok: false, error: error instanceof Error ? error.message : String(error) });

@@ -10,7 +10,6 @@ import { relayTimeline } from "../../extra/relay-timeline";
 import { NutzapInfo } from "applesauce-wallet/casts";
 import UnlockView from "../../components/unlock-view";
 import { nutzapStorage$, prepareNutzap, resumeNutzap } from "../../extra/nutzap-quote";
-import { publishEvent } from "../../extra/publish";
 
 import { MintQuoteBolt11Response } from "@cashu/cashu-ts";
 import { ActionRunner } from "applesauce-actions";
@@ -31,13 +30,16 @@ import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+
 // Global state
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const actions = new ActionRunner(eventStore, signer, (event, relays) =>
-  publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event),
-);
+const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+});
 
 // Create an address loader to load user profiles
 // Create unified event loader for the store

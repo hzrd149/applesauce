@@ -5,7 +5,6 @@
  */
 import { relayTimeline } from "../../extra/relay-timeline";
 import { castUser } from "applesauce-common/casts";
-import { publishEvent } from "../../extra/publish";
 import { combineLatest, map, materialize, scan, startWith } from "rxjs";
 
 import { PollResponseFactory } from "applesauce-common/factories";
@@ -137,7 +136,8 @@ function VotingForm({ poll, onVoteSubmitted, selectedRelay }: VotingFormProps) {
       const signedResponse = await (comment.trim() ? response.comment(comment.trim()) : response).sign(signer);
 
       // Publish to the selected relay
-      await publishEvent(pool, mergeRelaySets(selectedRelay, getPollRelays(poll)), signedResponse);
+      const responses = await pool.publish(mergeRelaySets(selectedRelay, getPollRelays(poll)), signedResponse);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 
       // Notify parent component
       onVoteSubmitted(signedResponse);

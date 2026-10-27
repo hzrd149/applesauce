@@ -3,8 +3,6 @@
  * @tags nip-34, git, grasp, server, management
  * @related git/favorite-repos-feed, blossom/server-manager, bookmarks/manager
  */
-import { publishEvent } from "../../extra/publish";
-
 import { castUser, type User } from "applesauce-common/casts";
 import { GitGraspListFactory } from "applesauce-common/factories";
 import { EventStore } from "applesauce-core";
@@ -19,6 +17,8 @@ import { BehaviorSubject, map } from "rxjs";
 import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
+
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -134,7 +134,8 @@ function GraspServerManagerView({ user }: { user: User }) {
       try {
         const signed = await factory.sign(signer);
         eventStore.add(signed);
-        await publishEvent(pool, outboxes?.length ? outboxes : ["wss://relay.damus.io/", "wss://nos.lol/"], signed);
+        const responses = await pool.publish(outboxes?.length ? outboxes : FALLBACK_RELAYS, signed);
+        if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
       } catch (err) {
         console.error(err);
         setError(err instanceof Error ? err.message : "Failed to publish grasp list");

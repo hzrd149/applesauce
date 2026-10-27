@@ -3,8 +3,6 @@
  * @tags nip-09, deletion, events, timeline
  * @related simple/profile-editor
  */
-import { publishEvent } from "../../extra/publish";
-
 import { castUser, Note, User } from "applesauce-common/casts";
 import { DeleteFactory, EventStore } from "applesauce-core";
 import { getDisplayName, kinds, NostrEvent } from "applesauce-core/helpers";
@@ -154,7 +152,8 @@ function NotesList({ user }: { user: User }) {
       const signed = await DeleteFactory.fromEvents(eventsToDelete).sign(signer);
 
       // Publish to user's outboxes
-      await publishEvent(pool, outboxes, signed);
+      const responses = await pool.publish(outboxes, signed);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 
       // Add the delete event to the store
       eventStore.add(signed);

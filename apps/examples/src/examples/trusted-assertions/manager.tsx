@@ -43,7 +43,6 @@ import {
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -61,7 +60,8 @@ const account$ = new BehaviorSubject<Account | undefined>(undefined);
 function login(signer: ISigner, pubkey: string) {
   // Actions publish the kind 10040 list to the user's outboxes
   const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
-    await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
+    const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+    if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
   });
   account$.next({ user: castUser(pubkey, eventStore), signer, actions });
 }

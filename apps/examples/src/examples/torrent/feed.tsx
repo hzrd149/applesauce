@@ -22,7 +22,6 @@ import remarkGfm from "remark-gfm";
 import { BehaviorSubject, catchError, filter, map, of, startWith } from "rxjs";
 
 import LoginView from "../../components/login-view";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -42,7 +41,8 @@ const reactionLoader = createReactionsLoader(pool, { eventStore });
 
 // Comments publish to the action's relays (outboxes and the torrent author's inboxes) plus the feed relays
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  await publishEvent(pool, relaySet(relays, relays$.value), event);
+  const responses = await pool.publish(relaySet(relays, relays$.value), event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 type RelayStatus = { url: string; loading: boolean; error?: string };

@@ -5,7 +5,6 @@
  */
 import { castEventStream } from "applesauce-common/observable";
 import { Article } from "applesauce-common/casts";
-import { publishEvent } from "../../extra/publish";
 import { useMemo, useCallback, useState } from "react";
 
 import { HighlightFactory } from "applesauce-common/factories";
@@ -339,7 +338,8 @@ function ArticleRenderer({ article }: { article: Article }) {
         if (comment) highlightFactory = highlightFactory.comment(comment);
         const highlightEvent = await highlightFactory.sign(signer);
 
-        await publishEvent(pool, relays, highlightEvent);
+        const responses = await pool.publish(relays, highlightEvent);
+        if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
         eventStore.add(highlightEvent);
 
         // Show success message

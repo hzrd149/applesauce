@@ -6,7 +6,6 @@
 import { relayTimeline } from "../../extra/relay-timeline";
 
 import { AddressPointer, getReplaceableAddressFromPointer } from "applesauce-core/helpers";
-import { publishEvent } from "../../extra/publish";
 import NoteContent from "../../components/note-content";
 import { switchMap, of, map } from "rxjs";
 
@@ -28,6 +27,8 @@ import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.primal.net/"];
+
 const remarkPlugins = [remarkGfm, remarkNostrMentions];
 const markdownComponents = {
   a: ({ ...props }: any) => <a target="_blank" rel="noopener noreferrer" {...props} />,
@@ -37,12 +38,8 @@ const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
 const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
-  if (relays && relays.length > 0) {
-    await publishEvent(pool, relays, event);
-  } else {
-    // Fallback to a default relay if none provided
-    await publishEvent(pool, ["wss://relay.primal.net/"], event);
-  }
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 // Create loaders so the event store can load profiles

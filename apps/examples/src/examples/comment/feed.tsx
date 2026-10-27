@@ -4,7 +4,6 @@
  * @related content/articles, casting/thread
  */
 import { relayTimeline } from "../../extra/relay-timeline";
-import { publishEvent } from "../../extra/publish";
 import { CreateComment } from "applesauce-actions/actions";
 import { ActionRunner } from "applesauce-actions";
 import NoteContent from "../../components/note-content";
@@ -58,7 +57,8 @@ const selectedThread$ = new BehaviorSubject<CommentPointer | null>(null);
 
 const signer = new ExtensionSigner();
 const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : appRelays.value, event);
+  const responses = await pool.publish(relays?.length ? relays : appRelays.value, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 /** Component to render a single comment in the feed */

@@ -11,6 +11,7 @@ import {
   getDisplayName,
   getProfilePicture,
   naddrEncode,
+  type NostrEvent,
   normalizeURL,
   npubEncode,
   relaySet,
@@ -24,7 +25,6 @@ import { Controller, useForm, useWatch, type Control, type UseFormSetValue } fro
 import { BehaviorSubject, EMPTY, map, of } from "rxjs";
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -724,9 +724,10 @@ function RepositorySettings({
   const upstreamInvalid = !!values.upstreamEnabled && !getUpstreamPointer(values as RepoSettings);
 
   const publish = useCallback(
-    async (event: Parameters<typeof publishEvent>[2], repoRelays: string[]) => {
+    async (event: NostrEvent, repoRelays: string[]) => {
       // Publish to our outboxes, the repository relays, and our GRASP servers
-      await publishEvent(pool, relaySet(outboxes, repoRelays, graspServers), event);
+      const responses = await pool.publish(relaySet(outboxes, repoRelays, graspServers), event);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
     },
     [outboxes, graspServers],
   );

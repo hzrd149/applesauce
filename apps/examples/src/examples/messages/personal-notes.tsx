@@ -3,8 +3,6 @@
  * @tags nip-17, nip-44, nip-59, notes, encryption, self-messaging, nip-77, negentropy
  * @related messages/gift-wrap
  */
-import { publishEvent } from "../../extra/publish";
-
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { ReplyToWrappedMessage, SendWrappedMessage } from "applesauce-actions/actions";
@@ -38,6 +36,8 @@ import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
+
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 
 // Expiration times for notes and comments (in seconds from creation)
 // NIP-17 recommends shorter expirations for gift-wrapped messages to reduce relay storage
@@ -76,7 +76,8 @@ const actions = new ActionRunner(eventStore, new ProxySigner(signer$), async (ev
   if (!relays) relays = await user$.value?.inboxes$.$first(1000, undefined);
   if (!relays) throw new Error("No relays found");
 
-  await publishEvent(pool, relays.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+  const responses = await pool.publish(relays.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 // Persist encrypted content to the storage backend

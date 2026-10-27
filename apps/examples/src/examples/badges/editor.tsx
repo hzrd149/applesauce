@@ -3,8 +3,6 @@
  * @tags nip-58, profile, badges, editing
  * @related badges/profile
  */
-import { publishEvent } from "../../extra/publish";
-
 import { Badge, BadgeAward, castUser, ProfileBadges, User } from "applesauce-common/casts";
 import { ProfileBadgesFactory } from "applesauce-common/factories";
 import {
@@ -268,7 +266,8 @@ function EditorView({ user }: { user: User }) {
     try {
       const signed = await factory.sign(signer);
       const relays = mailboxesRef.current ? relaySet(RELAYS, mailboxesRef.current.outboxes) : RELAYS;
-      const responses = await publishEvent(pool, relays, signed);
+      const responses = await pool.publish(relays, signed);
+      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
       eventStore.add(signed);
 
       setPublishLog((log) => [

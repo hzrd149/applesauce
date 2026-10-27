@@ -3,8 +3,6 @@
  * @tags nip-96, blossom, server, management
  * @related feed/relay-timeline, file/publisher
  */
-import { publishEvent } from "../../extra/publish";
-
 import { ProxySigner } from "applesauce-accounts";
 import { type Action, ActionRunner } from "applesauce-actions";
 import { AddBlossomServer, RemoveBlossomServer, SetDefaultBlossomServer } from "applesauce-actions/actions/blossom";
@@ -22,6 +20,8 @@ import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
 const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined)));
@@ -33,7 +33,8 @@ createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 // Actions publish the server list to the user's outboxes
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : ["wss://relay.damus.io/", "wss://nos.lol/"], event);
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 /** Replaces the whole server list, used for reordering */

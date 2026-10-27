@@ -5,7 +5,6 @@
  */
 import { castTimelineStream } from "applesauce-common/observable";
 import { default as NoteContent } from "../../components/note-content";
-import { publishEvent } from "../../extra/publish";
 import { relayTimeline } from "../../extra/relay-timeline";
 import { shareReplay, map } from "rxjs";
 
@@ -316,7 +315,8 @@ function ChatMessageForm({ stream, relays }: { stream: Stream; relays: string[] 
 
     const event = await StreamChatMessageFactory.create(stream.event, values.content).sign(signer);
 
-    await publishEvent(pool, relays, event);
+    const responses = await pool.publish(relays, event);
+    if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
     eventStore.add(event);
     reset();
   });

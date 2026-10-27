@@ -3,8 +3,6 @@
  * @tags misc, app-data, nip-78, storage, nip-77, sync
  * @related app-handlers/open-with, loader/sync-loader
  */
-import { publishEvent } from "../../extra/publish";
-
 import { castUser, User } from "applesauce-common/casts";
 import { AppDataFactory } from "applesauce-common/factories";
 import {
@@ -43,6 +41,13 @@ import { verifyEvent } from "../../extra/verifier";
 
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
+
+/** Publishes an event and throws unless at least one relay accepts it */
+async function publish(relays: string[], event: NostrEvent) {
+  const responses = await pool.publish(relays, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+  return responses;
+}
 
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -435,8 +440,7 @@ function AppDataManager({ user }: { user: User }) {
 
   // Publish the new revision everywhere the previous one was found so relays replace it
   const handleSave = async (updated: NostrEvent) => {
-    await publishEvent(
-      pool,
+    await publish(
       mergeRelaySets(outboxes?.length ? outboxes : FALLBACK_RELAYS, selected && getSeenRelays(selected)),
       updated,
     );
@@ -456,7 +460,7 @@ function AppDataManager({ user }: { user: User }) {
       setDeleting(true);
       const signed = await DeleteFactory.fromEvents(toDelete).sign(signer);
       const relays = mergeRelaySets(outboxes?.length ? outboxes : FALLBACK_RELAYS, ...toDelete.map(getSeenRelays));
-      await publishEvent(pool, relays, signed);
+      await publish(relays, signed);
       eventStore.add(signed);
 
       const ids = new Set(toDelete.map((e) => e.id));

@@ -8,7 +8,6 @@ import { relayTimeline } from "../../extra/relay-timeline";
 import { castTimelineStream } from "applesauce-common/observable";
 import NoteContent from "../../components/note-content";
 import { ForumThread, Comment, castEvent } from "applesauce-common/casts";
-import { publishEvent } from "../../extra/publish";
 
 import { CommentFactory, GroupThreadFactory } from "applesauce-common/factories";
 import { COMMENT_KIND, decodeGroupPointer, GroupPointer } from "applesauce-common/helpers";
@@ -28,6 +27,13 @@ import { verifyEvent } from "../../extra/verifier";
 
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
+
+/** Publishes an event and throws unless at least one relay accepts it */
+async function publish(relays: string[], event: NostrEvent) {
+  const responses = await pool.publish(relays, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+  return responses;
+}
 
 const signer = new ExtensionSigner();
 
@@ -121,7 +127,7 @@ function ReplyForm({ event, pointer }: { event: NostrEvent; pointer: GroupPointe
       // Create a comment and include the group h tag
       const signed = await CommentFactory.create(event, content).group(pointer).sign(signer);
       // Publish the event
-      await publishEvent(pool, [pointer.relay], signed);
+      await publish([pointer.relay], signed);
       // Add to the event store for the app
       eventStore.add(signed);
       setContent("");
@@ -200,7 +206,7 @@ function NewThreadForm({
     try {
       const signed = await GroupThreadFactory.create(pointer, title, content).sign(signer);
       // Publish the event
-      await publishEvent(pool, [pointer.relay], signed);
+      await publish([pointer.relay], signed);
       // Add to the event store for the app
       eventStore.add(signed);
 

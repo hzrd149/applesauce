@@ -32,7 +32,6 @@ import {
 
 import LoginView from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -50,7 +49,8 @@ createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extra
 
 // Follow actions publish to the outboxes of the contact list owner
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 type OutboxLoad = { relays: string[]; fallback: boolean; done: boolean };

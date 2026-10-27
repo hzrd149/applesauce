@@ -67,7 +67,6 @@ import {
   tap,
 } from "rxjs";
 import LoginView from "../../components/login-view";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -120,7 +119,8 @@ const range$ = new BehaviorSubject<Range>({ since: unixNow() - 30 * DAY, days: 3
 
 // The runner follows the signed in account and saves published replies to the store so the UI updates instantly
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  await publishEvent(pool, relays?.length ? relays : EXTRA_RELAYS, event);
+  const responses = await pool.publish(relays?.length ? relays : EXTRA_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 // ---------------------------------------------------------------------------

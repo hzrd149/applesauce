@@ -3,9 +3,8 @@
  * @tags nip-47, nwc, wallet, connection
  * @related nwc/auth-uri, nwc/simple-wallet
  */
-import { publishEvent } from "../../extra/publish";
-
 import { use$ } from "applesauce-react/hooks";
+import type { NostrEvent } from "applesauce-core/helpers";
 import { RelayPool } from "applesauce-relay";
 import { WalletConnect } from "applesauce-wallet-connect";
 import {
@@ -26,6 +25,13 @@ import { useMemo, useState } from "react";
 
 // Create a relay pool to make relay connections
 const pool = new RelayPool();
+
+/** Publishes an event and throws unless at least one relay accepts it */
+async function publish(relays: string[], event: NostrEvent) {
+  const responses = await pool.publish(relays, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+  return responses;
+}
 
 // Method descriptions for better UX
 const METHOD_DESCRIPTIONS: Record<string, string> = {
@@ -239,7 +245,7 @@ export default function WalletConnectExample() {
         ...parsed,
         secret,
         subscriptionMethod: pool.subscription.bind(pool),
-        publishMethod: (relays, event) => publishEvent(pool, relays, event),
+        publishMethod: publish,
       });
 
       // Use the public getter method to access wallet info observable

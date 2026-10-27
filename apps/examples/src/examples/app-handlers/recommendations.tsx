@@ -32,7 +32,6 @@ import type { ISigner } from "applesauce-signers";
 import { useMemo, useState } from "react";
 import { BehaviorSubject, catchError, distinctUntilChanged, endWith, ignoreElements, map, of, startWith } from "rxjs";
 import LoginView from "../../components/login-view";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -68,7 +67,8 @@ const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
   // Actions publish recommendations to the user's outboxes
-  await publishEvent(pool, relays?.length ? relays : FALLBACK_RELAYS, event);
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 // Loads handlers, profiles, and nsites referenced by casts on demand

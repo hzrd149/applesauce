@@ -69,7 +69,6 @@ import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
-import { publishEvent } from "../../extra/publish";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
@@ -155,7 +154,8 @@ const sync = createSyncLoader({ eventStore, pool });
 // Publish to the recipient's inboxes chosen by the action, and to our outboxes so our other clients find the message
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
   const outboxes = await user$.value?.outboxes$.$first(1000, undefined);
-  await publishEvent(pool, mergeRelaySets(relays, outboxes), event);
+  const responses = await pool.publish(mergeRelaySets(relays, outboxes), event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 /** Returns the relays a user reads direct messages from, their NIP-65 inboxes and NIP-17 messaging relays */

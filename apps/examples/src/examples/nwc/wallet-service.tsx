@@ -3,10 +3,8 @@
  * @tags nip-47, nwc, wallet, service, server
  * @related nwc/simple-wallet
  */
-import { publishEvent } from "../../extra/publish";
-
 import { parseBolt11 } from "applesauce-common/helpers";
-import { unixNow } from "applesauce-core/helpers";
+import { type NostrEvent, unixNow } from "applesauce-core/helpers";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
@@ -36,12 +34,19 @@ const DEFAULT_RELAYS = ["wss://relay.getalby.com/v1", "wss://nos.lol"];
 // Initialize relay pool
 const pool = new RelayPool();
 
+/** Publishes an event and throws unless at least one relay accepts it */
+async function publish(relays: string[], event: NostrEvent) {
+  const responses = await pool.publish(relays, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
+  return responses;
+}
+
 /** Create a signer for the service */
 const signer = new PrivateKeySigner();
 
 // Setup subscription and publish methods
 WalletService.subscriptionMethod = pool.subscription.bind(pool);
-WalletService.publishMethod = (relays, event) => publishEvent(pool, relays, event);
+WalletService.publishMethod = publish;
 
 type Transaction = WalletTransaction & { id: string };
 

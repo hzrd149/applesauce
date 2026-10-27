@@ -3,8 +3,6 @@
  * @tags nip-05, nip-24, profile, forms, actions
  * @related simple/event-deletion
  */
-import { publishEvent } from "../../extra/publish";
-
 import { ProxySigner } from "applesauce-accounts";
 import { ActionRunner } from "applesauce-actions";
 import { UpdateProfile } from "applesauce-actions/actions";
@@ -24,6 +22,8 @@ import LoginView from "../../components/login-view";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
 
+const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
+
 // Setup application state
 const signer$ = new BehaviorSubject<ISigner | null>(null);
 const pubkey$ = new BehaviorSubject<string | null>(null);
@@ -33,12 +33,8 @@ const user$ = pubkey$.pipe(map((p) => (p ? castUser(p, eventStore) : undefined))
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const actions = new ActionRunner(eventStore, new ProxySigner(signer$.pipe(defined())), async (event, relays) => {
-  if (relays && relays.length > 0) {
-    await publishEvent(pool, relays, event);
-  } else {
-    // Fallback to default relays if none provided
-    await publishEvent(pool, ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"], event);
-  }
+  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
 });
 
 // Create unified event loader for the store
