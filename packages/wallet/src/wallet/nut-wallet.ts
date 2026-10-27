@@ -51,7 +51,6 @@ import {
   CleanupDeletedTokens,
   ConsolidateTokens,
   CreateWallet,
-  MintTokens,
   ReceiveToken,
   ReceiveNutzaps,
   RecoverFromCouch,
@@ -65,6 +64,8 @@ import type { WalletHistory } from "../casts/wallet-history.js";
 import type { WalletToken } from "../casts/wallet-token.js";
 import type { Wallet } from "../casts/wallet.js";
 import type { Couch } from "../helpers/couch.js";
+import { MintRecovery, type PendingMint, type ResumeMintOptions } from "../helpers/mint-recovery.js";
+import type { RecoveryStorage } from "../helpers/recovery-storage.js";
 import { lockHistoryContent, WALLET_HISTORY_KIND } from "../helpers/history.js";
 import { lockTokenContent, WALLET_TOKEN_KIND } from "../helpers/tokens.js";
 import { getWalletRelays, lockWallet, WALLET_KIND } from "../helpers/wallet.js";
@@ -237,6 +238,7 @@ export class NutWallet {
   protected autoUnlockSub?: Subscription;
   protected unlocking = false;
   protected backupPromise?: Promise<void>;
+  private readonly mintRecovery?: MintRecovery;
 
   constructor(options: NutWalletOptions) {
     this.pubkey = options.pubkey;
@@ -244,6 +246,16 @@ export class NutWallet {
     this.pool = options.pool;
     this.eventStore = options.eventStore;
     this.couch = options.couch;
+    if (options.recovery)
+      this.mintRecovery = new MintRecovery({
+        storage: options.recovery,
+        owner: this.pubkey,
+        signer: this.signer,
+        getCashuWallet: (mint) => this.getCashuWallet(mint),
+        waitForQuote: (mint, quote, resumeOptions) => this.waitForMintQuote(mint, quote, resumeOptions),
+        publish: (event, relays) => this.publish(event, relays),
+        onAccepted: (event) => this.eventStore.add(event),
+      });
     this.autoUnlock = options.autoUnlock ?? false;
     this.useDeleteEvents = options.useDeleteEvents ?? false;
     this.decryptionCache = options.decryptionCache;
@@ -604,13 +616,14 @@ export class NutWallet {
   /**
    * Creates a bolt11 mint quote (lightning invoice) to deposit `amount` sats into a mint.
    * Pay the returned `request` invoice, then wait for it with {@link waitForMintQuote} and redeem it
-   * with {@link redeemMintQuote} (or use {@link mint} to do all three in one call).
+   * with {@link redeemMintQuote} (or use {@link deposit} to do all three in one call).
+   * @throws if recovery storage is missing or the quote cannot be persisted safely
    */
   async createMintQuote(mint: string, amount: number, description?: string): Promise<MintQuoteBolt11Response> {
     return this.track("mintQuote", async () => {
       this.log("Creating mint quote for %d sats at %s", amount, mint);
-      const cashuWallet = await this.getCashuWallet(mint);
-      return cashuWallet.createMintQuoteBolt11(amount, description);
+      const pending = await this.requireMintRecovery().prepare({ mint, amount, description });
+      return pending.quote;
     });
   }
 
@@ -635,17 +648,25 @@ export class NutWallet {
     return this.pollMintQuote(cashuWallet, quote, options);
   }
 
-  /** Redeems an already-paid bolt11 mint quote, minting proofs and adding them to the wallet */
+  /**
+   * Redeems an already-paid bolt11 mint quote using durable recovery
+   * @throws if recovery storage is missing or the quote cannot be redeemed safely
+   */
   async redeemMintQuote(mint: string, amount: number, quote: string | MintQuoteBolt11Response): Promise<void> {
     await this.track("mint", async () => {
       this.log("Redeeming mint quote for %d sats at %s", amount, mint);
-      const wallet = await this.getCashuWallet(mint);
-      await this.actions.run(MintTokens, mint, amount, quote, {
-        couch: this.couch,
-        wallet,
-        getCashuWallet: this.getCashuWallet,
-      });
-      await this.refreshCouch();
+      const recovery = this.requireMintRecovery();
+      const quoteId = typeof quote === "string" ? quote : quote.quote;
+      let pending = (await recovery.getPending()).find(
+        (record) => record.mint === mint && record.quote.quote === quoteId && !record.nutzap,
+      );
+      if (pending && pending.amount !== amount) throw new Error("Quote amount does not match the saved deposit");
+      if (!pending) {
+        const wallet = await this.getCashuWallet(mint);
+        const response = await wallet.checkMintQuoteBolt11(quoteId);
+        pending = await recovery.adoptQuote({ mint, amount }, response);
+      }
+      await recovery.resume(pending.id);
     });
   }
 
@@ -656,21 +677,50 @@ export class NutWallet {
    *
    * For bolt11 it creates a mint quote, surfaces the invoice via `onQuote`, waits for it to be paid,
    * and redeems the proofs.
+   * @throws if recovery storage is missing or the deposit cannot complete safely
    */
   async deposit(options: DepositOptions): Promise<void> {
+    const recovery = this.requireMintRecovery();
     const method = options.method ?? "bolt11";
     switch (method) {
       case "bolt11": {
-        const { mint, amount, description, onQuote, signal, timeoutMs } = options;
-        const quote = await this.createMintQuote(mint, amount, description);
-        onQuote?.(quote);
-        await this.waitForMintQuote(mint, quote.quote, { signal, timeoutMs });
-        await this.redeemMintQuote(mint, amount, quote);
+        options.signal?.throwIfAborted();
+        const pending = await this.track("mintQuote", () => recovery.prepare(options));
+        await this.resumeDeposit(pending.id, options);
         return;
       }
       default:
         throw new Error(`Unsupported deposit method: ${method}`);
     }
+  }
+
+  private requireMintRecovery(): MintRecovery {
+    if (!this.mintRecovery) throw new Error("Configure recovery storage before depositing");
+    return this.mintRecovery;
+  }
+
+  /**
+   * Lists pending deposits without signing or publishing
+   * @throws if recovery storage is missing, unavailable, or contains invalid records
+   */
+  async getPendingDeposits(): Promise<PendingMint[]> {
+    return (await this.requireMintRecovery().getPending()).filter((pending) => !pending.nutzap);
+  }
+
+  /**
+   * Imports an owner-tagged deposit journal created by an older example
+   * @throws if recovery storage is missing or migration cannot complete safely
+   */
+  async importLegacyDeposit(key: string, source?: RecoveryStorage): Promise<PendingMint | undefined> {
+    return this.requireMintRecovery().importLegacyDeposit(key, this.couch, source);
+  }
+
+  /**
+   * Resumes a pending deposit using its saved outputs and signed events
+   * @throws if recovery storage is missing or the operation cannot complete safely
+   */
+  async resumeDeposit(id: string, options: ResumeMintOptions = {}): Promise<void> {
+    await this.track("mint", () => this.requireMintRecovery().resume(id, options));
   }
 
   /**
@@ -1080,6 +1130,7 @@ export class NutWallet {
     if (targets.length === 0) throw new Error("No relays available to publish event");
     this.log("Publishing event %s (kind %d) to %d relays", event.id.slice(0, 8), event.kind, targets.length);
     const responses = await this.pool.publish(targets, event);
+    if (!responses.some((response) => response.ok)) throw new Error("No relay accepted the wallet event");
     for (const response of responses) if (response.ok) addSeenRelay(event, response.from);
   }
 }

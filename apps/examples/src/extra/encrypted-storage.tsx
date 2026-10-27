@@ -2,6 +2,7 @@ import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { cbc } from "@noble/ciphers/aes.js";
 import { hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import localforage from "localforage";
 
 // Salt for key derivation (in a real app, you might want to store this securely)
 const SALT = hexToBytes(
@@ -11,11 +12,41 @@ const SALT = hexToBytes(
 // Encryption utility class
 export default class SecureStorage {
   private key: Uint8Array | null = null;
-  get unlocked() {
-    return this.key !== null;
+  private readonly instances = new Map<string, SecureStorage>();
+
+  private get encryptionKey(): Uint8Array | null {
+    return this.parent ? this.parent.encryptionKey : this.key;
   }
 
-  constructor(public database: LocalForageDbMethods) {}
+  get unlocked() {
+    return this.encryptionKey !== null;
+  }
+
+  constructor(
+    public database: LocalForage,
+    private readonly parent?: SecureStorage,
+  ) {}
+
+  /** Creates an isolated LocalForage store that shares this storage's unlocked encryption key */
+  createInstance(options: LocalForageOptions): SecureStorage {
+    const id = JSON.stringify(options);
+    let instance = this.instances.get(id);
+    if (!instance) {
+      instance = new SecureStorage(localforage.createInstance(options), this);
+      this.instances.set(id, instance);
+    }
+    return instance;
+  }
+
+  /** Uses a database-scoped Web Lock so independent stores never share operation locks */
+  async withLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    if (typeof navigator === "undefined" || !navigator.locks) return operation();
+    const lockName = JSON.stringify([this.database.config("name"), this.database.config("storeName"), key]);
+    return navigator.locks.request(lockName, { ifAvailable: true }, (lock) => {
+      if (!lock) throw new Error("A storage operation is running in another tab");
+      return operation();
+    });
+  }
 
   // Generate encryption key from PIN
   private static deriveKey(pin: string): Uint8Array {
@@ -30,7 +61,7 @@ export default class SecureStorage {
   }
 
   // Encrypt and store data
-  async setItem(key: string, value: string, encryptionKey = this.key): Promise<boolean> {
+  async setItem(key: string, value: string, encryptionKey = this.encryptionKey): Promise<boolean> {
     if (!encryptionKey) throw new Error("Storage locked");
 
     try {
@@ -59,7 +90,7 @@ export default class SecureStorage {
   }
 
   // Retrieve and decrypt data
-  async getItem(key: string, encryptionKey = this.key): Promise<string | null> {
+  async getItem(key: string, encryptionKey = this.encryptionKey): Promise<string | null> {
     if (!encryptionKey) throw new Error("Storage locked");
 
     // Get encrypted data
@@ -85,7 +116,13 @@ export default class SecureStorage {
 
   // Remove an item
   async removeItem(key: string): Promise<void> {
+    if (!this.unlocked) throw new Error("Storage locked");
     return this.database.removeItem(key);
+  }
+
+  async keys(): Promise<string[]> {
+    if (!this.unlocked) throw new Error("Storage locked");
+    return this.database.keys();
   }
 
   // Clear all stored data
@@ -95,6 +132,7 @@ export default class SecureStorage {
 
   // Verify if a PIN can decrypt stored data
   async unlock(pin: string, testKey: string = "_pintest_"): Promise<boolean> {
+    if (this.parent) return this.parent.unlock(pin, testKey);
     // Create a key from the pin
     const key = SecureStorage.deriveKey(pin);
 

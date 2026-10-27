@@ -7,6 +7,7 @@ import type { Observable } from "rxjs";
 
 import type { WalletToken } from "../casts/wallet-token.js";
 import type { Couch } from "../helpers/couch.js";
+import type { RecoveryStorage } from "../helpers/recovery-storage.js";
 
 /** Options for constructing a {@link NutWallet} */
 export interface NutWalletOptions {
@@ -20,6 +21,8 @@ export interface NutWalletOptions {
   eventStore: EventStore;
   /** A couch used to keep tokens safe during multi-step operations */
   couch: Couch;
+  /** App-scoped durable recovery storage, required before starting or redeeming deposits */
+  recovery?: RecoveryStorage;
   /**
    * Override the relay set used for loading and publishing.
    * When omitted, the relays are derived from the wallet's own relay list plus the user's outbox relays.
@@ -68,7 +71,7 @@ export interface Bolt11DepositOptions {
   /** An optional description for the generated lightning invoice */
   description?: string;
   /** Called with the mint quote so the caller can display the lightning invoice to pay */
-  onQuote?: (quote: MintQuoteBolt11Response) => void;
+  onQuote?: (quote: MintQuoteBolt11Response) => void | Promise<void>;
   /** Aborts waiting for the quote to be paid */
   signal?: AbortSignal;
   /** Rejects if the quote is not paid within this many milliseconds */

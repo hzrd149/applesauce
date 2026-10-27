@@ -3,9 +3,6 @@
  * @tags nip-60, nip-61, wallet, cashu, admin, debugging
  * @related cashu-wallet/cashu-wallet
  */
-import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
-import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";
-
 import { getEncodedToken, MintQuoteBolt11Response, normalizeProofAmounts } from "@cashu/cashu-ts";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { castUser } from "applesauce-common/casts";
@@ -22,6 +19,7 @@ import { CashuWalletMethods, CommonWalletMethods, Transaction } from "applesauce
 import { InsufficientBalanceError, NotFoundError } from "applesauce-wallet-connect/helpers/error";
 
 import { NutWallet, WalletStatus } from "applesauce-wallet/wallet";
+import { KeyValueCouch, IndexedDBCouch, migrateCouch } from "applesauce-wallet/helpers";
 import { NostrIDB } from "nostr-idb";
 
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
@@ -69,10 +67,11 @@ const session$ = new BehaviorSubject<{ signer: ISigner; pubkey: string } | null>
 
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
-const couch = createEncryptedCouch(
-  () => storage$.value,
-  () => `wallet-proofs:${session$.value?.pubkey ?? "signed-out"}`,
-);
+async function importLegacyDeposit(storage: SecureStorage, wallet: NutWallet) {
+  if (wallet.couch instanceof KeyValueCouch)
+    await wallet.couch.importLegacy(storage, `example-encrypted-couch:wallet-proofs:${wallet.pubkey}`);
+  return wallet.importLegacyDeposit(`wallet-deposit:${wallet.pubkey}`, storage);
+}
 
 // Decrypt hidden content using the encrypted storage
 persistEncryptedContent(eventStore, storage$.pipe(defined()));
@@ -88,7 +87,6 @@ createEventLoaderForStore(eventStore, pool, {
   extraRelays: FALLBACK_RELAYS,
   cacheRequest,
 });
-
 
 // ---- Nostr Wallet Connect service (lets external NWC apps use this cashu wallet) ----
 // Bind the wallet service transport to the shared relay pool
@@ -176,32 +174,33 @@ function createNwcHandlers(wallet: NutWallet): WalletServiceHandlers<NwcMethods>
       const sats = amount / 1000;
       const storage = storage$.value;
       if (!storage) throw new Error("Unlock encrypted storage first");
+      await importLegacyDeposit(storage, wallet);
       const controller = new AbortController();
       depositControllers.set(controller, wallet.pubkey);
       return new Promise<Transaction>((resolve, reject) => {
         let transaction: Transaction | undefined;
-        void recoverableDeposit(storage, wallet, {
-          mint,
-          amount: sats,
-          signal: controller.signal,
-          namespace: "wallet-deposit",
-          onQuote: (quote) => {
-            const parsed = parseBolt11(quote.request);
-            transaction = upsertNwcTransaction({
-              type: "incoming",
-              state: "pending",
-              amount,
-              fees_paid: 0,
-              created_at: unixNow(),
-              invoice: quote.request,
-              description,
-              description_hash,
-              payment_hash: parsed.paymentHash,
-              expires_at: parsed.expiry,
-            });
-            resolve(transaction);
-          },
-        })
+        void wallet
+          .deposit({
+            mint,
+            amount: sats,
+            signal: controller.signal,
+            onQuote: (quote) => {
+              const parsed = parseBolt11(quote.request);
+              transaction = upsertNwcTransaction({
+                type: "incoming",
+                state: "pending",
+                amount,
+                fees_paid: 0,
+                created_at: unixNow(),
+                invoice: quote.request,
+                description,
+                description_hash,
+                payment_hash: parsed.paymentHash,
+                expires_at: parsed.expiry,
+              });
+              resolve(transaction);
+            },
+          })
           .then(async () => {
             if (!transaction) return;
             const settled = upsertNwcTransaction({ ...transaction, state: "settled", settled_at: unixNow() });
@@ -323,7 +322,22 @@ const wallet$ = combineLatest([session$, storage$]).pipe(
   switchMap(([session, storage]) => {
     if (!session || !storage) return of(null);
     return new Observable<NutWallet>((subscriber) => {
-      const instance = new NutWallet({ ...session, pool, eventStore, couch, decryptionCache: storage });
+      const instance = new NutWallet({
+        ...session,
+        pool,
+        eventStore,
+        couch: new KeyValueCouch(
+          storage.createInstance({
+            name: "applesauce-examples-wallet",
+            storeName: `proofs_${session.pubkey}`,
+          }),
+        ),
+        decryptionCache: storage,
+        recovery: storage.createInstance({
+          name: "applesauce-examples-wallet",
+          storeName: `deposits_${session.pubkey}`,
+        }),
+      });
       subscriber.next(instance);
       void instance
         .start()
@@ -735,13 +749,18 @@ function ReceiveSection({ wallet }: { wallet: NutWallet }) {
 
 // ---- Deposit (mint) ----
 // Legacy backups are unscoped; importing them is an explicit operation for the signed-in account.
-function LegacyProofRecovery() {
+function LegacyProofRecovery({ wallet }: { wallet: NutWallet }) {
   const commands$ = useMemo(() => new Subject<void>(), []);
   const state = use$(
     () =>
       commands$.pipe(
         exhaustMap(() =>
-          defer(() => migrateLegacyCouch(couch)).pipe(
+          defer(async () => {
+            const storage = storage$.value;
+            if (!storage) throw new Error("Unlock encrypted storage first");
+            await importLegacyDeposit(storage, wallet);
+            return migrateCouch(new IndexedDBCouch(), wallet.couch);
+          }).pipe(
             map((count) => ({
               busy: false,
               message: `Imported ${count} proof backups into encrypted recovery storage. Recover from the couch to restore them.`,
@@ -752,7 +771,7 @@ function LegacyProofRecovery() {
           ),
         ),
       ),
-    [commands$],
+    [commands$, wallet],
   );
   return (
     <div className="space-y-2">
@@ -779,14 +798,14 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
   const abortRef = useRef<AbortController | null>(null);
 
   const depositCommands$ = useMemo(
-    () => new Subject<{ command: "create" | "resume"; mint: string; amount: string }>(),
+    () => new Subject<{ command: "create" | "resume"; mint: string; amount: string; id?: string }>(),
     [],
   );
   const deposit = use$(
     () =>
       depositCommands$.pipe(
         exhaustMap(
-          ({ command, mint, amount }) =>
+          ({ command, mint, amount, id }) =>
             new Observable<{ busy: boolean; error: string | null }>((subscriber) => {
               const storage = storage$.value;
               const controller = new AbortController();
@@ -795,23 +814,24 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
               const onQuote = (quote: MintQuoteBolt11Response) => setQuote(quote);
               const work = async () => {
                 if (!storage) throw new Error("Unlock encrypted storage first");
-                if (command === "resume")
-                  await resumeDeposit(storage, wallet, {
+                await importLegacyDeposit(storage, wallet);
+                if (command === "resume") {
+                  const pending = (await wallet.getPendingDeposits()).find((pending) => !id || pending.id === id);
+                  if (!pending) throw new Error("No pending deposit to resume");
+                  await wallet.resumeDeposit(pending.id, {
                     onQuote,
                     signal: controller.signal,
-                    namespace: "wallet-deposit",
                   });
-                else {
+                } else {
                   const target = mint || mints[0];
                   const sats = Number(amount);
                   if (!target || !Number.isSafeInteger(sats) || sats <= 0)
                     throw new Error("Choose a mint and a positive whole amount in sats");
-                  await recoverableDeposit(storage, wallet, {
+                  await wallet.deposit({
                     mint: target,
                     amount: sats,
                     onQuote,
                     signal: controller.signal,
-                    namespace: "wallet-deposit",
                   });
                 }
                 setQuote(null);
@@ -838,8 +858,16 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
     [wallet, depositCommands$, mints.join("|")],
   );
   const handleDeposit = () => depositCommands$.next({ command: "create", mint, amount });
-  const handleResume = () => depositCommands$.next({ command: "resume", mint, amount });
+  const handleResume = (id?: string) => depositCommands$.next({ command: "resume", mint, amount, id });
   const depositBusy = deposit?.busy ?? false;
+  const pendingDeposits = use$(
+    () =>
+      defer(() => wallet.getPendingDeposits()).pipe(
+        map((items) => ({ items, error: null as string | null })),
+        catchError((error) => of({ items: [], error: String(error) })),
+      ),
+    [wallet, depositBusy],
+  );
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -852,10 +880,25 @@ function DepositSection({ wallet }: { wallet: NutWallet }) {
           {deposit.error}
         </p>
       )}
-      <LegacyProofRecovery />
-      <button className="btn" onClick={handleResume} disabled={depositBusy}>
-        Resume pending deposit
+      <LegacyProofRecovery wallet={wallet} />
+      <button className="btn" onClick={() => handleResume()} disabled={depositBusy}>
+        Import / resume legacy deposit
       </button>
+      {pendingDeposits?.error && (
+        <p role="alert" className="text-error">
+          {pendingDeposits.error}
+        </p>
+      )}
+      {pendingDeposits?.items.map((pending) => (
+        <div key={pending.id} className="flex items-center gap-2 border-b border-base-300 py-2">
+          <span className="flex-1" title={pending.mint}>
+            {pending.amount} sats · {pending.stage}
+          </span>
+          <button className="btn" disabled={depositBusy} onClick={() => handleResume(pending.id)}>
+            Resume
+          </button>
+        </div>
+      ))}
       <Panel title="Deposit with Lightning">
         {quote ? (
           <div className="space-y-3">

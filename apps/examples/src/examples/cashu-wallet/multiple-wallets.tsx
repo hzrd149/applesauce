@@ -3,8 +3,7 @@
  * @tags wallet, lightning, nwc, webln, nip-60, cashu
  * @related cashu-wallet/cashu-wallet, cashu-wallet/admin
  */
-import { recoverableDeposit, resumeDeposit } from "../../extra/deposit-recovery";
-import { createEncryptedCouch, migrateLegacyCouch } from "../../extra/encrypted-couch";
+import { KeyValueCouch, IndexedDBCouch, migrateCouch, type PendingMint } from "applesauce-wallet/helpers";
 import { default as SecureStorage } from "../../extra/encrypted-storage";
 import { default as UnlockView } from "../../components/unlock-view";
 
@@ -55,12 +54,6 @@ import { verifyEvent } from "../../extra/verifier";
 // ---- Shared app infrastructure (owned by the app, reused by every backend) ----
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
-// Encrypted proof recovery is shared by this account's wallet backends.
-const account$ = new BehaviorSubject<string | null>(null);
-const couch = createEncryptedCouch(
-  () => storage$.value,
-  () => `wallet-proofs:${account$.value ?? "signed-out"}`,
-);
 
 // Decrypted proof-bearing content is persisted only through unlocked encrypted storage.
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
@@ -120,7 +113,8 @@ interface WalletBackend {
   serialize(): StoredBackend;
   recoverProofs?(): Promise<void>;
   migrateLegacy?(): Promise<number>;
-  resumeDeposit?(onInvoice: (invoice: string) => void, signal?: AbortSignal): Promise<void>;
+  pendingDeposits?(): Promise<PendingMint[]>;
+  resumeDeposit?(onInvoice: (invoice: string) => void, signal?: AbortSignal, id?: string): Promise<void>;
   dispose(): void;
 }
 
@@ -275,6 +269,14 @@ async function createNutWalletBackend(
   signer: ISigner,
   options?: { createIfMissing?: boolean },
 ): Promise<WalletBackend> {
+  const storage = storage$.value;
+  if (!storage) throw new Error("Unlock encrypted storage first");
+  const couch = new KeyValueCouch(
+    storage.createInstance({
+      name: "applesauce-examples-wallet",
+      storeName: `proofs_${stored.pubkey}`,
+    }),
+  );
   const wallet = new NutWallet({
     pubkey: stored.pubkey,
     signer,
@@ -283,9 +285,17 @@ async function createNutWalletBackend(
     couch,
     autoUnlock: true,
     decryptionCache,
+    recovery: storage.createInstance({
+      name: "applesauce-examples-wallet",
+      storeName: `deposits_${stored.pubkey}`,
+    }),
     // Ignore all kind-5 delete events for this example wallet
     useDeleteEvents: false,
   });
+  const importLegacy = async () => {
+    await couch.importLegacy(storage, `example-encrypted-couch:wallet-proofs:${wallet.pubkey}`);
+    await wallet.importLegacyDeposit(`wallet-deposit:${wallet.pubkey}`, storage);
+  };
   await wallet.start();
 
   // When adding a new wallet, search hard for an existing one and only create a wallet if none is found.
@@ -301,6 +311,7 @@ async function createNutWalletBackend(
     refresh: () => wallet.refreshCouch(),
     // Adding sats mints ecash: create a mint quote (lightning invoice), then wait for it to be paid and redeem
     makeInvoice: async (sats, options) => {
+      await importLegacy();
       const mints = await firstValueFrom(
         wallet.mintUrls$.pipe(
           filter((m): m is string[] => !!m && m.length > 0),
@@ -309,19 +320,16 @@ async function createNutWalletBackend(
         ),
       );
       const mint = mints[0];
-      const storage = storage$.value;
-      if (!storage) throw new Error("Unlock encrypted storage first");
       let reveal!: (invoice: string) => void;
       let fail!: (error: unknown) => void;
       const invoiceReady = new Promise<string>((resolve, reject) => {
         reveal = resolve;
         fail = reject;
       });
-      const paid = recoverableDeposit(storage, wallet, {
+      const paid = wallet.deposit({
         mint,
         amount: sats,
         signal: options?.signal,
-        namespace: "wallet-deposit",
         onQuote: (quote) => reveal(quote.request),
       });
       void paid.catch(fail);
@@ -329,17 +337,19 @@ async function createNutWalletBackend(
     },
     recoverProofs: () => wallet.recoverFromCouch(),
     migrateLegacy: async () => {
-      const count = await migrateLegacyCouch(couch);
+      await importLegacy();
+      const count = await migrateCouch(new IndexedDBCouch(), couch);
       await wallet.refreshCouch();
       return count;
     },
-    resumeDeposit: async (onInvoice, signal) => {
-      const storage = storage$.value;
-      if (!storage) throw new Error("Unlock encrypted storage first");
-      await resumeDeposit(storage, wallet, {
+    pendingDeposits: () => wallet.getPendingDeposits(),
+    resumeDeposit: async (onInvoice, signal, id) => {
+      await importLegacy();
+      const pending = (await wallet.getPendingDeposits()).find((pending) => !id || pending.id === id);
+      if (!pending) throw new Error("No pending deposit to resume");
+      await wallet.resumeDeposit(pending.id, {
         onQuote: (quote) => onInvoice(quote.request),
         signal,
-        namespace: "wallet-deposit",
       });
     },
     // Sending melts ecash: pick a mint with enough balance and pay the invoice
@@ -564,14 +574,14 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
     }
   }, [amount, backend]);
 
-  const resume = async () => {
+  const resume = async (id?: string) => {
     if (!backend.resumeDeposit || loading) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
-      await backend.resumeDeposit((invoice) => setInvoice(invoice), controller.signal);
+      await backend.resumeDeposit((invoice) => setInvoice(invoice), controller.signal, id);
       setPaid(true);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not resume deposit");
@@ -598,15 +608,44 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
     setTimeout(() => setCopied(false), 2000);
   }, [invoice]);
 
+  const pendingDeposits = use$(
+    () =>
+      backend.pendingDeposits
+        ? defer(() => backend.pendingDeposits!()).pipe(
+            map((items) => ({ items, error: null as string | null })),
+            catchError((error) => of({ items: [], error: String(error) })),
+          )
+        : undefined,
+    [backend, loading, paid],
+  );
+  const recoveryControls = backend.resumeDeposit && (
+    <div className="space-y-2">
+      <button className="btn" onClick={() => resume()} disabled={loading}>
+        Import / resume legacy deposit
+      </button>
+      {pendingDeposits?.error && (
+        <p role="alert" className="text-error">
+          {pendingDeposits.error}
+        </p>
+      )}
+      {pendingDeposits?.items.map((pending) => (
+        <div key={pending.id} className="flex items-center gap-2 border-b border-base-300 py-2">
+          <span className="flex-1" title={pending.mint}>
+            {pending.amount} sats · {pending.stage}
+          </span>
+          <button className="btn" disabled={loading} onClick={() => resume(pending.id)}>
+            Resume
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+
   // Once paid, hide the invoice and show a confirmation
   if (invoice && paid)
     return (
       <div className="space-y-4">
-        {backend.resumeDeposit && (
-          <button className="btn" onClick={resume} disabled={loading}>
-            Resume pending deposit
-          </button>
-        )}
+        {recoveryControls}
         {error && (
           <p role="alert" className="text-error">
             {error}
@@ -622,11 +661,7 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
   if (invoice)
     return (
       <div className="space-y-4">
-        {backend.resumeDeposit && (
-          <button className="btn" onClick={resume} disabled={loading}>
-            Resume pending deposit
-          </button>
-        )}
+        {recoveryControls}
         {error && (
           <p role="alert" className="text-error">
             {error}
@@ -652,11 +687,7 @@ function ReceivePanel({ backend }: { backend: WalletBackend }) {
 
   return (
     <div className="space-y-4">
-      {backend.resumeDeposit && (
-        <button className="btn" onClick={resume} disabled={loading}>
-          Resume pending deposit
-        </button>
-      )}
+      {recoveryControls}
       {error && (
         <p role="alert" className="text-error">
           {error}
@@ -1093,7 +1124,6 @@ export default function MultipleWalletsExample() {
   const [session, setSession] = useState<{ signer: ISigner; pubkey: string } | null>(null);
 
   const handleLogin = useCallback(async (signer: ISigner, pubkey: string) => {
-    account$.next(pubkey);
     await loadBackends(signer, pubkey);
     setSession({ signer, pubkey });
   }, []);

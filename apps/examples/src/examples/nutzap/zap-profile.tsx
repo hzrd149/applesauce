@@ -4,15 +4,16 @@
  * @related nutzap/zap-feed, nutzap/contacts
  */
 import { castTimelineStream } from "applesauce-common/observable";
+import { castUser } from "applesauce-common/casts";
 
 import { relayTimeline } from "../../extra/relay-timeline";
 
 import { NutzapInfo } from "applesauce-wallet/casts";
 import UnlockView from "../../components/unlock-view";
-import { nutzapStorage$, prepareNutzap, resumeNutzap } from "../../extra/nutzap-quote";
+import SecureStorage from "../../extra/encrypted-storage";
+import { MintRecovery } from "applesauce-wallet/helpers";
 
 import { MintQuoteBolt11Response } from "@cashu/cashu-ts";
-import { ActionRunner } from "applesauce-actions";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 
@@ -20,11 +21,10 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { NutzapProfile } from "applesauce-wallet/actions";
 import { NUTZAP_INFO_KIND } from "applesauce-wallet/helpers";
 import { npubEncode } from "applesauce-core/helpers/pointers";
 import { useState } from "react";
-import { of } from "rxjs";
+import { BehaviorSubject, catchError, defer, map, of, switchMap } from "rxjs";
 import QRCode from "../../components/qr-code";
 import RelayPicker from "../../components/relay-picker";
 import { lookupRelays$ } from "../../settings";
@@ -36,10 +36,27 @@ const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 const signer = new ExtensionSigner();
-const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
-  const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
-  if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
-});
+const nutzapStorage$ = new BehaviorSubject<SecureStorage | null>(null);
+const recovery$ = new BehaviorSubject<MintRecovery | null>(null);
+
+async function getRecovery(storage: SecureStorage) {
+  const owner = await signer.getPublicKey();
+  const recovery = new MintRecovery({
+    storage: storage.createInstance({
+      name: "applesauce-examples-wallet",
+      storeName: `nutzaps_${owner}`,
+    }),
+    owner,
+    signer,
+    publish: async (event, relays) => {
+      const responses = await pool.publish(relays?.length ? relays : FALLBACK_RELAYS, event);
+      if (!responses.some((response) => response.ok)) throw new Error("No relay accepted the nutzap");
+    },
+    onAccepted: (event) => eventStore.add(event),
+  });
+  recovery$.next(recovery);
+  return recovery;
+}
 
 // Create an address loader to load user profiles
 // Create unified event loader for the store
@@ -197,18 +214,35 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
     : (mints[0]?.mint ?? "");
   const nutzapPubkey = nutzapInfo.p2pk;
   const storage = use$(nutzapStorage$);
-  const resume = async () => {
+  const pending = use$(
+    () =>
+      recovery$.pipe(
+        switchMap((recovery) =>
+          recovery
+            ? defer(() => recovery.getPending()).pipe(
+                map((items) => ({ items, error: null as string | null })),
+                catchError((error) => of({ items: [], error: String(error) })),
+              )
+            : of({ items: [], error: null as string | null }),
+        ),
+      ),
+    [isProcessing],
+  );
+  const resume = async (id?: string) => {
     if (!storage) return;
     setIsProcessing(true);
     try {
-      await resumeNutzap(
-        storage,
-        (recipient, token, comment, couch) => actions.run(NutzapProfile, recipient, token, { comment, couch }),
-        (quote) => {
+      const recovery = await getRecovery(storage);
+      const pending = (await recovery.getPending()).find((pending) =>
+        id ? pending.id === id : pending.nutzap?.recipient === nutzapInfo.author.pubkey,
+      );
+      if (!pending) throw new Error("No pending nutzap for this recipient");
+      await recovery.resume(pending.id, {
+        onQuote: (quote) => {
           setQuote(quote);
           setStatus("invoice");
         },
-      );
+      });
       setStatus("paid");
       onZapSent?.();
     } catch (error) {
@@ -220,14 +254,18 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
   const handleZap = async () => {
     if (!storage || !selectedMint || !nutzapPubkey) return;
     try {
-      await prepareNutzap(storage, {
+      const recovery = await getRecovery(storage);
+      const pending = await recovery.prepare({
         mint: selectedMint,
         amount,
-        recipient: nutzapInfo.author.pubkey,
-        p2pk: nutzapPubkey,
-        comment,
+        nutzap: {
+          recipient: nutzapInfo.author.pubkey,
+          p2pk: nutzapPubkey,
+          relays: nutzapInfo.relays,
+          comment,
+        },
       });
-      await resume();
+      await resume(pending.id);
     } catch (error) {
       alert(String(error));
     }
@@ -236,8 +274,53 @@ function ZapModal({ nutzapInfo, onZapSent }: { nutzapInfo: NutzapInfo; onZapSent
   return (
     <dialog id="zap_modal" className="modal">
       <div className="modal-box">
-        <button className="btn btn-outline mb-4" disabled={isProcessing} onClick={resume}>
-          Resume pending zap
+        <button
+          className="btn btn-outline mb-4"
+          disabled={isProcessing}
+          onClick={() => {
+            if (storage) void getRecovery(storage).catch((error) => alert(String(error)));
+          }}
+        >
+          Load pending zaps
+        </button>
+        {pending?.error && (
+          <p role="alert" className="text-error">
+            {pending.error}
+          </p>
+        )}
+        {pending?.items.map((item) => (
+          <div key={item.id} className="flex items-center gap-2 border-b border-base-300 py-2">
+            <span className="flex-1" title={item.mint}>
+              {item.amount} sats · {item.nutzap?.recipient.slice(0, 12)} · {item.stage}
+            </span>
+            <button className="btn" disabled={isProcessing} onClick={() => resume(item.id)}>
+              Resume
+            </button>
+          </div>
+        ))}
+        <button
+          className="btn btn-ghost mb-4"
+          disabled={isProcessing}
+          onClick={async () => {
+            if (!storage) return;
+            try {
+              const recovery = await getRecovery(storage);
+              const pending = await recovery.importLegacyNutzap(
+                "example-pending-nutzap",
+                async (recipient) => {
+                  const info = await castUser(recipient, eventStore).nutzap$.$first(10_000, undefined);
+                  if (!info) throw new Error("Saved recipient's nutzap information is unavailable");
+                  return info.relays;
+                },
+                storage,
+              );
+              if (pending) await resume(pending.id);
+            } catch (error) {
+              alert(String(error));
+            }
+          }}
+        >
+          Import legacy zap
         </button>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">Zap Profile</h2>

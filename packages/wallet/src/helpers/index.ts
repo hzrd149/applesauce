@@ -10,3 +10,6 @@ export * from "./local-storage-couch.js";
 export * from "./indexed-db-couch.js";
 export * from "./mint-info.js";
 export * from "./mint-recommendation.js";
+export type { RecoveryStorage } from "./recovery-storage.js";
+export * from "./mint-recovery.js";
+export * from "./key-value-couch.js";

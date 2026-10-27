@@ -6,6 +6,8 @@ description: Actions for managing NIP-60 Cashu wallets including creating, minti
 
 The `applesauce-wallet` package provides a set of [Actions](https://applesauce.build/typedoc/modules/applesauce-wallet.Actions.html) for common wallet operations. Actions are run via `ActionRunner`; the examples below use `actions.run()` where `actions` is an `ActionRunner` instance.
 
+For invoice-funded minting, prefer [NutWallet deposits or MintRecovery](./nut-wallet.md#lightning-deposits-and-withdrawals). The lower-level `MintTokens`/`MintProofs` actions only couch proofs after the mint response arrives; they do not persist quotes or blinded outputs and cannot recover a lost issuance response on their own.
+
 ## CreateWallet
 
 Creates a new NIP-60 wallet event, optional wallet backup, and optional nutzap info. Pass an object with `mints` (required), and optionally `privateKey` (for backup and receiving nutzaps) and `relays`.

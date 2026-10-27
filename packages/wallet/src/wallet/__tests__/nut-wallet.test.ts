@@ -1,4 +1,14 @@
-import { Amount, getDecodedToken, getEncodedToken, Proof, Token, Wallet as CashuWallet } from "@cashu/cashu-ts";
+import {
+  Amount,
+  OutputData,
+  getDecodedToken,
+  getEncodedToken,
+  Proof,
+  Token,
+  Wallet as CashuWallet,
+  type MintPreview,
+  type MintQuoteBolt11Response,
+} from "@cashu/cashu-ts";
 import { EventStore } from "applesauce-core";
 import { getEncryptedContent, isEncryptedContentUnlocked, type NostrEvent } from "applesauce-core/helpers";
 import type { EncryptedContentCache } from "applesauce-common/helpers";
@@ -130,6 +140,107 @@ describe("settings", () => {
   });
 });
 
+describe("deposit recovery", () => {
+  function fixture() {
+    const records = new Map<string, string>();
+    const recovery = {
+      getItem: async (key: string) => records.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        records.set(key, value);
+      },
+      removeItem: async (key: string) => {
+        records.delete(key);
+      },
+      keys: async () => [...records.keys()],
+    };
+    const quote = {
+      quote: "deposit-quote",
+      request: "invoice",
+      state: "PAID",
+      unit: "sat",
+      amount: Amount.from(3),
+      expiry: null,
+    } as MintQuoteBolt11Response;
+    const outputs = [OutputData.createSingleRandomData(1, "keyset"), OutputData.createSingleRandomData(2, "keyset")];
+    const cashu = {
+      getMintInfo: () => ({ isSupported: () => ({ supported: true }) }),
+      createMintQuoteBolt11: vi.fn(async () => quote),
+      checkMintQuoteBolt11: vi.fn(async () => quote),
+      ops: {
+        mintBolt11: () => ({
+          prepare: async () => ({
+            method: "bolt11",
+            keysetId: "keyset",
+            quote,
+            outputData: outputs,
+            payload: { quote: quote.quote, outputs: outputs.map((output) => output.blindedMessage) },
+          }),
+        }),
+      },
+      completeMint: vi.fn(async (preview: MintPreview<MintQuoteBolt11Response>) => {
+        expect(preview.outputData.map(OutputData.serialize)).toEqual(outputs.map(OutputData.serialize));
+        return outputs.map((output) => ({
+          id: "keyset",
+          amount: output.blindedMessage.amount,
+          secret: output.secret,
+          C: "signature",
+        }));
+      }),
+    };
+    class TestWallet extends NutWallet {
+      protected getCashuWallet = async () => cashu as unknown as CashuWallet;
+    }
+    const create = () =>
+      new TestWallet({
+        pubkey: signer.pubkey,
+        signer,
+        pool,
+        eventStore,
+        couch,
+        recovery,
+        relays: ["wss://relay.example.com"],
+      });
+    return { records, cashu, create };
+  }
+
+  it("allows reading without storage but rejects deposit and quote creation before mint access", async () => {
+    const wallet = new NutWallet({ pubkey: signer.pubkey, signer, pool, eventStore, couch });
+    expect(await firstValueFrom(wallet.status$)).toBe(WalletStatus.Idle);
+    await expect(wallet.deposit({ mint: "https://mint.example", amount: 3 })).rejects.toThrow("recovery storage");
+    await expect(wallet.createMintQuote("https://mint.example", 3)).rejects.toThrow("recovery storage");
+    await expect(wallet.redeemMintQuote("https://mint.example", 3, "quote")).rejects.toThrow("recovery storage");
+    expect(pool.publish).not.toHaveBeenCalled();
+  });
+
+  it("round-trips real Cashu output data and keeps rejected events for a restarted wallet", async () => {
+    const { create, cashu, records } = fixture();
+    pool.publish.mockResolvedValueOnce([{ ok: false, from: "wss://relay.example.com" }]);
+    await expect(create().deposit({ mint: "https://mint.example", amount: 3 })).rejects.toThrow("No relay accepted");
+    const record = JSON.parse([...records.values()][0]);
+    const ids = record.events.map((event: NostrEvent) => event.id);
+    expect(eventStore.getEvent(ids[0])).toBeUndefined();
+    expect(await couch.getAll()).toEqual([]);
+    const restarted = create();
+    const pending = await restarted.getPendingDeposits();
+    expect(pending).toHaveLength(1);
+    await restarted.resumeDeposit(pending[0].id);
+    expect(pool.publish.mock.calls.map(([, event]) => event.id)).toEqual([ids[0], ids[0], ids[1]]);
+    expect(eventStore.getEvent(ids[0])).toBeDefined();
+    expect(cashu.completeMint).toHaveBeenCalledTimes(1);
+    expect(records.size).toBe(0);
+  });
+
+  it("persists manual quotes and resumes them during redemption without creating a second invoice", async () => {
+    const { create, cashu } = fixture();
+    const wallet = create();
+    const quote = await wallet.createMintQuote("https://mint.example", 3);
+    expect(await wallet.getPendingDeposits()).toHaveLength(1);
+    await wallet.redeemMintQuote("https://mint.example", 3, quote.quote);
+    expect(cashu.createMintQuoteBolt11).toHaveBeenCalledTimes(1);
+    expect(await wallet.getPendingDeposits()).toEqual([]);
+  });
+});
+
 describe("status", () => {
   it("reports idle before start and a status after loading", async () => {
     const wallet = new NutWallet({
@@ -154,11 +265,11 @@ describe("status", () => {
   });
 
   it("exposes per-relay status including negentropy support", async () => {
-    pool.relay = vi.fn().mockReturnValue({
+    pool.relay.mockReturnValue({
       getSupported: vi.fn().mockResolvedValue([77]),
       request: vi.fn().mockReturnValue(EMPTY),
       sync: vi.fn().mockReturnValue(EMPTY),
-    }) as RelayPool["relay"];
+    });
 
     const wallet = new NutWallet({
       pubkey: signer.pubkey,

@@ -80,6 +80,32 @@ By default any mint with enough balance is used. The spent tokens are removed an
 
 `NutWallet` also bridges to Lightning. `deposit()` adds sats by creating an invoice and waiting for it to be paid, and `withdraw()` pays a Lightning invoice from a mint's balance. Both take a payment `method` so new methods (bolt12, on-chain) slot in as cashu adds support; `payInvoice()` is a bolt11 alias for `withdraw()`.
 
+Deposits require a consumer-provided `recovery` store and a mint supporting [NUT-09 signature restoration](https://github.com/cashubtc/nuts/blob/main/09.md). Constructing, starting, and reading a wallet do not require recovery storage. There is no nonrecoverable fallback for `deposit()`, `createMintQuote()`, or `redeemMintQuote()`.
+
+```typescript
+const recovery = localforage.createInstance({
+  name: "my-app",
+  storeName: `deposits_${pubkey}`,
+});
+
+const wallet = new NutWallet({
+  pubkey,
+  signer,
+  pool,
+  eventStore,
+  couch,
+  recovery,
+});
+```
+
+`RecoveryStorage` from `applesauce-wallet/helpers` requires async `getItem(key)`, `setItem(key, value)`, `removeItem(key)`, and `keys()`. LocalForage instances satisfy this interface directly, including their value-returning `setItem`. Values are strings; `getItem` returns `null` only for missing keys. Reads must reject when locked or unreadable, and mutations must resolve only once durable. A write returning `false` is treated as failure.
+
+Recovery records contain spendable proofs, secrets, and blinding factors: **encrypt them at rest**. The plain LocalForage instance above illustrates scoping, not encryption. The examples use `SecureStorage.createInstance(options)` to wrap isolated LocalForage stores with the already-unlocked encryption key.
+
+The app owns storage isolation: supply a dedicated store for each account and purpose, and reopen that same store after restart. There is no wallet namespace option. Library record prefixes only organize internal records and validate ownership.
+
+Within a JavaScript context, locks and couch write queues are scoped to the supplied storage object; reuse that adapter instance for a shared store. For multiple tabs, workers, or processes, provide `storage.withLock(key, operation)` backed by locks qualified with the backend's own identity. The example `SecureStorage` derives Web Lock names from the LocalForage database name and store name. The wallet never creates global cross-store locks from record keys alone.
+
 ```typescript
 // Deposit: surface the invoice via onQuote, then wait + redeem automatically
 await wallet.deposit({
@@ -92,6 +118,65 @@ await wallet.deposit({
 // Withdraw: pay a bolt11 invoice from a mint's balance
 await wallet.withdraw({ method: "bolt11", mint: "https://mint.example.com", invoice });
 ```
+
+### Resuming interrupted deposits
+
+The quote is saved before `onQuote` runs. Exact blinded outputs are saved before minting; proofs and signed events are saved before publication. Retries reuse the signed event IDs and require at least one positive relay response for each event before deleting the journal. Pending proofs are held separately from the ordinary couch, so `recoverFromCouch()` cannot swap them during a deposit retry.
+
+```typescript
+const pending = await wallet.getPendingDeposits();
+// Let the user select an operation after unlocking storage.
+await wallet.resumeDeposit(selectedId, {
+  onQuote: (quote) => showInvoice(quote.request),
+  signal: controller.signal,
+});
+```
+
+Multiple deposits can remain pending independently. Creating or starting a wallet never resumes them automatically. Cancellation, payment timeouts, signer changes, and publication failures retain recovery state; cancelling does not invalidate the invoice. Do not delete a paid operation's recovery data.
+
+For manual invoice handling, `createMintQuote()` also persists its quote; `redeemMintQuote()` resumes the matching operation. Externally created quotes can be adopted before redemption, but a quote already issued without saved outputs cannot be recovered by inventing new outputs.
+
+### Invoice-funded nutzaps
+
+`MintRecovery` shares the same minting journal without requiring a full `NutWallet`. Read the recipient's nutzap information first and pass its accepted mint, P2PK key, and delivery relays:
+
+```typescript
+const recovery = new MintRecovery({
+  storage: encryptedStorage,
+  owner: pubkey,
+  signer,
+  publish: async (event, relays) => {
+    const responses = await pool.publish(relays ?? [], event);
+    if (!responses.some((response) => response.ok)) throw new Error("Nutzap rejected");
+  },
+  onAccepted: (event) => eventStore.add(event),
+});
+const pending = await recovery.prepare({
+  mint,
+  amount: 21,
+  nutzap: { recipient, p2pk, relays, comment: "Thanks!" },
+});
+await recovery.resume(pending.id, { onQuote: (quote) => showInvoice(quote.request) });
+```
+
+Import `MintRecovery` from `applesauce-wallet/helpers`. Use `getPending()` after restart and `resume(id)` for an explicit retry. The optional `nutzap.event` targets an event instead of a profile. `publish` must reject unless publication is explicitly accepted; resolving a transport operation alone is not sufficient. The recipient and lock key are persisted, rather than replaced by the currently selected profile on resume.
+
+### Migrating existing consumers
+
+Consumers upgrading to this API must configure `recovery` before creating or redeeming invoices. Existing `Couch` implementations remain supported. `KeyValueCouch` takes an already-scoped string store, without a namespace or storage-key argument:
+
+```typescript
+const proofStorage = encryptedStorage.createInstance({
+  name: "my-app",
+  storeName: `proofs_${pubkey}`,
+});
+const couch = new KeyValueCouch(proofStorage);
+await migrateCouch(oldCouch, couch);
+```
+
+`migrateCouch` requires independent source and target storage scopes, persists each token in the target before removing its source copy, and can be retried after interruption. For earlier array-based example backups, use `couch.importLegacy(oldStorage, oldKey)` to copy into the scoped store before deleting the old record.
+
+Use `wallet.importLegacyDeposit(key, oldStorage)` to import an earlier owner-tagged example deposit, including saved outputs, proofs, signed events, and acceptance state. Import its legacy couch first so the journal migration can remove duplicate couch proofs while the old journal still retains them; the old journal is removed only after the new copy is durable. Legacy invoice-funded nutzaps did not identify an owner: call `recovery.importLegacyNutzap(key, getRecipientRelays, oldStorage)` only after the user explicitly chooses the owning account; the callback resolves delivery relays for the saved recipient. The source storage arguments are optional when importing within the same store.
 
 ## Caching decrypted content
 
