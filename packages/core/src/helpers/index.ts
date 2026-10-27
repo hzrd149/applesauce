@@ -2,6 +2,7 @@ export * from "./cache.js";
 export * from "./contacts.js";
 export * from "./delete.js";
 export * from "./encrypted-content.js";
+export * from "./encrypted-content-cache.js";
 export * from "./event-cache.js";
 export * from "./event.js";
 export * from "./expiration.js";

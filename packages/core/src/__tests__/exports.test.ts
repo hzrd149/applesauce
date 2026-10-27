@@ -67,6 +67,7 @@ describe("exports", () => {
         "mapEventsToTimeline",
         "merge",
         "performCast",
+        "restoreEncryptedContentFromCache",
         "setLoggerSink",
         "simpleTimeout",
         "timeoutWithIgnore",

@@ -1,6 +1,10 @@
 import { logger } from "applesauce-core";
 import { IEventStoreStreams } from "applesauce-core/event-store";
-import { setCachedValue } from "applesauce-core/helpers/cache";
+import {
+  EncryptedContentCache,
+  isEncryptedContentFromCache,
+  markEncryptedContentFromCache,
+} from "applesauce-core/helpers/encrypted-content-cache";
 import {
   canHaveEncryptedContent,
   getEncryptedContent,
@@ -25,40 +29,7 @@ import {
 } from "rxjs";
 import { getGiftWrapSeal, getSealGiftWrap, getSealRumor, isGiftWrapUnlocked } from "./gift-wrap.js";
 
-/** A symbol that is used to mark encrypted content as being from a cache */
-export const EncryptedContentFromCacheSymbol = Symbol.for("encrypted-content-from-cache");
-
-/** An interface that is used to cache encrypted content on events */
-export interface EncryptedContentCache {
-  getItem: (key: string) => Promise<string | null>;
-  setItem: (key: string, value: string) => Promise<any>;
-}
-
-/** Marks the encrypted content as being from a cache */
-export function markEncryptedContentFromCache<T extends object>(event: T) {
-  // A restore-provenance flag that is instance-local — unlike FromCacheSymbol, it is NOT a member
-  // of EventStore.copySymbolsToDuplicateEvent's merge list (see cache.ts taxonomy), so a
-  // duplicate-delivery merge never copies it onto another object. persistEncryptedContent's
-  // `persist` and `persistSeals` subscriptions both filter on isEncryptedContentFromCache(event)
-  // === false to avoid re-persisting content that was just restored from the cache: if a
-  // logically-identical event ever reached that filter as a distinct object lacking this flag, the
-  // filter would fail open and re-persist already-cached content. Whether that is reachable is
-  // unverified here: EventMemory.add keeps the originally-tracked object for a same-id duplicate
-  // and discards the newcomer entirely, so the ordinary EventStore.add duplicate-delivery path does
-  // not appear to replace the tracked instance — but replaceable-history and cross-store paths were
-  // not traced as part of this comment-only fix.
-  //
-  // Written non-enumerable via setCachedValue (05.1-09) so a plain spread drops it instead of
-  // carrying a stale provenance flag forward. isEncryptedContentFromCache's Reflect.has reader is
-  // enumerability-blind and still sees this write (WR-11's separate === true tightening stays
-  // deferred — D-10 — and is out of scope here).
-  setCachedValue(event, EncryptedContentFromCacheSymbol, true);
-}
-
-/** Checks if the encrypted content is from a cache */
-export function isEncryptedContentFromCache<T extends object>(event: T): boolean {
-  return Reflect.has(event, EncryptedContentFromCacheSymbol);
-}
+export * from "applesauce-core/helpers/encrypted-content-cache";
 
 const log = logger.extend("EncryptedContentCache");
 
@@ -78,7 +49,7 @@ export function persistEncryptedContent(
 
   // Get the encrypted content from storage or call the fallback
   const getItem = async (storage: EncryptedContentCache, event: NostrEvent) => {
-    return (await storage.getItem(event.id)) || (fallback ? await fallback(event) : null);
+    return (await storage.getItem(event.id)) ?? (fallback ? await fallback(event) : null);
   };
 
   // Restore encrypted content when it is inserted
@@ -134,7 +105,7 @@ export function persistEncryptedContent(
       ),
     )
     .subscribe(async ([seal, content]) => {
-      if (!seal || !content) return;
+      if (!seal || typeof content !== "string") return;
 
       markEncryptedContentFromCache(seal);
       setEncryptedContentCache(seal, content);
@@ -167,7 +138,7 @@ export function persistEncryptedContent(
     .subscribe(async ([event, storage]) => {
       try {
         const content = getEncryptedContent(event);
-        if (content) {
+        if (content !== undefined) {
           await storage.setItem(event.id, content);
           log(`Persisted encrypted content for ${event.id}`);
         }
@@ -194,7 +165,7 @@ export function persistEncryptedContent(
       if (!seal) return;
       try {
         const content = getEncryptedContent(seal);
-        if (content) {
+        if (content !== undefined) {
           await storage.setItem(seal.id, content);
           log(`Persisted encrypted content for ${seal.id}`);
         }

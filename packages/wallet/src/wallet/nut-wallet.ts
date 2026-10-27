@@ -23,7 +23,6 @@ import { castUser, User } from "applesauce-core/casts";
 import type { NostrEvent } from "applesauce-core/helpers";
 import {
   addSeenRelay,
-  canHaveEncryptedContent,
   getEncryptedContent,
   getOutboxes,
   getSeenRelays,
@@ -32,16 +31,26 @@ import {
   normalizeURL,
   notifyEventUpdate,
   relaySet,
-  setEncryptedContentCache,
 } from "applesauce-core/helpers";
 import {
   type EncryptedContentCache,
   isEncryptedContentFromCache,
   markEncryptedContentFromCache,
 } from "applesauce-common/helpers";
+import { restoreEncryptedContentFromCache } from "applesauce-core/observable";
 import type { RelayPool, RelayStatus } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { BehaviorSubject, combineLatest, isObservable, Observable, of, Subscription } from "rxjs";
+import {
+  BehaviorSubject,
+  combineLatest,
+  from,
+  ignoreElements,
+  isObservable,
+  lastValueFrom,
+  Observable,
+  of,
+  Subscription,
+} from "rxjs";
 import { distinctUntilChanged, map, shareReplay, startWith, switchMap } from "rxjs/operators";
 
 // Ensure the User.wallet$ is setup
@@ -488,26 +497,9 @@ export class NutWallet {
     const cache = this.decryptionCache;
     if (!cache) return;
 
-    for (const event of events) {
-      // Skip events that cannot have encrypted content or are already unlocked
-      if (!canHaveEncryptedContent(event.kind) || isEncryptedContentUnlocked(event)) continue;
-
-      try {
-        const content = await cache.getItem(event.id);
-        if (typeof content !== "string") continue;
-
-        // Mark as from cache so it is not persisted again, then restore the content
-        markEncryptedContentFromCache(event);
-        setEncryptedContentCache(event, content);
-        this.log("Restored encrypted content for %s from cache", event.id.slice(0, 8));
-      } catch (error) {
-        this.log(
-          "Failed to restore encrypted content for %s: %s",
-          event.id.slice(0, 8),
-          (error as Error)?.message ?? error,
-        );
-      }
-    }
+    await lastValueFrom(from(events).pipe(restoreEncryptedContentFromCache(cache), ignoreElements()), {
+      defaultValue: undefined,
+    });
   }
 
   /** Persists the decrypted content of unlocked events to the {@link decryptionCache} */

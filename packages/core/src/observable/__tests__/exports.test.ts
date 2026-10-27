@@ -29,6 +29,7 @@ describe("exports", () => {
         "mapEventsToStore",
         "mapEventsToTimeline",
         "merge",
+        "restoreEncryptedContentFromCache",
         "simpleTimeout",
         "timeoutWithIgnore",
         "watchEventUpdates",

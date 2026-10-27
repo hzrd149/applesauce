@@ -52,14 +52,59 @@ await unlockGiftWrap(giftWrap, signer);
 
 ## Implementing EncryptedContentCache
 
-Your storage class must implement the `EncryptedContentCache` interface:
+Storage methods may return values synchronously or return promises. The cache helpers remain asynchronous and support both forms:
 
 ```typescript
 interface EncryptedContentCache {
-  getItem: (key: string) => Promise<string | null>;
-  setItem: (key: string, value: string) => Promise<any>;
+  getItem: (key: string) => string | null | Promise<string | null>;
+  setItem: (key: string, value: string) => void | Promise<any>;
 }
 ```
+
+## Direct Cache Access
+
+Apps and signers can use the cache helpers from `applesauce-core/helpers` without an EventStore. They are also re-exported from `applesauce-common/helpers` for compatibility. All helpers use the event ID as the storage key, matching `persistEncryptedContent`.
+
+```typescript
+import { getOrDecryptEncryptedContent } from "applesauce-core/helpers";
+
+const plaintext = await getOrDecryptEncryptedContent(event, storage, (event) =>
+  signer.nip44.decrypt(peerPubkey, event.content),
+);
+```
+
+`getOrDecryptEncryptedContent` returns plaintext already on the event or in storage before calling `decrypt`. On a miss, it attaches the returned plaintext to the event and awaits its storage write. The callback chooses the encryption method and peer public key.
+
+For separate restore and save steps:
+
+```typescript
+import { restoreEncryptedContent, saveEncryptedContent } from "applesauce-core/helpers";
+import { unlockEncryptedContent } from "applesauce-core/helpers";
+
+const restored = await restoreEncryptedContent(event, storage);
+if (restored === undefined) {
+  await unlockEncryptedContent(event, peerPubkey, signer);
+  await saveEncryptedContent(event, storage);
+}
+```
+
+`restoreEncryptedContent` returns `undefined` on a miss and marks restored content before notifying event observers. `saveEncryptedContent` returns `false` for a locked event. Empty plaintext is a valid cache entry. These helpers reject on storage or decryption errors; if a write fails after decryption, plaintext remains available on the event and `saveEncryptedContent` can retry the write.
+
+### Restoring an Event Stream
+
+Use `restoreEncryptedContentFromCache` before consumers that need cached plaintext:
+
+```typescript
+import { restoreEncryptedContentFromCache } from "applesauce-core/observable";
+
+const restoredEvents$ = events$.pipe(restoreEncryptedContentFromCache(storage, 8));
+```
+
+The operator defaults to eight concurrent lookups and emits each original event after its restore attempt. Cache misses and failures still emit the event; failures are logged. Unsupported kinds and already unlocked events pass through without a lookup. Parallel lookups may reorder events; set concurrency to `1` to preserve order. Completion waits for pending lookups. Unsubscribing stops queued lookups and emissions, but an in-flight cache read may still update its event.
+
+### Integration
+
+Use the same storage instance with these helpers and `persistEncryptedContent` to share cached plaintext. Direct helpers operate on one event at a time; pass gift wraps and seals separately when managing their lifecycle yourself. Keep storage scoped to the intended account or session.
 
 ## Complete Example
 

@@ -5,13 +5,18 @@ import {
   unlockEncryptedContent,
 } from "applesauce-core/helpers/encrypted-content";
 import { kinds } from "applesauce-core/helpers/event";
+import * as coreCache from "applesauce-core/helpers/encrypted-content-cache";
+import * as commonCache from "../encrypted-content-cache.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import {
+  EncryptedContentCache,
   EncryptedContentFromCacheSymbol,
   isEncryptedContentFromCache,
-  markEncryptedContentFromCache,
   persistEncryptedContent,
+  restoreEncryptedContent,
+  saveEncryptedContent,
+  getOrDecryptEncryptedContent,
 } from "../encrypted-content-cache.js";
 
 const mockStorage = {
@@ -60,6 +65,30 @@ describe("persistEncryptedContent", () => {
     expect(Reflect.has(event, EncryptedContentFromCacheSymbol)).toBe(true);
     expect(mockStorage.setItem).not.toHaveBeenCalled();
 
+    dispose();
+  });
+
+  it("restores empty plaintext without calling fallback", async () => {
+    const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+    mockStorage.getItem.mockResolvedValue("");
+    const fallback = vi.fn();
+    const dispose = persistEncryptedContent(eventStore, mockStorage, fallback);
+
+    eventStore.add(event);
+    await vi.waitFor(() => expect(Reflect.get(event, EncryptedContentSymbol)).toBe(""));
+
+    expect(fallback).not.toHaveBeenCalled();
+    expect(mockStorage.setItem).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it("persists empty plaintext when an event is unlocked", async () => {
+    const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+    eventStore.add(event);
+    const dispose = persistEncryptedContent(eventStore, mockStorage);
+
+    setEncryptedContentCache(event, "");
+    expect(mockStorage.setItem).toHaveBeenCalledWith(event.id, "");
     dispose();
   });
 
@@ -117,30 +146,67 @@ describe("persistEncryptedContent", () => {
   });
 });
 
-// 05.1-09: markEncryptedContentFromCache's EncryptedContentFromCacheSymbol write migrated from
-// Reflect.set to setCachedValue — the flag must be non-enumerable and dropped by a plain spread,
-// and isEncryptedContentFromCache's Reflect.has-based reader must still return true (WR-11's
-// separate === true tightening stays deferred, D-10 — out of scope here).
-describe("markEncryptedContentFromCache non-enumerability (05.1-09)", () => {
-  it("writes EncryptedContentFromCacheSymbol non-enumerable and drops it on a plain spread", () => {
+describe("core cache integration", () => {
+  it("supports synchronous storage across direct helpers and store persistence", async () => {
+    const values = new Map<string, string>();
+    const storage: EncryptedContentCache = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value);
+      },
+    };
     const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+    const duplicate = { ...event };
+    const decrypt = vi.fn(() => "");
 
-    markEncryptedContentFromCache(event);
+    expect(await restoreEncryptedContent(event, storage)).toBeUndefined();
+    expect(await getOrDecryptEncryptedContent(event, storage, decrypt)).toBe("");
+    expect(values.get(event.id)).toBe("");
+    expect(await saveEncryptedContent(event, storage)).toBe(true);
+    expect(await restoreEncryptedContent(duplicate, storage)).toBe("");
+    expect(await getOrDecryptEncryptedContent(duplicate, storage, decrypt)).toBe("");
+    expect(decrypt).toHaveBeenCalledTimes(1);
 
-    expect(Object.keys(event)).not.toContain(EncryptedContentFromCacheSymbol);
-    expect(Object.getOwnPropertySymbols(event)).toContain(EncryptedContentFromCacheSymbol);
-    const descriptor = Object.getOwnPropertyDescriptor(event, EncryptedContentFromCacheSymbol);
-    expect(descriptor?.enumerable).toBe(false);
+    const dispose = persistEncryptedContent(eventStore, storage);
+    const storedEvent = { ...event };
+    eventStore.add(storedEvent);
+    await vi.waitFor(() => expect(Reflect.get(storedEvent, EncryptedContentSymbol)).toBe(""));
 
-    const spread = { ...event };
-    expect(Reflect.has(spread, EncryptedContentFromCacheSymbol)).toBe(false);
+    const freshlyUnlocked = user.event({ kind: kinds.EncryptedDirectMessage, content: "other encrypted" });
+    eventStore.add(freshlyUnlocked);
+    setEncryptedContentCache(freshlyUnlocked, "plaintext");
+    expect(values.get(freshlyUnlocked.id)).toBe("plaintext");
+    dispose();
   });
 
-  it("isEncryptedContentFromCache still returns true after the flag is set (reader unchanged)", () => {
+  it("shares event ID keys between direct decryption and store persistence", async () => {
     const event = user.event({ kind: kinds.EncryptedDirectMessage, content: "encrypted" });
+    const duplicate = { ...event };
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: async (key: string) => values.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+    };
+    const decrypt = vi.fn().mockResolvedValue("plaintext");
 
+    expect(await getOrDecryptEncryptedContent(event, storage, decrypt)).toBe("plaintext");
     expect(isEncryptedContentFromCache(event)).toBe(false);
-    markEncryptedContentFromCache(event);
-    expect(isEncryptedContentFromCache(event)).toBe(true);
+    const dispose = persistEncryptedContent(eventStore, storage);
+    eventStore.add(duplicate);
+    await vi.waitFor(() => expect(Reflect.get(duplicate, EncryptedContentSymbol)).toBe("plaintext"));
+    expect(isEncryptedContentFromCache(duplicate)).toBe(true);
+    expect(await getOrDecryptEncryptedContent(duplicate, storage, decrypt)).toBe("plaintext");
+    expect(decrypt).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+});
+
+describe("cache compatibility exports", () => {
+  it("re-exports the core helpers without wrapping them", () => {
+    for (const [name, value] of Object.entries(coreCache)) {
+      expect(commonCache[name as keyof typeof coreCache]).toBe(value);
+    }
   });
 });
