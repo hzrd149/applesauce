@@ -1,6 +1,13 @@
-import { getLegacyMessageCorrespondent } from "applesauce-common/helpers";
+import { getLegacyMessageCorrespondent, isValidLegacyMessage, unlockLegacyMessage } from "applesauce-common/helpers";
 import { LegacyMessagesGroups } from "applesauce-common/models";
-import { isEncryptedContentUnlocked, mergeRelaySets, unixNow, type NostrEvent } from "applesauce-core/helpers";
+import {
+  isEncryptedContentUnlocked,
+  isHexKey,
+  isPTag,
+  mergeRelaySets,
+  unixNow,
+  type NostrEvent,
+} from "applesauce-core/helpers";
 import { watchEventsUpdates } from "applesauce-core/observable";
 import {
   BehaviorSubject,
@@ -10,10 +17,13 @@ import {
   defer,
   distinctUntilChanged,
   EMPTY,
+  filter,
+  finalize,
   firstValueFrom,
   fromEvent,
   lastValueFrom,
   map,
+  merge,
   Observable,
   of,
   ReplaySubject,
@@ -21,12 +31,14 @@ import {
   Subscription,
   switchMap,
   takeUntil,
+  takeWhile,
   timeout,
 } from "rxjs";
-import { restoreMessageContent } from "../common/encryption.js";
+import { restoreMessageContent, saveMessageContent } from "../common/encryption.js";
+import { settle } from "../common/helpers.js";
+import { subscribeThroughStore } from "../common/loading.js";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
 import { createLegacyMailboxes, hydrateLegacyMessages, syncLegacyMessages$, type LegacyMailbox } from "./loading.js";
-import { LegacyMessageSession } from "./session.js";
 import { LegacyConversation } from "./conversation.js";
 import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
 import type {
@@ -38,50 +50,72 @@ import type {
   PreparedLegacyMessage,
 } from "./types.js";
 
+function validateRecipient(request: LegacyMessageSendRequest) {
+  if (!isHexKey(request.recipient)) throw new Error("Invalid recipient");
+}
+
 /** An account-scoped NIP-04 inbox with loading, decryption and reliable publication */
 export class LegacyMessagesClient {
   /** The immutable owner pubkey */
   readonly pubkey: string;
+
   /** The shared event store */
   readonly eventStore;
+
   /** The shared relay pool */
   readonly pool;
+
   /** The account signer, absent for read-only browsing */
   readonly signer;
+
   /** The native encrypted kind-4 events, including sent messages */
   readonly messages$: Observable<NostrEvent[]>;
+
   /** The conversations discovered in the shared store */
   readonly conversations$: Observable<{ id: string; participants: string[]; lastMessage: NostrEvent }[]>;
+
   /** The combined mailbox relay set */
   readonly relays$: Observable<string[]>;
+
   /** The mailbox relay connection states */
   readonly relayStatus$: Observable<MessagesRelayStatus[]>;
+
   /** The current decryption counts and failed event IDs */
   readonly decryptionState$;
 
   private readonly lifecycle = new BehaviorSubject<"idle" | "loading" | "ready" | "disposed">("idle");
+
   /** The background loading lifecycle, independent of decryption */
   readonly status$ = this.lifecycle.asObservable();
+
   private readonly errors = new Subject<MessageClientError>();
+
   /** Nonterminal failures from individual operations */
   readonly errors$ = this.errors.asObservable();
+
   private readonly failed = new BehaviorSubject<ReadonlySet<string>>(new Set());
   private readonly pending = new BehaviorSubject<number>(0);
   private readonly autoUnlock = new BehaviorSubject(false);
   private readonly destroyed = new ReplaySubject<void>(1);
   private readonly syncState = new BehaviorSubject<LegacyMessagesSyncStatus | undefined>(undefined);
+
   /** The latest background history reconciliation progress */
   readonly syncStatus$ = this.syncState.asObservable();
+
   private readonly sending = new BehaviorSubject(0);
+
   /** Whether one or more send operations are in progress */
   readonly busy$ = this.sending.pipe(map((count) => count > 0));
+
   private readonly publications = new BehaviorSubject<
     Record<string, "prepared" | "publishing" | "accepted" | "failed">
   >({});
+
   /** The publication states of messages sent during this client lifetime */
   readonly publications$ = this.publications.asObservable();
-  private readonly session: LegacyMessageSession;
+
   private readonly authentication: MessageAuthentication;
+
   /** The pending relay authentication requests */
   readonly authRequests$;
   private background?: Subscription;
@@ -89,6 +123,8 @@ export class LegacyMessagesClient {
   private disposed = false;
   private readonly conversations = new Map<string, LegacyConversation>();
   private readonly mailboxes: LegacyMailbox[];
+  private readonly pendingDecryptions = new Map<string, Promise<NostrEvent | undefined>>();
+  private readonly conversationSubscriptions = new Subscription();
 
   /** Creates a stopped legacy client using shared application dependencies */
   constructor(private readonly options: LegacyMessagesClientOptions) {
@@ -101,26 +137,21 @@ export class LegacyMessagesClient {
     this.signer = options.signer;
     this.autoUnlock.next(options.autoUnlock ?? false);
 
-    const signer = options.signer ?? {
-      getPublicKey: async () => options.pubkey,
-      signEvent: async () => {
-        throw new Error("A signer is required");
-      },
-    };
-    const owner = { pubkey: this.pubkey, signer };
-    const onReadError = (error: unknown, event: NostrEvent) => this.report("decrypt", error, event.id);
-    this.session = new LegacyMessageSession(options, owner, onReadError);
-
     this.mailboxes = createLegacyMailboxes(options);
     this.relays$ = combineLatest(this.mailboxes.map((mailbox) => mailbox.relays$)).pipe(
       map((relays) => mergeRelaySets(...relays)),
       distinctUntilChanged((a, b) => a.join() === b.join()),
     );
+
+    // Decryption updates cached content without replacing the stored event.
     this.messages$ = this.eventStore.timeline(this.filters).pipe(watchEventsUpdates(this.eventStore));
     this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
       map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
     );
+
     this.conversations$ = this.eventStore.model(LegacyMessagesGroups, this.pubkey);
+
+    // Combine store contents with operation counters so failures remain visible.
     this.decryptionState$ = combineLatest([this.messages$, this.failed, this.pending]).pipe(
       map(([events, failed, pending]) => ({
         total: events.length,
@@ -135,6 +166,11 @@ export class LegacyMessagesClient {
   private get filters() {
     return this.mailboxes.map((mailbox) => mailbox.filter);
   }
+
+  private get relayTimeout() {
+    return this.options.timeout ?? 4000;
+  }
+
   private assertActive() {
     if (this.disposed) throw new Error("Messages client disposed");
   }
@@ -147,12 +183,15 @@ export class LegacyMessagesClient {
     this.assertActive();
     return this.authentication.authenticate(url);
   }
+
   private context(options: MessageOperationOptions = {}) {
     this.assertActive();
     const signal = options.signal ? AbortSignal.any([this.generation.signal, options.signal]) : this.generation.signal;
     signal.throwIfAborted();
+
     return { ...options, signal };
   }
+
   private report(operation: MessageClientError["operation"], error: unknown, eventId?: string) {
     this.errors.next({ operation, error, eventId });
   }
@@ -165,7 +204,7 @@ export class LegacyMessagesClient {
   /** Returns a stable, independently loadable conversation with one correspondent */
   conversation(correspondent: string): LegacyConversation {
     this.assertActive();
-    if (!/^[0-9a-f]{64}$/.test(correspondent)) throw new Error("Invalid correspondent");
+    if (!isHexKey(correspondent)) throw new Error("Invalid correspondent");
     let conversation = this.conversations.get(correspondent);
     if (!conversation || conversation.isDisposed) {
       conversation = new LegacyConversation(this, correspondent, {
@@ -173,20 +212,58 @@ export class LegacyMessagesClient {
         autoUnlock: this.autoUnlock.value,
       });
       this.conversations.set(correspondent, conversation);
+      this.observeConversation(conversation);
     }
+
     return conversation;
+  }
+
+  // Observe children for their entire lifetime, including sends made while inbox loading is stopped.
+  private observeConversation(conversation: LegacyConversation): void {
+    const subscriptions = new Subscription();
+    this.conversationSubscriptions.add(subscriptions);
+    let wasBusy = false;
+
+    subscriptions.add(
+      conversation.busy$.pipe(distinctUntilChanged()).subscribe((busy) => {
+        this.sending.next(this.sending.value + Number(busy) - Number(wasBusy));
+        wasBusy = busy;
+      }),
+    );
+    subscriptions.add(() => {
+      if (wasBusy) this.sending.next(this.sending.value - 1);
+    });
+    subscriptions.add(
+      conversation.publications$.subscribe((publications) => {
+        this.publications.next({ ...this.publications.value, ...publications });
+      }),
+    );
+    subscriptions.add(
+      conversation.errors$.subscribe((error) => {
+        if (error.operation === "send") this.errors.next(error);
+      }),
+    );
+    subscriptions.add(
+      conversation.status$.subscribe((lifecycle) => {
+        if (lifecycle === "disposed") subscriptions.unsubscribe();
+      }),
+    );
   }
 
   /** Starts cache restoration, recent history reconciliation and live mailbox loading */
   async start(): Promise<void> {
     this.assertActive();
     if (this.background) return;
+
     const background = (this.background = new Subscription());
     const context = this.context();
     this.lifecycle.next("loading");
+
     try {
       await this.hydrate(context.signal);
       if (context.signal.aborted || background.closed) return;
+
+      // Restore cached plaintext in order; one failed event must not stop later restores.
       background.add(
         this.eventStore
           .filters(this.filters)
@@ -203,6 +280,8 @@ export class LegacyMessagesClient {
           )
           .subscribe(),
       );
+
+      // Disabling auto-unlock unsubscribes the current queue; signer work runs sequentially.
       background.add(
         this.autoUnlock
           .pipe(
@@ -227,6 +306,7 @@ export class LegacyMessagesClient {
           .subscribe(),
       );
       const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
+      // Each mailbox follows its own relay changes and stores events before consumers read them.
       for (const mailbox of this.mailboxes) {
         background.add(
           mailbox.relays$
@@ -258,6 +338,7 @@ export class LegacyMessagesClient {
             .subscribe(),
         );
       }
+      // Reconcile history again when relay selection changes, replacing the previous sync.
       background.add(
         this.relays$
           .pipe(
@@ -290,17 +371,20 @@ export class LegacyMessagesClient {
     this.generation = new AbortController();
     this.background?.unsubscribe();
     this.background = undefined;
+
     if (!this.disposed) this.lifecycle.next("idle");
   }
 
   /** Permanently releases this client's subscriptions and retry state */
   dispose(): void {
     if (this.disposed) return;
+
     this.disposed = true;
     this.stop();
+
     for (const conversation of this.conversations.values()) conversation.dispose();
     this.conversations.clear();
-    this.session.close();
+    this.conversationSubscriptions.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
     this.lifecycle.next("disposed");
@@ -328,22 +412,54 @@ export class LegacyMessagesClient {
 
   private async restore(event: NostrEvent) {
     await restoreMessageContent(event, this.options.decryptionCache);
-    // Restored plaintext must also contribute to optional conversation lifetime mirroring.
-    if (this.options.mirrorExpiration && isEncryptedContentUnlocked(event)) {
-      await firstValueFrom(this.session.read$(event), { defaultValue: undefined });
+  }
+
+  private async decrypt(event: NostrEvent): Promise<NostrEvent | undefined> {
+    const { options } = this;
+    if (!isValidLegacyMessage(event)) return;
+    const isAddressedToOwner = event.tags.some((tag) => isPTag(tag) && tag[1] === this.pubkey);
+    if (event.pubkey !== this.pubkey && !isAddressedToOwner) return;
+
+    await restoreMessageContent(event, options.decryptionCache);
+    if (!isEncryptedContentUnlocked(event)) {
+      if (!this.signer) throw new Error("A signer is required");
+      await unlockLegacyMessage(event, this.pubkey, this.signer);
     }
+    await saveMessageContent(event, options.decryptionCache);
+
+    return event;
+  }
+
+  /** Decrypts one event while sharing outstanding signer calls */
+  private read$(event: NostrEvent) {
+    return defer(() => {
+      let decryption = this.pendingDecryptions.get(event.id);
+      if (!decryption) {
+        decryption = this.decrypt(event);
+        this.pendingDecryptions.set(event.id, decryption);
+        // Unresolved signer promises stay shared when an individual reader times out.
+        const release = () => this.pendingDecryptions.delete(event.id);
+        void decryption.then(release, release);
+      }
+      return decryption;
+    }).pipe(
+      timeout({ first: this.options.decryptionTimeout ?? 60000 }),
+      filter((message): message is NostrEvent => !!message),
+    );
   }
 
   /** Decrypts one event or all currently loaded pending events */
   async unlock(event?: NostrEvent, options: MessageOperationOptions = {}): Promise<void> {
     const context = this.context(options);
     const events = event ? [event] : [...this.eventStore.getByFilters(this.filters)];
+
     for (const item of events) {
       context.signal.throwIfAborted();
       if (!event && (isEncryptedContentUnlocked(item) || this.failed.value.has(item.id))) continue;
       this.pending.next(this.pending.value + 1);
+
       try {
-        await firstValueFrom(this.session.read$(item).pipe(takeUntil(fromEvent(context.signal, "abort"))), {
+        await firstValueFrom(this.read$(item).pipe(takeUntil(fromEvent(context.signal, "abort"))), {
           defaultValue: undefined,
         });
         context.signal.throwIfAborted();
@@ -388,9 +504,54 @@ export class LegacyMessagesClient {
   readMessages$(options: MessageOperationOptions & { history?: boolean } = {}): Observable<NostrEvent> {
     return defer(() => {
       const context = this.context(options);
-      return this.session
-        .messages$({ ...context, history: options.history ?? false })
-        .pipe(takeUntil(fromEvent(context.signal, "abort")), takeUntil(this.destroyed));
+      const history = options.history ?? false;
+      let active = true;
+      const seen = new Set<string>();
+
+      const events$ = merge(
+        ...this.mailboxes.map(({ relays$, filter: mailboxFilter }) => {
+          const targets$ = history
+            ? defer(() => settle(relays$.pipe(filter((relays) => relays.length > 0)), [], this.relayTimeout))
+            : relays$;
+
+          return targets$.pipe(
+            // Live reads follow relay changes; history reads stop after the EOSE marker.
+            switchMap((relays) => {
+              const source$ = subscribeThroughStore(this.options, relays, [mailboxFilter]);
+              return history ? source$.pipe(takeWhile((event) => event !== "EOSE", true)) : source$;
+            }),
+          );
+        }),
+      );
+
+      // Deduplicate overlapping mailboxes before queueing signer prompts.
+      return events$.pipe(
+        filter((event): event is NostrEvent => event !== "EOSE"),
+        filter((event) => {
+          if (seen.has(event.id)) return false;
+          seen.add(event.id);
+          return true;
+        }),
+        // Preserve arrival order and isolate decryption failures to one event.
+        concatMap((event) =>
+          defer(() => {
+            context.signal.throwIfAborted();
+            if (!active) return EMPTY;
+            return this.read$(event).pipe(
+              catchError((error) => {
+                this.report("decrypt", error, event.id);
+                return EMPTY;
+              }),
+            );
+          }),
+        ),
+        // Unsubscription stops queued work; an already-running signer promise may still settle.
+        finalize(() => {
+          active = false;
+        }),
+        takeUntil(fromEvent(context.signal, "abort")),
+        takeUntil(this.destroyed),
+      );
     });
   }
 
@@ -400,58 +561,25 @@ export class LegacyMessagesClient {
     options: MessageOperationOptions = {},
   ): Promise<LegacyMessageAvailability> {
     const context = this.context(options);
-    return firstValueFrom(this.session.discover$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))));
+    validateRecipient(request);
+    return this.conversation(request.recipient).discover(context);
   }
 
-  /** Prepares encrypted events without publishing them */
+  /** Prepares an encrypted event through its recipient's conversation */
   async prepareSend(
     request: LegacyMessageSendRequest,
     options: MessageOperationOptions = {},
   ): Promise<PreparedLegacyMessage> {
     const context = this.context(options);
-    if (!this.signer?.nip04) throw new Error("Signer does not support this message protocol");
-    const signerPubkey = await firstValueFrom(
-      defer(() => this.signer!.getPublicKey()).pipe(
-        timeout({ first: this.options.actionTimeout ?? 120000 }),
-        takeUntil(fromEvent(context.signal, "abort")),
-      ),
-    );
-    if (signerPubkey !== this.pubkey) throw new Error("Signer does not match the messages client owner");
-    context.signal.throwIfAborted();
-    const prepared = await firstValueFrom(
-      this.session.prepareSend$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
-    );
-    const setState = (state: "prepared" | "publishing" | "accepted" | "failed") =>
-      this.publications.next({ ...this.publications.value, [prepared.message.id]: state });
-    setState("prepared");
-    return {
-      message: prepared.message,
-      publish: async (publishOptions = {}) => {
-        const publication = this.context(publishOptions);
-        context.signal.throwIfAborted();
-        this.sending.next(this.sending.value + 1);
-        setState("publishing");
-        try {
-          const message = await firstValueFrom(
-            prepared.publish$(publication).pipe(takeUntil(fromEvent(publication.signal, "abort"))),
-          );
-          publication.signal.throwIfAborted();
-          setState("accepted");
-          return message;
-        } catch (error) {
-          setState("failed");
-          this.report("send", error);
-          throw error;
-        } finally {
-          this.sending.next(this.sending.value - 1);
-        }
-      },
-    };
+    validateRecipient(request);
+    return this.conversation(request.recipient).prepareSend(request, context);
   }
 
-  /** Prepares and publishes a message, retaining the signed event for client-ID retries */
+  /** Prepares and publishes a message through its recipient's conversation */
   async send(request: LegacyMessageSendRequest, options: MessageOperationOptions = {}): Promise<NostrEvent> {
-    return (await this.prepareSend(request, options)).publish(options);
+    const context = this.context(options);
+    validateRecipient(request);
+    return this.conversation(request.recipient).send(request, context);
   }
 
   /** Replies to a legacy message */
@@ -462,14 +590,9 @@ export class LegacyMessagesClient {
   ): Promise<NostrEvent> {
     const recipient = getLegacyMessageCorrespondent(parent, this.pubkey);
     if (!recipient) throw new Error("Message does not belong to this owner");
-    return this.send(
-      {
-        recipient,
-        content,
-        replyTo: parent.id,
-        expiration: options.expiration,
-      },
-      options,
-    );
+    return this.conversation(recipient).reply(parent, content, {
+      ...this.context(options),
+      expiration: options.expiration,
+    });
   }
 }

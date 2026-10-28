@@ -12,7 +12,17 @@ import { GiftWrapFactory, LegacyMessageFactory, WrappedMessageFactory } from "ap
 import { getConversationParticipants, getGiftWrapSeal, unlockGiftWrap } from "applesauce-common/helpers";
 import { PrivateKeySigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
-import { BehaviorSubject, EMPTY, finalize, firstValueFrom, lastValueFrom, Observable, of, Subject } from "rxjs";
+import {
+  BehaviorSubject,
+  EMPTY,
+  finalize,
+  firstValueFrom,
+  lastValueFrom,
+  Observable,
+  of,
+  Subject,
+  Subscription,
+} from "rxjs";
 import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LegacyMessagesClient, WrappedMessagePublicationError, WrappedMessagesClient } from "../index.js";
@@ -172,6 +182,78 @@ describe("standalone messaging clients", () => {
       expect(challenge$.observed).toBe(false);
     },
   );
+
+  it.each(["conversation", "client"] as const)(
+    "mirrors loaded encrypted message lifetimes through %s sends",
+    async (sender) => {
+      const { options, eventStore, pool } = setup();
+      const client = own(new LegacyMessagesClient({ ...options, mirrorExpiration: true }));
+      const createdAt = unixNow() - 10;
+      const incoming = finalizeEvent(
+        {
+          kind: 4,
+          created_at: createdAt,
+          tags: [
+            ["p", alice],
+            ["expiration", String(createdAt + 3600)],
+          ],
+          content: "encrypted content",
+        },
+        bobKey,
+      );
+      eventStore.add(incoming);
+      const conversation = client.conversation(bob);
+      expect(getEncryptedContent(incoming)).toBeUndefined();
+
+      const prepared =
+        sender === "conversation"
+          ? await conversation.prepareSend({ content: "reply" })
+          : await client.prepareSend({ recipient: bob, content: "reply" });
+      expect(prepared.message.tags).toContainEqual(["expiration", String(prepared.message.created_at + 3600)]);
+      expect(pool.subscription).not.toHaveBeenCalled();
+
+      const explicit = await conversation.prepareSend({ content: "explicit", expiration: unixNow() + 7200 });
+      expect(explicit.message.tags).toContainEqual(["expiration", String(unixNow() + 7200)]);
+    },
+  );
+
+  it("uses only the newest available conversation message for expiration mirroring", () => {
+    const { options, eventStore } = setup();
+    const client = own(new LegacyMessagesClient({ ...options, mirrorExpiration: true }));
+    const conversation = client.conversation(bob);
+    const createdAt = unixNow() - 10;
+    const expiring = finalizeEvent(
+      {
+        kind: 4,
+        created_at: createdAt,
+        content: "encrypted",
+        tags: [
+          ["p", alice],
+          ["expiration", String(createdAt + 3600)],
+        ],
+      },
+      bobKey,
+    );
+    eventStore.add(expiring);
+    expect(conversation.getExpiration(createdAt + 100)).toBe(createdAt + 3700);
+    expect(client.conversation(alice).getExpiration()).toBeUndefined();
+
+    const permanent = finalizeEvent(
+      {
+        kind: 4,
+        created_at: createdAt + 1,
+        content: "encrypted",
+        tags: [["p", alice]],
+      },
+      bobKey,
+    );
+    eventStore.add(permanent);
+    expect(conversation.getExpiration()).toBeUndefined();
+    eventStore.remove(permanent);
+    expect(conversation.getExpiration(createdAt + 100)).toBe(createdAt + 3700);
+    eventStore.remove(expiring);
+    expect(conversation.getExpiration()).toBeUndefined();
+  });
 
   it("loads a legacy conversation without loading other correspondents or starting the inbox", async () => {
     const { options, pool, request } = setup();
@@ -550,6 +632,101 @@ describe("standalone messaging clients", () => {
     expect(pool.publish).toHaveBeenCalledTimes(1);
     await prepared.publish();
     expect(pool.publish).toHaveBeenCalledTimes(2);
+  });
+
+  it("prepares and retries in the conversation while reporting publication state on the client", async () => {
+    const { options, pool } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    const conversation = client.conversation(bob);
+    const clientPrepare = vi.spyOn(client, "prepareSend");
+    const clientErrors: unknown[] = [];
+    const conversationErrors: unknown[] = [];
+    const subscriptions = new Subscription();
+    subscriptions.add(client.errors$.subscribe((error) => clientErrors.push(error)));
+    subscriptions.add(conversation.errors$.subscribe((error) => conversationErrors.push(error)));
+    const signerCalls = vi.spyOn(aliceSigner, "signEvent");
+    try {
+      const prepared = await conversation.prepareSend({ content: "retry", clientMessageId: "retry" });
+      expect(clientPrepare).not.toHaveBeenCalled();
+      expect(pool.publish).not.toHaveBeenCalled();
+      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+      expect(await firstValueFrom(client.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+
+      pool.publish.mockResolvedValueOnce([{ from: "wss://dm.test/", ok: false }]);
+      await expect(prepared.publish()).rejects.toThrow();
+      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "failed" });
+      expect(clientErrors).toHaveLength(1);
+      expect(conversationErrors).toEqual(clientErrors);
+
+      const retried = await client.prepareSend({ recipient: bob, content: "retry", clientMessageId: "retry" });
+      expect(retried.message).toBe(prepared.message);
+      await retried.publish();
+      await prepared.publish();
+      expect(signerCalls).toHaveBeenCalledTimes(1);
+      expect(pool.publish).toHaveBeenCalledTimes(2);
+      expect(await firstValueFrom(client.publications$)).toEqual({ [prepared.message.id]: "accepted" });
+    } finally {
+      subscriptions.unsubscribe();
+    }
+  });
+
+  it("scopes retry identities to each conversation", async () => {
+    const { options } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    const bobMessage = await client.prepareSend({ recipient: bob, content: "bob", clientMessageId: "same" });
+    const selfMessage = await client.prepareSend({ recipient: alice, content: "self", clientMessageId: "same" });
+    expect(bobMessage.message.id).not.toBe(selfMessage.message.id);
+    await expect(client.conversation(bob).prepareSend({ content: "changed", clientMessageId: "same" })).rejects.toThrow(
+      "another message",
+    );
+  });
+
+  it("aggregates overlapping publications and cancels only the stopped conversation", async () => {
+    const { options, pool } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    const conversation = client.conversation(bob);
+    const self = client.conversation(alice);
+    const prepared = await conversation.prepareSend({ content: "bob" });
+    const selfPrepared = await self.prepareSend({ content: "self" });
+    const finishPublications: (() => void)[] = [];
+    pool.publish.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishPublications.push(() => resolve([{ from: "wss://dm.test/", ok: true }]));
+        }),
+    );
+
+    const bobPublishing = prepared.publish();
+    const bobResult = expect(bobPublishing).rejects.toThrow();
+    const selfPublishing = selfPrepared.publish();
+    expect(await firstValueFrom(client.busy$)).toBe(true);
+    expect(await firstValueFrom(conversation.busy$)).toBe(true);
+    expect(await firstValueFrom(self.busy$)).toBe(true);
+    conversation.stop();
+    await bobResult;
+    expect(await firstValueFrom(conversation.busy$)).toBe(false);
+    expect(await firstValueFrom(client.busy$)).toBe(true);
+    finishPublications.forEach((finish) => finish());
+    await selfPublishing;
+    expect(await firstValueFrom(client.busy$)).toBe(false);
+    await expect(prepared.publish()).rejects.toThrow();
+  });
+
+  it("routes client replies through the conversation and preserves explicit expiration", async () => {
+    const { options } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    const parent = finalizeEvent(
+      { kind: 4, created_at: unixNow(), content: "encrypted", tags: [["p", alice]] },
+      bobKey,
+    );
+    const conversation = client.conversation(bob);
+    const reply = vi.spyOn(conversation, "reply");
+    const expiration = unixNow() + 3600;
+    const message = await client.reply(parent, "reply", { expiration });
+    expect(reply).toHaveBeenCalledOnce();
+    expect(message.tags).toContainEqual(["expiration", String(expiration)]);
+    expect(message.tags).toContainEqual(["e", parent.id]);
+    await expect(client.conversation(alice).reply(parent, "wrong conversation")).rejects.toThrow("does not belong");
   });
 
   it("reuses legacy client IDs and exposes outgoing-only conversations", async () => {

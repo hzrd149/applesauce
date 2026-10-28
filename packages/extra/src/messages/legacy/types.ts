@@ -1,11 +1,11 @@
 import type { EventStore } from "applesauce-core";
-import type { EncryptedContentCache, EventTemplate, NostrEvent } from "applesauce-core/helpers";
+import type { EncryptedContentCache, NostrEvent } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
 import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
-import type { MessageOperationContext, MessageOperationOptions } from "../common/types.js";
+import type { MessageOperationOptions } from "../common/types.js";
 
 /** Dependencies and policies for a NIP-04 inbox */
 export interface LegacyMessagesClientOptions {
@@ -37,10 +37,8 @@ export interface LegacyMessagesClientOptions {
   onAuthRequired?: SyncAuthHandler;
   /** The maximum wait for an authentication phase, or false */
   authTimeout?: number | false;
-  /** Whether to mirror the newest conversation message lifetime on sends */
+  /** Whether to mirror the newest loaded conversation message lifetime on sends */
   mirrorExpiration?: boolean;
-  /** The plaintext approval callback called before encryption and signing */
-  approve?: (request: { template: EventTemplate & { id: string }; scope?: string }) => boolean | Promise<boolean>;
 }
 
 /** A plaintext NIP-04 message to one correspondent */
@@ -49,7 +47,7 @@ export interface LegacyMessageSendRequest {
   recipient: string;
   /** The unmodified plaintext */
   content: string;
-  /** The retry identity within the operation scope */
+  /** The retry identity within this conversation and operation scope */
   clientMessageId?: string;
   /** The parent kind-4 event ID */
   replyTo?: string;
@@ -97,12 +95,4 @@ export interface LegacyMessagesSyncStatus {
   done: boolean;
   /** The sum of mailbox event counts */
   loaded: number;
-}
-
-/** Internal signed legacy publication stream */
-export interface LegacyMessagePreparation {
-  /** The native signed kind-4 event with cached plaintext */
-  message: NostrEvent;
-  /** The cold publication operation */
-  publish$(context: MessageOperationContext): Observable<NostrEvent>;
 }
