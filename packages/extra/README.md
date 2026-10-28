@@ -64,6 +64,28 @@ Use `client.start()` separately for account-wide inbox discovery. Stopping a con
 
 `sync$({ since })` reconciles older history with progress; `loadHistory({ since })` returns its final status as a promise. Legacy history also accepts `correspondent`; wrapped history is mailbox-wide because participant metadata is encrypted. Wrapped date ranges include two days of envelope-timestamp overlap. A completed sync can contain failed relays; inspect its mailbox results.
 
+### Consume a wrapped conversation
+
+`WrappedConversation` exposes a local `RumorStore` containing the conversation's decrypted kind-14 messages. Participant order and duplicate pubkeys resolve to the same client-owned instance, including self-conversations.
+
+```ts
+const conversation = client.conversation([recipient]);
+const messages = use$(conversation.messages$);
+const threads = use$(conversation.threads$);
+const replies = use$(() => conversation.replies$(parent), [conversation, parent]);
+
+await conversation.send({ content: "Hello" });
+await conversation.reply(parent, { content: "Reply" });
+const prepared = await conversation.prepareSend({ content: "Retryable" });
+await prepared.publish();
+```
+
+`conversation.eventStore` supports ordinary rumor queries and custom models. `ConversationMessagesModel`, `ConversationThreadsModel`, and `ConversationRepliesModel` are also exported from `applesauce-extra/messages` for use with conversation-scoped rumor stores. Threads are root messages with direct replies; replies select only the specified parent.
+
+Creating a conversation follows already-decrypted messages without loading or prompting the signer. Start, sync, unlock, and authenticate through the client: encrypted gift wraps cannot be filtered by conversation. Removing the last envelope for a rumor removes it from the local store too.
+
+`dispose()` or `[Symbol.dispose]()` releases the local store and cancels conversation sends without stopping the inbox. The next `client.conversation(...)` call creates a fresh instance. Disposing the client disposes all its conversations; stopping inbox loading leaves local views available. Keep profile queries on the application's shared store, and persist private plaintext only through encrypted storage.
+
 ### Integration
 
 Configure the store's profile/relay-list loaders before creating the client. Supply `cacheRequest` for encrypted-event hydration and `decryptionCache` for private plaintext; the application owns event persistence and encryption at rest. Pass `onAuthRequired` and `authTimeout` to integrate relay authentication with your UI.

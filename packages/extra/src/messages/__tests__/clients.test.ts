@@ -60,6 +60,74 @@ function own<T extends { dispose(): void }>(client: T): T {
 }
 
 describe("standalone messaging clients", () => {
+  it("keeps wrapped conversation stores local, scoped, deduplicated, and reactive", async () => {
+    const { options, eventStore, pool } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const template = await WrappedMessageFactory.create(alice, "root").as(bobSigner).stamp();
+    const root = { ...template, id: getEventHash(template) };
+    const replyTemplate = { ...template, content: "reply", tags: [...template.tags, ["e", root.id]] };
+    const reply = { ...replyTemplate, id: getEventHash(replyTemplate) };
+    const otherTemplate = await WrappedMessageFactory.create(bob, "self").as(bobSigner).stamp();
+    const other = { ...otherTemplate, id: getEventHash(otherTemplate) };
+    const gifts = [];
+    for (const message of [root, root, other]) {
+      const gift = await GiftWrapFactory.create(bobSigner, alice, message);
+      await unlockGiftWrap(gift, aliceSigner);
+      eventStore.add(gift);
+      gifts.push(gift);
+    }
+
+    const conversation = client.conversation([bob]);
+    expect(client.conversation([bob, alice, bob])).toBe(conversation);
+    expect(client.conversation(conversation.id)).toBe(conversation);
+    expect(conversation.participants).toEqual([alice, bob].sort());
+    await vi.waitFor(() => expect(conversation.eventStore.getByFilters({})).toEqual([root]));
+    expect(await firstValueFrom(conversation.messages$)).toEqual([root]);
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
+
+    const gift = await GiftWrapFactory.create(bobSigner, alice, reply);
+    await unlockGiftWrap(gift, aliceSigner);
+    eventStore.add(gift);
+    await vi.waitFor(() => expect(conversation.eventStore.getByFilters({})).toHaveLength(2));
+    expect(await firstValueFrom(conversation.threads$)).toEqual([root]);
+    expect(await firstValueFrom(conversation.replies$(root))).toEqual([reply]);
+    expect(await firstValueFrom(conversation.eventStore.event(root.id))).toEqual(root);
+
+    eventStore.remove(gifts[0]);
+    expect(conversation.eventStore.hasEvent(root.id)).toBe(true);
+    eventStore.remove(gifts[1]);
+    await vi.waitFor(() => expect(conversation.eventStore.hasEvent(root.id)).toBe(false));
+    conversation[Symbol.dispose]();
+    expect(conversation.eventStore.getByFilters({})).toEqual([]);
+    expect(eventStore.hasEvent(gift.id)).toBe(true);
+    const replacement = client.conversation([bob]);
+    expect(replacement).not.toBe(conversation);
+    client[Symbol.dispose]();
+    expect(replacement.isDisposed).toBe(true);
+    expect(() => client.conversation([bob])).toThrow("disposed");
+  });
+
+  it("binds wrapped conversation sends and replies to their participants", async () => {
+    const { options, pool } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const conversation = client.conversation([bob]);
+    const message = await conversation.send({ content: "hello" });
+    expect(getConversationParticipants(message)).toEqual([...conversation.participants]);
+    const reply = await conversation.reply(message, { content: "reply" });
+    expect(reply.tags).toContainEqual(["e", message.id]);
+    await expect(client.conversation([alice]).reply(message, { content: "wrong conversation" })).rejects.toThrow(
+      "does not belong",
+    );
+
+    const prepared = await conversation.prepareSend({ content: "cancel me" });
+    const publications = pool.publish.mock.calls.length;
+    conversation.dispose();
+    await expect(prepared.publish()).rejects.toThrow();
+    await expect(conversation.send({ content: "disposed" })).rejects.toThrow();
+    expect(pool.publish).toHaveBeenCalledTimes(publications);
+  });
+
   it.each([LegacyMessagesClient, WrappedMessagesClient])(
     "exposes live authentication requests on %s",
     async (Client) => {

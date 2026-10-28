@@ -1,6 +1,8 @@
 export { LegacyMessagesClient } from "./legacy/client.js";
 export { LegacyConversation } from "./legacy/conversation.js";
 export { WrappedMessagesClient } from "./wrapped/client.js";
+export { WrappedConversation, type WrappedConversationSendRequest } from "./wrapped/conversation.js";
+export { ConversationMessagesModel, ConversationThreadsModel, ConversationRepliesModel } from "./wrapped/models.js";
 export { WrappedMessagePublicationError } from "./wrapped/publication.js";
 export type {
   LegacyMessagesClientOptions,

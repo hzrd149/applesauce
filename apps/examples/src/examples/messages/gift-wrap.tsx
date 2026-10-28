@@ -1,10 +1,10 @@
 /**
- * A WrappedMessagesClient inbox with cached history, explicit decryption and retryable publication
+ * A NIP-17 inbox with local WrappedConversation views, cached history and retryable publication
  * @tags nip-17, nip-44, nip-59, nip-77, messages, gift-wrap, encryption, dm, sync
  * @related messages/personal-notes, messages/legacy, loader/sync-loader
  */
 import { castUser, User } from "applesauce-common/casts";
-import { getConversationParticipants, getRumorGiftWraps, getRumorSeals, type Rumor } from "applesauce-common/helpers";
+import { createConversationIdentifier, getRumorGiftWraps, getRumorSeals, type Rumor } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
@@ -13,7 +13,11 @@ import {
   unixNow,
   type NostrEvent,
 } from "applesauce-core/helpers";
-import { WrappedMessagesClient, type PreparedWrappedMessage } from "applesauce-extra/messages";
+import {
+  WrappedMessagesClient,
+  type WrappedConversation,
+  type PreparedWrappedMessage,
+} from "applesauce-extra/messages";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -79,6 +83,14 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: true }),
 );
+
+/** Keeps a local conversation alive while its pane is selected */
+function conversation$(client: WrappedMessagesClient, id: string) {
+  return defer(() => {
+    const conversation = client.conversation(id);
+    return concat(of(conversation), NEVER).pipe(finalize(() => conversation.dispose()));
+  });
+}
 
 /** Returns the start of a history range, or undefined for the client's recent sync */
 function getHistorySince(range: HistoryRange) {
@@ -303,7 +315,7 @@ function Account({ user }: { user: User }) {
   );
 }
 
-function Composer({ client, participants }: { client: WrappedMessagesClient; participants: string[] }) {
+function Composer({ conversation }: { conversation: WrappedConversation }) {
   const [text, setText] = useState("");
   const [expiration, setExpiration] = useState(0);
   const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
@@ -321,8 +333,7 @@ function Composer({ client, participants }: { client: WrappedMessagesClient; par
       // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
       const delivery =
         prepared ??
-        (await client.prepareSend({
-          recipients: participants,
+        (await conversation.prepareSend({
           content: text,
           expiration: expires,
           envelopeExpiration: expires,
@@ -371,7 +382,17 @@ function Composer({ client, participants }: { client: WrappedMessagesClient; par
   );
 }
 
-function MessageDetails({ message, onClose }: { message: Rumor; onClose: () => void }) {
+function MessageDetails({
+  conversation,
+  id,
+  onClose,
+}: {
+  conversation: WrappedConversation;
+  id: string;
+  onClose: () => void;
+}) {
+  const message = use$(() => conversation.eventStore.event(id), [conversation, id]);
+
   return (
     <dialog
       className="modal"
@@ -381,7 +402,11 @@ function MessageDetails({ message, onClose }: { message: Rumor; onClose: () => v
       onClose={onClose}
     >
       <div className="modal-box max-w-4xl">
-        <JsonBlock value={{ rumor: message, seals: getRumorSeals(message), wraps: getRumorGiftWraps(message) }} />
+        {message ? (
+          <JsonBlock value={{ rumor: message, seals: getRumorSeals(message), wraps: getRumorGiftWraps(message) }} />
+        ) : (
+          <p>Message unavailable</p>
+        )}
       </div>
       <form method="dialog" className="modal-backdrop">
         <button>Close</button>
@@ -426,14 +451,13 @@ function MessageBubble({
   );
 }
 
-function Conversation({ client, id }: { client: WrappedMessagesClient; id: string }) {
-  const messages = use$(() => client.conversation$(id), [client, id]);
-  const publications = use$(client.publications$);
-  const [inspecting, setInspecting] = useState<Rumor>();
+function Conversation({ conversation }: { conversation: WrappedConversation }) {
+  const messages = use$(conversation.messages$);
+  const publications = use$(conversation.client.publications$);
+  const [inspecting, setInspecting] = useState<string>();
 
-  const participants = getConversationParticipants(id);
-  const others = participants
-    .filter((pubkey) => pubkey !== client.pubkey)
+  const others = conversation.participants
+    .filter((pubkey) => pubkey !== conversation.client.pubkey)
     .map((pubkey) => castUser(pubkey, eventStore));
 
   return (
@@ -464,16 +488,18 @@ function Conversation({ client, id }: { client: WrappedMessagesClient; id: strin
             <MessageBubble
               key={message.id}
               message={message}
-              self={client.pubkey}
+              self={conversation.client.pubkey}
               status={publications?.[message.id]}
-              onInspect={() => setInspecting(message)}
+              onInspect={() => setInspecting(message.id)}
             />
           ))
         )}
       </div>
 
-      <Composer key={id} client={client} participants={participants} />
-      {inspecting && <MessageDetails message={inspecting} onClose={() => setInspecting(undefined)} />}
+      <Composer conversation={conversation} />
+      {inspecting && (
+        <MessageDetails conversation={conversation} id={inspecting} onClose={() => setInspecting(undefined)} />
+      )}
     </main>
   );
 }
@@ -481,9 +507,10 @@ function Conversation({ client, id }: { client: WrappedMessagesClient; id: strin
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
   const groups = use$(client.conversations$);
   const [selected, setSelected] = useState(client.pubkey);
+  const conversation = use$(() => conversation$(client, selected), [client, selected]);
 
   const startConversation = (pubkey: string) => {
-    if (pubkey) setSelected([pubkey, client.pubkey].sort().join(":"));
+    if (pubkey) setSelected(createConversationIdentifier(client.pubkey, [pubkey]));
   };
 
   // Keep notes to self pinned at the top even before it has any messages
@@ -538,7 +565,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
         <Account user={user} />
       </aside>
 
-      <Conversation client={client} id={selected} />
+      {conversation && <Conversation key={conversation.id} conversation={conversation} />}
     </div>
   );
 }

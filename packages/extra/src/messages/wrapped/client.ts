@@ -58,6 +58,7 @@ import type {
   PreparedWrappedMessage,
 } from "./types.js";
 import { WrappedMessageSession } from "./session.js";
+import { WrappedConversation } from "./conversation.js";
 
 const TWO_DAYS = 2 * 24 * 60 * 60;
 
@@ -113,6 +114,7 @@ export class WrappedMessagesClient {
   private background?: Subscription;
   private generation = new AbortController();
   private disposed = false;
+  private readonly conversationInstances = new Map<string, WrappedConversation>();
 
   /** Creates a stopped wrapped client using shared application dependencies */
   constructor(private readonly options: WrappedMessagesClientOptions) {
@@ -191,6 +193,21 @@ export class WrappedMessagesClient {
     return this.messages$.pipe(
       map((messages) => messages.filter((message) => getConversationIdentifierFromMessage(message) === id)),
     );
+  }
+
+  /**
+   * Returns a stable local conversation without starting inbox loading
+   * @throws if the client is disposed
+   */
+  conversation(participants: string | string[]): WrappedConversation {
+    this.assertActive();
+    const id = createConversationIdentifier(this.pubkey, getConversationParticipants(participants));
+    let conversation = this.conversationInstances.get(id);
+    if (!conversation || conversation.isDisposed) {
+      conversation = new WrappedConversation(this, id);
+      this.conversationInstances.set(id, conversation);
+    }
+    return conversation;
   }
 
   /** Starts cache restoration, recent history reconciliation and live inbox loading */
@@ -306,10 +323,17 @@ export class WrappedMessagesClient {
     this.disposed = true;
     this.stop();
     this.session.close();
+    for (const conversation of this.conversationInstances.values()) conversation.dispose();
+    this.conversationInstances.clear();
     this.destroyed.next();
     this.destroyed.complete();
     this.lifecycle.next("disposed");
     this.publications.next({});
+  }
+
+  /** Releases this client when leaving a using scope */
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 
   /** Enables or disables signer-backed decryption of arriving envelopes */
