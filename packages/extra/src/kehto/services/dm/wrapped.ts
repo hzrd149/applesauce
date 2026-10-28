@@ -1,10 +1,13 @@
+import { DmPreparationCache } from "./preparation-cache.js";
+import type { PreparedWrappedMessage } from "../../../messages/index.js";
 import { createClientProtocol } from "./client-protocol.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { getConversationParticipants } from "applesauce-common/helpers";
-import type { Rumor } from "applesauce-core/helpers";
-import { catchError, defer, map } from "rxjs";
+import { kinds, unixNow, type Rumor } from "applesauce-core/helpers";
+import { catchError, concat, defer, finalize, ignoreElements, map, merge, NEVER, share } from "rxjs";
 import { WrappedMessagesClient, WrappedMessagePublicationError } from "../../../messages/index.js";
 import { DmPublicationError } from "./publication.js";
+import { approveMessage } from "./approval.js";
 import type { DmProtocolMessage } from "./types.js";
 
 /** Creates a NIP-17 protocol backed by an account-scoped wrapped messages client */
@@ -15,8 +18,8 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       ...config,
       pubkey: account.pubkey,
       signer: account.signer,
-      approve: config.approve ? ({ template, scope }) => config.approve!({ template, windowId: scope }) : undefined,
     });
+    const preparations = new DmPreparationCache<PreparedWrappedMessage>();
     const normalize = (rumor: Rumor): DmProtocolMessage => ({
       id: rumor.id,
       participants: getConversationParticipants(rumor),
@@ -25,20 +28,41 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       content: rumor.content,
       status: rumor.pubkey === account.pubkey ? "sent" : "received",
     });
+    // Kehto subscriptions own loading; message readers only observe the store.
+    const liveLoading$ = concat(defer(() => client.start()).pipe(ignoreElements()), NEVER).pipe(
+      finalize(() => client.stop()),
+      share(),
+    );
     return {
       ownerPubkey: account.pubkey,
       discover$: (request, context) => defer(() => client.discover(request, { signal: context.signal })),
-      messages$: (context) => client.readMessages$(context).pipe(map(normalize)),
+      messages$: (context) =>
+        (context.history
+          ? concat(
+              defer(() => client.loadHistory({ signal: context.signal })).pipe(ignoreElements()),
+              client.readMessages$(context),
+            )
+          : merge(client.readMessages$(context), liveLoading$)
+        ).pipe(map(normalize)),
       prepareSend$: (request, context) =>
         defer(async () => {
-          const prepared = await client.prepareSend(
-            {
-              recipients: request.recipients,
+          const prepared = await preparations.prepare(request, context.windowId, async () => {
+            const template = {
+              kind: kinds.PrivateDirectMessage,
+              created_at: unixNow(),
               content: request.content,
-              clientMessageId: request.clientMessageId,
-            },
-            { signal: context.signal, scope: context.windowId },
-          );
+              tags: [...new Set(request.recipients)].map((recipient) => ["p", recipient]),
+            };
+            await approveMessage(config, template, context);
+
+            return client.prepareSend(
+              {
+                recipients: request.recipients,
+                content: request.content,
+              },
+              { signal: context.signal },
+            );
+          });
           return {
             message: normalize(prepared.message),
             publish$: defer(() => prepared.publish({ signal: context.signal })).pipe(
@@ -51,7 +75,10 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
             ),
           };
         }),
-      dispose: () => client.dispose(),
+      dispose: () => {
+        preparations.clear();
+        client.dispose();
+      },
     };
   });
 }

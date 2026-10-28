@@ -4,9 +4,9 @@ import { EventStore } from "applesauce-core";
 import { finalizeEvent, getEventHash, kinds, unixNow, type NostrEvent } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { firstValueFrom, Subject, toArray } from "rxjs";
+import { EMPTY, firstValueFrom, Subject, toArray } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { DmExpirationTracker } from "../dm/expiration.js";
+import { WrappedMessageExpirationTracker } from "../../../messages/wrapped/expiration.js";
 import { createLegacyMessageProtocol, createWrappedMessageProtocol } from "../dm.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
@@ -33,7 +33,11 @@ describe.each(["nip04", "nip17"])("%s expiration mirroring", (protocolId) => {
       );
     }
     const publish = vi.fn(async (_relays: string[], _event: NostrEvent) => [{ ok: true }]);
-    const pool = { req: () => new Subject(), publish } as unknown as RelayPool;
+    const pool = {
+      relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
+      req: () => new Subject(),
+      publish,
+    } as unknown as RelayPool;
     const createProtocol = protocolId === "nip04" ? createLegacyMessageProtocol : createWrappedMessageProtocol;
     const protocol = createProtocol({ eventStore, pool, signer: aliceSigner, timeout: 5, mirrorExpiration });
     const session = (await firstValueFrom(protocol.session$))!;
@@ -87,20 +91,20 @@ describe.each(["nip04", "nip17"])("%s expiration mirroring", (protocolId) => {
 
 describe("conversation expiration tracking", () => {
   it("isolates participant sets and ignores invalid expiration durations", () => {
-    const tracker = new DmExpirationTracker();
+    const tracker = new WrappedMessageExpirationTracker();
     tracker.observe({ id: "first", kind: 14, created_at: 100, content: "", tags: [["expiration", "200"]] }, [
       alice,
       bob,
     ]);
-    expect(tracker.tags([bob, alice, alice], 300)).toEqual([["expiration", "400"]]);
-    expect(tracker.tags([alice], 300)).toEqual([]);
-    expect(new DmExpirationTracker().tags([alice, bob], 300)).toEqual([]);
+    expect(tracker.expiration([bob, alice, alice], 300)).toBe(400);
+    expect(tracker.expiration([alice], 300)).toBeUndefined();
+    expect(new WrappedMessageExpirationTracker().expiration([alice, bob], 300)).toBeUndefined();
 
     for (const [index, value] of ["invalid", "999junk", "Infinity", "0", "100"].entries()) {
       tracker.observe({ id: value, kind: 14, created_at: 101 + index, content: "", tags: [["expiration", value]] }, [
         alice,
       ]);
-      expect(tracker.tags([alice], 300)).toEqual([]);
+      expect(tracker.expiration([alice], 300)).toBeUndefined();
     }
   });
 });

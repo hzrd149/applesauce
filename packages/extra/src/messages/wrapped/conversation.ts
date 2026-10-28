@@ -1,3 +1,4 @@
+import { ConversationDraftState } from "../common/drafts.js";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
@@ -6,7 +7,7 @@ import {
 import { RumorStore } from "applesauce-core/event-store";
 import { kinds, type Rumor } from "applesauce-core/helpers";
 import type { Observable, Subscription } from "rxjs";
-import type { MessageOperationOptions } from "../common/types.js";
+import type { MessageDraft, MessageStorage, MessageOperationOptions } from "../common/types.js";
 import type { WrappedMessagesClient } from "./client.js";
 import { ConversationMessagesModel, ConversationRepliesModel, ConversationThreadsModel } from "./models.js";
 import type { PreparedWrappedMessage, WrappedMessageSendRequest } from "./types.js";
@@ -18,12 +19,20 @@ export type WrappedConversationSendRequest = Omit<WrappedMessageSendRequest, "re
 export class WrappedConversation {
   /** The canonical conversation identifier */
   readonly id: string;
+
+  private readonly drafts: ConversationDraftState;
+  /** The current plaintext draft, restored from storage on subscription */
+  readonly draft$: Observable<Readonly<MessageDraft> | undefined>;
+
   /** The canonical participant set including the client owner */
   readonly participants: readonly string[];
+
   /** The local decrypted rumor store, without network loaders */
   readonly eventStore = new RumorStore();
+
   /** The conversation's kind-14 timeline */
   readonly messages$ = this.eventStore.model(ConversationMessagesModel);
+
   /** The root messages that have replies */
   readonly threads$ = this.eventStore.model(ConversationThreadsModel);
   private readonly subscription: Subscription;
@@ -34,14 +43,23 @@ export class WrappedConversation {
     /** The fixed-account owner of this conversation */
     readonly client: WrappedMessagesClient,
     participants: string | string[],
+    /** The optional plaintext draft storage */
+    draftStorage?: MessageStorage,
   ) {
     this.id = createConversationIdentifier(client.pubkey, getConversationParticipants(participants));
     this.participants = Object.freeze(getConversationParticipants(this.id));
+    this.drafts = new ConversationDraftState(`draft:${this.id}`, draftStorage);
+    this.draft$ = this.drafts.draft$;
+
+    // Mirror the owner timeline locally, including removals, for reply and thread models.
+    // This conversation owns the subscription and releases it during disposal.
     this.subscription = client.conversation$(this.id).subscribe((messages) => {
       const ids = new Set(messages.map((message) => message.id));
+
       for (const previous of this.eventStore.getByFilters({})) {
         if (!ids.has(previous.id)) this.eventStore.remove(previous);
       }
+
       for (const message of messages) this.eventStore.add(message);
     });
   }
@@ -51,11 +69,36 @@ export class WrappedConversation {
     return this.cancellation.signal.aborted;
   }
 
+  /**
+   * Restores the saved draft without starting message loading
+   * @throws if disposed, storage fails, or the saved draft is invalid
+   */
+  loadDraft(): Promise<Readonly<MessageDraft> | undefined> {
+    return this.drafts.load();
+  }
+
+  /**
+   * Saves the conversation's plaintext draft before notifying subscribers
+   * @throws if disposed, the draft is invalid, or storage fails
+   */
+  setDraft(draft: MessageDraft): Promise<void> {
+    return this.drafts.set(draft);
+  }
+
+  /**
+   * Removes the conversation's saved draft before notifying subscribers
+   * @throws if disposed or storage fails
+   */
+  clearDraft(): Promise<void> {
+    return this.drafts.clear();
+  }
+
   private context(options: MessageOperationOptions) {
     const signal = options.signal
       ? AbortSignal.any([options.signal, this.cancellation.signal])
       : this.cancellation.signal;
     signal.throwIfAborted();
+
     return { ...options, signal };
   }
 
@@ -110,7 +153,9 @@ export class WrappedConversation {
   /** Releases local subscriptions, pending sends, and retained plaintext */
   dispose(): void {
     if (this.isDisposed) return;
+
     this.cancellation.abort();
+    this.drafts.dispose();
     this.subscription.unsubscribe();
     this.eventStore.dispose();
     for (const message of [...this.eventStore.getByFilters({})]) this.eventStore.remove(message);

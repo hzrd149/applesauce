@@ -5,7 +5,7 @@ import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loade
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
-import type { MessageOperationOptions } from "../common/types.js";
+import type { MessageStorage, MessageOperationOptions } from "../common/types.js";
 
 /** Dependencies and policies for a NIP-04 inbox */
 export interface LegacyMessagesClientOptions {
@@ -21,13 +21,19 @@ export interface LegacyMessagesClientOptions {
   cacheRequest?: CacheRequest;
   /** The plaintext cache keyed by kind-4 event ID */
   decryptionCache?: EncryptedContentCache;
+  /** The optional plaintext draft storage, separated by account and protocol by the application */
+  draftStorage?: MessageStorage;
+  /** The optional unpublished event storage, separated by account and protocol by the application */
+  publicationStorage?: MessageStorage;
+  /** The optional index of known correspondents, keyed by the owner pubkey */
+  conversationStorage?: MessageStorage;
   /** Whether to decrypt arriving events with the signer (default false) */
   autoUnlock?: boolean;
   /** The fallback relays for reading and delivery */
   fallbackRelays?: string[] | Observable<string[]>;
   /** The relay discovery and finite read timeout in milliseconds (default 4000) */
   timeout?: number;
-  /** The timeout for one decryption in milliseconds (default 60000) */
+  /** The timeout for one decryption including its signer queue wait, in milliseconds (default 60000) */
   decryptionTimeout?: number;
   /** The send preparation timeout in milliseconds (default 120000) */
   actionTimeout?: number;
@@ -47,8 +53,6 @@ export interface LegacyMessageSendRequest {
   recipient: string;
   /** The unmodified plaintext */
   content: string;
-  /** The retry identity within this conversation and operation scope */
-  clientMessageId?: string;
   /** The parent kind-4 event ID */
   replyTo?: string;
   /** The absolute event expiration timestamp in seconds */
@@ -79,6 +83,8 @@ export interface PreparedLegacyMessage {
 
 /** A finite NIP-04 history range */
 export interface LegacyMessageHistoryOptions extends MessageOperationOptions {
+  /** Whether sync follows mailbox relay changes until unsubscribed, default true; loadHistory always uses false */
+  followRelays?: boolean;
   /** The inclusive starting timestamp, default zero */
   since?: number;
   /** The inclusive ending timestamp */

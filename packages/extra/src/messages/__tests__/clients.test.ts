@@ -22,6 +22,7 @@ import {
   of,
   Subject,
   Subscription,
+  toArray,
 } from "rxjs";
 import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +71,140 @@ function own<T extends { dispose(): void }>(client: T): T {
 }
 
 describe("standalone messaging clients", () => {
+  it.each(["legacy", "wrapped"] as const)("reads empty %s history without network work", async (protocol) => {
+    const { options, pool } = setup();
+    const client = own(protocol === "legacy" ? new LegacyMessagesClient(options) : new WrappedMessagesClient(options));
+
+    const messages = await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()));
+
+    expect(messages).toEqual([]);
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+  });
+
+  it.each(["legacy", "wrapped"] as const)("reads new %s store additions without network work", async (protocol) => {
+    const { options, pool, eventStore } = setup();
+    const client = own(protocol === "legacy" ? new LegacyMessagesClient(options) : new WrappedMessagesClient(options));
+    let event: NostrEvent;
+    if (protocol === "legacy") {
+      event = await LegacyMessageFactory.create(alice, "stored arrival").sign(bobSigner);
+    } else {
+      const template = await WrappedMessageFactory.create(alice, "stored arrival").as(bobSigner).stamp();
+      const rumor = { ...template, id: getEventHash(template) };
+      const gift = await GiftWrapFactory.create(bobSigner, alice, rumor);
+      event = gift;
+    }
+
+    const message = firstValueFrom(client.readMessages$());
+    eventStore.add(event);
+    await expect(message).resolves.toBeDefined();
+
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+  });
+
+  it("owns timeline sessions by subscription and conversation generation", async () => {
+    const { options } = setup();
+    let activeRequests = 0;
+    const request = vi.fn(
+      () =>
+        new Observable<NostrEvent>(() => {
+          activeRequests++;
+          return () => {
+            activeRequests--;
+          };
+        }),
+    );
+    options.pool.request = request;
+    const client = own(new LegacyMessagesClient(options));
+    const conversation = client.conversation(bob);
+    const loader = conversation.createTimelineLoader({ prefetch: 0 });
+    const status = loader.status$.subscribe();
+    expect(request).not.toHaveBeenCalled();
+
+    const first = loader({ since: 10, until: 20 }).subscribe();
+    const second = conversation.createTimelineLoader()({ since: 30, until: 40 }).subscribe();
+    await vi.waitFor(() => expect(activeRequests).toBeGreaterThan(0));
+    const bothSessions = activeRequests;
+    first.unsubscribe();
+    await vi.waitFor(() => expect(activeRequests).toBeGreaterThan(0));
+    expect(activeRequests).toBeLessThan(bothSessions);
+
+    conversation.stop();
+    expect(second.closed).toBe(true);
+    expect(activeRequests).toBe(0);
+    const restarted = loader({ since: 50, until: 60 }).subscribe();
+    await vi.waitFor(() => expect(activeRequests).toBeGreaterThan(0));
+    conversation.dispose();
+    expect(restarted.closed).toBe(true);
+    expect(activeRequests).toBe(0);
+    expect(() => conversation.createTimelineLoader()).toThrow("Conversation disposed");
+    status.unsubscribe();
+  });
+
+  it("loads scoped timeline cache windows into the shared conversation store", async () => {
+    const { options, eventStore } = setup();
+    const message = await LegacyMessageFactory.create(alice, "cached window").sign(bobSigner);
+    const cacheRequest = vi.fn(() => [message]);
+    options.pool.request = vi.fn(() => EMPTY);
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest }));
+    const conversation = client.conversation(bob);
+    const loader = conversation.createTimelineLoader({ prefetch: 0 });
+    const session = loader({ since: message.created_at - 10, until: message.created_at + 10 }).subscribe();
+
+    await vi.waitFor(() => expect(eventStore.hasEvent(message.id)).toBe(true));
+    expect(await firstValueFrom(conversation.messages$)).toEqual([message]);
+    for (const [filters] of cacheRequest.mock.calls as unknown as [Filter[]][]) {
+      for (const filter of filters) {
+        expect(filter.kinds).toEqual([kinds.EncryptedDirectMessage]);
+        expect(filter.authors).toEqual(filter["#p"]?.includes(alice) ? [bob] : [alice]);
+        expect(filter.limit).toBe(100);
+        expect(filter.until).toBeLessThanOrEqual(message.created_at + 10);
+      }
+    }
+    session.unsubscribe();
+  });
+
+  it("follows mailbox relay updates during sync without restarting unchanged relays", async () => {
+    const { options, pool, eventStore } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    const conversation = client.conversation(bob);
+    const session = conversation.sync$({ since: 100, until: 200 }).subscribe();
+    await vi.waitFor(() => expect(pool.relay).toHaveBeenCalledWith("wss://dm.test/"));
+    const originalRequests = pool.relay.mock.calls.filter(([url]) => url === "wss://dm.test/").length;
+
+    eventStore.add(
+      finalizeEvent(
+        {
+          kind: kinds.DirectMessageRelaysList,
+          created_at: unixNow() + 1,
+          tags: [
+            ["relay", "wss://dm.test/"],
+            ["relay", "wss://added.test/"],
+          ],
+          content: "",
+        },
+        aliceKey,
+      ),
+    );
+    await vi.waitFor(() => expect(pool.relay).toHaveBeenCalledWith("wss://added.test/"));
+    expect(pool.relay.mock.calls.filter(([url]) => url === "wss://dm.test/")).toHaveLength(originalRequests);
+    expect(session.closed).toBe(false);
+    conversation.stop();
+    expect(session.closed).toBe(true);
+  });
+
+  it("can start live conversation loading without initial history sync", async () => {
+    const { options, pool } = setup();
+    const client = own(new LegacyMessagesClient(options));
+    await client.conversation(bob).start({ history: false });
+    expect(pool.subscription).toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+  });
+
   it("keeps wrapped conversation stores local, scoped, deduplicated, and reactive", async () => {
     const { options, eventStore, pool } = setup();
     const client = own(new WrappedMessagesClient(options));
@@ -191,7 +326,7 @@ describe("standalone messaging clients", () => {
       const createdAt = unixNow() - 10;
       const incoming = finalizeEvent(
         {
-          kind: 4,
+          kind: kinds.EncryptedDirectMessage,
           created_at: createdAt,
           tags: [
             ["p", alice],
@@ -224,7 +359,7 @@ describe("standalone messaging clients", () => {
     const createdAt = unixNow() - 10;
     const expiring = finalizeEvent(
       {
-        kind: 4,
+        kind: kinds.EncryptedDirectMessage,
         created_at: createdAt,
         content: "encrypted",
         tags: [
@@ -240,7 +375,7 @@ describe("standalone messaging clients", () => {
 
     const permanent = finalizeEvent(
       {
-        kind: 4,
+        kind: kinds.EncryptedDirectMessage,
         created_at: createdAt + 1,
         content: "encrypted",
         tags: [["p", alice]],
@@ -267,7 +402,7 @@ describe("standalone messaging clients", () => {
     await vi.waitFor(() => expect(request).toHaveBeenCalled());
     expect(await firstValueFrom(client.status$)).toBe("idle");
     for (const [, filter] of pool.subscription.mock.calls as unknown as [string[], Filter][]) {
-      expect(filter.kinds).toEqual([4]);
+      expect(filter.kinds).toEqual([kinds.EncryptedDirectMessage]);
       expect([[alice], [bob]]).toContainEqual(filter.authors);
       expect(filter["#p"]).toEqual(filter.authors?.[0] === alice ? [bob] : [alice]);
     }
@@ -286,8 +421,8 @@ describe("standalone messaging clients", () => {
 
     await conversation.loadHistory({ since: 100, until: 200 });
     expect(cacheRequest).toHaveBeenLastCalledWith([
-      { kinds: [4], authors: [bob], "#p": [alice], since: 100, until: 200 },
-      { kinds: [4], authors: [alice], "#p": [bob], since: 100, until: 200 },
+      { kinds: [kinds.EncryptedDirectMessage], authors: [bob], "#p": [alice], since: 100, until: 200 },
+      { kinds: [kinds.EncryptedDirectMessage], authors: [alice], "#p": [bob], since: 100, until: 200 },
     ]);
   });
 
@@ -385,11 +520,13 @@ describe("standalone messaging clients", () => {
     const event = await client.send({ recipient: bob, content: "native legacy" });
 
     expect(event).toBe(pool.publish.mock.calls[0][1]);
-    expect(event.kind).toBe(4);
+    expect(event.kind).toBe(kinds.EncryptedDirectMessage);
     expect(event.sig).toHaveLength(128);
     expect(event.content).not.toBe("native legacy");
     expect(getEncryptedContent(event)).toBe("native legacy");
-    expect(await firstValueFrom(client.readMessages$({ history: true }))).toBe(event);
+    expect(await lastValueFrom(client.readMessages$({ history: true }))).toBe(event);
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
     const reply = await client.reply(event, "reply");
     expect(reply.tags).toContainEqual(["p", bob]);
     expect(reply.tags).toContainEqual(["e", event.id]);
@@ -400,16 +537,18 @@ describe("standalone messaging clients", () => {
     const client = own(new WrappedMessagesClient(options));
     const rumor = await client.send({ recipients: [bob], content: "native wrapped" });
 
-    expect(rumor).toMatchObject({ kind: 14, pubkey: alice, content: "native wrapped" });
+    expect(rumor).toMatchObject({ kind: kinds.PrivateDirectMessage, pubkey: alice, content: "native wrapped" });
     expect(rumor).not.toHaveProperty("sig");
     expect(rumor).not.toHaveProperty("senderPubkey");
     const ownEnvelope = pool.publish.mock.calls
       .map(([, event]) => event)
       .find((event) => event.tags.some((tag) => tag[0] === "p" && tag[1] === alice))!;
     eventStore.add(ownEnvelope);
-    const restored = await firstValueFrom(client.readMessages$({ history: true }));
+    const restored = await lastValueFrom(client.readMessages$({ history: true }));
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
     expect(restored).toEqual(rumor);
-    expect([...eventStore.getByFilters({ kinds: [14, 13] })]).toEqual([]);
+    expect([...eventStore.getByFilters({ kinds: [kinds.PrivateDirectMessage, kinds.Seal] })]).toEqual([]);
   });
 
   it("starts without signer prompts and stops/restarts owned subscriptions", async () => {
@@ -501,7 +640,7 @@ describe("standalone messaging clients", () => {
         expect.arrayContaining([
           expect.arrayContaining([
             expect.objectContaining({
-              kinds: [4],
+              kinds: [kinds.EncryptedDirectMessage],
               authors: [author],
               "#p": [recipient],
               since: 1_000_000,
@@ -546,12 +685,15 @@ describe("standalone messaging clients", () => {
     expect(request.mock.calls[0]).toEqual(
       expect.arrayContaining([expect.arrayContaining([expect.objectContaining({ since: 1_000_000 - 172800 })])]),
     );
-    expect([...eventStore.getByFilters({ kinds: [14, 13] })]).toEqual([]);
+    expect([...eventStore.getByFilters({ kinds: [kinds.PrivateDirectMessage, kinds.Seal] })]).toEqual([]);
   });
 
   it("reports a bad decryption and continues to later messages", async () => {
     const { options, eventStore } = setup();
-    const bad = finalizeEvent({ kind: 4, tags: [["p", alice]], content: "invalid", created_at: unixNow() }, bobKey);
+    const bad = finalizeEvent(
+      { kind: kinds.EncryptedDirectMessage, tags: [["p", alice]], content: "invalid", created_at: unixNow() },
+      bobKey,
+    );
     const good = await LegacyMessageFactory.create(alice, "good").sign(bobSigner);
     eventStore.add(bad);
     eventStore.add(JSON.parse(JSON.stringify(good)));
@@ -646,7 +788,7 @@ describe("standalone messaging clients", () => {
     subscriptions.add(conversation.errors$.subscribe((error) => conversationErrors.push(error)));
     const signerCalls = vi.spyOn(aliceSigner, "signEvent");
     try {
-      const prepared = await conversation.prepareSend({ content: "retry", clientMessageId: "retry" });
+      const prepared = await conversation.prepareSend({ content: "retry" });
       expect(clientPrepare).not.toHaveBeenCalled();
       expect(pool.publish).not.toHaveBeenCalled();
       expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
@@ -658,7 +800,7 @@ describe("standalone messaging clients", () => {
       expect(clientErrors).toHaveLength(1);
       expect(conversationErrors).toEqual(clientErrors);
 
-      const retried = await client.prepareSend({ recipient: bob, content: "retry", clientMessageId: "retry" });
+      const [retried] = await conversation.loadPublications();
       expect(retried.message).toBe(prepared.message);
       await retried.publish();
       await prepared.publish();
@@ -670,15 +812,32 @@ describe("standalone messaging clients", () => {
     }
   });
 
-  it("scopes retry identities to each conversation", async () => {
+  it.each([LegacyMessagesClient, WrappedMessagesClient])(
+    "%s keeps completed prepared handles usable after the preparation signal ends",
+    async (Client) => {
+      const { options } = setup();
+      const client = own(new Client(options));
+      const controller = new AbortController();
+      const prepared =
+        client instanceof LegacyMessagesClient
+          ? await client.prepareSend({ recipient: bob, content: "prepared" }, { signal: controller.signal })
+          : await client.prepareSend({ recipients: [bob], content: "prepared" }, { signal: controller.signal });
+      controller.abort();
+      expect((await prepared.publish()).id).toBe(prepared.message.id);
+    },
+  );
+
+  it("prepares a new event each time, even for identical plaintext", async () => {
     const { options } = setup();
     const client = own(new LegacyMessagesClient(options));
-    const bobMessage = await client.prepareSend({ recipient: bob, content: "bob", clientMessageId: "same" });
-    const selfMessage = await client.prepareSend({ recipient: alice, content: "self", clientMessageId: "same" });
-    expect(bobMessage.message.id).not.toBe(selfMessage.message.id);
-    await expect(client.conversation(bob).prepareSend({ content: "changed", clientMessageId: "same" })).rejects.toThrow(
-      "another message",
-    );
+    const request = { recipient: bob, content: "same content" };
+    const first = await client.prepareSend(request);
+    const second = await client.prepareSend(request);
+    expect(first.message.id).not.toBe(second.message.id);
+    expect((await client.conversation(bob).loadPublications()).map((prepared) => prepared.message.id)).toEqual([
+      first.message.id,
+      second.message.id,
+    ]);
   });
 
   it("aggregates overlapping publications and cancels only the stopped conversation", async () => {
@@ -716,7 +875,7 @@ describe("standalone messaging clients", () => {
     const { options } = setup();
     const client = own(new LegacyMessagesClient(options));
     const parent = finalizeEvent(
-      { kind: 4, created_at: unixNow(), content: "encrypted", tags: [["p", alice]] },
+      { kind: kinds.EncryptedDirectMessage, created_at: unixNow(), content: "encrypted", tags: [["p", alice]] },
       bobKey,
     );
     const conversation = client.conversation(bob);
@@ -729,18 +888,18 @@ describe("standalone messaging clients", () => {
     await expect(client.conversation(alice).reply(parent, "wrong conversation")).rejects.toThrow("does not belong");
   });
 
-  it("reuses legacy client IDs and exposes outgoing-only conversations", async () => {
+  it("retries prepared events and exposes outgoing-only conversations", async () => {
     const { options, pool } = setup();
     const client = own(new LegacyMessagesClient(options));
-    const request = { recipient: bob, content: "hello", clientMessageId: "retry" };
+    const request = { recipient: bob, content: "hello" };
     pool.publish.mockResolvedValueOnce([{ from: "wss://dm.test/", ok: false }]);
-    await expect(client.send(request)).rejects.toThrow();
-    await client.send(request);
-    await client.send(request);
+    const prepared = await client.prepareSend(request);
+    await expect(prepared.publish()).rejects.toThrow();
+    await prepared.publish();
+    await prepared.publish();
     expect(pool.publish).toHaveBeenCalledTimes(2);
     expect(pool.publish.mock.calls[0][1]).toBe(pool.publish.mock.calls[1][1]);
     expect((await firstValueFrom(client.conversations$))[0].participants.sort()).toEqual([alice, bob].sort());
-    await expect(client.send({ ...request, content: "changed" })).rejects.toThrow("another message");
   });
 
   it.each([LegacyMessagesClient, WrappedMessagesClient])(

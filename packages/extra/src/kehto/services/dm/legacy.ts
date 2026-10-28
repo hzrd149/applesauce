@@ -1,10 +1,13 @@
+import { DmPreparationCache } from "./preparation-cache.js";
+import type { PreparedLegacyMessage } from "../../../messages/index.js";
 import { createClientProtocol } from "./client-protocol.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import type { DmSendRequest } from "@kehto/services";
 import { getConversationParticipants } from "applesauce-common/helpers";
-import { getEncryptedContent, type NostrEvent } from "applesauce-core/helpers";
-import { defer, map } from "rxjs";
+import { getEncryptedContent, isHexKey, kinds, unixNow, type NostrEvent } from "applesauce-core/helpers";
+import { concat, defer, finalize, ignoreElements, map, merge, NEVER, share } from "rxjs";
 import { LegacyMessagesClient, type LegacyMessageSendRequest } from "../../../messages/index.js";
+import { approveMessage } from "./approval.js";
 import type { DmProtocolMessage } from "./types.js";
 
 /** Creates a NIP-04 protocol backed by an account-scoped legacy messages client */
@@ -15,8 +18,8 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
       ...config,
       pubkey: account.pubkey,
       signer: account.signer,
-      approve: config.approve ? ({ template, scope }) => config.approve!({ template, windowId: scope }) : undefined,
     });
+    const preparations = new DmPreparationCache<PreparedLegacyMessage>();
     const normalize = (event: NostrEvent): DmProtocolMessage => {
       const content = getEncryptedContent(event);
       if (content === undefined) throw new Error("Legacy message has not been decrypted");
@@ -30,16 +33,20 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
       };
     };
     const translateRequest = (request: DmSendRequest): LegacyMessageSendRequest => {
-      if (!request.recipients.length || request.recipients.some((recipient) => !/^[0-9a-f]{64}$/.test(recipient)))
+      if (!request.recipients.length || request.recipients.some((recipient) => !isHexKey(recipient)))
         throw new Error("Invalid recipients");
       const peers = [...new Set(request.recipients.filter((recipient) => recipient !== account.pubkey))];
       if (peers.length > 1) throw new Error("Legacy messages require one recipient");
       return {
         recipient: peers[0] ?? account.pubkey,
         content: request.content,
-        clientMessageId: request.clientMessageId,
       };
     };
+    // Kehto subscriptions own loading; message readers only observe the store.
+    const liveLoading$ = concat(defer(() => client.start()).pipe(ignoreElements()), NEVER).pipe(
+      finalize(() => client.stop()),
+      share(),
+    );
     return {
       ownerPubkey: account.pubkey,
       discover$: (request, context) =>
@@ -56,19 +63,39 @@ export function createLegacyMessageProtocol(config: NostrMessageProtocolOptions)
             ],
           };
         }),
-      messages$: (context) => client.readMessages$(context).pipe(map(normalize)),
+      messages$: (context) =>
+        (context.history
+          ? concat(
+              defer(() => client.loadHistory({ signal: context.signal })).pipe(ignoreElements()),
+              client.readMessages$(context),
+            )
+          : merge(client.readMessages$(context), liveLoading$)
+        ).pipe(map(normalize)),
       prepareSend$: (request, context) =>
         defer(async () => {
-          const prepared = await client.prepareSend(translateRequest(request), {
-            signal: context.signal,
-            scope: context.windowId,
+          const legacyRequest = translateRequest(request);
+          const prepared = await preparations.prepare(request, context.windowId, async () => {
+            const template = {
+              kind: kinds.EncryptedDirectMessage,
+              created_at: unixNow(),
+              content: legacyRequest.content,
+              tags: [["p", legacyRequest.recipient]],
+            };
+            await approveMessage(config, template, context);
+
+            return client.prepareSend(legacyRequest, {
+              signal: context.signal,
+            });
           });
           return {
             message: normalize(prepared.message),
             publish$: defer(() => prepared.publish({ signal: context.signal })).pipe(map(normalize)),
           };
         }),
-      dispose: () => client.dispose(),
+      dispose: () => {
+        preparations.clear();
+        client.dispose();
+      },
     };
   });
 }

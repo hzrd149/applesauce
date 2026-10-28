@@ -1,3 +1,5 @@
+import { mapEventsToStore } from "applesauce-core/observable";
+import { logger } from "applesauce-core";
 import { castUser } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
@@ -9,6 +11,7 @@ import {
 } from "applesauce-common/helpers";
 import { WrappedMessagesGroups, WrappedMessagesModel } from "applesauce-common/models";
 import {
+  restoreEncryptedContent,
   kinds,
   mergeRelaySets,
   notifyEventUpdate,
@@ -45,7 +48,6 @@ import {
   tap,
   timeout,
 } from "rxjs";
-import { restoreMessageContent } from "../common/encryption.js";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
 import { configured$, settle } from "../common/helpers.js";
 import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
@@ -60,54 +62,76 @@ import type {
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
 
+const log = logger.extend("WrappedMessages");
+
 const TWO_DAYS = 2 * 24 * 60 * 60;
 
 /** An account-scoped NIP-17 inbox with per-recipient gift wraps and resumable publication */
 export class WrappedMessagesClient {
   /** The immutable owner pubkey */
   readonly pubkey: string;
+
   /** The shared event store containing encrypted envelopes */
   readonly eventStore;
+
   /** The shared relay pool */
   readonly pool;
+
   /** The account signer */
   readonly signer;
+
   /** The validated, deduplicated kind-14 rumors */
   readonly messages$: Observable<Rumor[]>;
+
   /** The conversations discovered after decryption */
   readonly conversations$: Observable<{ id: string; participants: string[]; lastMessage: Rumor }[]>;
+
   /** The owner's read relays */
   readonly relays$: Observable<string[]>;
+
   /** The inbox relay connection states */
   readonly relayStatus$: Observable<MessagesRelayStatus[]>;
+
   /** The owner's encrypted gift wraps */
   readonly giftWraps$: Observable<NostrEvent[]>;
+
   /** The pending, unlocked and failed decryption counts */
   readonly decryptionState$;
 
   private readonly lifecycle = new BehaviorSubject<"idle" | "loading" | "ready" | "disposed">("idle");
+
   /** The background loading lifecycle, independent of decryption */
   readonly status$ = this.lifecycle.asObservable();
+
   private readonly errors = new Subject<MessageClientError>();
+
   /** Nonterminal failures from individual operations */
   readonly errors$ = this.errors.asObservable();
+
   private readonly failed = new BehaviorSubject<ReadonlySet<string>>(new Set());
   private readonly pending = new BehaviorSubject<number>(0);
   private readonly autoUnlock = new BehaviorSubject(false);
   private readonly destroyed = new ReplaySubject<void>(1);
   private readonly syncState = new BehaviorSubject<WrappedMessagesSyncStatus | undefined>(undefined);
+
   /** The latest background history reconciliation progress */
   readonly syncStatus$ = this.syncState.asObservable();
+
   private readonly sending = new BehaviorSubject(0);
+
   /** Whether one or more send operations are in progress */
   readonly busy$ = this.sending.pipe(map((count) => count > 0));
+
   private readonly publications = new BehaviorSubject<
     Record<string, "prepared" | "publishing" | "accepted" | "failed">
   >({});
+
   /** The publication states of messages sent during this client lifetime */
   readonly publications$ = this.publications.asObservable();
+
   private readonly session: WrappedMessageSession;
   private readonly authentication: MessageAuthentication;
+
   /** The pending relay authentication requests */
   readonly authRequests$;
   private readonly inboxFilter: Filter;
@@ -143,15 +167,20 @@ export class WrappedMessagesClient {
       // Stable normalized sets keep unrelated store updates from restarting network work.
       map((relays) => relays.sort()),
       distinctUntilChanged((a, b) => a.join() === b.join()),
+      // Share selection across live loading, history sync, and relay status until unused.
       shareReplay({ bufferSize: 1, refCount: true }),
     );
     this.inboxFilter = { kinds: [kinds.GiftWrap], "#p": [this.pubkey] };
+    // Unlocking changes cached envelope contents without replacing the stored event.
     this.giftWraps$ = this.eventStore.timeline(this.inboxFilter).pipe(watchEventsUpdates(this.eventStore));
     this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
       map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
     );
+
     this.messages$ = this.eventStore.model(WrappedMessagesModel, this.pubkey);
     this.conversations$ = this.eventStore.model(WrappedMessagesGroups, this.pubkey);
+
+    // Derive counts from envelopes; rumor models expose only successfully decrypted messages.
     this.decryptionState$ = combineLatest([this.giftWraps$, this.failed, this.pending]).pipe(
       map(([events, failed, pending]) => ({
         total: events.length,
@@ -180,6 +209,7 @@ export class WrappedMessagesClient {
     this.assertActive();
     const signal = options.signal ? AbortSignal.any([this.generation.signal, options.signal]) : this.generation.signal;
     signal.throwIfAborted();
+
     return { ...options, signal };
   }
 
@@ -204,9 +234,10 @@ export class WrappedMessagesClient {
     const id = createConversationIdentifier(this.pubkey, getConversationParticipants(participants));
     let conversation = this.conversationInstances.get(id);
     if (!conversation || conversation.isDisposed) {
-      conversation = new WrappedConversation(this, id);
+      conversation = new WrappedConversation(this, id, this.options.draftStorage);
       this.conversationInstances.set(id, conversation);
     }
+
     return conversation;
   }
 
@@ -214,12 +245,16 @@ export class WrappedMessagesClient {
   async start(): Promise<void> {
     this.assertActive();
     if (this.background) return;
+
     const background = (this.background = new Subscription());
     const context = this.context();
     this.lifecycle.next("loading");
+
     try {
       await this.hydrate(context.signal);
       if (context.signal.aborted || background.closed) return;
+
+      // Restore cached plaintext in order; one failed event must not stop later restores.
       background.add(
         this.eventStore
           .filters(this.inboxFilter)
@@ -236,6 +271,8 @@ export class WrappedMessagesClient {
           )
           .subscribe(),
       );
+
+      // Disabling auto-unlock unsubscribes the current queue; signer work runs sequentially.
       background.add(
         this.autoUnlock
           .pipe(
@@ -260,6 +297,7 @@ export class WrappedMessagesClient {
       background.add(
         this.relays$
           .pipe(
+            // Replace the live subscription when the selected inbox relays change.
             switchMap((relays) =>
               relays.length
                 ? withMessageAuth$(this.options, (auth) =>
@@ -273,6 +311,7 @@ export class WrappedMessagesClient {
                       },
                     ),
                   ).pipe(
+                    mapEventsToStore(this.eventStore),
                     catchError((error) => {
                       this.report("read", error);
                       return EMPTY;
@@ -283,6 +322,8 @@ export class WrappedMessagesClient {
           )
           .subscribe(),
       );
+
+      // Reconcile history again when relay selection changes, replacing the previous sync.
       background.add(
         this.relays$
           .pipe(
@@ -314,12 +355,14 @@ export class WrappedMessagesClient {
     this.generation = new AbortController();
     this.background?.unsubscribe();
     this.background = undefined;
+
     if (!this.disposed) this.lifecycle.next("idle");
   }
 
   /** Permanently releases this client's subscriptions and retained envelopes */
   dispose(): void {
     if (this.disposed) return;
+
     this.disposed = true;
     this.stop();
     this.session.close();
@@ -366,9 +409,17 @@ export class WrappedMessagesClient {
   }
 
   private async restore(event: NostrEvent) {
-    await restoreMessageContent(event, this.options.decryptionCache);
+    if (this.options.decryptionCache) {
+      await restoreEncryptedContent(event, this.options.decryptionCache).catch((error) => {
+        log("Failed to restore encrypted content for %s", event.id, error);
+      });
+    }
     const seal = getGiftWrapSeal(event);
-    if (seal) await restoreMessageContent(seal, this.options.decryptionCache);
+    if (seal && this.options.decryptionCache) {
+      await restoreEncryptedContent(seal, this.options.decryptionCache).catch((error) => {
+        log("Failed to restore encrypted content for %s", seal.id, error);
+      });
+    }
     if (getGiftWrapRumor(event)) notifyEventUpdate(event);
 
     // Restored plaintext must also contribute to optional conversation lifetime mirroring.
@@ -381,10 +432,12 @@ export class WrappedMessagesClient {
   async unlock(event?: NostrEvent, options: MessageOperationOptions = {}): Promise<void> {
     const context = this.context(options);
     const events = event ? [event] : [...this.eventStore.getByFilters(this.inboxFilter)];
+
     for (const item of events) {
       context.signal.throwIfAborted();
       if (!event && (isGiftWrapUnlocked(item) || this.failed.value.has(item.id))) continue;
       this.pending.next(this.pending.value + 1);
+
       try {
         await firstValueFrom(this.session.read$(item).pipe(takeUntil(fromEvent(context.signal, "abort"))), {
           defaultValue: undefined,
@@ -420,6 +473,7 @@ export class WrappedMessagesClient {
         context.signal.throwIfAborted();
         return settle(this.relays$.pipe(filter((relays) => relays.length > 0)), [], this.options.timeout ?? 4000);
       }).pipe(
+        // Resolve cache and relay selection before starting finite network reconciliation.
         switchMap((relays) => {
           const filter: Filter = { ...this.inboxFilter, since: Math.max(0, (options.since ?? 0) - TWO_DAYS) };
           if (options.until !== undefined) filter.until = options.until;
@@ -444,7 +498,7 @@ export class WrappedMessagesClient {
     return lastValueFrom(this.sync$(options));
   }
 
-  /** Reads decrypted messages with a finite history or live lifetime */
+  /** Reads decrypted messages from a stored snapshot or watches the store for additions */
   readMessages$(options: MessageOperationOptions & { history?: boolean } = {}): Observable<Rumor> {
     return defer(() => {
       const context = this.context(options);
@@ -469,6 +523,7 @@ export class WrappedMessagesClient {
     options: MessageOperationOptions = {},
   ): Promise<PreparedWrappedMessage> {
     const context = this.context(options);
+    const generation = this.generation.signal;
     if (!this.signer?.nip44) throw new Error("Signer does not support this message protocol");
     const signerPubkey = await firstValueFrom(
       defer(() => this.signer!.getPublicKey()).pipe(
@@ -491,9 +546,10 @@ export class WrappedMessagesClient {
       },
       publish: async (publishOptions = {}) => {
         const publication = this.context(publishOptions);
-        context.signal.throwIfAborted();
+        generation.throwIfAborted();
         this.sending.next(this.sending.value + 1);
         setState("publishing");
+
         try {
           const message = await firstValueFrom(
             prepared.publish$(publication).pipe(takeUntil(fromEvent(publication.signal, "abort"))),

@@ -4,7 +4,7 @@ import { finalizeEvent, kinds, unixNow } from "applesauce-core/helpers";
 import { getPublicKey } from "applesauce-core/helpers/keys";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, Subject } from "rxjs";
+import { EMPTY, BehaviorSubject, Subject } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createKehtoShellAdapter } from "../../index.js";
 import type { KehtoContext } from "../../types.js";
@@ -42,6 +42,7 @@ function createTestDmOptions(options: NostrMessageProtocolOptions & { getWindowI
 
 function fakePool() {
   return {
+    relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
     subscription: vi.fn(() => new Subject()),
     request: vi.fn(),
     publish: vi.fn(async (relays: string[]) => relays.map((from) => ({ from, ok: true }))),
@@ -121,6 +122,7 @@ describe("remaining write services", () => {
     event(aliceKey, kinds.DirectMessageRelaysList, [["relay", "wss://dm.relay.com/"]]);
     const dm = createTestDmOptions(await create({ signer: signer$ })).adapter;
     const live = await dm.subscribe({}, vi.fn());
+    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
     const relayMessages = pool.subscription.mock.results.at(-1)!.value;
     expect(relayMessages.observed).toBe(true);
 

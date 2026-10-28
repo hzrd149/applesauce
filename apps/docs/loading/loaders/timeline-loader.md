@@ -159,6 +159,31 @@ windows$
 
 `loadBlocksFromRelay`, `loadBlocksFromCache`, `loadBlocksFromFilterMap`, `loadBlocksFromOutboxMap`, and `loadBlocksFromOutboxMapCache` use the same window scheduler. Direct operators emit boundary and cross-relay duplicates; use an EventStore for rendering.
 
+### Relay-specific filters
+
+Use `createFilterMapTimelineLoader` when different relays serve different filters, such as incoming and outgoing message mailboxes:
+
+```ts
+import { createFilterMapTimelineLoader, type FilterMap } from "applesauce-loaders/loaders";
+
+const routes$ = new BehaviorSubject<FilterMap>({
+  "wss://inbox.example": [incomingFilter],
+  "wss://outbox.example": [outgoingFilter],
+});
+const loader = createFilterMapTimelineLoader(pool, routes$, {
+  eventStore,
+  cache: cacheRequest,
+  cacheFilters: [incomingFilter, outgoingFilter],
+});
+const session = loader(windows$).subscribe();
+```
+
+The map accepts a static value or an observable. Route changes load added relays for the current window, cancel removed routes, and preserve unchanged coverage. Pass the observable directly instead of replacing the loader with `switchMap`.
+
+When supplying `cache`, also supply `cacheFilters`; these may be static or observable and remain independent of relay availability. Cached messages can load even when the relay map is empty.
+
+`status$` observes the latest coverage without starting or retaining network work. Use one loader per independent viewport, share its returned loading observable between consumers, and unsubscribe the loading session when leaving the view.
+
 ## Migrating page-based consumers
 
 `loader()`, numeric timestamps, and infinite bounds are no longer supported. The directional block operators and deprecated `cacheTimelineLoader` / `relaysTimelineLoader` wrappers have been removed.

@@ -1,11 +1,9 @@
 import type { SyncAuthContext } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
-import { EventStore } from "applesauce-core";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, firstValueFrom, NEVER, Observable } from "rxjs";
+import { BehaviorSubject, firstValueFrom, NEVER } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
-import { subscribeThroughStore } from "../common/loading.js";
 
 const signer = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const pubkey = await signer.getPublicKey();
@@ -53,33 +51,6 @@ function setup(accountSigner = signer) {
 }
 
 describe("message authentication", () => {
-  it("pauses the bounded history window while authentication is pending", async () => {
-    vi.useFakeTimers();
-    const { tracker, relay, context, options } = setup();
-    const pool = {
-      subscription: (
-        _relays: string[],
-        _filters: unknown,
-        auth: { onAuthRequired: (context: SyncAuthContext) => Promise<void> },
-      ) =>
-        new Observable(() => {
-          void auth.onAuthRequired(context);
-        }),
-    } as unknown as RelayPool;
-    const events = vi.fn();
-    const subscription = subscribeThroughStore(
-      { ...options, pool, eventStore: new EventStore(), timeout: 10 },
-      [relay.url],
-      [],
-    ).subscribe(events);
-    cleanup.push(() => subscription.unsubscribe());
-    await vi.advanceTimersByTimeAsync(100);
-    expect(events).not.toHaveBeenCalled();
-    await tracker.authenticate(relay.url);
-    await vi.advanceTimersByTimeAsync(10);
-    expect(events).toHaveBeenCalledWith("EOSE");
-  });
-
   it("deduplicates relay prompts and preserves other operations on teardown", async () => {
     const { tracker, relay, callback, open } = setup();
     const first = open();

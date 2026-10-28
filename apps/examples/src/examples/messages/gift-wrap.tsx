@@ -24,7 +24,21 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
-import { BehaviorSubject, combineLatest, concat, defer, finalize, map, NEVER, of, shareReplay, switchMap } from "rxjs";
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  defer,
+  EMPTY,
+  finalize,
+  ignoreElements,
+  map,
+  merge,
+  NEVER,
+  of,
+  shareReplay,
+  switchMap,
+} from "rxjs";
 
 import JsonBlock from "../../components/json-block";
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
@@ -63,6 +77,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
     if (!signer || !user || !storage) return of(undefined);
 
     return defer(() => {
+      const drafts = storage.createInstance({ name: `gift-wrap:${user.pubkey}`, storeName: "drafts" });
       const client = new WrappedMessagesClient({
         pubkey: user.pubkey,
         signer,
@@ -70,11 +85,25 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
         eventStore,
         cacheRequest,
         decryptionCache: storage,
+        draftStorage: {
+          getItem: (key) => drafts.getItem(key),
+          setItem: async (key, value) => {
+            if (!(await drafts.setItem(key, value))) throw new Error("Failed to save draft");
+          },
+          removeItem: (key) => drafts.removeItem(key),
+        },
         authTimeout: false,
       });
 
-      return defer(() => client.start()).pipe(
-        switchMap(() => concat(of(client), NEVER)),
+      return merge(
+        of(client),
+        defer(() => client.start()).pipe(
+          ignoreElements(),
+          // Startup failures are reported by the client's errors$ stream.
+          catchError(() => EMPTY),
+        ),
+        NEVER,
+      ).pipe(
         finalize(() => {
           client.dispose();
         }),
@@ -83,14 +112,6 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: true }),
 );
-
-/** Keeps a local conversation alive while its pane is selected */
-function conversation$(client: WrappedMessagesClient, id: string) {
-  return defer(() => {
-    const conversation = client.conversation(id);
-    return concat(of(conversation), NEVER).pipe(finalize(() => conversation.dispose()));
-  });
-}
 
 /** Returns the start of a history range, or undefined for the client's recent sync */
 function getHistorySince(range: HistoryRange) {
@@ -153,6 +174,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function InboxStatus({ client }: { client: WrappedMessagesClient }) {
+  const lifecycle = use$(client.status$);
   const sync = use$(client.syncStatus$);
   const stats = use$(client.decryptionState$);
   const relays = use$(client.relays$);
@@ -164,8 +186,10 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
   const [error, setError] = useState<string>();
 
   // Reconcile older history on top of the client's recent sync while a range is selected
-  const since = getHistorySince(range);
-  const history = use$(() => (since === undefined ? undefined : client.sync$({ since })), [client, since]);
+  const history = use$(
+    () => (range === "recent" ? undefined : client.sync$({ since: getHistorySince(range) })),
+    [client, range],
+  );
   const progress = history ?? sync;
 
   const relayErrors = (progress?.mailboxes ?? [])
@@ -197,6 +221,7 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
     <>
       <Section title="Inbox">
         <div className="flex flex-wrap items-center gap-2">
+          <span className="badge badge-ghost">{lifecycle ?? "loading"}</span>
           <span className="badge badge-ghost" title={relays?.join("\n")}>
             {relays ? `${relays.length} relays` : "…"}
           </span>
@@ -316,7 +341,8 @@ function Account({ user }: { user: User }) {
 }
 
 function Composer({ conversation }: { conversation: WrappedConversation }) {
-  const [text, setText] = useState("");
+  const draft = use$(conversation.draft$);
+  const text = draft?.content ?? "";
   const [expiration, setExpiration] = useState(0);
   const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
   const [busy, setBusy] = useState(false);
@@ -342,7 +368,7 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
 
       await delivery.publish();
       setPrepared(undefined);
-      setText("");
+      await conversation.clearDraft();
     } catch (error) {
       setError(String(error));
     } finally {
@@ -359,13 +385,15 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
           placeholder="Message"
           value={text}
           disabled={!!prepared || busy}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            conversation.setDraft({ content: event.target.value }).catch((error) => setError(String(error)));
+          }}
         />
         <select
           aria-label="Message expiration"
           className="select w-36"
           value={expiration}
-          disabled={!!prepared}
+          disabled={!!prepared || busy}
           onChange={(event) => setExpiration(Number(event.target.value))}
         >
           <option value={0}>Never expire</option>
@@ -507,7 +535,7 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
   const groups = use$(client.conversations$);
   const [selected, setSelected] = useState(client.pubkey);
-  const conversation = use$(() => conversation$(client, selected), [client, selected]);
+  const conversation = client.conversation(selected);
 
   const startConversation = (pubkey: string) => {
     if (pubkey) setSelected(createConversationIdentifier(client.pubkey, [pubkey]));
@@ -565,7 +593,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
         <Account user={user} />
       </aside>
 
-      {conversation && <Conversation key={conversation.id} conversation={conversation} />}
+      <Conversation key={conversation.id} conversation={conversation} />
     </div>
   );
 }

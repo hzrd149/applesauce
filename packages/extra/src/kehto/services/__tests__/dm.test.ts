@@ -3,7 +3,7 @@ import { EventStore } from "applesauce-core";
 import { finalizeEvent, kinds, unixNow } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, NEVER, Subject } from "rxjs";
+import { BehaviorSubject, EMPTY, NEVER, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDmOptions, createWrappedMessageProtocol, type NostrMessageProtocolOptions } from "../dm.js";
 
@@ -20,7 +20,10 @@ afterEach(() => {
 
 function setup(options: Partial<NostrMessageProtocolOptions> = {}) {
   const eventStore = new EventStore();
+  const request = vi.fn(() => new Subject());
   const pool = {
+    request,
+    relay: () => ({ getSupported: async () => [], request }),
     subscription: vi.fn(() => new Subject()),
     publish: vi.fn(async () => [{ ok: true }]),
   };
@@ -57,6 +60,7 @@ describe("kehto DM lifecycle", () => {
   it("follows DM relay list updates and tears down the previous request", async () => {
     const { dm, eventStore, pool } = setup();
     await dm.subscribe({}, vi.fn());
+    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
     const previous = pool.subscription.mock.results.at(-1)!.value;
     eventStore.add(
       finalizeEvent(
@@ -193,10 +197,12 @@ describe("kehto DM lifecycle", () => {
       ),
     );
     const history = dm.conversations({});
-    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
-    const relayMessages = pool.subscription.mock.results.at(-1)!.value;
+    const rejected = expect(history).rejects.toThrow("Account changed");
+    await vi.waitFor(() => expect(pool.request).toHaveBeenCalled());
+    await vi.waitFor(() => expect(pool.request).toHaveBeenCalled());
+    const relayMessages = pool.request.mock.results.at(-1)!.value;
     signer$.next(undefined);
-    await expect(history).rejects.toThrow("Account changed");
+    await rejected;
     expect(relayMessages.observed).toBe(false);
     expect(signer$.observed).toBe(false);
   });
@@ -226,8 +232,10 @@ describe("kehto DM lifecycle", () => {
       completed = true;
       return result;
     });
-    await vi.waitFor(() => expect(pool.subscription).toHaveBeenCalled());
-    await vi.waitFor(() => expect(pool.subscription.mock.results.at(-1)!.value.observed).toBe(false));
+    await vi.waitFor(() => expect(pool.request).toHaveBeenCalled());
+    const request = pool.request.mock.results.at(-1)!.value;
+    request.complete();
+    await vi.waitFor(() => expect(request.observed).toBe(false));
     expect(completed).toBe(false);
     delayed.resolve(await original(wrapped.pubkey, wrapped.content));
     expect((await history).conversations).toHaveLength(1);

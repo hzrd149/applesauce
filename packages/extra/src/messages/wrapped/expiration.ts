@@ -1,7 +1,7 @@
 import type { EventTemplate } from "applesauce-core/helpers";
 
-/** Tracks the latest observed message lifetime in each session-local conversation */
-export class DmExpirationTracker {
+/** Tracks the latest observed rumor lifetime in each wrapped-message conversation */
+export class WrappedMessageExpirationTracker {
   private conversations = new Map<string, { createdAt: number; id: string; duration?: number }>();
 
   private conversationKey(participants: readonly string[]) {
@@ -18,6 +18,7 @@ export class DmExpirationTracker {
     )
       return;
 
+    // Parse strictly since getExpirationTimestamp accepts trailing junk like "999junk"
     const value = event.tags.find((tag) => tag[0] === "expiration")?.[1];
     const expiration = value && /^\d+$/.test(value) ? Number(value) : NaN;
     const duration = expiration - event.created_at;
@@ -28,9 +29,9 @@ export class DmExpirationTracker {
     });
   }
 
-  /** Returns expiration tags using the latest message lifetime and the new timestamp */
-  tags(participants: readonly string[], createdAt: number): string[][] {
+  /** Returns an expiration timestamp using the latest message lifetime and the new timestamp */
+  expiration(participants: readonly string[], createdAt: number): number | undefined {
     const duration = this.conversations.get(this.conversationKey(participants))?.duration;
-    return duration === undefined ? [] : [["expiration", String(createdAt + duration)]];
+    return duration === undefined ? undefined : createdAt + duration;
   }
 }

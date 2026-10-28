@@ -1,22 +1,47 @@
+import { logger } from "applesauce-core";
+import { makeCacheRequest } from "applesauce-loaders/helpers";
+import {
+  createFilterMapTimelineLoader,
+  createSyncLoader,
+  type FilterMap,
+  type TimelineLoader,
+  type TimelineLoaderOptions,
+} from "applesauce-loaders/loaders";
+import { ConversationDraftState } from "../common/drafts.js";
 import { castUser } from "applesauce-common/casts";
 import { LegacyMessageFactory } from "applesauce-common/factories";
 import { createConversationIdentifier, getLegacyMessageCorrespondent } from "applesauce-common/helpers";
 import {
-  isEncryptedContentUnlocked,
+  restoreEncryptedContent,
+  saveEncryptedContent,
+  isEncryptedContentFromCache,
+  addSeenRelay,
   isHexKey,
+  verifyEvent,
+  kinds,
   setEncryptedContentCache,
   mergeRelaySets,
   unixNow,
   type NostrEvent,
+  type Filter,
 } from "applesauce-core/helpers";
-import { watchEventsUpdates } from "applesauce-core/observable";
+import { mapEventsToStore, watchEventsUpdates } from "applesauce-core/observable";
 import {
   BehaviorSubject,
+  concat,
+  concatMap,
+  take,
+  ignoreElements,
+  of,
+  filter,
+  distinctUntilChanged,
+  shareReplay,
+  startWith,
+  merge,
   catchError,
   combineLatest,
-  concatMap,
   defer,
-  distinctUntilChanged,
+  share,
   EMPTY,
   finalize,
   firstValueFrom,
@@ -25,18 +50,16 @@ import {
   map,
   Observable,
   Subject,
+  ReplaySubject,
   Subscription,
   switchMap,
   takeUntil,
   tap,
   timeout,
 } from "rxjs";
-import { restoreMessageContent, saveMessageContent } from "../common/encryption.js";
 import { withMessageAuth$ } from "../common/authentication.js";
-import { createLegacyMailboxes, syncLegacyMessages$, type LegacyMailbox } from "./loading.js";
-import { configured$, settle } from "../common/helpers.js";
-import { publishAcceptedMessage } from "../common/publication.js";
-import type { MessageClientError, MessageOperationContext, MessageOperationOptions } from "../common/types.js";
+import { configured$, withFallback$ } from "../common/helpers.js";
+import type { MessageDraft, MessageClientError, MessageOperationOptions } from "../common/types.js";
 import type { LegacyMessagesClient } from "./client.js";
 import type {
   LegacyMessageAvailability,
@@ -47,19 +70,43 @@ import type {
   LegacyMessagesSyncStatus,
 } from "./types.js";
 
-/** A signed message retained for publish retries */
-interface LegacyDelivery {
-  fingerprint: string;
+const log = logger.extend("LegacyMessages");
+type Mailbox = { filter: Filter; relays$: Observable<string[]> };
+
+/** A serializable signed legacy message retained for publication */
+interface StoredLegacyPublication {
+  /** The preparation timestamp in seconds */
+  preparedAt: number;
+  /** The native encrypted and signed kind-4 event */
   event: NostrEvent;
+  /** The publication target relays */
   relays: string[];
+}
+
+function isRelayUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    return ["ws:", "wss:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/** A signed message retained for publish retries */
+interface LegacyDelivery extends StoredLegacyPublication {
   accepted: boolean;
   publishing: boolean;
+  discarded?: boolean;
 }
 
 /** An independently loaded NIP-04 conversation belonging to one fixed-account client */
 export class LegacyConversation {
   /** The stable conversation identifier */
   readonly id: string;
+
+  private readonly drafts: ConversationDraftState;
+  /** The current plaintext draft, restored from storage on subscription */
+  readonly draft$: Observable<Readonly<MessageDraft> | undefined>;
 
   /** The native incoming and outgoing kind-4 events in the shared store */
   readonly messages$: Observable<NostrEvent[]>;
@@ -82,8 +129,6 @@ export class LegacyConversation {
   readonly errors$ = this.errors.asObservable();
 
   private readonly autoUnlock: BehaviorSubject<boolean>;
-  private readonly failed = new BehaviorSubject<ReadonlySet<string>>(new Set());
-  private readonly pending = new BehaviorSubject(0);
 
   /** The decryption counts and failed event IDs for this conversation */
   readonly decryptionState$;
@@ -99,9 +144,17 @@ export class LegacyConversation {
   /** The publication states of messages sent during this conversation's lifetime */
   readonly publications$ = this.publications.asObservable();
 
-  private readonly deliveries = new Map<string, LegacyDelivery>();
-  private readonly preparing = new Set<string>();
-  private readonly mailboxes: LegacyMailbox[];
+  private readonly pendingPublications = new BehaviorSubject<readonly PreparedLegacyMessage[]>([]);
+  private readonly publicationDestroyed = new ReplaySubject<void>(1);
+  /** The unpublished messages, restored on subscription without publishing or starting message loading */
+  readonly pendingPublications$ = defer(() => this.loadPublications()).pipe(
+    switchMap(() => this.pendingPublications.asObservable()),
+    takeUntil(this.publicationDestroyed),
+  );
+  private readonly pendingDeliveries = new Map<string, LegacyDelivery>();
+  private publicationOperations: Promise<unknown> = Promise.resolve();
+  private publicationsLoaded = false;
+  private readonly mailboxes: Mailbox[];
   private background?: Subscription;
   private generation = new AbortController();
   private disposed = false;
@@ -120,8 +173,21 @@ export class LegacyConversation {
     private readonly options: LegacyMessagesClientOptions,
   ) {
     this.id = createConversationIdentifier(client.pubkey, [correspondent]);
+    this.drafts = new ConversationDraftState(`draft:${this.id}`, options.draftStorage);
+    this.draft$ = this.drafts.draft$;
     this.autoUnlock = new BehaviorSubject(options.autoUnlock ?? false);
-    this.mailboxes = createLegacyMailboxes(options, correspondent);
+    const owner = castUser(options.pubkey, options.eventStore);
+    const peer = castUser(correspondent, options.eventStore);
+    this.mailboxes = [
+      {
+        filter: { kinds: [kinds.EncryptedDirectMessage], "#p": [options.pubkey], authors: [correspondent] },
+        relays$: this.mailboxRelays$([owner.inboxes$, owner.directMessageRelays$, peer.outboxes$]),
+      },
+      {
+        filter: { kinds: [kinds.EncryptedDirectMessage], authors: [options.pubkey], "#p": [correspondent] },
+        relays$: this.mailboxRelays$([owner.outboxes$, peer.inboxes$, peer.directMessageRelays$]),
+      },
+    ];
     this.relays$ = combineLatest(this.mailboxes.map((mailbox) => mailbox.relays$)).pipe(
       map((lists) => mergeRelaySets(...lists)),
     );
@@ -129,16 +195,7 @@ export class LegacyConversation {
     // Decryption updates cached content without replacing the stored event.
     this.messages$ = client.eventStore.timeline(this.filters).pipe(watchEventsUpdates(client.eventStore));
 
-    // Combine store contents with operation counters so failures remain visible.
-    this.decryptionState$ = combineLatest([this.messages$, this.failed, this.pending]).pipe(
-      map(([events, failed, pending]) => ({
-        total: events.length,
-        unlocked: events.filter(isEncryptedContentUnlocked).length,
-        locked: events.filter((event) => !isEncryptedContentUnlocked(event) && !failed.has(event.id)).length,
-        failed: [...failed],
-        pending,
-      })),
-    );
+    this.decryptionState$ = client.observeDecryption$(this.messages$, correspondent);
   }
 
   private get relayTimeout() {
@@ -149,6 +206,30 @@ export class LegacyConversation {
     return this.mailboxes.map((mailbox) => mailbox.filter);
   }
 
+  /**
+   * Restores the saved draft without starting message loading
+   * @throws if disposed, storage fails, or the saved draft is invalid
+   */
+  loadDraft(): Promise<Readonly<MessageDraft> | undefined> {
+    return this.drafts.load();
+  }
+
+  /**
+   * Saves the conversation's plaintext draft before notifying subscribers
+   * @throws if disposed, the draft is invalid, or storage fails
+   */
+  setDraft(draft: MessageDraft): Promise<void> {
+    return this.drafts.set(draft);
+  }
+
+  /**
+   * Removes the conversation's saved draft before notifying subscribers
+   * @throws if disposed or storage fails
+   */
+  clearDraft(): Promise<void> {
+    return this.drafts.clear();
+  }
+
   private context(options: MessageOperationOptions = {}) {
     if (this.disposed) throw new Error("Conversation disposed");
     const signal = options.signal ? AbortSignal.any([options.signal, this.generation.signal]) : this.generation.signal;
@@ -157,90 +238,45 @@ export class LegacyConversation {
     return { ...options, signal };
   }
 
-  /** Starts recent conversation history and live loading without starting the client's inbox */
-  async start(): Promise<void> {
-    const context = this.context();
+  /**
+   * Starts live loading and optional recent history without starting the client's inbox
+   * @throws if the conversation is disposed
+   */
+  async start(
+    options: { /** Whether to reconcile recent history, default true */ history?: boolean } = {},
+  ): Promise<void> {
+    this.context();
     if (this.background) return;
 
     const background = (this.background = new Subscription());
     this.lifecycle.next("loading");
     const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
 
-    // Changing auto-unlock replaces the queue while still restoring cached plaintext.
     background.add(
-      this.autoUnlock
-        .pipe(
-          switchMap((autoUnlock) =>
-            this.client.eventStore.filters(this.filters).pipe(
-              // Serialize cache restoration and signer prompts; skip failures per event.
-              concatMap((event) =>
-                defer(async () => {
-                  await restoreMessageContent(event, this.options.decryptionCache);
-                  context.signal.throwIfAborted();
-                  if (autoUnlock && !isEncryptedContentUnlocked(event) && !this.failed.value.has(event.id))
-                    await this.unlock(event, context);
-                }).pipe(
-                  timeout({ first: this.options.decryptionTimeout ?? 60000 }),
-                  catchError((error) => {
-                    this.errors.next({ operation: "restore", error, eventId: event.id });
-                    return EMPTY;
-                  }),
-                ),
-              ),
-            ),
-          ),
+      this.client
+        .watchDecryption$(this.client.eventStore.filters(this.filters), this.autoUnlock, (error) =>
+          this.errors.next(error),
         )
         .subscribe(),
     );
+    background.add(merge(...this.mailboxes.map((mailbox) => this.watchMailbox$(mailbox, since))).subscribe());
 
-    // Each mailbox follows its own relay changes and stores events before consumers read them.
-    for (const mailbox of this.mailboxes) {
+    if (options.history !== false) {
       background.add(
-        mailbox.relays$
+        this.sync$({ since })
           .pipe(
-            switchMap((relays) =>
-              relays.length
-                ? withMessageAuth$(this.options, (auth) =>
-                    this.client.pool.subscription(
-                      relays,
-                      { ...mailbox.filter, since },
-                      {
-                        eventStore: this.client.eventStore,
-                        reconnect: true,
-                        ...auth,
-                      },
-                    ),
-                  ).pipe(
-                    catchError((error) => {
-                      this.errors.next({ operation: "read", error });
-                      return EMPTY;
-                    }),
-                  )
-                : EMPTY,
-            ),
+            catchError((error) => {
+              this.errors.next({ operation: "sync", error });
+              return EMPTY;
+            }),
           )
-          .subscribe(),
+          .subscribe((progress) => {
+            if (progress.done) this.lifecycle.next("ready");
+          }),
       );
+    } else {
+      this.lifecycle.next("ready");
     }
-
-    // Restart finite reconciliation only when the combined mailbox relay set changes.
-    background.add(
-      this.relays$
-        .pipe(
-          distinctUntilChanged((previous, next) => previous.join() === next.join()),
-          switchMap(() =>
-            this.sync$({ since }).pipe(
-              catchError((error) => {
-                this.errors.next({ operation: "sync", error });
-                return EMPTY;
-              }),
-            ),
-          ),
-        )
-        .subscribe((progress) => {
-          if (progress.done) this.lifecycle.next("ready");
-        }),
-    );
   }
 
   /** Stops only this conversation's loading and outstanding operations */
@@ -258,9 +294,13 @@ export class LegacyConversation {
     if (this.disposed) return;
 
     this.disposed = true;
+    this.drafts.dispose();
     this.stop();
-    this.deliveries.clear();
-    this.preparing.clear();
+    this.publicationDestroyed.next();
+    this.publicationDestroyed.complete();
+    this.pendingPublications.next([]);
+    this.pendingPublications.complete();
+    this.pendingDeliveries.clear();
     this.publications.next({});
     this.lifecycle.next("disposed");
   }
@@ -275,13 +315,125 @@ export class LegacyConversation {
     this.autoUnlock.next(enabled);
   }
 
-  /** Reconciles only this conversation's cache and relay history */
+  /**
+   * Creates an independent viewport loader whose subscriptions stop with this conversation
+   * @throws if the conversation is disposed or timeline options are invalid
+   */
+  createTimelineLoader(options: Omit<TimelineLoaderOptions, "eventStore" | "cache"> = {}): TimelineLoader {
+    this.context();
+    const relayMap$ = combineLatest(this.mailboxes.map((mailbox) => mailbox.relays$)).pipe(
+      map((lists): FilterMap => {
+        const routes: Record<string, Filter[]> = {};
+        lists.forEach((relays, index) => {
+          for (const relay of relays) (routes[relay] ??= []).push(this.mailboxes[index].filter);
+        });
+        return routes;
+      }),
+    );
+    const request = (relays: string[], filters: Parameters<typeof this.client.pool.request>[1]) =>
+      withMessageAuth$(this.options, (auth) => this.client.pool.request(relays, filters, auth));
+    const loader = createFilterMapTimelineLoader(request, relayMap$, {
+      ...options,
+      eventStore: this.client.eventStore,
+      cache: this.options.cacheRequest,
+      cacheFilters: this.filters,
+    });
+    const load: TimelineLoader = Object.assign(
+      (windows: Parameters<TimelineLoader>[0]) =>
+        defer(() => {
+          const context = this.context();
+          return loader(windows).pipe(takeUntil(fromEvent(context.signal, "abort")));
+        }).pipe(share()),
+      { status$: loader.status$ },
+    );
+    return load;
+  }
+
+  private mailboxRelays$(sources: Observable<string[] | undefined>[]) {
+    const fallback$ = configured$(this.options.fallbackRelays, []).pipe(catchError(() => of([])));
+    return combineLatest([...sources.map((source) => source.pipe(startWith(undefined))), fallback$]).pipe(
+      map((lists) => {
+        const advertised = mergeRelaySets(...lists.slice(0, -1));
+        return mergeRelaySets(advertised.length ? advertised : lists[lists.length - 1]).sort();
+      }),
+      distinctUntilChanged((previous, next) => previous.join() === next.join()),
+      shareReplay({ bufferSize: 1, refCount: true }),
+    );
+  }
+
+  private hydrate$(filters: Filter[], signal: AbortSignal): Observable<NostrEvent> {
+    return defer(() => {
+      signal.throwIfAborted();
+      if (!this.options.cacheRequest) return EMPTY;
+
+      return makeCacheRequest(this.options.cacheRequest, filters).pipe(
+        timeout({ each: this.options.timeout ?? 4000 }),
+        mapEventsToStore(this.options.eventStore),
+        catchError((error) => {
+          this.errors.next({ operation: "restore", error });
+          return EMPTY;
+        }),
+        takeUntil(fromEvent(signal, "abort")),
+      );
+    });
+  }
+
+  private watchMailbox$(mailbox: Mailbox, since: number) {
+    return mailbox.relays$.pipe(
+      switchMap((relays) => {
+        if (!relays.length) return EMPTY;
+        return withMessageAuth$(this.options, (auth) =>
+          this.options.pool.subscription(
+            relays,
+            { ...mailbox.filter, since },
+            { eventStore: this.options.eventStore, reconnect: true, ...auth },
+          ),
+        ).pipe(
+          mapEventsToStore(this.options.eventStore),
+          catchError((error) => {
+            this.errors.next({ operation: "read", error });
+            return EMPTY;
+          }),
+        );
+      }),
+    );
+  }
+
+  private syncRelays$(relays$: Observable<string[]>, followRelays = true) {
+    if (followRelays) return relays$;
+    return withFallback$(relays$.pipe(filter((relays) => relays.length > 0)), [], this.relayTimeout).pipe(take(1));
+  }
+
+  /** Reconciles this conversation's history while following mailbox relay changes by default */
   sync$(options: Omit<LegacyMessageHistoryOptions, "correspondent"> = {}): Observable<LegacyMessagesSyncStatus> {
     return defer(() => {
       const context = this.context(options);
-      return syncLegacyMessages$(this.options, this.mailboxes, options, context.signal, (error) => {
-        this.errors.next({ operation: "restore", error });
-      }).pipe(
+      const filters = this.mailboxes.map((mailbox) => ({
+        ...mailbox.filter,
+        since: Math.max(0, options.since ?? 0),
+        ...(options.until !== undefined ? { until: options.until } : {}),
+      }));
+      const sync = createSyncLoader({ pool: this.options.pool, eventStore: this.options.eventStore });
+      const reconciliation$ = combineLatest(
+        this.mailboxes.map((mailbox, index) =>
+          withMessageAuth$(
+            this.options,
+            (auth) =>
+              sync({
+                filter: filters[index],
+                relays: this.syncRelays$(mailbox.relays$, options.followRelays),
+                ...auth,
+              }).status$,
+          ),
+        ),
+      );
+
+      return concat(this.hydrate$(filters, context.signal).pipe(ignoreElements()), reconciliation$).pipe(
+        map((mailboxes) => ({
+          mailboxes,
+          done: mailboxes.every((mailbox) => mailbox.done),
+          loaded: mailboxes.reduce((sum, mailbox) => sum + mailbox.loaded, 0),
+        })),
         tap((progress) => this.syncState.next(progress)),
         takeUntil(fromEvent(context.signal, "abort")),
       );
@@ -290,7 +442,7 @@ export class LegacyConversation {
 
   /** Loads a finite conversation history range */
   loadHistory(options: Omit<LegacyMessageHistoryOptions, "correspondent"> = {}): Promise<LegacyMessagesSyncStatus> {
-    return lastValueFrom(this.sync$(options));
+    return lastValueFrom(this.sync$({ ...options, followRelays: false }));
   }
 
   /** Decrypts one event or all currently loaded pending events in this conversation */
@@ -302,22 +454,15 @@ export class LegacyConversation {
 
     for (const item of events) {
       context.signal.throwIfAborted();
-      if (!event && (isEncryptedContentUnlocked(item) || this.failed.value.has(item.id))) continue;
-      this.pending.next(this.pending.value + 1);
+      if (!event && !this.client.shouldUnlock(item)) continue;
 
       try {
         await this.client.unlock(item, context);
-        const failed = new Set(this.failed.value);
-        failed.delete(item.id);
-        this.failed.next(failed);
       } catch (error) {
         if (!context.signal.aborted) {
-          this.failed.next(new Set([...this.failed.value, item.id]));
           this.errors.next({ operation: "decrypt", error, eventId: item.id });
         }
         if (event || context.signal.aborted) throw error;
-      } finally {
-        this.pending.next(this.pending.value - 1);
       }
     }
   }
@@ -344,79 +489,225 @@ export class LegacyConversation {
     return Number.isSafeInteger(expiration) && duration > 0 ? createdAt + duration : undefined;
   }
 
-  private fallbackRelays() {
-    return settle(configured$(this.options.fallbackRelays, []), [], this.relayTimeout);
+  private enqueuePublication<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.publicationOperations.then(async () => {
+      this.context();
+      return operation();
+    });
+    // Keep subsequent writes usable after a storage failure.
+    this.publicationOperations = result.catch(() => undefined);
+    return result;
   }
 
-  private async deliveryRelays(pubkey: string) {
-    const user = castUser(pubkey, this.options.eventStore);
-    const [direct, inboxes] = await Promise.all([
-      settle(user.directMessageRelays$, undefined, this.relayTimeout),
-      settle(user.inboxes$, undefined, this.relayTimeout),
-    ]);
+  private emitPendingPublications(): void {
+    if (this.disposed) return;
+    this.pendingPublications.next(
+      [...this.pendingDeliveries.values()]
+        .filter((delivery) => !delivery.accepted)
+        .map((delivery) => this.preparedDelivery(delivery)),
+    );
+  }
 
-    const advertised = mergeRelaySets(direct, inboxes);
-    return advertised.length ? advertised : this.fallbackRelays();
+  private async restorePublications(): Promise<void> {
+    if (this.publicationsLoaded) return;
+    const serialized = await this.options.publicationStorage?.getItem(`publication:${this.id}`);
+    this.context();
+    const restored: LegacyDelivery[] =
+      serialized == null
+        ? []
+        : this.parsePublications(serialized).map((entry) => ({
+            ...entry,
+            accepted: false,
+            publishing: false,
+          }));
+    // Validate the complete record before making any restored handle available.
+    for (const delivery of restored) {
+      if (this.options.decryptionCache) {
+        await restoreEncryptedContent(delivery.event, this.options.decryptionCache).catch((error) => {
+          log("Failed to restore encrypted content for %s", delivery.event.id, error);
+        });
+      }
+      this.context();
+    }
+    for (const delivery of restored) {
+      this.pendingDeliveries.set(delivery.event.id, delivery);
+      this.publications.next({ ...this.publications.value, [delivery.event.id]: "prepared" });
+    }
+    this.publicationsLoaded = true;
+    this.emitPendingPublications();
+  }
+
+  private async writePublications(deliveries: Map<string, LegacyDelivery>): Promise<void> {
+    const storage = this.options.publicationStorage;
+    if (!storage) return;
+    const key = `publication:${this.id}`;
+    if (!deliveries.size) {
+      await storage.removeItem(key);
+      return;
+    }
+    const messages = [...deliveries.values()].map((delivery) => ({
+      event: delivery.event,
+      relays: delivery.relays,
+      preparedAt: delivery.preparedAt,
+    }));
+    await storage.setItem(key, JSON.stringify({ version: 1, messages }));
+  }
+
+  private parsePublications(serialized: string): StoredLegacyPublication[] {
+    const record = JSON.parse(serialized);
+    if (record?.version !== 1 || !Array.isArray(record.messages))
+      throw new Error("Invalid conversation publication record");
+
+    const publications: StoredLegacyPublication[] = [];
+    const eventIds = new Set<string>();
+    for (const entry of record.messages) {
+      if (!entry || typeof entry !== "object") throw new Error("Invalid conversation publication entry");
+      if (
+        !Number.isSafeInteger(entry.preparedAt) ||
+        entry.preparedAt < 0 ||
+        !Array.isArray(entry.relays) ||
+        !entry.relays.length ||
+        !entry.relays.every(isRelayUrl)
+      )
+        throw new Error("Invalid conversation publication metadata");
+
+      const event = entry.event;
+      if (
+        !event ||
+        event.kind !== kinds.EncryptedDirectMessage ||
+        event.pubkey !== this.client.pubkey ||
+        getLegacyMessageCorrespondent(event, this.client.pubkey) !== this.correspondent ||
+        !verifyEvent(event)
+      )
+        throw new Error("Invalid conversation publication event");
+      if (eventIds.has(event.id)) throw new Error("Duplicate conversation publication entry");
+
+      eventIds.add(event.id);
+      publications.push({
+        preparedAt: entry.preparedAt,
+        event,
+        relays: entry.relays,
+      });
+    }
+    return publications;
+  }
+
+  /**
+   * Restores unpublished signed events and returns handles that can publish without signing again
+   * @throws if disposed, reading fails, or a saved publication is invalid
+   */
+  loadPublications(): Promise<readonly PreparedLegacyMessage[]> {
+    return this.enqueuePublication(async () => {
+      await this.restorePublications();
+      this.emitPendingPublications();
+      return this.pendingPublications.value;
+    });
+  }
+
+  /**
+   * Removes an unpublished message and invalidates its retained publication handles
+   * @throws if disposed, the message is being published, or storage fails
+   */
+  discardPublication(eventId: string): Promise<void> {
+    return this.enqueuePublication(async () => {
+      await this.restorePublications();
+      const delivery = this.pendingDeliveries.get(eventId);
+      if (!delivery) return;
+      if (delivery.publishing) throw new Error("DM message is already being published");
+      // Prevent publication from starting while removal is waiting on storage.
+      delivery.discarded = true;
+      try {
+        const next = new Map(this.pendingDeliveries);
+        next.delete(eventId);
+        await this.writePublications(next);
+        this.pendingDeliveries.delete(eventId);
+        const publications = { ...this.publications.value };
+        delete publications[eventId];
+        this.publications.next(publications);
+        this.emitPendingPublications();
+      } catch (error) {
+        delivery.discarded = false;
+        throw error;
+      }
+    });
+  }
+
+  private async removeAcceptedPublication(delivery: LegacyDelivery): Promise<void> {
+    await this.enqueuePublication(async () => {
+      const next = new Map(this.pendingDeliveries);
+      next.delete(delivery.event.id);
+      await this.writePublications(next);
+      this.pendingDeliveries.delete(delivery.event.id);
+      this.emitPendingPublications();
+    });
+  }
+
+  private fallbackRelays$() {
+    return withFallback$(configured$(this.options.fallbackRelays, []), [], this.relayTimeout);
+  }
+
+  private deliveryRelays$(pubkey: string) {
+    const user = castUser(pubkey, this.options.eventStore);
+    return combineLatest([
+      withFallback$(user.directMessageRelays$, undefined, this.relayTimeout),
+      withFallback$(user.inboxes$, undefined, this.relayTimeout),
+    ]).pipe(
+      map(([direct, inboxes]) => mergeRelaySets(direct, inboxes)),
+      switchMap((advertised) => (advertised.length ? of(advertised) : this.fallbackRelays$())),
+    );
+  }
+
+  /** Observes relay support and follows changes to advertised and fallback relays */
+  discover$(options: MessageOperationOptions = {}): Observable<LegacyMessageAvailability> {
+    return defer(() => {
+      const context = this.context(options);
+      if (!isHexKey(this.correspondent)) throw new Error("Invalid recipient");
+
+      const user = castUser(this.correspondent, this.options.eventStore);
+      return combineLatest([
+        withFallback$(user.inboxes$, undefined, this.relayTimeout),
+        withFallback$(user.directMessageRelays$, undefined, this.relayTimeout),
+        this.fallbackRelays$(),
+      ]).pipe(
+        map(([inboxes, direct, fallback]): LegacyMessageAvailability => {
+          const relays = mergeRelaySets(inboxes, direct);
+          return {
+            recipient: this.correspondent,
+            support: inboxes === undefined ? "unknown" : inboxes.length ? "supported" : "unsupported",
+            relays,
+            canSend: relays.length > 0 || fallback.length > 0,
+            hasFallback: fallback.length > 0,
+          };
+        }),
+        takeUntil(fromEvent(context.signal, "abort")),
+      );
+    });
   }
 
   /**
    * Discovers relay support for this correspondent before preparing a send
    * @throws if disposed, cancelled, or the correspondent is invalid
    */
-  async discover(options: MessageOperationOptions = {}): Promise<LegacyMessageAvailability> {
-    const context = this.context(options);
-
-    const availability$ = defer(async (): Promise<LegacyMessageAvailability> => {
-      if (!isHexKey(this.correspondent)) throw new Error("Invalid recipient");
-      const user = castUser(this.correspondent, this.options.eventStore);
-      const [inboxes, direct, fallback] = await Promise.all([
-        settle(user.inboxes$, undefined, this.relayTimeout),
-        settle(user.directMessageRelays$, undefined, this.relayTimeout),
-        this.fallbackRelays(),
-      ]);
-      context.signal.throwIfAborted();
-
-      const relays = mergeRelaySets(inboxes, direct);
-      return {
-        recipient: this.correspondent,
-        support: inboxes === undefined ? "unknown" : inboxes.length ? "supported" : "unsupported",
-        relays,
-        canSend: relays.length > 0 || fallback.length > 0,
-        hasFallback: fallback.length > 0,
-      };
-    });
-
-    return firstValueFrom(availability$.pipe(takeUntil(fromEvent(context.signal, "abort"))));
+  discover(options: MessageOperationOptions = {}): Promise<LegacyMessageAvailability> {
+    return firstValueFrom(this.discover$(options));
   }
 
-  /** Signs a legacy event and caches it for client-ID retries without publishing it */
-  private prepareDelivery$(request: Omit<LegacyMessageSendRequest, "recipient">, context: MessageOperationContext) {
+  /** Signs a new legacy event and saves it for publication */
+  private prepareDelivery$(request: Omit<LegacyMessageSendRequest, "recipient">, context: { signal: AbortSignal }) {
     const { options } = this;
     return defer(() => {
-      // Keep cancellation guards and retry ownership local to this subscription.
+      // Keep cancellation guards local to this preparation.
       let active = true;
-      const key = request.clientMessageId ? JSON.stringify([context.scope, request.clientMessageId]) : undefined;
-      const fingerprint = JSON.stringify([this.correspondent, request.content, request.replyTo, request.expiration]);
-      let ownsPreparation = false;
       const assertCurrent = () => {
         context.signal.throwIfAborted();
         if (!active || this.disposed) throw new Error("DM protocol operation ended");
       };
 
-      return defer(async (): Promise<LegacyDelivery> => {
+      return defer(async (): Promise<NostrEvent> => {
         if (!isHexKey(this.correspondent)) throw new Error("Invalid recipient");
         assertCurrent();
-        if (key) {
-          const previous = this.deliveries.get(key);
-          if (previous) {
-            if (previous.fingerprint !== fingerprint) throw new Error("DM clientMessageId belongs to another message");
-            return previous;
-          }
-          if (this.preparing.has(key)) throw new Error("DM message is already being prepared");
-          this.preparing.add(key);
-          ownsPreparation = true;
-        }
-
+        await this.loadPublications();
+        assertCurrent();
         const recipient = this.correspondent;
         const createdAt = unixNow();
         const expiration = request.expiration ?? this.getExpiration(createdAt);
@@ -429,50 +720,102 @@ export class LegacyConversation {
 
         setEncryptedContentCache(event, request.content);
         if (options.decryptionCache) {
-          await saveMessageContent(event, options.decryptionCache);
+          if (options.decryptionCache && !isEncryptedContentFromCache(event)) {
+            await saveEncryptedContent(event, options.decryptionCache).catch((error) => {
+              log("Failed to persist encrypted content for %s", event.id, error);
+            });
+          }
           assertCurrent();
         }
 
-        const [inboxes, outboxes] = await Promise.all([
-          this.deliveryRelays(recipient),
-          settle(castUser(this.options.pubkey, this.options.eventStore).outboxes$, [], this.relayTimeout),
-        ]);
-        assertCurrent();
-        const relays = mergeRelaySets(inboxes, outboxes);
-        if (!relays.length) throw new Error("No legacy DM relays");
-
-        const delivery: LegacyDelivery = { fingerprint, event, relays, accepted: false, publishing: false };
-        if (key) {
-          if (this.deliveries.size >= 100) {
-            const oldest = [...this.deliveries].find(([, delivery]) => !delivery.publishing);
-            if (!oldest) throw new Error("DM retry cache is busy");
-            this.deliveries.delete(oldest[0]);
-          }
-          this.deliveries.set(key, delivery);
-        }
-        return delivery;
+        return event;
       }).pipe(
+        concatMap((event) =>
+          combineLatest([
+            this.deliveryRelays$(this.correspondent),
+            withFallback$(castUser(this.options.pubkey, this.options.eventStore).outboxes$, [], this.relayTimeout),
+          ]).pipe(
+            // Freeze publication targets once; relay updates must not sign or persist another message.
+            take(1),
+            concatMap(async ([inboxes, outboxes]): Promise<LegacyDelivery> => {
+              assertCurrent();
+              const relays = mergeRelaySets(inboxes, outboxes);
+              if (!relays.length) throw new Error("No legacy DM relays");
+
+              const delivery: LegacyDelivery = {
+                preparedAt: unixNow(),
+                event,
+                relays,
+                accepted: false,
+                publishing: false,
+              };
+              await this.enqueuePublication(async () => {
+                assertCurrent();
+                const next = new Map(this.pendingDeliveries);
+                next.set(event.id, delivery);
+                await this.writePublications(next);
+                // A completed durable write remains pending even if its caller was cancelled while writing.
+                if (!this.disposed) {
+                  this.pendingDeliveries.set(event.id, delivery);
+                  this.emitPendingPublications();
+                }
+              });
+              assertCurrent();
+              return delivery;
+            }),
+          ),
+        ),
         timeout({ first: options.actionTimeout ?? 120000 }),
-        // Invalidate late signer results and release preparation ownership on every exit.
+        // Invalidate late signer results when preparation ends.
         finalize(() => {
           active = false;
-          if (key && ownsPreparation) this.preparing.delete(key);
         }),
       );
     });
   }
 
+  private async cleanupAcceptedPublication(delivery: LegacyDelivery): Promise<void> {
+    try {
+      await this.removeAcceptedPublication(delivery);
+    } catch (error) {
+      if (!this.disposed) this.errors.next({ operation: "storage", error, eventId: delivery.event.id });
+    }
+  }
+
   /** Publishes a prepared delivery once, returning the event after relay acceptance */
-  private publishDelivery$(delivery: LegacyDelivery, context: MessageOperationContext) {
+  private publishDelivery$(delivery: LegacyDelivery, context: { signal: AbortSignal }) {
     return defer(async () => {
       context.signal.throwIfAborted();
+      if (delivery.discarded) throw new Error("DM publication discarded");
       if (delivery.publishing) throw new Error("DM message is already being published");
-      if (delivery.accepted) return delivery.event;
+      if (delivery.accepted) {
+        await this.cleanupAcceptedPublication(delivery);
+        return delivery.event;
+      }
 
       delivery.publishing = true;
       try {
-        await publishAcceptedMessage(this.options, delivery.relays, delivery.event, context.signal);
+        // Release auth prompts on cancellation, but retain late acceptance to prevent resending.
+        const results = await firstValueFrom(
+          withMessageAuth$(
+            this.options,
+            (auth) => defer(() => this.options.pool.publish(delivery.relays, delivery.event, auth)),
+            context.signal,
+          ),
+        );
+
+        if (!results.some((result) => result.ok)) {
+          throw new Error(results[0]?.message ?? "No relay accepted the event");
+        }
+
+        for (const result of results) {
+          if (result.ok) addSeenRelay(delivery.event, result.from);
+        }
+        this.options.eventStore.add(delivery.event);
+
         delivery.accepted = true;
+        this.emitPendingPublications();
+        await this.cleanupAcceptedPublication(delivery);
         context.signal.throwIfAborted();
         return delivery.event;
       } finally {
@@ -503,15 +846,24 @@ export class LegacyConversation {
     const delivery = await firstValueFrom(
       this.prepareDelivery$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
     );
+    this.publications.next({
+      ...this.publications.value,
+      [delivery.event.id]: delivery.accepted ? "accepted" : "prepared",
+    });
+    return this.preparedDelivery(delivery);
+  }
+
+  private preparedDelivery(delivery: LegacyDelivery): PreparedLegacyMessage {
+    const generation = this.generation.signal;
     const setState = (state: "prepared" | "publishing" | "accepted" | "failed") =>
       this.publications.next({ ...this.publications.value, [delivery.event.id]: state });
-    setState("prepared");
 
     return {
       message: delivery.event,
       publish: async (publishOptions = {}) => {
         const publication = this.context(publishOptions);
-        context.signal.throwIfAborted();
+        generation.throwIfAborted();
+        if (delivery.discarded) throw new Error("DM publication discarded");
         this.sending.next(this.sending.value + 1);
         setState("publishing");
 
@@ -523,7 +875,7 @@ export class LegacyConversation {
           setState("accepted");
           return message;
         } catch (error) {
-          setState("failed");
+          setState(delivery.accepted ? "accepted" : "failed");
           this.errors.next({ operation: "send", error, eventId: delivery.event.id });
           throw error;
         } finally {
@@ -534,7 +886,7 @@ export class LegacyConversation {
   }
 
   /**
-   * Prepares and publishes a message, retaining the signed event for conversation-scoped client-ID retries
+   * Prepares a new message and publishes it to this conversation
    * @throws if preparation or publication fails
    */
   async send(

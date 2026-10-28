@@ -23,7 +23,7 @@ client.dispose();
 
 `start()` restores cached plaintext and starts recent-history and live loading; it does not wait for history or decryption to finish. Signer-backed decryption defaults to off. Use `unlock()` for loaded messages, `unlock(event)` to retry one event, or `setAutoUnlock(true)` for continuous decryption. Observe `status$`, `syncStatus$`, `relayStatus$`, `decryptionState$`, and `errors$` for progress and failures.
 
-`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
+`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
 
 Legacy sends take `{ recipient, content }` and use `LegacyMessagesClientOptions`; wrapped sends take `{ recipients, content }` and use `WrappedMessagesClientOptions`. Kehto's protocol adapters translate native events into normalized messages before the multi-protocol adapter merges them.
 

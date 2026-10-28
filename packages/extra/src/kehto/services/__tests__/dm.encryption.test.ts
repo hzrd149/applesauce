@@ -11,7 +11,7 @@ import {
 } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { firstValueFrom, Subject, toArray } from "rxjs";
+import { EMPTY, firstValueFrom, Subject, toArray } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLegacyMessageProtocol, createWrappedMessageProtocol } from "../dm.js";
 
@@ -56,7 +56,10 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
     const protocol = createProtocol({
       eventStore,
       signer: aliceSigner,
-      pool: { req: () => new Subject() } as unknown as RelayPool,
+      pool: {
+        relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
+        req: () => new Subject(),
+      } as unknown as RelayPool,
       decryptionCache: cache,
       fallbackRelays: ["wss://dm.test/"],
       timeout: 5,
@@ -249,7 +252,10 @@ describe("NIP-17 partial cache", () => {
     const decrypt = vi.spyOn(aliceSigner.nip44, "decrypt");
     const protocol = createWrappedMessageProtocol({
       eventStore,
-      pool: { req: () => new Subject() } as unknown as RelayPool,
+      pool: {
+        relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
+        req: () => new Subject(),
+      } as unknown as RelayPool,
       signer: aliceSigner,
       decryptionCache: cache,
       timeout: 5,
@@ -282,7 +288,10 @@ describe("NIP-17 partial cache", () => {
     const decrypt = vi.spyOn(aliceSigner.nip44, "decrypt");
     const protocol = createWrappedMessageProtocol({
       eventStore,
-      pool: { req: () => new Subject() } as unknown as RelayPool,
+      pool: {
+        relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
+        req: () => new Subject(),
+      } as unknown as RelayPool,
       signer: aliceSigner,
       decryptionCache: cache,
       timeout: 5,

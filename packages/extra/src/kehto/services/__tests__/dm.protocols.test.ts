@@ -5,7 +5,7 @@ import { EventStore } from "applesauce-core";
 import { finalizeEvent, kinds, unixNow } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, defer, from, NEVER, of, Subject } from "rxjs";
+import { BehaviorSubject, EMPTY, defer, from, NEVER, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDmOptions,
@@ -77,6 +77,7 @@ function compose(protocols: DmProtocolAdapter[], options: Partial<Parameters<typ
 function nostr() {
   const eventStore = new EventStore();
   const pool = {
+    relay: () => ({ getSupported: async () => [], request: () => EMPTY }),
     req: vi.fn(() => new Subject()),
     publish: vi.fn(async (relays: string[]) => relays.map((from) => ({ from, ok: true }))),
   };

@@ -7,10 +7,13 @@ import { BehaviorSubject, defer, finalize, Observable, Subscription } from "rxjs
 export interface MessageAuthRequest {
   /** The relay URL */
   url: string;
+
   /** The latest authentication requirement */
   context: SyncAuthContext;
+
   /** The current authentication attempt state */
   state: "pending" | "authenticating" | "failed";
+
   /** The most recent authentication failure */
   error?: unknown;
 }
@@ -21,8 +24,10 @@ const trackers = new WeakMap<SyncAuthHandler, MessageAuthentication>();
 /** Tracks account-owned authentication requests without prompting the signer automatically */
 export class MessageAuthentication {
   private readonly requests = new BehaviorSubject<readonly MessageAuthRequest[]>([]);
+
   /** The outstanding requests grouped by relay */
   readonly requests$ = this.requests.asObservable();
+
   private readonly pending = new Map<symbol, { context: SyncAuthContext; cleanup: Subscription }>();
   private readonly attempts = new Map<string, Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
@@ -58,7 +63,9 @@ export class MessageAuthentication {
     };
     this.pending.set(key, { context, cleanup });
     this.emit();
+
     const relay = this.pool.relay(context.url);
+    // Any matching authentication clears this requirement, including another operation's attempt.
     cleanup.add(
       relay.authenticatedPubkeys$.subscribe((pubkeys) => {
         const required = typeof context.requirement === "string" ? [context.requirement] : context.requirement;
@@ -68,6 +75,8 @@ export class MessageAuthentication {
           remove(true);
       }),
     );
+
+    // A replacement challenge invalidates requests tied to the previous challenge.
     let currentChallenge = context.challenge;
     cleanup.add(
       relay.challenge$.subscribe((challenge) => {
@@ -75,10 +84,13 @@ export class MessageAuthentication {
         currentChallenge = challenge;
       }),
     );
+
+    // Keep the timeout and relay listeners under the same cleanup subscription.
     if (timeout !== false) {
       const timer = setTimeout(() => remove(), timeout);
       cleanup.add(() => clearTimeout(timer));
     }
+
     return () => remove();
   }
 
@@ -175,6 +187,7 @@ export function withMessageAuth$<T>(
       await options.onAuthRequired?.(context);
       await settled;
     };
+    // Completion, errors, and unsubscription all release this operation's auth requests.
     return defer(() =>
       operation({ authTimeout: options.authTimeout, waitForAuth: options.waitForAuth, onAuthRequired }),
     ).pipe(finalize(() => cleanup.unsubscribe()));

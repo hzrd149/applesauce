@@ -16,6 +16,7 @@ describe("exports", () => {
         "createCountService",
         "createEventLoader",
         "createEventLoaderForStore",
+        "createFilterMapTimelineLoader",
         "createOutboxTimelineLoader",
         "createReactionsLoader",
         "createSocialGraphLoader",

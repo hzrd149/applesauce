@@ -14,7 +14,12 @@ import {
   type NostrEvent,
 } from "applesauce-core/helpers";
 import { EncryptedContentModel } from "applesauce-core/models";
-import { LegacyMessagesClient, type LegacyConversation } from "applesauce-extra/messages";
+import {
+  LegacyMessagesClient,
+  type LegacyConversation,
+  type MessageStorage,
+  type PreparedLegacyMessage,
+} from "applesauce-extra/messages";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -22,7 +27,22 @@ import type { ISigner } from "applesauce-signers";
 import { Lock, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
-import { BehaviorSubject, combineLatest, concat, defer, finalize, map, NEVER, of, shareReplay, switchMap } from "rxjs";
+import {
+  BehaviorSubject,
+  catchError,
+  combineLatest,
+  concat,
+  defer,
+  EMPTY,
+  finalize,
+  ignoreElements,
+  map,
+  merge,
+  NEVER,
+  of,
+  shareReplay,
+  switchMap,
+} from "rxjs";
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -67,6 +87,12 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
         pool,
         cacheRequest,
         decryptionCache: signer ? storage : undefined,
+        draftStorage:
+          storage &&
+          createMessageStorage(storage.createInstance({ name: `legacy:${user.pubkey}`, storeName: "drafts" })),
+        publicationStorage:
+          storage &&
+          createMessageStorage(storage.createInstance({ name: `legacy:${user.pubkey}`, storeName: "publications" })),
         fallbackRelays: FALLBACK_RELAYS,
         authTimeout: false,
       });
@@ -80,6 +106,17 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: true }),
 );
+
+/** Adapts encrypted storage so failed writes reject client operations */
+function createMessageStorage(storage: SecureStorage): MessageStorage {
+  return {
+    getItem: (key) => storage.getItem(key),
+    setItem: async (key, value) => {
+      if (!(await storage.setItem(key, value))) throw new Error("Failed to save conversation data");
+    },
+    removeItem: (key) => storage.removeItem(key),
+  };
+}
 
 /** Returns the start of a history range, or undefined for the client's recent sync */
 function getHistorySince(range: HistoryRange) {
@@ -155,8 +192,10 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
   const [error, setError] = useState<string>();
 
   // Reconcile older history on top of the client's recent sync while a range is selected
-  const since = getHistorySince(range);
-  const history = use$(() => (since === undefined ? undefined : client.sync$({ since })), [client, since]);
+  const history = use$(
+    () => (range === "recent" ? undefined : client.sync$({ since: getHistorySince(range) })),
+    [client, range],
+  );
   const progress = history ?? sync;
 
   const relayErrors = (progress?.mailboxes ?? [])
@@ -189,6 +228,7 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
           </button>
         )}
         <div className="flex flex-wrap items-center gap-2">
+          <span className="badge badge-ghost">{lifecycle ?? "loading"}</span>
           <span className="badge badge-ghost" title={relays?.join("\n")}>
             {relays ? `${relays.length} relays` : "…"}
           </span>
@@ -263,7 +303,7 @@ function ConversationRow({
   onSelect,
 }: {
   peer: User;
-  lastMessage: NostrEvent;
+  lastMessage?: NostrEvent;
   active: boolean;
   onSelect: () => void;
 }) {
@@ -276,10 +316,12 @@ function ConversationRow({
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center gap-2">
           <Name user={peer} />
-          <span className="ms-auto shrink-0 text-sm opacity-60">{formatShortTime(lastMessage.created_at)}</span>
+          {lastMessage && (
+            <span className="ms-auto shrink-0 text-sm opacity-60">{formatShortTime(lastMessage.created_at)}</span>
+          )}
         </div>
         <span className="truncate text-sm opacity-60">
-          <Preview event={lastMessage.id} />
+          {lastMessage ? <Preview event={lastMessage.id} /> : "Messages not loaded"}
         </span>
       </div>
     </button>
@@ -302,10 +344,12 @@ function Account({ user, readOnly }: { user: User; readOnly: boolean }) {
 function MessageBubble({
   client,
   event,
+  publication,
   onReply,
 }: {
   client: LegacyMessagesClient;
   event: NostrEvent;
+  publication?: string;
   onReply: () => void;
 }) {
   const content = use$(() => eventStore.model(EncryptedContentModel, event), [event]);
@@ -346,6 +390,7 @@ function MessageBubble({
         )}
       </div>
       <div className="chat-footer gap-2 text-sm">
+        {publication && <span className="opacity-60">{publication}</span>}
         {error && <span className="text-error">{error}</span>}
         {client.signer && (
           <button className="link opacity-60" onClick={onReply}>
@@ -357,67 +402,101 @@ function MessageBubble({
   );
 }
 
-function Composer({
-  conversation,
-  reply,
-  onCancelReply,
-}: {
-  conversation: LegacyConversation;
-  reply?: NostrEvent;
-  onCancelReply: () => void;
-}) {
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+function Composer({ conversation }: { conversation: LegacyConversation }) {
+  const draft = use$(conversation.draft$);
+  const availability = use$(() => conversation.discover$(), [conversation]);
+  const pending = use$(conversation.pendingPublications$);
+  const publishing = use$(conversation.busy$);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string>();
+  const text = draft?.content ?? "";
+  const busy = preparing || publishing;
+  const hasPending = !!pending?.length;
 
-  const send = async () => {
-    setBusy(true);
+  const publish = async (prepared?: PreparedLegacyMessage) => {
+    if (busy) return;
+    setPreparing(true);
     setError(undefined);
 
     try {
-      await conversation.send({ content: text, replyTo: reply?.id });
-      setText("");
-      onCancelReply();
+      // The conversation retains signed events so retries do not prompt the signer again.
+      const delivery = prepared ?? (await conversation.prepareSend({ content: text, replyTo: draft?.replyTo }));
+      await delivery.publish();
+      await conversation.clearDraft();
     } catch (error) {
       setError(String(error));
     } finally {
-      setBusy(false);
+      setPreparing(false);
     }
   };
 
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
-      {reply && (
+      {draft?.replyTo && (
         <div className="flex items-center gap-2 text-sm">
           <span className="min-w-0 flex-1 truncate border-s-2 border-base-300 ps-2 opacity-60">
-            <Preview event={reply} />
+            <Preview event={draft.replyTo} />
           </span>
-          <button className="btn btn-ghost btn-sm btn-square" title="Cancel reply" onClick={onCancelReply}>
+          <button
+            className="btn btn-ghost btn-sm btn-square"
+            title="Cancel reply"
+            disabled={busy || hasPending}
+            onClick={() => conversation.setDraft({ content: text }).catch((error) => setError(String(error)))}
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
+      {pending?.map((delivery) => (
+        <div key={delivery.message.id} className="flex items-center gap-2">
+          <span className="text-sm opacity-60">Unpublished message</span>
+          <button className="btn btn-sm ms-auto" disabled={busy} onClick={() => publish(delivery)}>
+            Retry
+          </button>
+          <button
+            className="btn btn-sm btn-ghost"
+            disabled={busy}
+            onClick={() =>
+              conversation.discardPublication(delivery.message.id).catch((error) => setError(String(error)))
+            }
+          >
+            Discard
+          </button>
+        </div>
+      ))}
       <div className="flex gap-2">
         <input
           className="input flex-1"
           placeholder="Message"
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          disabled={busy || hasPending}
+          onChange={(event) => {
+            conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
+          }}
         />
-        <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={send}>
+        <button
+          className="btn btn-primary"
+          disabled={busy || hasPending || !text.trim() || !availability?.canSend}
+          onClick={() => publish()}
+        >
           {busy ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
       </div>
+      {availability && !availability.canSend && <p className="text-sm text-warning">No delivery relays</p>}
       {error && <p className="text-sm text-error">{error}</p>}
     </div>
   );
 }
 
 function conversationMessages$(conversation: LegacyConversation) {
-  return defer(() => conversation.start()).pipe(
-    switchMap(() => conversation.messages$),
-    finalize(() => conversation.stop()),
-  );
+  return merge(
+    conversation.messages$,
+    defer(() => conversation.start()).pipe(
+      ignoreElements(),
+      // Startup failures are reported by the conversation's errors$ stream.
+      catchError(() => EMPTY),
+    ),
+  ).pipe(finalize(() => conversation.stop()));
 }
 
 function Conversation({ client, other }: { client: LegacyMessagesClient; other: string }) {
@@ -426,12 +505,12 @@ function Conversation({ client, other }: { client: LegacyMessagesClient; other: 
   const sync = use$(conversation.syncStatus$);
   const failure = use$(() => conversation.errors$.pipe(map((failure) => String(failure.error))), [conversation]);
   const [error, setError] = useState<string>();
-  const [reply, setReply] = useState<NostrEvent>();
+  const draft = use$(conversation.draft$);
+  const publications = use$(conversation.publications$);
 
   // Page this correspondent's history back in 90 day steps
-  const [since, setSince] = useState(() => unixNow() - 30 * 86400);
-  const [loadOlder, setLoadOlder] = useState(false);
-  const older = use$(() => (loadOlder ? conversation.sync$({ since }) : undefined), [conversation, since, loadOlder]);
+  const [since, setSince] = useState<number>();
+  const older = use$(() => (since === undefined ? undefined : conversation.sync$({ since })), [conversation, since]);
   const history = older ?? sync;
 
   const peer = castUser(other, eventStore);
@@ -466,25 +545,32 @@ function Conversation({ client, other }: { client: LegacyMessagesClient; other: 
       <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-y-auto p-4">
         {(error || failure) && <p className="text-sm text-error">{error ?? failure}</p>}
         {messages?.map((event) => (
-          <MessageBubble key={event.id} client={client} event={event} onReply={() => setReply(event)} />
+          <MessageBubble
+            key={event.id}
+            client={client}
+            event={event}
+            publication={publications?.[event.id]}
+            onReply={() =>
+              conversation
+                .setDraft({ content: draft?.content ?? "", replyTo: event.id })
+                .catch((error) => setError(String(error)))
+            }
+          />
         ))}
         {messages?.length === 0 && history?.done && <p className="text-center opacity-60">No messages</p>}
         <button
           className="btn btn-sm btn-ghost self-center"
           disabled={!history?.done || since === 0}
           onClick={() => {
-            setLoadOlder(true);
-            setSince(Math.max(0, since - 90 * 86400));
+            setSince(Math.max(0, (since ?? unixNow() - 30 * 86400) - 90 * 86400));
           }}
         >
           {!history?.done ? <span className="loading loading-spinner loading-sm" /> : null}
-          {!history?.done ? "Loading history" : since ? "Load older messages" : "History loaded"}
+          {!history?.done ? "Loading history" : since === 0 ? "History loaded" : "Load older messages"}
         </button>
       </div>
 
-      {client.signer && (
-        <Composer conversation={conversation} reply={reply} onCancelReply={() => setReply(undefined)} />
-      )}
+      {client.signer && <Composer conversation={conversation} />}
     </main>
   );
 }

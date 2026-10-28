@@ -5,7 +5,7 @@ import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loade
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
-import type { MessageOperationContext, MessageOperationOptions } from "../common/types.js";
+import type { MessageStorage, MessageOperationOptions } from "../common/types.js";
 
 /** Dependencies and policies for a NIP-17 inbox */
 export interface WrappedMessagesClientOptions {
@@ -21,6 +21,8 @@ export interface WrappedMessagesClientOptions {
   cacheRequest?: CacheRequest;
   /** The plaintext cache keyed by gift-wrap and seal IDs */
   decryptionCache?: EncryptedContentCache;
+  /** The optional plaintext draft storage, separated by account and protocol by the application */
+  draftStorage?: MessageStorage;
   /** Whether to decrypt arriving envelopes with the signer (default false) */
   autoUnlock?: boolean;
   /** The fallback read relays, never publication targets */
@@ -39,8 +41,6 @@ export interface WrappedMessagesClientOptions {
   authTimeout?: number | false;
   /** Whether to mirror the newest conversation rumor lifetime on sends */
   mirrorExpiration?: boolean;
-  /** The rumor approval callback called before preparing encrypted envelopes */
-  approve?: (request: { template: Rumor; scope?: string }) => boolean | Promise<boolean>;
 }
 
 /** A plaintext NIP-17 message with explicit recipients */
@@ -49,8 +49,6 @@ export interface WrappedMessageSendRequest {
   recipients: readonly string[];
   /** The unmodified plaintext */
   content: string;
-  /** The retry identity within the operation scope */
-  clientMessageId?: string;
   /** The parent rumor ID */
   replyTo?: string;
   /** The absolute rumor expiration timestamp in seconds */
@@ -126,5 +124,5 @@ export interface WrappedMessagePreparation {
   /** The current per-participant relay acceptance outcomes */
   readonly publications: readonly WrappedMessagePublicationResult[];
   /** The cold publication operation */
-  publish$(context: MessageOperationContext): Observable<Rumor>;
+  publish$(context: { signal: AbortSignal }): Observable<Rumor>;
 }

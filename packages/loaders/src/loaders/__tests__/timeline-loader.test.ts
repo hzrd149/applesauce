@@ -5,6 +5,8 @@ import { BehaviorSubject, config, defer, EMPTY, lastValueFrom, of, Subject, thro
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTimelineLoader,
+  createFilterMapTimelineLoader,
+  type FilterMap,
   createOutboxTimelineLoader,
   TimelineWindow,
   TimelineStatus,
@@ -873,6 +875,59 @@ describe("outbox author changes", () => {
 });
 
 describe("reactive relays and filters", () => {
+  it("routes different filters to each relay and retains coverage when routes change", async () => {
+    const routes = new BehaviorSubject<FilterMap>({ a: [{ kinds: [1] }] });
+    const request = relay({ a: [event(150, 1), event(160, 2)], b: [event(170, 2)] });
+    const loader = createFilterMapTimelineLoader(request, routes, { prefetch: 0 });
+    const received: NostrEvent[] = [];
+    const session = loader(new BehaviorSubject(window(100, 200))).subscribe((event) => received.push(event));
+    await flush();
+    const originalRequests = request.mock.calls.filter(([relays]) => relays[0] === "a").length;
+    routes.next({ a: [{ kinds: [1] }], b: [{ kinds: [2] }] });
+    await flush();
+    expect(received.map((event) => event.id)).toEqual(["1-150", "2-170"]);
+    expect(request.mock.calls.filter(([relays]) => relays[0] === "a")).toHaveLength(originalRequests);
+    expect(
+      request.mock.calls
+        .filter(([relays]) => relays[0] === "b")
+        .every(([, filters]) => filters.every((filter) => filter.kinds?.[0] === 2)),
+    ).toBe(true);
+
+    // Status observers can arrive after loading without triggering more requests.
+    const statuses: TimelineStatus[][] = [];
+    const status = loader.status$.subscribe((value) => statuses.push(value));
+    expect(
+      statuses
+        .at(-1)
+        ?.map((entry) => entry.source)
+        .sort(),
+    ).toEqual(["a", "b"]);
+    routes.next({ b: [{ kinds: [2] }] });
+    await flush();
+    expect(statuses.at(-1)?.map((entry) => entry.source)).toEqual(["b"]);
+    session.unsubscribe();
+    status.unsubscribe();
+  });
+
+  it("reads independent cache filters when there are no relay routes", async () => {
+    const request = relay({});
+    const cache = vi.fn(() => of(event(150)));
+    const loader = createFilterMapTimelineLoader(
+      request,
+      {},
+      {
+        cache,
+        cacheFilters: { kinds: [1] },
+        prefetch: 0,
+      },
+    );
+    const events = await lastValueFrom(loader(window(100, 200)).pipe(toArray()));
+    expect(events.map((event) => event.id)).toEqual(["1-150"]);
+    expect(request).not.toHaveBeenCalled();
+    expect(cache).toHaveBeenCalled();
+    expect(() => createFilterMapTimelineLoader(request, {}, { cache })).toThrow("Cache filters");
+  });
+
   it("loads a relay added later for the current window without re-requesting the others", async () => {
     const relays = new BehaviorSubject<string[]>([]);
     const request = relay({ a: [event(150)], b: [event(160)] });

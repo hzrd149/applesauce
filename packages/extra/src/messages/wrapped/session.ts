@@ -1,3 +1,4 @@
+import { logger } from "applesauce-core";
 import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
 import { GiftWrapFactory, WrappedMessageFactory } from "applesauce-common/factories";
@@ -9,8 +10,13 @@ import {
   type Rumor,
 } from "applesauce-common/helpers";
 import {
+  restoreEncryptedContent,
+  saveEncryptedContent,
+  isEncryptedContentFromCache,
+  addSeenRelay,
   getEventHash,
   isEncryptedContentUnlocked,
+  isHexKey,
   kinds,
   notifyEventUpdate,
   setEncryptedContentCache,
@@ -18,29 +24,11 @@ import {
   unixNow,
   type NostrEvent,
 } from "applesauce-core/helpers";
-import {
-  catchError,
-  combineLatest,
-  concatMap,
-  defer,
-  distinctUntilChanged,
-  EMPTY,
-  filter,
-  finalize,
-  map,
-  of,
-  startWith,
-  switchMap,
-  takeWhile,
-  timeout,
-} from "rxjs";
-import { subscribeThroughStore } from "../common/loading.js";
-import { configured$, settle } from "../common/helpers.js";
-import { DmExpirationTracker } from "../common/expiration.js";
-import { restoreMessageContent, saveMessageContent } from "../common/encryption.js";
-import { publishAcceptedMessage } from "../common/publication.js";
+import { catchError, concatMap, defer, EMPTY, filter, finalize, from, firstValueFrom, timeout } from "rxjs";
+import { withMessageAuth$ } from "../common/authentication.js";
+import { settle } from "../common/helpers.js";
+import { WrappedMessageExpirationTracker } from "./expiration.js";
 import { WrappedMessagePublicationError } from "./publication.js";
-import type { MessageOperationContext } from "../common/types.js";
 import type {
   WrappedMessageSendRequest,
   WrappedMessagePreparation,
@@ -49,6 +37,8 @@ import type {
   WrappedMessagePublicationResult,
   WrappedMessagesClientOptions,
 } from "./types.js";
+
+const log = logger.extend("WrappedMessages");
 
 type MessageAccount = { pubkey: string; signer: ISigner };
 
@@ -61,15 +51,9 @@ interface WrappedPublication {
 }
 
 interface WrappedDelivery {
-  fingerprint: string;
   message: Rumor;
   publications: WrappedPublication[];
   publishing: boolean;
-}
-
-interface WrappedSendCache {
-  deliveries: Map<string, WrappedDelivery>;
-  preparing: Set<string>;
 }
 
 function publicationResults(delivery: WrappedDelivery): WrappedMessagePublicationResult[] {
@@ -85,8 +69,7 @@ function publicationResults(delivery: WrappedDelivery): WrappedMessagePublicatio
 export class WrappedMessageSession {
   private readonly pendingDecryptions = new Map<string, Promise<Rumor | undefined>>();
   private closed = false;
-  private readonly expiration = new DmExpirationTracker();
-  private readonly cache: WrappedSendCache = { deliveries: new Map(), preparing: new Set() };
+  private readonly expiration = new WrappedMessageExpirationTracker();
   private get wait() {
     return this.config.timeout ?? 4000;
   }
@@ -97,11 +80,6 @@ export class WrappedMessageSession {
     private readonly owner: MessageAccount,
     private readonly onReadError: (error: unknown, event: NostrEvent) => void,
   ) {}
-
-  private fallbackRelays() {
-    const { config, wait } = this;
-    return settle(configured$(config.fallbackRelays, []), [], wait);
-  }
 
   private async recipientRelays(pubkey: string): Promise<WrappedMessageRecipientSupport> {
     const { config, wait } = this;
@@ -121,37 +99,15 @@ export class WrappedMessageSession {
     return advertised ?? [];
   }
 
-  private async historyRelays(pubkey: string) {
-    const advertised = await this.deliveryRelays(pubkey);
-    return advertised.length ? advertised : this.fallbackRelays();
-  }
-
-  private relays$(pubkey: string) {
-    const { config } = this;
-    const advertised$ = castUser(pubkey, config.eventStore).directMessageRelays$;
-    return combineLatest([
-      advertised$.pipe(startWith(undefined)),
-      configured$(config.fallbackRelays, []).pipe(
-        startWith([]),
-        catchError(() => of([])),
-      ),
-    ]).pipe(
-      map(([advertised, fallback]) => (advertised?.length ? advertised : fallback)),
-      distinctUntilChanged(
-        (previous, next) => previous.length === next.length && previous.every((relay, index) => relay === next[index]),
-      ),
-    );
-  }
-
   private validateRecipients(request: WrappedMessageSendRequest) {
-    if (!request.recipients.length || request.recipients.some((recipient) => !/^[0-9a-f]{64}$/.test(recipient)))
+    if (!request.recipients.length || request.recipients.some((recipient) => !isHexKey(recipient)))
       throw new Error("Invalid recipients");
   }
 
   private async discover(
     request: WrappedMessageSendRequest,
     owner: MessageAccount,
-    context: MessageOperationContext,
+    context: { signal: AbortSignal },
   ): Promise<WrappedMessageAvailability> {
     context.signal.throwIfAborted();
     this.validateRecipients(request);
@@ -172,7 +128,7 @@ export class WrappedMessageSession {
   private async decrypt(
     event: NostrEvent,
     owner: MessageAccount,
-    expiration: DmExpirationTracker,
+    expiration: WrappedMessageExpirationTracker,
   ): Promise<Rumor | undefined> {
     const { config } = this;
     if (event.kind !== kinds.GiftWrap) return;
@@ -181,18 +137,30 @@ export class WrappedMessageSession {
     // Restore each encryption layer before asking the signer to decrypt a cache miss.
     let rumor: Rumor;
     if (config.decryptionCache) {
-      await restoreMessageContent(event, config.decryptionCache);
+      await restoreEncryptedContent(event, config.decryptionCache).catch((error) => {
+        log("Failed to restore encrypted content for %s", event.id, error);
+      });
       if (!isEncryptedContentUnlocked(event)) await unlockEncryptedContent(event, event.pubkey, owner.signer);
 
       const seal = getGiftWrapSeal(event);
       if (!seal) throw new Error("Failed to read seal in gift wrap");
 
-      await restoreMessageContent(seal, config.decryptionCache);
+      await restoreEncryptedContent(seal, config.decryptionCache).catch((error) => {
+        log("Failed to restore encrypted content for %s", seal.id, error);
+      });
       rumor = await unlockSeal(seal, owner.signer);
       notifyEventUpdate(event);
 
-      await saveMessageContent(event, config.decryptionCache);
-      await saveMessageContent(seal, config.decryptionCache);
+      if (!isEncryptedContentFromCache(event)) {
+        await saveEncryptedContent(event, config.decryptionCache).catch((error) => {
+          log("Failed to persist encrypted content for %s", event.id, error);
+        });
+      }
+      if (!isEncryptedContentFromCache(seal)) {
+        await saveEncryptedContent(seal, config.decryptionCache).catch((error) => {
+          log("Failed to persist encrypted content for %s", seal.id, error);
+        });
+      }
     } else {
       rumor = await unlockGiftWrap(event, owner.signer);
     }
@@ -202,7 +170,7 @@ export class WrappedMessageSession {
     return rumor;
   }
 
-  private readMessage$(event: NostrEvent, owner: MessageAccount, expiration: DmExpirationTracker) {
+  private readMessage$(event: NostrEvent, owner: MessageAccount, expiration: WrappedMessageExpirationTracker) {
     const { config } = this;
     return defer(() => {
       const pending = this.pendingDecryptions;
@@ -221,27 +189,26 @@ export class WrappedMessageSession {
     );
   }
 
-  /** Streams a finite or live decrypted mailbox */
-  messages$(context: MessageOperationContext & { history: boolean }) {
+  /** Reads a stored envelope snapshot or watches the store for additions */
+  messages$(context: { signal: AbortSignal; history: boolean }) {
     const { owner, config, expiration } = this;
     return defer(() => {
       context.signal.throwIfAborted();
       let active = true;
       const seen = new Set<string>();
       const mailboxFilter = { kinds: [kinds.GiftWrap], "#p": [owner.pubkey] };
-      const targets$ = context.history ? defer(() => this.historyRelays(owner.pubkey)) : this.relays$(owner.pubkey);
+      const events$ = context.history
+        ? from(config.eventStore.getByFilters(mailboxFilter))
+        : config.eventStore.filters(mailboxFilter);
 
-      return targets$.pipe(
-        switchMap((relays) => {
-          const source$ = subscribeThroughStore(config, relays, [mailboxFilter]);
-          return context.history ? source$.pipe(takeWhile((event) => event !== "EOSE", true)) : source$;
-        }),
-        filter((event): event is NostrEvent => event !== "EOSE"),
+      return events$.pipe(
+        // Decrypt each stored envelope once per reader.
         filter((event) => {
           if (seen.has(event.id)) return false;
           seen.add(event.id);
           return true;
         }),
+        // Decrypt in order and report one envelope failure without ending the mailbox.
         concatMap((event) =>
           defer(() => {
             context.signal.throwIfAborted();
@@ -254,6 +221,7 @@ export class WrappedMessageSession {
             );
           }),
         ),
+        // Prevent queued work after unsubscription; in-flight signer promises remain shared.
         finalize(() => {
           active = false;
         }),
@@ -261,7 +229,7 @@ export class WrappedMessageSession {
     });
   }
 
-  private publishDelivery$(delivery: WrappedDelivery, context: MessageOperationContext) {
+  private publishDelivery$(delivery: WrappedDelivery, context: { signal: AbortSignal }) {
     const { config } = this;
     return defer(async () => {
       context.signal.throwIfAborted();
@@ -276,7 +244,24 @@ export class WrappedMessageSession {
           if (publication.accepted) continue;
 
           try {
-            await publishAcceptedMessage(config, publication.relays, publication.event, context.signal);
+            // Release auth prompts on cancellation, but retain late acceptance to prevent resending.
+            const results = await firstValueFrom(
+              withMessageAuth$(
+                config,
+                (auth) => defer(() => config.pool.publish(publication.relays, publication.event, auth)),
+                context.signal,
+              ),
+            );
+
+            if (!results.some((result) => result.ok)) {
+              throw new Error(results[0]?.message ?? "No relay accepted the event");
+            }
+
+            for (const result of results) {
+              if (result.ok) addSeenRelay(publication.event, result.from);
+            }
+            config.eventStore.add(publication.event);
+
             publication.accepted = true;
             publication.error = undefined;
           } catch (error) {
@@ -296,19 +281,11 @@ export class WrappedMessageSession {
   }
 
   /** Prepares every participant's envelope before allowing publication */
-  prepareSend$(request: WrappedMessageSendRequest, context: MessageOperationContext) {
-    const { config, owner, cache, expiration } = this;
+  prepareSend$(request: WrappedMessageSendRequest, context: { signal: AbortSignal }) {
+    const { config, owner, expiration } = this;
     return defer(() => {
+      // Keep cancellation guards local to this preparation.
       let active = true;
-      const cacheKey = request.clientMessageId ? JSON.stringify([context.scope, request.clientMessageId]) : undefined;
-      const fingerprint = JSON.stringify([
-        [...new Set(request.recipients)].sort(),
-        request.content,
-        request.replyTo,
-        request.expiration,
-        request.envelopeExpiration,
-      ]);
-      let ownsPreparation = false;
       const assertCurrent = () => {
         context.signal.throwIfAborted();
         if (!active || this.closed) throw new Error("DM protocol operation ended");
@@ -316,30 +293,15 @@ export class WrappedMessageSession {
       return defer(async (): Promise<WrappedMessagePreparation> => {
         this.validateRecipients(request);
         assertCurrent();
-        if (cacheKey) {
-          const previous = cache.deliveries.get(cacheKey);
-          if (previous) {
-            if (previous.fingerprint !== fingerprint) throw new Error("DM clientMessageId belongs to another message");
-            return this.prepared(previous);
-          }
-          if (cache.preparing.has(cacheKey)) throw new Error("DM message is already being prepared");
-          cache.preparing.add(cacheKey);
-          ownsPreparation = true;
-        }
-
         const participants = [...new Set([...request.recipients, owner.pubkey])];
         // In NIP-17 every p tag is a recipient, so note mention operations must not run here.
         const createdAt = unixNow();
-        const expirationTags =
-          request.expiration !== undefined
-            ? [["expiration", String(request.expiration)]]
-            : config.mirrorExpiration
-              ? expiration.tags(participants, createdAt)
-              : [];
+        const expirationTimestamp =
+          request.expiration ?? (config.mirrorExpiration ? expiration.expiration(participants, createdAt) : undefined);
         let factory = WrappedMessageFactory.create([...new Set(request.recipients)], request.content).created(
           createdAt,
         );
-        if (expirationTags.length) factory = factory.expiration(Number(expirationTags[0][1]));
+        if (expirationTimestamp !== undefined) factory = factory.expiration(expirationTimestamp);
         if (request.replyTo) factory = factory.replyTo(request.replyTo);
         const template = await factory.as(owner.signer).stamp();
         assertCurrent();
@@ -351,9 +313,6 @@ export class WrappedMessageSession {
         for (const destination of destinations) {
           if (!destination.relays.length) throw new Error(`No DM relays for ${destination.participant}`);
         }
-        if (config.approve && !(await config.approve({ scope: context.scope, template: rumor })))
-          throw new Error("User denied");
-        assertCurrent();
 
         const publications: WrappedPublication[] = [];
         // Prepare all envelopes before publishing so rejecting a later signing prompt sends nothing.
@@ -366,28 +325,27 @@ export class WrappedMessageSession {
           if (config.decryptionCache && participant === owner.pubkey) {
             const seal = getGiftWrapSeal(event)!;
             setEncryptedContentCache(seal, JSON.stringify(rumor));
-            await saveMessageContent(event, config.decryptionCache);
-            await saveMessageContent(seal, config.decryptionCache);
+            if (config.decryptionCache && !isEncryptedContentFromCache(event)) {
+              await saveEncryptedContent(event, config.decryptionCache).catch((error) => {
+                log("Failed to persist encrypted content for %s", event.id, error);
+              });
+            }
+            if (config.decryptionCache && !isEncryptedContentFromCache(seal)) {
+              await saveEncryptedContent(seal, config.decryptionCache).catch((error) => {
+                log("Failed to persist encrypted content for %s", seal.id, error);
+              });
+            }
             assertCurrent();
           }
           publications.push({ recipient: participant, event, relays, accepted: false });
         }
-        const delivery: WrappedDelivery = { fingerprint, message: rumor, publications, publishing: false };
-        if (cacheKey) {
-          // Keep a bounded session-local retry window without retaining plaintext across accounts.
-          if (cache.deliveries.size >= 100) {
-            const oldest = [...cache.deliveries].find(([, entry]) => !entry.publishing);
-            if (!oldest) throw new Error("DM retry cache is busy");
-            cache.deliveries.delete(oldest[0]);
-          }
-          cache.deliveries.set(cacheKey, delivery);
-        }
+        const delivery: WrappedDelivery = { message: rumor, publications, publishing: false };
         return this.prepared(delivery);
       }).pipe(
         timeout({ first: config.actionTimeout ?? 120000 }),
+        // Invalidate late signer results when preparation ends.
         finalize(() => {
           active = false;
-          if (cacheKey && ownsPreparation) cache.preparing.delete(cacheKey);
         }),
       );
     });
@@ -404,7 +362,7 @@ export class WrappedMessageSession {
   }
 
   /** Discovers every participant's advertised DM relays */
-  discover$(request: WrappedMessageSendRequest, context: MessageOperationContext) {
+  discover$(request: WrappedMessageSendRequest, context: { signal: AbortSignal }) {
     return defer(() => this.discover(request, this.owner, context));
   }
 
@@ -413,10 +371,8 @@ export class WrappedMessageSession {
     return this.readMessage$(event, this.owner, this.expiration);
   }
 
-  /** Invalidates the session and releases retained envelopes */
+  /** Invalidates the session and its outstanding operations */
   close(): void {
     this.closed = true;
-    this.cache.deliveries.clear();
-    this.cache.preparing.clear();
   }
 }

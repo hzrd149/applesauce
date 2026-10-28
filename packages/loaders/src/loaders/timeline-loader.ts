@@ -116,6 +116,15 @@ export interface TimelineLoaderOptions extends CommonTimelineLoaderOptions {
   eventStore?: Parameters<typeof mapEventsToStore>[0];
 }
 
+/** Options for timeline windows routed by relay-specific filters */
+export interface FilterMapTimelineLoaderOptions extends TimelineLoaderOptions {
+  /** The filters read from cache independently of the current relay routes */
+  cacheFilters?: TimelessFilter[] | TimelessFilter | Observable<TimelessFilter[] | TimelessFilter>;
+}
+
+/** A map associating relay URLs with their event filters */
+export type { FilterMap } from "applesauce-core/helpers/relay-selection";
+
 type Range = TimelineWindow;
 type FiltersRequest = (filters: Filter[]) => Observable<NostrEvent>;
 
@@ -881,27 +890,34 @@ function createLoader(
   const status = new BehaviorSubject<TimelineStatus[]>([]);
   const loader = (input: TimelineWindow | Observable<TimelineWindow>) =>
     defer(() => {
-      status.next([]);
-      const statuses: TimelineStatus[] = [];
+      const changes = new Subject<TimelineStatus>();
+      const progress$ = changes.pipe(
+        scan((statuses, next) => {
+          const remaining = statuses.filter(
+            (entry) => entry.source !== next.source || !isFilterEqual(entry.filter, next.filter),
+          );
+          return next.state === "removed" ? remaining : [...remaining, next];
+        }, [] as TimelineStatus[]),
+        startWith([] as TimelineStatus[]),
+        tap((statuses) => status.next(statuses)),
+        ignoreElements(),
+      );
       const settings = {
         ...opts,
         onStatus: (next: TimelineStatus) => {
-          const index = statuses.findIndex(
-            (entry) => entry.source === next.source && isFilterEqual(entry.filter, next.filter),
-          );
-          if (next.state === "removed") {
-            if (index >= 0) statuses.splice(index, 1);
-          } else if (index < 0) statuses.push(next);
-          else statuses[index] = next;
-          status.next([...statuses]);
+          changes.next(next);
           opts?.onStatus?.(next);
         },
       };
       if (!isObservable(input)) normalize(input);
-      return build(isObservable(input) ? input : of(input), settings).pipe(
-        mapEventsToStore(opts?.eventStore ?? new EventMemory<NostrEvent>(), false),
-        // Store every arrival before deduplicating output, preserving relay metadata.
-        distinct((event) => event.id),
+      return merge(
+        progress$,
+        defer(() => build(isObservable(input) ? input : of(input), settings)).pipe(
+          mapEventsToStore(opts?.eventStore ?? new EventMemory<NostrEvent>(), false),
+          // Store every arrival before deduplicating output, preserving relay metadata.
+          distinct((event) => event.id),
+          finalize(() => changes.complete()),
+        ),
       );
     }).pipe(share());
 
@@ -926,13 +942,30 @@ export function createTimelineLoader(
   const relayMap$ = combineLatest([isObservable(relays) ? relays : of(relays), filters$]).pipe(
     map(([relays, filters]): FilterMap => Object.fromEntries(relays.map((relay) => [relay, filters]))),
   );
-  const cacheMap$ = filters$.pipe(map((filters): FilterMap => ({ cache: filters })));
+  return createFilterMapTimelineLoader(pool, relayMap$, { ...opts, cacheFilters: filters$ });
+}
+
+/**
+ * Creates a window loader that reconciles relay-specific filters and independent cache filters
+ * @throws if batch or prefetch options are invalid, or a cache is supplied without cache filters
+ */
+export function createFilterMapTimelineLoader(
+  pool: UpstreamPool,
+  relayMap: FilterMap | Observable<FilterMap>,
+  opts?: FilterMapTimelineLoaderOptions,
+): TimelineLoader {
+  if (opts?.cache && opts.cacheFilters === undefined) throw new Error("Cache filters are required with a cache");
+
+  const cacheFilters$ = isObservable(opts?.cacheFilters) ? opts.cacheFilters : of(opts?.cacheFilters ?? []);
+  const cacheMap$ = cacheFilters$.pipe(
+    map((filters): FilterMap => ({ cache: Array.isArray(filters) ? filters : [filters] })),
+  );
   return createLoader(
     (windows, settings) =>
       windows.pipe(
         connect((source) =>
           merge(
-            source.pipe(loadBlocksFromFilterMap(pool, relayMap$, settings)),
+            source.pipe(loadBlocksFromFilterMap(pool, relayMap, settings)),
             settings.cache
               ? source.pipe(
                   reconcileFilterMap(

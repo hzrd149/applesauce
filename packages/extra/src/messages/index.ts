@@ -22,5 +22,11 @@ export type {
   WrappedMessagesSyncStatus,
   WrappedMessagePublicationResult,
 } from "./wrapped/types.js";
-export type { MessageOperationOptions, MessageClientError, MessagesRelayStatus } from "./common/types.js";
+export type {
+  MessageStorage,
+  MessageDraft,
+  MessageOperationOptions,
+  MessageClientError,
+  MessagesRelayStatus,
+} from "./common/types.js";
 export type { MessageAuthRequest } from "./common/authentication.js";
