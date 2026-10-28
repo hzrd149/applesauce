@@ -136,7 +136,7 @@ describe("legacy publication storage", () => {
     const { conversation, client, pool } = setup(storage);
     const prepared = await conversation.prepareSend({ content: "accepted" });
     const errors: unknown[] = [];
-    const subscription = client.errors$.subscribe((error) => errors.push(error));
+    const subscription = conversation.errors$.subscribe((error) => errors.push(error));
     vi.mocked(storage.removeItem).mockRejectedValueOnce(new Error("cleanup failed"));
     expect(await prepared.publish()).toBe(prepared.message);
     expect(values.size).toBe(1);

@@ -22,6 +22,8 @@ export interface MessagesRelayStatus {
   url: string;
   /** The connection state, absent before the pool has opened this relay */
   connection?: RelayStatus;
+  /** The latest live mailbox subscription failure */
+  error?: unknown;
 }
 
 /** An application-scoped string key/value adapter with synchronous or asynchronous methods */

@@ -699,7 +699,9 @@ describe("standalone messaging clients", () => {
     eventStore.add(JSON.parse(JSON.stringify(good)));
     const client = own(new LegacyMessagesClient(options));
     const errors: unknown[] = [];
-    const sub = client.errors$.subscribe((error) => errors.push(error));
+    const sub = client.decryptionState$.subscribe((state) => {
+      errors.splice(0, errors.length, ...Object.values(state.errors));
+    });
     await client.unlock();
     expect(getEncryptedContent(eventStore.getEvent(good.id)!)).toBe("good");
     expect((await firstValueFrom(client.decryptionState$)).failed).toEqual([bad.id]);
@@ -735,7 +737,12 @@ describe("standalone messaging clients", () => {
         }),
       );
       const errors: unknown[] = [];
-      const subscription = client.errors$.subscribe((error) => errors.push(error));
+      const subscription =
+        client instanceof LegacyMessagesClient
+          ? client.cacheState$.subscribe(({ error }) => {
+              if (error) errors.push({ operation: "restore", error });
+            })
+          : client.errors$.subscribe((error) => errors.push(error));
       await client.start();
       expect(pool.subscription).toHaveBeenCalled();
       expect(errors).toContainEqual(expect.objectContaining({ operation: "restore" }));
@@ -781,10 +788,8 @@ describe("standalone messaging clients", () => {
     const client = own(new LegacyMessagesClient(options));
     const conversation = client.conversation(bob);
     const clientPrepare = vi.spyOn(client, "prepareSend");
-    const clientErrors: unknown[] = [];
     const conversationErrors: unknown[] = [];
     const subscriptions = new Subscription();
-    subscriptions.add(client.errors$.subscribe((error) => clientErrors.push(error)));
     subscriptions.add(conversation.errors$.subscribe((error) => conversationErrors.push(error)));
     const signerCalls = vi.spyOn(aliceSigner, "signEvent");
     try {
@@ -797,8 +802,8 @@ describe("standalone messaging clients", () => {
       pool.publish.mockResolvedValueOnce([{ from: "wss://dm.test/", ok: false }]);
       await expect(prepared.publish()).rejects.toThrow();
       expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "failed" });
-      expect(clientErrors).toHaveLength(1);
-      expect(conversationErrors).toEqual(clientErrors);
+      expect(conversationErrors).toHaveLength(1);
+      expect(client).not.toHaveProperty("errors$");
 
       const [retried] = await conversation.loadPublications();
       expect(retried.message).toBe(prepared.message);

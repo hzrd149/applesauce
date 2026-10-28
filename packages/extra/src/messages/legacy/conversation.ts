@@ -111,6 +111,9 @@ export class LegacyConversation {
   /** The native incoming and outgoing kind-4 events in the shared store */
   readonly messages$: Observable<NostrEvent[]>;
 
+  /** The newest in-memory or cached message, restoring cached plaintext without relay requests or signer prompts */
+  readonly lastMessage$: Observable<NostrEvent | undefined>;
+
   /** The relays used for incoming and outgoing messages */
   readonly relays$: Observable<string[]>;
   private readonly lifecycle = new BehaviorSubject<"idle" | "loading" | "ready" | "disposed">("idle");
@@ -194,6 +197,32 @@ export class LegacyConversation {
 
     // Decryption updates cached content without replacing the stored event.
     this.messages$ = client.eventStore.timeline(this.filters).pipe(watchEventsUpdates(client.eventStore));
+
+    this.lastMessage$ = defer(() => {
+      const controller = new AbortController();
+      const latest$ = this.messages$.pipe(map((messages) => messages[0]));
+      const restore$ = latest$.pipe(
+        distinctUntilChanged(),
+        switchMap((event) => {
+          if (!event || !options.decryptionCache) return EMPTY;
+
+          return defer(() => restoreEncryptedContent(event, options.decryptionCache!)).pipe(
+            timeout({ first: this.relayTimeout }),
+            catchError((error) => {
+              this.errors.next({ operation: "restore", error, eventId: event.id });
+              return EMPTY;
+            }),
+          );
+        }),
+        ignoreElements(),
+      );
+
+      // Read both directions independently so the cache returns each direction's newest event.
+      const filters = this.filters.map((filter) => ({ ...filter, limit: 1 }));
+      return merge(latest$, restore$, this.hydrate$(filters, controller.signal).pipe(ignoreElements())).pipe(
+        finalize(() => controller.abort()),
+      );
+    }).pipe(takeUntil(this.publicationDestroyed), shareReplay({ bufferSize: 1, refCount: true }));
 
     this.decryptionState$ = client.observeDecryption$(this.messages$, correspondent);
   }

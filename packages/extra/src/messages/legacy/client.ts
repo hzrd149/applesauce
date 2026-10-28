@@ -1,4 +1,5 @@
 import { logger } from "applesauce-core";
+import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { castUser } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
@@ -50,7 +51,6 @@ import {
   merge,
   Observable,
   of,
-  Subject,
   Subscription,
   takeUntil,
   tap,
@@ -68,7 +68,7 @@ import type {
 } from "./types.js";
 
 const log = logger.extend("LegacyMessages");
-type DecryptionActivity = { event: NostrEvent; readers: number; failed: boolean };
+type DecryptionActivity = { event: NostrEvent; readers: number; failed: boolean; error?: unknown };
 type Mailbox = { filter: Filter; relays$: Observable<string[]> };
 
 function validateRecipient(request: LegacyMessageSendRequest) {
@@ -109,10 +109,17 @@ export class LegacyMessagesClient {
   /** The background loading lifecycle, independent of decryption */
   readonly status$ = this.lifecycle.asObservable();
 
-  private readonly errors = new Subject<MessageClientError>();
+  private readonly cacheState = new BehaviorSubject<{ error?: unknown }>({});
 
-  /** Nonterminal failures from individual operations */
-  readonly errors$ = this.errors.asObservable();
+  /** The latest event-cache hydration result */
+  readonly cacheState$ = this.cacheState.asObservable();
+
+  private readonly conversationStorageState = new BehaviorSubject<{ error?: unknown }>({});
+
+  /** The latest conversation-index persistence result */
+  readonly conversationStorageState$ = this.conversationStorageState.asObservable();
+
+  private readonly mailboxFailures = new BehaviorSubject<Record<string, unknown>>({});
 
   private readonly autoUnlock = new BehaviorSubject(false);
   private readonly syncState = new BehaviorSubject<LegacyMessagesSyncStatus | undefined>(undefined);
@@ -186,8 +193,10 @@ export class LegacyMessagesClient {
 
     // Decryption updates cached content without replacing the stored event.
     this.messages$ = this.eventStore.timeline(this.filters).pipe(watchEventsUpdates(this.eventStore));
-    this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
-      map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
+    this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({}), this.mailboxFailures]).pipe(
+      map(([relays, connections, failures]) =>
+        relays.map((url) => ({ url, connection: connections[url], error: failures[url] })),
+      ),
     );
 
     this.decryptionState$ = this.observeDecryption$(this.messages$);
@@ -213,7 +222,7 @@ export class LegacyMessagesClient {
           concatMap((event) =>
             defer(() => this.rememberCorrespondent(event)).pipe(
               catchError((error) => {
-                this.report("storage", error, event.id);
+                this.conversationStorageState.next({ error });
                 return EMPTY;
               }),
             ),
@@ -257,6 +266,7 @@ export class LegacyMessagesClient {
       JSON.stringify({ version: 1, correspondents: next }),
     );
     this.knownCorrespondents.next(next);
+    this.conversationStorageState.next({});
   }
 
   private assertActive() {
@@ -278,10 +288,6 @@ export class LegacyMessagesClient {
     signal.throwIfAborted();
 
     return { ...options, signal };
-  }
-
-  private report(operation: MessageClientError["operation"], error: unknown, eventId?: string) {
-    this.errors.next({ operation, error, eventId });
   }
 
   /** Returns the native messages in one conversation */
@@ -308,14 +314,6 @@ export class LegacyMessagesClient {
 
   private observeConversation(conversation: LegacyConversation): void {
     const disposed$ = conversation.status$.pipe(filter((lifecycle) => lifecycle === "disposed"));
-    this.lifetime.add(
-      conversation.errors$
-        .pipe(
-          filter((error) => error.operation === "send" || error.operation === "storage"),
-          takeUntil(disposed$),
-        )
-        .subscribe((error) => this.errors.next(error)),
-    );
     this.lifetime.add(
       disposed$.pipe(take(1)).subscribe(() => {
         this.conversations.next(this.conversations.value.filter((item) => item !== conversation));
@@ -345,14 +343,13 @@ export class LegacyMessagesClient {
           if (progress.done) this.lifecycle.next("ready");
         }),
         catchError((error) => {
-          this.report("sync", error);
+          this.syncState.next({ mailboxes: [], done: true, loaded: 0, error });
           return EMPTY;
         }),
       );
       background.add(merge(decryption$, live$, reconciliation$).subscribe());
     } catch (error) {
       this.stop();
-      this.report("read", error);
       throw error;
     }
   }
@@ -414,6 +411,8 @@ export class LegacyMessagesClient {
     if (!this.decryptionActivity.value.get(event.id)?.readers) return undefined;
 
     if (!isEncryptedContentUnlocked(event)) {
+      if (!isNIP04Encrypted(event.content)) throw new Error("Invalid NIP-04 encrypted message content");
+
       const unlocking = this.signerDecryptionQueue.then(async () => {
         // Readers may leave while waiting behind another event's signer prompt.
         if (!this.decryptionActivity.value.get(event.id)?.readers || isEncryptedContentUnlocked(event)) return;
@@ -454,10 +453,9 @@ export class LegacyMessagesClient {
         filter((message): message is NostrEvent => message !== undefined),
         timeout({ first: this.options.decryptionTimeout ?? 60000 }),
         tap({
-          next: () => this.updateDecryption(event, (previous) => ({ ...previous, failed: false })),
+          next: () => this.updateDecryption(event, (previous) => ({ ...previous, failed: false, error: undefined })),
           error: (error) => {
-            this.updateDecryption(event, (previous) => ({ ...previous, failed: true }));
-            this.report("decrypt", error, event.id);
+            this.updateDecryption(event, (previous) => ({ ...previous, failed: true, error }));
           },
         }),
         finalize(() => this.updateDecryption(event, (previous) => ({ ...previous, readers: previous.readers - 1 }))),
@@ -490,6 +488,9 @@ export class LegacyMessagesClient {
           unlocked: events.filter(isEncryptedContentUnlocked).length,
           locked: events.filter((event) => !isEncryptedContentUnlocked(event) && !failedIds.has(event.id)).length,
           failed,
+          errors: Object.fromEntries(
+            relevant.filter((operation) => operation.failed).map(({ event, error }) => [event.id, error]),
+          ),
           pending: relevant.filter((operation) => operation.readers > 0).length,
         };
       }),
@@ -505,8 +506,6 @@ export class LegacyMessagesClient {
 
     return processing$.pipe(
       catchError((error) => {
-        // Reads already report decryption failures at the shared operation boundary.
-        if (!unlock) this.report(operation, error, event.id);
         onError?.({ operation, error, eventId: event.id });
         return EMPTY;
       }),
@@ -576,8 +575,9 @@ export class LegacyMessagesClient {
       return makeCacheRequest(this.options.cacheRequest, filters).pipe(
         timeout({ each: this.options.timeout ?? 4000 }),
         mapEventsToStore(this.options.eventStore),
+        tap({ complete: () => this.cacheState.next({}) }),
         catchError((error) => {
-          this.errors.next({ operation: "restore", error });
+          this.cacheState.next({ error });
           return EMPTY;
         }),
         takeUntil(fromEvent(signal, "abort")),
@@ -589,6 +589,9 @@ export class LegacyMessagesClient {
     return mailbox.relays$.pipe(
       switchMap((relays) => {
         if (!relays.length) return EMPTY;
+        this.mailboxFailures.next(
+          Object.fromEntries(Object.entries(this.mailboxFailures.value).filter(([url]) => !relays.includes(url))),
+        );
         return withMessageAuth$(this.options, (auth) =>
           this.options.pool.subscription(
             relays,
@@ -598,7 +601,10 @@ export class LegacyMessagesClient {
         ).pipe(
           mapEventsToStore(this.options.eventStore),
           catchError((error) => {
-            this.errors.next({ operation: "read", error });
+            this.mailboxFailures.next({
+              ...this.mailboxFailures.value,
+              ...Object.fromEntries(relays.map((url) => [url, error])),
+            });
             return EMPTY;
           }),
         );

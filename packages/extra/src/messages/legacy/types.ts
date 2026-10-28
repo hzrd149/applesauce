@@ -95,6 +95,8 @@ export interface LegacyMessageHistoryOptions extends MessageOperationOptions {
 
 /** Reconciliation progress for the incoming and outgoing legacy mailboxes */
 export interface LegacyMessagesSyncStatus {
+  /** The background reconciliation failure, when reconciliation could not complete */
+  error?: unknown;
   /** The results for each mailbox */
   mailboxes: SyncLoaderStatus[];
   /** Whether both mailboxes finished, including failures */

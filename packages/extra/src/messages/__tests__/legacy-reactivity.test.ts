@@ -54,6 +54,25 @@ async function encryptedMessage(content: string, recipient = owner) {
 }
 
 describe("legacy reactive ownership", () => {
+  it("rejects explicit decryption with the original failure and retains it in decryption state", async () => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("failure");
+    eventStore.add(event);
+    const failure = new Error("signer rejected");
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(failure);
+
+    await expect(client.unlock(event)).rejects.toBe(failure);
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({
+      pending: 0,
+      failed: [event.id],
+      errors: { [event.id]: failure },
+    });
+    expect(client).not.toHaveProperty("errors$");
+
+    await client.retryDecryption(event);
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ failed: [], errors: {} });
+  });
+
   it("serializes signer calls across client unlocks, conversations, and readers", async () => {
     const { client, eventStore } = setup();
     const first = await encryptedMessage("first");
@@ -165,6 +184,68 @@ describe("legacy reactive ownership", () => {
     expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [first.id] });
   });
 
+  it("finishes bulk unlock after synchronous and asynchronous failures and decrypts remaining events", async () => {
+    const { client, eventStore } = setup();
+    const first = await encryptedMessage("first failure");
+    const second = await encryptedMessage("second failure");
+    const good = await encryptedMessage("good");
+    eventStore.add(first);
+    eventStore.add(second);
+    eventStore.add(good);
+    const originalDecrypt = ownerSigner.nip04.decrypt.bind(ownerSigner.nip04);
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
+    decrypt.mockImplementation((pubkey, ciphertext) => {
+      if (ciphertext === first.content) throw new Error("Synchronous rejection");
+      if (ciphertext === second.content) return Promise.reject(new Error("Asynchronous rejection"));
+      return originalDecrypt(pubkey, ciphertext);
+    });
+    const errors: string[] = [];
+    client.decryptionState$.subscribe((state) => {
+      errors.splice(0, errors.length, ...state.failed);
+    });
+
+    await client.unlock();
+
+    expect(getEncryptedContent(good)).toBe("good");
+    expect(new Set(errors)).toEqual(new Set([first.id, second.id]));
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, locked: 0, unlocked: 1 });
+    expect(decrypt).toHaveBeenCalledTimes(3);
+
+    await client.unlock();
+    expect(decrypt).toHaveBeenCalledTimes(3);
+  });
+
+  it("skips malformed ciphertext before invoking an extension and continues bulk decryption", async () => {
+    const { client, eventStore } = setup();
+    const malformed = finalizeEvent(
+      { kind: kinds.EncryptedDirectMessage, created_at: 1, tags: [["p", owner]], content: "missing IV" },
+      peerKey,
+    );
+    const good = await encryptedMessage("good");
+    eventStore.add(malformed);
+    eventStore.add(good);
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
+    const errors: { operation: string; eventId: string; error: unknown }[] = [];
+    client.decryptionState$.subscribe((state) => {
+      for (const [eventId, error] of Object.entries(state.errors)) {
+        if (!errors.some((failure) => failure.eventId === eventId))
+          errors.push({ operation: "decrypt", eventId, error });
+      }
+    });
+
+    await client.unlock();
+
+    expect(decrypt).toHaveBeenCalledTimes(1);
+    expect(decrypt.mock.calls[0][1]).toBe(good.content);
+    expect(getEncryptedContent(good)).toBe("good");
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [malformed.id] });
+    expect(errors).toContainEqual({
+      operation: "decrypt",
+      eventId: malformed.id,
+      error: expect.objectContaining({ message: "Invalid NIP-04 encrypted message content" }),
+    });
+  });
+
   it("restores cached plaintext without waiting behind a signer prompt", async () => {
     const first = await encryptedMessage("first");
     const cached = await encryptedMessage("cached");
@@ -220,8 +301,13 @@ describe("legacy reactive ownership", () => {
     eventStore.add(event);
     const conversation = client.conversation(peer);
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(new Error("signer unavailable"));
-    const errors: unknown[] = [];
-    const subscription = client.errors$.subscribe((error) => errors.push(error));
+    const errors: { operation: string; eventId: string; error: unknown }[] = [];
+    const subscription = client.decryptionState$.subscribe((state) => {
+      for (const [eventId, error] of Object.entries(state.errors)) {
+        if (!errors.some((failure) => failure.eventId === eventId))
+          errors.push({ operation: "decrypt", eventId, error });
+      }
+    });
 
     expect(await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()))).toEqual([]);
     expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [event.id] });

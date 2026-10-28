@@ -1,6 +1,6 @@
 /**
- * A LegacyMessagesClient inbox with read-only browsing, incremental history and explicit decryption
- * @tags messages, legacy, nip-04, nip-65, nip-77, dm, timeline, sync
+ * A LegacyMessagesClient inbox with cached history, encrypted storage, recoverable sends and explicit decryption
+ * @tags messages, legacy, nip-04, nip-65, nip-77, dm, timeline, sync, cache, storage
  * @related messages/gift-wrap, messages/personal-notes, loader/sync-loader
  */
 import { castUser, User } from "applesauce-common/casts";
@@ -17,37 +17,40 @@ import { EncryptedContentModel } from "applesauce-core/models";
 import {
   LegacyMessagesClient,
   type LegacyConversation,
-  type MessageStorage,
+  type MessageAuthRequest,
   type PreparedLegacyMessage,
 } from "applesauce-extra/messages";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, type TimelineWindow } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { Lock, X } from "lucide-react";
+import { Lock, PanelLeft, PanelRight, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
 import {
+  auditTime,
   BehaviorSubject,
-  catchError,
   combineLatest,
+  catchError,
   concat,
   defer,
-  EMPTY,
   finalize,
   ignoreElements,
   map,
   merge,
   NEVER,
+  Observable,
   of,
   shareReplay,
   switchMap,
+  tap,
 } from "rxjs";
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import PubkeyPicker from "../../components/pubkey-picker";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
+import { createPrefixedStorage } from "../../extra/prefixed-storage";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
 
@@ -71,6 +74,7 @@ const db = await openDB();
 const cacheRequest = async (filters: Parameters<typeof getEventsForFilters>[1]) =>
   (await getEventsForFilters(db, filters)) as NostrEvent[];
 
+// Persist native events (whose kind-4 content is still encrypted) for offline history reads.
 persistEventsToCache(eventStore, (events) => addEvents(db, events));
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, cacheRequest });
 
@@ -86,13 +90,14 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
         eventStore,
         pool,
         cacheRequest,
-        decryptionCache: signer ? storage : undefined,
-        draftStorage:
-          storage &&
-          createMessageStorage(storage.createInstance({ name: `legacy:${user.pubkey}`, storeName: "drafts" })),
-        publicationStorage:
-          storage &&
-          createMessageStorage(storage.createInstance({ name: `legacy:${user.pubkey}`, storeName: "publications" })),
+        // Keep decrypted text encrypted at rest, isolated from other accounts and protocols.
+        decryptionCache: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:decryption:`),
+        // Restore unsent text and reply targets when a conversation is reopened.
+        draftStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:drafts:`),
+        // Retain signed events across reloads so failed sends can retry without signing again.
+        publicationStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:publications:`),
+        // Restore the correspondent list even before cached or relay messages arrive.
+        conversationStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:conversations:`),
         fallbackRelays: FALLBACK_RELAYS,
         authTimeout: false,
       });
@@ -107,22 +112,11 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
-/** Adapts encrypted storage so failed writes reject client operations */
-function createMessageStorage(storage: SecureStorage): MessageStorage {
-  return {
-    getItem: (key) => storage.getItem(key),
-    setItem: async (key, value) => {
-      if (!(await storage.setItem(key, value))) throw new Error("Failed to save conversation data");
-    },
-    removeItem: (key) => storage.removeItem(key),
-  };
-}
-
-/** Returns the start of a history range, or undefined for the client's recent sync */
+/** Returns the start of a preset history range */
 function getHistorySince(range: HistoryRange) {
   if (range === "year") return unixNow() - 365 * 86400;
   if (range === "all") return 0;
-  return undefined;
+  return unixNow() - 30 * 86400;
 }
 
 /** Formats a timestamp as a time for today and a date otherwise */
@@ -179,41 +173,83 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function AuthenticationRelay({ request, onAuthenticate }: { request: MessageAuthRequest; onAuthenticate: () => void }) {
+  const relay = pool.relay(request.url);
+  const name = use$(relay.name$);
+  const icon = use$(relay.icon$);
+
+  return (
+    <button
+      className="flex min-w-0 items-center gap-2 rounded p-2 text-left hover:bg-base-200 disabled:opacity-60"
+      disabled={request.state === "authenticating"}
+      title={request.error ? String(request.error) : request.url}
+      onClick={onAuthenticate}
+    >
+      <img src={icon} alt="" className="h-6 w-6 shrink-0 rounded" />
+      <span className="min-w-0 flex-1 truncate">{name ?? new URL(request.url).hostname}</span>
+      {request.state === "authenticating" && <span className="loading loading-spinner loading-sm" />}
+      {request.state === "failed" && <span className="text-sm text-error">Retry</span>}
+    </button>
+  );
+}
+
 function InboxStatus({ client }: { client: LegacyMessagesClient }) {
-  const lifecycle = use$(client.status$);
-  const sync = use$(client.syncStatus$);
   const stats = use$(client.decryptionState$);
   const relays = use$(client.relays$);
   const auth = use$(client.authRequests$) ?? [];
-  const failure = use$(() => client.errors$.pipe(map((failure) => String(failure.error))), [client]);
 
-  const [decrypting, setDecrypting] = useState(false);
+  const [autoDecrypt, setAutoDecrypt] = useState(false);
   const [range, setRange] = useState<HistoryRange>("recent");
   const [error, setError] = useState<string>();
 
-  // Reconcile older history on top of the client's recent sync while a range is selected
-  const history = use$(
-    () => (range === "recent" ? undefined : client.sync$({ since: getHistorySince(range) })),
-    [client, range],
+  const [decrypting, setDecrypting] = useState(false);
+
+  const decryptLoadedMessages = async () => {
+    setDecrypting(true);
+    setError(undefined);
+    try {
+      await client.unlock();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setDecrypting(false);
+    }
+  };
+
+  const [syncRequest, setSyncRequest] = useState<{ since: number }>();
+  const progress = use$(
+    () =>
+      syncRequest &&
+      concat(
+        defer(() => client.start()).pipe(ignoreElements()),
+        client.sync$({ ...syncRequest, followRelays: false }),
+      ).pipe(
+        map((progress) => ({ ...progress, error: undefined as string | undefined })),
+        catchError((error) => of({ done: true, loaded: 0, mailboxes: [], error: String(error) })),
+      ),
+    [client, syncRequest],
   );
-  const progress = history ?? sync;
+  const syncing = !!syncRequest && !progress?.done;
 
   const relayErrors = (progress?.mailboxes ?? [])
     .flatMap((mailbox) => Object.values(mailbox.relays))
     .filter((relay) => relay.error);
 
-  const toggleDecrypting = () => {
-    client.setAutoUnlock(!decrypting);
-    setDecrypting(!decrypting);
-  };
+  const [authenticatingAll, setAuthenticatingAll] = useState(false);
 
-  const authenticate = async (url: string) => {
-    try {
-      setError(undefined);
-      await client.authenticate(url);
-    } catch (error) {
-      setError(String(error));
+  const authenticate = async (urls: string[]) => {
+    setError(undefined);
+    const failures: string[] = [];
+
+    // Queue signer prompts and keep trying the remaining relays after a rejection.
+    for (const url of urls) {
+      try {
+        await client.authenticate(url);
+      } catch (error) {
+        failures.push(`${new URL(url).hostname}: ${String(error)}`);
+      }
     }
+    if (failures.length) setError(failures.join("; "));
   };
 
   // Only signed-in users can answer auth challenges
@@ -221,76 +257,111 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
 
   return (
     <>
-      <Section title="Mailbox">
-        {lifecycle === "idle" && (
-          <button className="btn btn-sm" onClick={() => client.start().catch((error) => setError(String(error)))}>
-            Discover conversations
-          </button>
-        )}
+      <Section title="Decryption">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          Auto-decrypt messages
+          <input
+            type="checkbox"
+            className="toggle toggle-sm"
+            checked={autoDecrypt}
+            disabled={!client.signer}
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              client.setAutoUnlock(enabled);
+              setAutoDecrypt(enabled);
+            }}
+          />
+        </label>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-ghost">{lifecycle ?? "loading"}</span>
-          <span className="badge badge-ghost" title={relays?.join("\n")}>
-            {relays ? `${relays.length} relays` : "…"}
-          </span>
-          <span className="badge badge-ghost">
-            {progress && !progress.done && <span className="loading loading-spinner loading-sm" />}
-            {progress?.loaded ?? 0} events
-          </span>
+          <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
+          <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
+          {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
+          {client.signer && (stats?.locked ?? 0) > 0 && (
+            <button
+              className="btn btn-sm ms-auto"
+              title="Decrypt all locked messages currently in memory"
+              disabled={decrypting}
+              onClick={decryptLoadedMessages}
+            >
+              {decrypting && <span className="loading loading-spinner loading-sm" />}
+              Decrypt
+            </button>
+          )}
+        </div>
+      </Section>
+
+      <Section title="Inbox">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Sync range"
+            className="select select-sm min-w-0 flex-1"
+            value={range}
+            onChange={(event) => setRange(event.target.value as HistoryRange)}
+          >
+            {HISTORY_RANGES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-sm"
+            disabled={syncing}
+            onClick={() => {
+              setError(undefined);
+              setSyncRequest({ since: getHistorySince(range) });
+            }}
+          >
+            {syncing && <span className="loading loading-spinner loading-sm" />}
+            Sync
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-sm opacity-60">
+          <span title={relays?.join("\n")}>{relays?.length ?? 0} relays</span>
+          {progress && <span>{progress.loaded} events</span>}
           {relayErrors.length > 0 && (
             <span
-              className="badge badge-error"
+              className="text-error"
               title={relayErrors.map((relay) => `${relay.relay}: ${relay.error?.message}`).join("\n")}
             >
               {relayErrors.length} failed
             </span>
           )}
         </div>
-        <div className="join">
-          {HISTORY_RANGES.map((option) => (
-            <button
-              key={option.value}
-              className={`btn btn-sm join-item flex-1 ${range === option.value ? "btn-active" : ""}`}
-              onClick={() => setRange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </Section>
 
-      <Section title="Decryption">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
-          <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
-          {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
-        </div>
-        {client.signer && (
-          <button className={`btn btn-sm ${decrypting ? "btn-active" : ""}`} onClick={toggleDecrypting}>
-            {decrypting ? "Stop decrypting" : "Decrypt messages"}
+      {pendingAuth.length > 0 && (
+        <Section title="Authentication">
+          {pendingAuth.map((request) => (
+            <AuthenticationRelay
+              key={request.url}
+              request={request}
+              onAuthenticate={() => {
+                void authenticate([request.url]);
+              }}
+            />
+          ))}
+          <button
+            className="btn btn-sm"
+            disabled={authenticatingAll || pendingAuth.every((request) => request.state === "authenticating")}
+            onClick={async () => {
+              setAuthenticatingAll(true);
+              try {
+                await authenticate(
+                  pendingAuth.filter((request) => request.state !== "authenticating").map((request) => request.url),
+                );
+              } finally {
+                setAuthenticatingAll(false);
+              }
+            }}
+          >
+            {authenticatingAll && <span className="loading loading-spinner loading-sm" />}
+            Auth all
           </button>
-        )}
-      </Section>
-
-      {(pendingAuth.length > 0 || error || failure) && (
-        <Section title="Attention">
-          {pendingAuth.map(({ url, state, error }) => (
-            <button
-              key={url}
-              className="btn btn-sm"
-              disabled={state === "authenticating"}
-              title={error ? String(error) : url}
-              onClick={() => authenticate(url)}
-            >
-              {state === "authenticating"
-                ? "Authenticating"
-                : state === "failed"
-                  ? "Retry authentication"
-                  : "Authenticate"}{" "}
-              {new URL(url).hostname}
-            </button>
-          ))}
-          {(error ?? failure) && <p className="text-sm text-error">{error ?? failure}</p>}
         </Section>
+      )}
+      {(error ?? progress?.error) && (
+        <p className="p-3 text-sm text-error [overflow-wrap:anywhere]">{error ?? progress?.error}</p>
       )}
     </>
   );
@@ -298,22 +369,24 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
 
 function ConversationRow({
   peer,
-  lastMessage,
+  conversation,
   active,
   onSelect,
 }: {
   peer: User;
-  lastMessage?: NostrEvent;
+  conversation: LegacyConversation;
   active: boolean;
   onSelect: () => void;
 }) {
+  const lastMessage = use$(conversation.lastMessage$);
+
   return (
     <button
       className={`flex w-full items-center gap-3 border-b border-base-300 p-3 text-left ${active ? "bg-base-200" : ""}`}
       onClick={onSelect}
     >
       <Avatar user={peer} size="h-10 w-10" />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
         <div className="flex items-center gap-2">
           <Name user={peer} />
           {lastMessage && (
@@ -321,7 +394,7 @@ function ConversationRow({
           )}
         </div>
         <span className="truncate text-sm opacity-60">
-          {lastMessage ? <Preview event={lastMessage.id} /> : "Messages not loaded"}
+          {lastMessage ? <Preview event={lastMessage} /> : "Messages not loaded"}
         </span>
       </div>
     </button>
@@ -362,11 +435,11 @@ function MessageBubble({
   const unlock = () => client.unlock(event).catch((error) => setError(String(error)));
 
   return (
-    <div className={`chat ${isOwn ? "chat-end" : "chat-start"}`}>
+    <div className={`chat min-w-0 ${isOwn ? "chat-end" : "chat-start"}`}>
       <div className="chat-image">
         <Avatar user={author} size="h-10 w-10" />
       </div>
-      <div className="chat-header flex gap-2 text-sm">
+      <div className="chat-header flex min-w-0 flex-wrap gap-2 text-sm">
         <Name user={author} />
         <time className="opacity-60">{formatShortTime(event.created_at)}</time>
       </div>
@@ -375,7 +448,9 @@ function MessageBubble({
           <Preview event={parent} />
         </div>
       )}
-      <div className={`chat-bubble whitespace-pre-wrap ${isOwn ? "chat-bubble-primary" : ""}`}>
+      <div
+        className={`chat-bubble min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${isOwn ? "chat-bubble-primary" : ""}`}
+      >
         {content !== undefined ? (
           content
         ) : !client.signer ? (
@@ -389,7 +464,7 @@ function MessageBubble({
           </button>
         )}
       </div>
-      <div className="chat-footer gap-2 text-sm">
+      <div className="chat-footer flex min-w-0 flex-wrap gap-2 text-sm [overflow-wrap:anywhere]">
         {publication && <span className="opacity-60">{publication}</span>}
         {error && <span className="text-error">{error}</span>}
         {client.signer && (
@@ -466,7 +541,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
       ))}
       <div className="flex gap-2">
         <input
-          className="input flex-1"
+          className="input min-w-0 flex-1"
           placeholder="Message"
           value={text}
           disabled={busy || hasPending}
@@ -488,61 +563,125 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   );
 }
 
-function conversationMessages$(conversation: LegacyConversation) {
-  return merge(
-    conversation.messages$,
-    defer(() => conversation.start()).pipe(
-      ignoreElements(),
-      // Startup failures are reported by the conversation's errors$ stream.
-      catchError(() => EMPTY),
-    ),
-  ).pipe(finalize(() => conversation.stop()));
+/** Loads cached and relay history as the oldest edge approaches the scroll viewport */
+function conversationTimeline$(conversation: LegacyConversation, root: HTMLDivElement, edge: HTMLDivElement) {
+  return defer(() => {
+    const until = unixNow();
+    const windows = new BehaviorSubject<TimelineWindow>({ since: until - 30 * 86400, until });
+    // The conversation supplies its mailbox routes, EventStore and nostr-idb cacheRequest.
+    const loader = conversation.createTimelineLoader({ limit: 50, prefetch: 50 });
+    let step = 30 * 86400;
+
+    const nearEdge$ = new Observable<boolean>((subscriber) => {
+      const observer = new IntersectionObserver(([entry]) => subscriber.next(entry.isIntersecting), {
+        root,
+        rootMargin: "300px",
+      });
+      observer.observe(edge);
+      return () => observer.disconnect();
+    });
+
+    const view$ = combineLatest({
+      messages: conversation.messages$,
+      coverage: loader.status$,
+      nearEdge: nearEdge$,
+    }).pipe(
+      auditTime(50),
+      tap(({ coverage, nearEdge }) => {
+        const window = windows.value;
+        const covered =
+          coverage.length > 0 &&
+          coverage.every(
+            (source) =>
+              source.state === "removed" ||
+              ((source.state === "covered" || source.state === "prefetching" || source.state === "incomplete") &&
+                source.window.since === window.since),
+          );
+        if (!nearEdge || !covered || window.since === 0) return;
+
+        // Grow across quiet periods without issuing one request for every empty month.
+        windows.next({ ...window, since: Math.max(0, window.since - step) });
+        step = Math.min(step * 2, 365 * 86400);
+      }),
+      map(({ messages, coverage }) => ({ messages, coverage, since: windows.value.since })),
+    );
+
+    return merge(
+      view$,
+      loader(windows).pipe(ignoreElements()),
+      defer(() => conversation.start({ history: false })).pipe(ignoreElements()),
+    ).pipe(
+      finalize(() => {
+        conversation.stop();
+        windows.complete();
+      }),
+    );
+  });
 }
 
-function Conversation({ client, other }: { client: LegacyMessagesClient; other: string }) {
-  const conversation = client.conversation(other);
-  const messages = use$(() => conversationMessages$(conversation), [conversation]);
-  const sync = use$(conversation.syncStatus$);
+function Conversation({
+  client,
+  conversation,
+  other,
+}: {
+  client: LegacyMessagesClient;
+  conversation: LegacyConversation;
+  other: string;
+}) {
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+  const [historyEdge, setHistoryEdge] = useState<HTMLDivElement | null>(null);
+  const timeline = use$(
+    () => (scrollRoot && historyEdge ? conversationTimeline$(conversation, scrollRoot, historyEdge) : undefined),
+    [conversation, scrollRoot, historyEdge],
+  );
+  const messages = timeline?.messages;
+  const loading = !timeline?.coverage.length || timeline.coverage.some((source) => source.state === "loading");
   const failure = use$(() => conversation.errors$.pipe(map((failure) => String(failure.error))), [conversation]);
   const [error, setError] = useState<string>();
+  const [decrypting, setDecrypting] = useState(false);
+
+  const decryptAll = async () => {
+    setDecrypting(true);
+    setError(undefined);
+    try {
+      await conversation.unlock();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setDecrypting(false);
+    }
+  };
+
   const draft = use$(conversation.draft$);
   const publications = use$(conversation.publications$);
-
-  // Page this correspondent's history back in 90 day steps
-  const [since, setSince] = useState<number>();
-  const older = use$(() => (since === undefined ? undefined : conversation.sync$({ since })), [conversation, since]);
-  const history = older ?? sync;
+  const decryption = use$(conversation.decryptionState$);
 
   const peer = castUser(other, eventStore);
-  const relayErrors = (history?.mailboxes ?? [])
-    .flatMap((mailbox) => Object.values(mailbox.relays))
-    .filter((relay) => relay.error);
+  const relayErrors = timeline?.coverage.filter((source) => source.state === "incomplete") ?? [];
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-3 border-b border-base-300 p-3">
+    <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+      <div className="flex flex-wrap items-center gap-3 border-b border-base-300 p-3">
         <Avatar user={peer} size="h-8 w-8" />
         <Name user={peer} />
-        {client.signer && (
+        <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
+        {client.signer && (decryption?.locked ?? 0) > 0 && (
           <button
             className="btn btn-sm"
-            onClick={() => conversation.unlock().catch((error) => setError(String(error)))}
+            title="Decrypt all loaded messages in this conversation"
+            disabled={decrypting}
+            onClick={decryptAll}
           >
-            Decrypt conversation
+            {decrypting && <span className="loading loading-spinner loading-sm" />}
+            Decrypt all
           </button>
         )}
-        {relayErrors.length > 0 && (
-          <span
-            className="badge badge-error"
-            title={relayErrors.map((relay) => `${relay.relay}: ${relay.error?.message}`).join("\n")}
-          >
-            {relayErrors.length} failed
-          </span>
-        )}
-        <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-y-auto p-4">
+      <div
+        ref={setScrollRoot}
+        className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4"
+      >
         {(error || failure) && <p className="text-sm text-error">{error ?? failure}</p>}
         {messages?.map((event) => (
           <MessageBubble
@@ -557,17 +696,18 @@ function Conversation({ client, other }: { client: LegacyMessagesClient; other: 
             }
           />
         ))}
-        {messages?.length === 0 && history?.done && <p className="text-center opacity-60">No messages</p>}
-        <button
-          className="btn btn-sm btn-ghost self-center"
-          disabled={!history?.done || since === 0}
-          onClick={() => {
-            setSince(Math.max(0, (since ?? unixNow() - 30 * 86400) - 90 * 86400));
-          }}
-        >
-          {!history?.done ? <span className="loading loading-spinner loading-sm" /> : null}
-          {!history?.done ? "Loading history" : since === 0 ? "History loaded" : "Load older messages"}
-        </button>
+        {messages?.length === 0 && timeline?.since === 0 && !loading && relayErrors.length === 0 && (
+          <p className="text-center opacity-60">No messages</p>
+        )}
+        <div ref={setHistoryEdge} className="flex min-h-8 shrink-0 justify-center text-sm opacity-60">
+          {loading ? (
+            <span className="loading loading-spinner loading-sm" />
+          ) : timeline?.since === 0 ? (
+            "History loaded"
+          ) : (
+            "Scroll up for older messages"
+          )}
+        </div>
       </div>
 
       {client.signer && <Composer conversation={conversation} />}
@@ -578,50 +718,88 @@ function Conversation({ client, other }: { client: LegacyMessagesClient; other: 
 function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
   const groups = use$(client.conversations$);
   const [other, setOther] = useState<string>();
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [conversationsOpen, setConversationsOpen] = useState(true);
+  const conversation = other ? client.conversation(other) : undefined;
 
   return (
-    <div className="flex min-h-0 grow">
-      <aside className="flex w-72 shrink-0 flex-col border-e border-base-300">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="border-b border-base-300 p-3">
-            <PubkeyPicker
-              value={other ?? ""}
-              placeholder="Open a conversation"
-              onChange={(pubkey) => setOther(pubkey || undefined)}
-            />
-          </div>
-
-          <InboxStatus client={client} />
-
-          {groups === undefined ? (
-            <div className="flex justify-center p-6">
-              <span className="loading loading-dots" />
+    <div className="flex min-h-0 min-w-0 grow flex-col overflow-x-hidden">
+      <header className="flex shrink-0 items-center justify-between border-b border-base-300 px-3 py-2">
+        <button
+          className="btn btn-sm btn-square btn-ghost"
+          aria-label="Toggle conversations drawer"
+          title={conversationsOpen ? "Hide conversations" : "Show conversations"}
+          aria-expanded={conversationsOpen}
+          aria-controls="conversations-drawer"
+          onClick={() => setConversationsOpen(!conversationsOpen)}
+        >
+          <PanelLeft className="h-5 w-5" />
+        </button>
+        <button
+          className="btn btn-sm btn-square btn-ghost"
+          aria-label="Toggle mailbox controls drawer"
+          title={drawerOpen ? "Hide mailbox controls" : "Show mailbox controls"}
+          aria-expanded={drawerOpen}
+          aria-controls="mailbox-drawer"
+          onClick={() => setDrawerOpen(!drawerOpen)}
+        >
+          <PanelRight className="h-5 w-5" />
+        </button>
+      </header>
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-x-hidden">
+        <aside
+          id="conversations-drawer"
+          aria-label="Conversations"
+          hidden={!conversationsOpen}
+          className="flex w-72 shrink-0 flex-col border-e border-base-300"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-base-300 p-3">
+              <PubkeyPicker
+                value={other ?? ""}
+                placeholder="Open a conversation"
+                onChange={(pubkey) => setOther(pubkey || undefined)}
+              />
             </div>
-          ) : groups.length === 0 ? (
-            <p className="p-6 text-center opacity-60">No conversations</p>
-          ) : (
-            groups.map((group) => {
-              const peer = group.participants.find((pubkey) => pubkey !== client.pubkey) ?? client.pubkey;
-              return (
-                <ConversationRow
-                  key={group.id}
-                  peer={castUser(peer, eventStore)}
-                  lastMessage={group.lastMessage}
-                  active={other === peer}
-                  onSelect={() => setOther(peer)}
-                />
-              );
-            })
-          )}
-        </div>
-        <Account user={user} readOnly={!client.signer} />
-      </aside>
 
-      {other ? (
-        <Conversation key={other} client={client} other={other} />
-      ) : (
-        <main className="flex min-w-0 flex-1 items-center justify-center opacity-60">Select a conversation</main>
-      )}
+            {groups === undefined ? (
+              <div className="flex justify-center p-6">
+                <span className="loading loading-dots" />
+              </div>
+            ) : groups.length === 0 ? (
+              <p className="p-6 text-center opacity-60">No conversations</p>
+            ) : (
+              groups.map((group) => {
+                const peer = group.participants.find((pubkey) => pubkey !== client.pubkey) ?? client.pubkey;
+                return (
+                  <ConversationRow
+                    key={group.id}
+                    peer={castUser(peer, eventStore)}
+                    conversation={client.conversation(peer)}
+                    active={other === peer}
+                    onSelect={() => setOther(peer)}
+                  />
+                );
+              })
+            )}
+          </div>
+          <Account user={user} readOnly={!client.signer} />
+        </aside>
+
+        {other && conversation ? (
+          <Conversation key={other} client={client} conversation={conversation} other={other} />
+        ) : (
+          <main className="flex min-w-0 flex-1 items-center justify-center opacity-60">Select a conversation</main>
+        )}
+        <aside
+          id="mailbox-drawer"
+          aria-label="Mailbox controls"
+          hidden={!drawerOpen}
+          className="w-80 shrink-0 overflow-x-hidden overflow-y-auto border-s border-base-300 bg-base-100"
+        >
+          <InboxStatus client={client} />
+        </aside>
+      </div>
     </div>
   );
 }
