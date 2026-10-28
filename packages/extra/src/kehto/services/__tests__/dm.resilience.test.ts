@@ -297,10 +297,7 @@ describe("multi-protocol resilience and history", () => {
     expect(history.observed).toBe(true);
 
     history.next(message("second"));
-    expect((await dm.messages({ conversationId })).messages.map((entry) => entry.content)).toEqual([
-      "first",
-      "second",
-    ]);
+    expect((await dm.messages({ conversationId })).messages.map((entry) => entry.content)).toEqual(["first", "second"]);
     expect(custom.read).toHaveBeenCalledTimes(1);
 
     // The detached load stops when the account session is replaced

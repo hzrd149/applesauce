@@ -17,7 +17,13 @@ describe("EventMemory - Basic Operations", () => {
   it("builds mixed AND and OR tag indexes in a single pass, including across cache eviction", () => {
     // Force eviction while building the query's missing indexes
     (eventMemory as any).tags.max = 1;
-    const event = user1.note("Matching", { tags: [["t", "a"], ["t", "b"], ["p", user2.pubkey]] });
+    const event = user1.note("Matching", {
+      tags: [
+        ["t", "a"],
+        ["t", "b"],
+        ["p", user2.pubkey],
+      ],
+    });
     eventMemory.add(event);
     eventMemory.getByFilters({ "#t": ["a"] });
     const build = vi.spyOn(eventMemory as any, "buildTagIndexes");

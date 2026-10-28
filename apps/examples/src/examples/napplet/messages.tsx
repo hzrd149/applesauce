@@ -45,6 +45,8 @@ import {
   createWrappedMessageProtocol,
   createLegacyMessageProtocol,
   defaultDmRouter,
+  firstMatchingRoute,
+  useProtocolWhenSupported,
   type DmProtocolAdapter,
   type KehtoContext,
 } from "applesauce-extra/kehto";
@@ -324,6 +326,7 @@ function toggleProtocol(protocol: DmProtocolAdapter, enabled$: BehaviorSubject<b
 
 const wrappedProtocol = toggleProtocol(createWrappedMessageProtocol(kehtoContext), nip17Enabled$);
 const legacyProtocol = toggleProtocol(createLegacyMessageProtocol(kehtoContext), nip04Enabled$);
+const autoDmRouter = firstMatchingRoute(useProtocolWhenSupported("ndr"), defaultDmRouter);
 
 function setProtocolEnabled(protocol: string, enabled$: BehaviorSubject<boolean>, enabled: boolean) {
   if (!enabled && sendProtocol$.value === protocol) sendProtocol$.next("auto");
@@ -344,7 +347,7 @@ const services = {
   // The NIP-17 and NIP-04 protocols fail independently, so one broken backend still leaves the other readable
   dm: createKehtoDmService(kehtoContext, {
     protocols: [wrappedProtocol, legacyProtocol, ndrProtocol],
-    routeSend: (context) => (sendProtocol$.value === "auto" ? defaultDmRouter(context) : sendProtocol$.value),
+    routeSend: (context) => (sendProtocol$.value === "auto" ? autoDmRouter(context) : sendProtocol$.value),
     onProtocolError: ({ protocol, operation, error }) => addLog("error", `${protocol} ${operation}`, String(error)),
   }),
 };

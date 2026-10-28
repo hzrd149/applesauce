@@ -5,6 +5,7 @@ import { createNdrTransport } from "applesauce-extra/kehto/services/dm/ndr";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import {
+  AppKeys,
   NdrRuntime,
   createPersistentNostrOutbox,
   type NdrRuntimeState,
@@ -175,13 +176,22 @@ export function createNdrMessageProtocol({
       const session: DmProtocolSession = {
         ownerPubkey,
         discover$: (request) =>
-          of({
-            canSend:
+          defer(async () => {
+            const canSend =
               initialized &&
               runtime.getState().canSendPrivateMessages &&
               request.recipients.length === 1 &&
-              request.recipients[0] !== ownerPubkey,
-            support: "unknown",
+              request.recipients[0] !== ownerPubkey;
+
+            if (!canSend) return { canSend, support: "unknown" as const };
+
+            const appKeys = await AppKeys.waitFor(request.recipients[0], transport.nostrSubscribe, 3000);
+            assertActive();
+
+            return {
+              canSend,
+              support: appKeys?.getAllDevices().length ? ("supported" as const) : ("unknown" as const),
+            };
           }),
         messages$: ({ history }) =>
           history

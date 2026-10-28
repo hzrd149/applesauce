@@ -251,9 +251,7 @@ export function createListsOptions(config: KehtoListsOptions): ListsServiceOptio
       const outboxes = getStoredOutboxes(config.eventStore, pubkey);
       await publishThroughStore(
         config,
-        outboxes.length
-          ? outboxes
-          : await firstValueFrom(configured$(config.fallbackRelays, [])),
+        outboxes.length ? outboxes : await firstValueFrom(configured$(config.fallbackRelays, [])),
         event,
       );
       return {

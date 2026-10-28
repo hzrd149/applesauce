@@ -61,7 +61,8 @@ export function getParsedContent(
   if (typeof event === "string") return parse();
 
   // A content override is not part of the default key, so it is only cached under an explicit key
-  const key = cacheKey === undefined ? (content === undefined ? getTransformersCacheKey(transformers) : null) : cacheKey;
+  const key =
+    cacheKey === undefined ? (content === undefined ? getTransformersCacheKey(transformers) : null) : cacheKey;
 
   // no caching
   if (!key) return parse();

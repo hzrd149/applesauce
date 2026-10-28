@@ -28,7 +28,9 @@ describe("getParsedContent", () => {
     const event = note();
     getParsedContent(event);
 
-    expect(getParsedContent(event, "Something else").children).toMatchObject([{ type: "text", value: "Something else" }]);
+    expect(getParsedContent(event, "Something else").children).toMatchObject([
+      { type: "text", value: "Something else" },
+    ]);
   });
 
   it("should use an explicit cache key", () => {

@@ -121,7 +121,6 @@ export class TursoEventDatabase implements IAsyncEventDatabase {
     return await this.getByFilters(filters);
   }
 
-
   /** Close the database connection */
   async close(): Promise<void> {
     log("Closing database connection");

@@ -33,11 +33,11 @@ The shared store validates signatures and manages report revisions. The source r
 
 ### States and eligibility
 
-| State | Meaning | Eligible for requests |
-| --- | --- | --- |
-| `online` | At least one fresh positive observation | Yes |
-| `offline` | Enough distinct trusted publishers explicitly report failure | No |
-| `unknown` | No usable evidence or insufficient agreement | Yes |
+| State     | Meaning                                                      | Eligible for requests |
+| --------- | ------------------------------------------------------------ | --------------------- |
+| `online`  | At least one fresh positive observation                      | Yes                   |
+| `offline` | Enough distinct trusted publishers explicitly report failure | No                    |
+| `unknown` | No usable evidence or insufficient agreement                 | Yes                   |
 
 The default decoder recognizes a finite, nonnegative `rtt-open`, `rtt-read`, or `rtt-write` value for the configured capability as positive evidence. Missing or malformed RTTs do not establish failure. Reports for another network, expired reports, and timestamps beyond the allowed clock skew cannot establish reachability.
 
@@ -57,16 +57,16 @@ The SDK still enforces publisher trust, timestamp freshness, network matching, p
 
 Options use the exported `Nip66LivenessOptions` type; monitor entries use `Nip66Monitor`. Durations are milliseconds.
 
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `monitors` | Required | Distinct trusted public keys, source relay URLs, and optional `interpretReport` callbacks |
-| `capability` | `"read"` | Required `"open"`, `"read"`, or `"write"` evidence |
-| `network` | `"clearnet"` | Observation network: `"clearnet"`, `"tor"`, `"i2p"`, or `"loki"` |
-| `maxAge` | `3600000` | Maximum observation lifetime |
-| `maxClockSkew` | `60000` | Accepted future timestamp tolerance |
-| `offlineQuorum` | `Math.min(2, monitors.length)` | Distinct explicit-negative publishers required to exclude a relay |
-| `limit` | `2000` | Maximum initial discovery reports requested per monitor |
-| `staleAsOffline` | `false` | Count an active monitor's expired report as its offline observation |
+| Option           | Default                        | Purpose                                                                                   |
+| ---------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `monitors`       | Required                       | Distinct trusted public keys, source relay URLs, and optional `interpretReport` callbacks |
+| `capability`     | `"read"`                       | Required `"open"`, `"read"`, or `"write"` evidence                                        |
+| `network`        | `"clearnet"`                   | Observation network: `"clearnet"`, `"tor"`, `"i2p"`, or `"loki"`                          |
+| `maxAge`         | `3600000`                      | Maximum observation lifetime                                                              |
+| `maxClockSkew`   | `60000`                        | Accepted future timestamp tolerance                                                       |
+| `offlineQuorum`  | `Math.min(2, monitors.length)` | Distinct explicit-negative publishers required to exclude a relay                         |
+| `limit`          | `2000`                         | Maximum initial discovery reports requested per monitor                                   |
+| `staleAsOffline` | `false`                        | Count an active monitor's expired report as its offline observation                       |
 
 A valid announced monitor `frequency` shortens observation lifetime to three reporting periods, capped by `maxAge`. Expiry runs even when no new reports arrive. Tor and I2P endpoints require matching network evidence; an observation from another transport does not prove availability on the client's transport.
 

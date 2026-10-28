@@ -6,10 +6,10 @@ description: Choose local or remote monitor evidence and apply relay liveness to
 
 Relay liveness keeps temporarily unreachable relays from consuming connection slots. Applesauce ships two optional sources; neither is required to use `RelayPool` or the loaders.
 
-| Source | Package | Evidence | Guide |
-| --- | --- | --- | --- |
-| `RelayLiveness` | `applesauce-relay` | This client's connections and request outcomes | [Client-side tracking](./local-liveness) |
-| `RemoteMonitorRelayLiveness` | `applesauce-extra` | Signed NIP-66 reports from trusted publishers | [Remote monitors](./remote-monitor-liveness) |
+| Source                       | Package            | Evidence                                       | Guide                                        |
+| ---------------------------- | ------------------ | ---------------------------------------------- | -------------------------------------------- |
+| `RelayLiveness`              | `applesauce-relay` | This client's connections and request outcomes | [Client-side tracking](./local-liveness)     |
+| `RemoteMonitorRelayLiveness` | `applesauce-extra` | Signed NIP-66 reports from trusted publishers  | [Remote monitors](./remote-monitor-liveness) |
 
 Choose local tracking for the client's own network perspective, or remote monitors to offload health checks. A monitor's reachability does not guarantee that a mobile client can reach the same relay. Both sources keep unknown relays eligible and expire exclusions rather than permanently blacklisting endpoints.
 
@@ -60,7 +60,8 @@ One-shot operations (`request`, `publish`, `event`, `count`, and `sync`) filter 
 import { ignoreUnhealthyRelays } from "applesauce-relay/operators";
 
 const eligible$ = relayList$.pipe(ignoreUnhealthyRelays(liveness));
-const subscription = pool.subscription(eligible$, { kinds: [1], limit: 20 })
+const subscription = pool
+  .subscription(eligible$, { kinds: [1], limit: 20 })
   .subscribe((event) => eventStore.add(event));
 ```
 
@@ -73,9 +74,7 @@ Filter relay hints before selecting relays so excluded endpoints do not consume 
 ```ts
 import { ignoreUnhealthyRelaysOnPointers } from "applesauce-relay/operators";
 
-const eligibleUsers$ = usersWithRelayHints$.pipe(
-  ignoreUnhealthyRelaysOnPointers(liveness),
-);
+const eligibleUsers$ = usersWithRelayHints$.pipe(ignoreUnhealthyRelaysOnPointers(liveness));
 ```
 
 For the complete selection and subscription pipeline, see [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users). `ignoreUnhealthyMailboxes(liveness)` filters the `inboxes` and `outboxes` of an individual mailbox object. These operators change relay hints without discarding the users or pointers that contain them.
