@@ -9,8 +9,8 @@
     "prebuild": "rimraf dist",
     "build": "tsc",
     "watch:build": "tsc --watch > /dev/null",
-    "test": "vitest run --passWithNoTests",
-    "watch:test": "vitest"
+    "test": "vitest run --config ../../vitest.config.mts --dir . --passWithNoTests",
+    "watch:test": "vitest --config ../../vitest.config.mts --dir ."
   },
   "keywords": [
     "nostr",
@@ -48,7 +48,7 @@
     "@scure/bip39": "^2.0.1",
     "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.5"
   },
   "funding": {
     "type": "lightning",

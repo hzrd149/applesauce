@@ -1,5 +1,4 @@
 import { configDefaults, defineConfig } from "vitest/config";
-import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   test: {
@@ -12,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html", "lcov"],
-      include: ["packages/**/src/**/*"],
+      include: ["packages/**/src/**/*.{ts,tsx}"],
       exclude: ["**/src/**/*.test.ts", "**/src/**/__tests__/**/*", "apps/examples/**/*"],
     },
   },
