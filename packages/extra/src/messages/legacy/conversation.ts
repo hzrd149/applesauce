@@ -133,6 +133,9 @@ export class LegacyConversation {
 
   private readonly autoUnlock: BehaviorSubject<boolean>;
 
+  /** Whether this conversation's stored messages are automatically unlocked, disabled by default */
+  readonly autoUnlock$: Observable<boolean>;
+
   /** The decryption counts and failed event IDs for this conversation */
   readonly decryptionState$;
   private readonly sending = new BehaviorSubject(0);
@@ -179,6 +182,7 @@ export class LegacyConversation {
     this.drafts = new ConversationDraftState(`draft:${this.id}`, options.draftStorage);
     this.draft$ = this.drafts.draft$;
     this.autoUnlock = new BehaviorSubject(options.autoUnlock ?? false);
+    this.autoUnlock$ = this.autoUnlock.asObservable();
     const owner = castUser(options.pubkey, options.eventStore);
     const peer = castUser(correspondent, options.eventStore);
     this.mailboxes = [

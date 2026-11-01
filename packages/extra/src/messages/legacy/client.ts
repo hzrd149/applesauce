@@ -122,6 +122,10 @@ export class LegacyMessagesClient {
   private readonly mailboxFailures = new BehaviorSubject<Record<string, unknown>>({});
 
   private readonly autoUnlock = new BehaviorSubject(false);
+
+  /** Whether stored messages are automatically unlocked, disabled by default */
+  readonly autoUnlock$ = this.autoUnlock.asObservable();
+
   private readonly syncState = new BehaviorSubject<LegacyMessagesSyncStatus | undefined>(undefined);
 
   /** The latest background history reconciliation progress */

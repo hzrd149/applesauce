@@ -198,7 +198,7 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
   const relays = use$(client.relays$);
   const auth = use$(client.authRequests$) ?? [];
 
-  const [autoDecrypt, setAutoDecrypt] = useState(false);
+  const autoUnlock = use$(client.autoUnlock$) ?? false;
   const [range, setRange] = useState<HistoryRange>("recent");
   const [error, setError] = useState<string>();
 
@@ -263,13 +263,9 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
           <input
             type="checkbox"
             className="toggle toggle-sm"
-            checked={autoDecrypt}
+            checked={autoUnlock}
             disabled={!client.signer}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              client.setAutoUnlock(enabled);
-              setAutoDecrypt(enabled);
-            }}
+            onChange={(event) => client.setAutoUnlock(event.target.checked)}
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">

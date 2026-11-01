@@ -1,3 +1,4 @@
+import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { EventStore } from "applesauce-core";
 import {
   finalizeEvent,
@@ -27,7 +28,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function setup(decryptionTimeout = 60000, decryptionCache?: EncryptedContentCache) {
+function setup(decryptionTimeout = 60000, decryptionCache?: EncryptedContentCache, autoUnlock?: boolean) {
   const eventStore = new EventStore();
   const pool = {
     subscription: vi.fn(() => new Subject<NostrEvent>()),
@@ -43,6 +44,7 @@ function setup(decryptionTimeout = 60000, decryptionCache?: EncryptedContentCach
     timeout: 1,
     decryptionTimeout,
     decryptionCache,
+    autoUnlock,
   });
   clients.push(client);
   return { client, eventStore, pool };
@@ -54,6 +56,64 @@ async function encryptedMessage(content: string, recipient = owner) {
 }
 
 describe("legacy reactive ownership", () => {
+  it.each([undefined, false, true])("exposes the initial auto-unlock option %s without subject methods", (autoUnlock) => {
+    const { client } = setup(60000, undefined, autoUnlock);
+    const conversation = client.conversation(peer);
+    const clientState = subscribeSpyTo(client.autoUnlock$);
+    const conversationState = subscribeSpyTo(conversation.autoUnlock$);
+
+    expect(clientState.getValues()).toEqual([autoUnlock ?? false]);
+    expect(conversationState.getValues()).toEqual([autoUnlock ?? false]);
+    expect(client.autoUnlock$).not.toHaveProperty("next");
+    expect(conversation.autoUnlock$).not.toHaveProperty("next");
+
+    clientState.unsubscribe();
+    conversationState.unsubscribe();
+  });
+
+  it("propagates client auto-unlock changes to existing and new conversations", () => {
+    const { client } = setup();
+    const existing = client.conversation(peer);
+    const clientState = subscribeSpyTo(client.autoUnlock$);
+    const existingState = subscribeSpyTo(existing.autoUnlock$);
+
+    client.setAutoUnlock(true);
+    const created = client.conversation(owner);
+    const createdState = subscribeSpyTo(created.autoUnlock$);
+    expect(createdState.getValues()).toEqual([true]);
+
+    client.setAutoUnlock(false);
+    expect(clientState.getValues()).toEqual([false, true, false]);
+    expect(existingState.getValues()).toEqual([false, true, false]);
+    expect(createdState.getValues()).toEqual([true, false]);
+
+    clientState.unsubscribe();
+    existingState.unsubscribe();
+    createdState.unsubscribe();
+  });
+
+  it("keeps conversation overrides independent until the next client setter", () => {
+    const { client } = setup();
+    const conversation = client.conversation(peer);
+    const sibling = client.conversation(owner);
+    const clientState = subscribeSpyTo(client.autoUnlock$);
+    const conversationState = subscribeSpyTo(conversation.autoUnlock$);
+    const siblingState = subscribeSpyTo(sibling.autoUnlock$);
+
+    conversation.setAutoUnlock(true);
+    expect(clientState.getValues()).toEqual([false]);
+    expect(siblingState.getValues()).toEqual([false]);
+    expect(conversationState.getValues()).toEqual([false, true]);
+
+    // Reapplying the client's unchanged value still replaces the local override.
+    client.setAutoUnlock(false);
+    expect(conversationState.getValues()).toEqual([false, true, false]);
+
+    clientState.unsubscribe();
+    conversationState.unsubscribe();
+    siblingState.unsubscribe();
+  });
+
   it("rejects explicit decryption with the original failure and retains it in decryption state", async () => {
     const { client, eventStore } = setup();
     const event = await encryptedMessage("failure");
