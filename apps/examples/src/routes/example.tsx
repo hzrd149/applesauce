@@ -3,7 +3,7 @@ import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
 
-import { Check, ExternalLink } from "lucide-react";
+import { Check, Copy, ExternalLink, Menu } from "lucide-react";
 import examples from "../examples";
 
 function ExampleMount({ Component, error }: { Component?: (() => ReactElement) | null; error: unknown }) {
@@ -26,6 +26,7 @@ export default function ExamplePage() {
   const [loadedId, setLoadedId] = useState<string>();
   const [loadError, setLoadError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const example = examples.find((e) => e.id === exampleId);
 
@@ -95,14 +96,21 @@ export default function ExamplePage() {
   const metadata = example.metadata;
 
   return (
-    <div className="drawer lg:drawer-open h-screen">
-      <input id="drawer" type="checkbox" className="drawer-toggle" />
+    <div className="drawer lg:drawer-open h-dvh min-w-0">
+      <input
+        id="drawer"
+        type="checkbox"
+        className="drawer-toggle"
+        checked={drawerOpen}
+        onChange={(event) => setDrawerOpen(event.target.checked)}
+        aria-label="Toggle examples navigation"
+      />
 
       {/* Main content */}
-      <div className="drawer-content flex min-h-0 flex-col overflow-y-auto relative">
+      <div className="drawer-content flex min-h-0 min-w-0 flex-col overflow-y-auto relative">
         {/* Navbar */}
-        <div className="navbar bg-base-300 w-full">
-          <Link to="/" className="btn btn-ghost btn-square">
+        <header className="navbar bg-base-300 w-full shrink-0 gap-1">
+          <Link to="/" className="btn btn-ghost btn-square shrink-0" aria-label="All examples">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
@@ -114,43 +122,42 @@ export default function ExamplePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </Link>
-          <div className="flex-none lg:hidden">
-            <label htmlFor="drawer" aria-label="open sidebar" className="btn btn-square btn-ghost">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                className="inline-block h-6 w-6 stroke-current"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-              </svg>
-            </label>
-          </div>
-          <div className="mx-2 flex-1 px-2">
-            <div className="flex flex-col">
-              <span className="font-bold text-lg">{example.name}</span>
-              {metadata?.description && <span className="text-sm text-base-content/70">{metadata.description}</span>}
-            </div>
-          </div>
-          <div className="flex-none">
+          <button
+            type="button"
+            className="btn btn-square btn-ghost shrink-0 lg:hidden"
+            aria-label="Open examples navigation"
+            aria-expanded={drawerOpen}
+            aria-controls="examples-drawer"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Menu className="size-5" />
+          </button>
+          <h1 className="min-w-0 flex-1 truncate px-1 font-bold text-lg sm:px-2" title={example.name}>
+            {example.name}
+          </h1>
+          <div className="flex shrink-0 items-center gap-1">
             <button
               className={`btn btn-sm ${copied ? "btn-success" : "btn-ghost"}`}
               onClick={handleCopy}
               disabled={!source}
               title="Copy code to clipboard"
+              aria-label={copied ? "Code copied" : "Copy code to clipboard"}
             >
-              {copied ? <Check className="size-5" /> : null}
-              {copied ? "Copied!" : "Copy code"}
+              {copied ? <Check className="size-5" /> : <Copy className="size-5" />}
+              <span className="hidden sm:inline">{copied ? "Copied!" : "Copy code"}</span>
             </button>
             <a
               target="_blank"
               className="btn btn-sm btn-ghost btn-square"
               href={`https://github.com/hzrd149/applesauce/tree/master/apps/examples/src/${path}`}
+              aria-label="View source on GitHub"
+              title="View source on GitHub"
+              rel="noopener noreferrer"
             >
               <ExternalLink className="size-5" />
             </a>
           </div>
-          <div className="hidden flex-none lg:block">
+          <div className="hidden flex-none xl:block">
             <ul className="menu menu-horizontal">
               <li>
                 <a href="https://hzrd149.github.io/applesauce">Documentation</a>
@@ -160,21 +167,12 @@ export default function ExamplePage() {
               </li>
             </ul>
           </div>
-        </div>
+        </header>
 
         {/* Metadata */}
-        {Boolean(metadata.tags?.length || metadata.related?.length) && (
-          <div className="bg-base-200 px-4 py-2 border-b border-base-300">
+        {Boolean(metadata.related?.length) && (
+          <div className="hidden sm:block bg-base-200 shrink-0 px-4 py-2 border-b border-base-300">
             <div className="flex flex-wrap gap-2 items-center">
-              {metadata.tags && metadata.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {metadata.tags.map((tag) => (
-                    <span key={tag} className="badge badge-secondary">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              )}
               {metadata.related && metadata.related.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className="text-sm text-base-content/70">Related:</span>
@@ -222,7 +220,7 @@ export default function ExamplePage() {
       </div>
 
       {/* Sidebar */}
-      <SideNav />
+      <SideNav onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }

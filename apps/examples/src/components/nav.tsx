@@ -1,10 +1,10 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { categories, searchExamples } from "../examples";
 import SettingsButton from "./settings-modal";
 
-export default function SideNav() {
+export default function SideNav({ onClose }: { onClose: () => void }) {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const { "*": splat } = useParams();
   const exampleId = splat;
@@ -32,9 +32,15 @@ export default function SideNav() {
   };
 
   return (
-    <div className="drawer-side">
-      <label htmlFor="drawer" className="drawer-overlay"></label>
-      <div className="flex flex-col h-full w-xs bg-base-200 text-base-content">
+    <div
+      id="examples-drawer"
+      className="drawer-side z-20 lg:z-auto"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
+      <label htmlFor="drawer" aria-label="Close examples navigation" className="drawer-overlay"></label>
+      <div className="flex flex-col h-full w-xs max-w-[calc(100vw-2rem)] bg-base-200 text-base-content">
         <div className="flex flex-none items-center gap-2 p-2 border-b border-base-300">
           <a href="https://applesauce.build" className="flex-none">
             <img src="./icon.svg" alt="applesauce" className="w-10 h-10" />
@@ -48,6 +54,14 @@ export default function SideNav() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
           <SettingsButton />
+          <button
+            type="button"
+            className="btn btn-square btn-ghost shrink-0 lg:hidden"
+            aria-label="Close examples navigation"
+            onClick={onClose}
+          >
+            <X className="size-5" />
+          </button>
         </div>
         <nav aria-label="Examples" className="flex-1 min-h-0 overflow-y-auto font-mono">
           {filteredSections.map(({ section, label, items }) => {
@@ -72,6 +86,7 @@ export default function SideNav() {
                     <li key={item.id}>
                       <Link
                         to={`/example/${item.id}`}
+                        onClick={onClose}
                         aria-current={exampleId === item.id ? "page" : undefined}
                         className={
                           "block pl-8 pr-2 py-1.5 text-sm hover:bg-base-300 focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 " +
