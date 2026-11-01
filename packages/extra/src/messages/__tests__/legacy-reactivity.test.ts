@@ -56,20 +56,133 @@ async function encryptedMessage(content: string, recipient = owner) {
 }
 
 describe("legacy reactive ownership", () => {
-  it.each([undefined, false, true])("exposes the initial auto-unlock option %s without subject methods", (autoUnlock) => {
-    const { client } = setup(60000, undefined, autoUnlock);
+  it("shares live processing and releases it only when the last watcher leaves", () => {
+    const { client, pool } = setup();
     const conversation = client.conversation(peer);
-    const clientState = subscribeSpyTo(client.autoUnlock$);
-    const conversationState = subscribeSpyTo(conversation.autoUnlock$);
+    const watching$ = conversation.watch$();
+    expect(pool.subscription).not.toHaveBeenCalled();
 
-    expect(clientState.getValues()).toEqual([autoUnlock ?? false]);
-    expect(conversationState.getValues()).toEqual([autoUnlock ?? false]);
-    expect(client.autoUnlock$).not.toHaveProperty("next");
-    expect(conversation.autoUnlock$).not.toHaveProperty("next");
+    const first = watching$.subscribe();
+    const second = conversation.watch$().subscribe();
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    first.unsubscribe();
+    expect(pool.subscription.mock.results.every(({ value }) => value.observed)).toBe(true);
+    second.unsubscribe();
+    expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
 
-    clientState.unsubscribe();
-    conversationState.unsubscribe();
+    const repeated = watching$.subscribe();
+    expect(pool.subscription).toHaveBeenCalledTimes(4);
+    repeated.unsubscribe();
+    expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
   });
+
+  it("does not release explicit start ownership when a viewport unsubscribes", async () => {
+    const { client, pool } = setup();
+    const conversation = client.conversation(peer);
+    const viewport = conversation.watch$().subscribe();
+    await conversation.start();
+    viewport.unsubscribe();
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    expect(pool.subscription.mock.results.every(({ value }) => value.observed)).toBe(true);
+    expect(await firstValueFrom(conversation.lifecycle$)).toBe("running");
+
+    conversation.stop();
+    expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
+    const resumed = conversation.watch$().subscribe();
+    expect(pool.subscription).toHaveBeenCalledTimes(4);
+    conversation.stop();
+    expect(resumed.closed).toBe(true);
+  });
+
+  it("completes watchers on disposal and rejects later subscriptions", () => {
+    const { client, pool } = setup();
+    const conversation = client.conversation(peer);
+    const watching$ = conversation.watch$();
+    const watcher = subscribeSpyTo(watching$);
+    conversation.dispose();
+    expect(watcher.receivedComplete()).toBe(true);
+    expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
+    const late = subscribeSpyTo(watching$, { expectErrors: true });
+    expect(late.getError()).toEqual(expect.objectContaining({ message: "Conversation disposed" }));
+  });
+
+  it("does not cancel a pending send or independent discovery when a viewport unsubscribes", async () => {
+    const { client, pool, eventStore } = setup();
+    for (const key of [ownerKey, peerKey])
+      eventStore.add(
+        finalizeEvent(
+          {
+            kind: kinds.DirectMessageRelaysList,
+            created_at: 1,
+            tags: [["relay", "wss://dm.test/"]],
+            content: "",
+          },
+          key,
+        ),
+      );
+    const conversation = client.conversation(peer);
+    const prepared = await conversation.prepareSend({ content: "still sending" });
+    let finish!: () => void;
+    pool.publish.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve([{ from: "wss://dm.test/", ok: true }]);
+        }),
+    );
+    const viewport = conversation.watch$().subscribe();
+    const discovery = conversation.discover$().subscribe();
+    const sending = prepared.publish();
+    await vi.waitFor(() => expect(pool.publish).toHaveBeenCalledTimes(1));
+
+    viewport.unsubscribe();
+    expect(discovery.closed).toBe(false);
+    expect(await firstValueFrom(conversation.busy$)).toBe(true);
+    finish();
+    await expect(sending).resolves.toBe(prepared.message);
+    discovery.unsubscribe();
+  });
+
+  it("restores plaintext and auto-unlocks while watched without requiring start", async () => {
+    const cached = await encryptedMessage("cached viewport");
+    const locked = await encryptedMessage("auto viewport");
+    const { client, eventStore } = setup(60000, {
+      getItem: async (id) => (id === cached.id ? "cached viewport" : null),
+      setItem: async () => {},
+    });
+    eventStore.add(cached);
+    const conversation = client.conversation(peer);
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
+    const viewport = conversation.watch$().subscribe();
+    await vi.waitFor(() => expect(getEncryptedContent(cached)).toBe("cached viewport"));
+    expect(decrypt).not.toHaveBeenCalled();
+
+    conversation.setAutoUnlock(true);
+    eventStore.add(locked);
+    await vi.waitFor(() => expect(getEncryptedContent(locked)).toBe("auto viewport"));
+    expect(decrypt).toHaveBeenCalledTimes(1);
+    viewport.unsubscribe();
+    eventStore.add(await encryptedMessage("not watched"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(decrypt).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, false, true])(
+    "exposes the initial auto-unlock option %s without subject methods",
+    (autoUnlock) => {
+      const { client } = setup(60000, undefined, autoUnlock);
+      const conversation = client.conversation(peer);
+      const clientState = subscribeSpyTo(client.autoUnlock$);
+      const conversationState = subscribeSpyTo(conversation.autoUnlock$);
+
+      expect(clientState.getValues()).toEqual([autoUnlock ?? false]);
+      expect(conversationState.getValues()).toEqual([autoUnlock ?? false]);
+      expect(client.autoUnlock$).not.toHaveProperty("next");
+      expect(conversation.autoUnlock$).not.toHaveProperty("next");
+
+      clientState.unsubscribe();
+      conversationState.unsubscribe();
+    },
+  );
 
   it("propagates client auto-unlock changes to existing and new conversations", () => {
     const { client } = setup();
@@ -445,7 +558,7 @@ describe("legacy reactive ownership", () => {
     expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [] });
   });
 
-  it("does not prompt after a conversation stops during plaintext cache restoration", async () => {
+  it.each(["stop", "unsubscribe"])("does not prompt after %s during plaintext cache restoration", async (ending) => {
     let finishCache!: (content: string | null) => void;
     const getItem = vi.fn(
       () =>
@@ -459,9 +572,10 @@ describe("legacy reactive ownership", () => {
     conversation.setAutoUnlock(true);
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
 
-    await conversation.start();
+    const watcher = conversation.watch$().subscribe();
     expect(getItem).toHaveBeenCalledTimes(1);
-    conversation.stop();
+    if (ending === "stop") conversation.stop();
+    else watcher.unsubscribe();
     finishCache(null);
     // Flush the cache and decryption promise continuations before checking for a late prompt.
     await new Promise((resolve) => setTimeout(resolve, 0));

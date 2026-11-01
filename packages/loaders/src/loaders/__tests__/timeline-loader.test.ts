@@ -8,6 +8,7 @@ import {
   createFilterMapTimelineLoader,
   type FilterMap,
   createOutboxTimelineLoader,
+  isTimelineWindowCovered,
   TimelineWindow,
   TimelineStatus,
 } from "../timeline-loader.js";
@@ -37,6 +38,85 @@ function relay(events: Record<string, NostrEvent[]>, cap = Infinity) {
     ),
   );
 }
+
+describe("timeline coverage interpretation", () => {
+  const requested = window(0, 200);
+  const covered: TimelineStatus = {
+    source: "relay",
+    filter: {},
+    window: requested,
+    buffer: requested,
+    state: "covered",
+  };
+
+  it("requires at least one active source even for an all-history window", () => {
+    expect(isTimelineWindowCovered(requested, [])).toBe(false);
+    expect(isTimelineWindowCovered(requested, [{ ...covered, state: "removed" }])).toBe(false);
+  });
+
+  it.each(["loading", "incomplete"] as const)("does not treat %s as successful history coverage", (state) => {
+    expect(isTimelineWindowCovered(requested, [covered, { ...covered, source: "other", state }])).toBe(false);
+  });
+
+  it("requires both requested edges to be covered, not just the oldest timestamp", () => {
+    expect(isTimelineWindowCovered(requested, [{ ...covered, window: window(0, 199) }])).toBe(false);
+    expect(isTimelineWindowCovered(requested, [{ ...covered, window: window(1, 200) }])).toBe(false);
+    expect(isTimelineWindowCovered(window(50, 100), [covered])).toBe(true);
+  });
+
+  it("accepts successful visible coverage while prefetching and ignores retired sources", () => {
+    expect(
+      isTimelineWindowCovered(requested, [
+        covered,
+        { ...covered, source: "prefetch", state: "prefetching" },
+        { ...covered, source: "retired", state: "removed" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("waits for successful empty responses before declaring time-zero coverage", async () => {
+    const pending = new Subject<NostrEvent>();
+    const loader = createTimelineLoader(() => pending, ["relay"], {}, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    const statusSub = loader.status$.subscribe((next) => {
+      statuses = next;
+    });
+    const subscription = loader(new BehaviorSubject(requested)).subscribe();
+    await flush();
+    expect(isTimelineWindowCovered(requested, statuses)).toBe(false);
+    pending.complete();
+    await flush();
+    expect(isTimelineWindowCovered(requested, statuses)).toBe(true);
+    subscription.unsubscribe();
+    statusSub.unsubscribe();
+  });
+
+  it("keeps partial failures incomplete after healthy sources finish", async () => {
+    const request = (relays: string[]) => (relays[0] === "failed" ? throwError(() => new Error("offline")) : EMPTY);
+    const loader = createTimelineLoader(request, ["healthy", "failed"], {}, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    const statusSub = loader.status$.subscribe((next) => {
+      statuses = next;
+    });
+    await lastValueFrom(loader(requested).pipe(toArray()));
+    expect(statuses.some((source) => source.state === "covered")).toBe(true);
+    expect(isTimelineWindowCovered(requested, statuses)).toBe(false);
+    statusSub.unsubscribe();
+  });
+
+  it("does not invent coverage when no relays are available", async () => {
+    const request = vi.fn(() => EMPTY);
+    const loader = createTimelineLoader(request, [], {}, { prefetch: 0 });
+    let statuses: TimelineStatus[] = [];
+    const statusSub = loader.status$.subscribe((next) => {
+      statuses = next;
+    });
+    await lastValueFrom(loader(requested).pipe(toArray()));
+    expect(request).not.toHaveBeenCalled();
+    expect(isTimelineWindowCovered(requested, statuses)).toBe(false);
+    statusSub.unsubscribe();
+  });
+});
 
 describe("reactive timeline windows", () => {
   afterEach(() => vi.useRealTimers());

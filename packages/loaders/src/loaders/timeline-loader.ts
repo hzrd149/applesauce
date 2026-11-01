@@ -80,6 +80,20 @@ export interface TimelineLoader {
   status$: Observable<TimelineStatus[]>;
 }
 
+/** Checks whether every active source has successfully covered the requested window */
+export function isTimelineWindowCovered(window: TimelineWindow, statuses: readonly TimelineStatus[]): boolean {
+  const active = statuses.filter((status) => status.state !== "removed");
+  return (
+    active.length > 0 &&
+    active.every(
+      (status) =>
+        status.window.since <= window.since &&
+        status.window.until >= window.until &&
+        (status.state === "covered" || status.state === "prefetching"),
+    )
+  );
+}
+
 /** A tracker that records relay request outcomes, such as `RelayLiveness` from applesauce-relay */
 export interface TimelineLivenessTracker {
   /** Records a failed request to a relay */

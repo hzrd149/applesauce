@@ -264,8 +264,13 @@ describe("standalone messaging clients", () => {
 
     const first = loader({ since: 10, until: 20 }).subscribe();
     const second = conversation.createTimelineLoader()({ since: 30, until: 40 }).subscribe();
+    const viewport = conversation.watch$().subscribe();
     await vi.waitFor(() => expect(activeRequests).toBeGreaterThan(0));
     const bothSessions = activeRequests;
+    viewport.unsubscribe();
+    expect(first.closed).toBe(false);
+    expect(second.closed).toBe(false);
+    expect(activeRequests).toBe(bothSessions);
     first.unsubscribe();
     await vi.waitFor(() => expect(activeRequests).toBeGreaterThan(0));
     expect(activeRequests).toBeLessThan(bothSessions);

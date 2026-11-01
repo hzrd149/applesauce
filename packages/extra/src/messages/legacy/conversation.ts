@@ -117,7 +117,7 @@ export class LegacyConversation {
   readonly relays$: Observable<string[]>;
   private readonly lifecycle = new BehaviorSubject<"idle" | "running" | "disposed">("idle");
 
-  /** The background lifecycle, with running indicating started processing rather than history success */
+  /** The explicit start/stop lifecycle, independent of subscription-owned watchers and history success */
   readonly lifecycle$ = this.lifecycle.asObservable();
 
   private readonly errors = new Subject<MessageClientError>();
@@ -156,6 +156,20 @@ export class LegacyConversation {
   private publicationsLoaded = false;
   private readonly mailboxes: Mailbox[];
   private background?: Subscription;
+  private readonly watching$ = defer(() => {
+    const context = this.context();
+    const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
+    const processing$ = this.client.watchDecryption$(
+      this.client.eventStore.filters(this.filters),
+      this.autoUnlock,
+      (error) => this.errors.next(error),
+    );
+
+    return merge(processing$, ...this.mailboxes.map((mailbox) => this.watchMailbox$(mailbox, since))).pipe(
+      ignoreElements(),
+      takeUntil(fromEvent(context.signal, "abort")),
+    );
+  }).pipe(share());
   private generation = new AbortController();
   private disposed = false;
 
@@ -275,16 +289,12 @@ export class LegacyConversation {
 
     const background = (this.background = new Subscription());
     this.lifecycle.next("running");
-    const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
+    background.add(this.watch$().subscribe());
+  }
 
-    background.add(
-      this.client
-        .watchDecryption$(this.client.eventStore.filters(this.filters), this.autoUnlock, (error) =>
-          this.errors.next(error),
-        )
-        .subscribe(),
-    );
-    background.add(merge(...this.mailboxes.map((mailbox) => this.watchMailbox$(mailbox, since))).subscribe());
+  /** Watches live arrivals and processes stored plaintext while subscribed, sharing work with start() and other watchers */
+  watch$(): Observable<never> {
+    return this.watching$;
   }
 
   /** Stops only this conversation's loading and outstanding operations */

@@ -78,6 +78,17 @@ Each status identifies a source, filter, and current visible window. Its `buffer
 
 Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the outbox map is still unknown or has no sources. Failures do not stop healthy relays. A failed range is retried after `retryDelay`, doubling for each consecutive failure up to five minutes, and window changes don't retry it sooner. A source that sends nothing for `responseTimeout` counts as failed even when window changes keep cancelling its requests, so a hanging relay is backed off too.
 
+Use `isTimelineWindowCovered(window, statuses)` before extending a history window or displaying completion:
+
+```ts
+import { isTimelineWindowCovered } from "applesauce-loaders/loaders";
+
+const covered = isTimelineWindowCovered(window, statuses);
+const historyComplete = window.since === 0 && covered;
+```
+
+The predicate requires at least one active source, successful `covered` or `prefetching` states, and coverage spanning both requested bounds; it ignores removed sources and rejects loading, incomplete, or stale narrower windows. It checks only the supplied sources: if relay history is required, separately require relay statuses rather than treating cache-only coverage as relay success. Keep requested bounds at or before now, matching the loader's normalization.
+
 The loader combines adjoining visible and buffered gaps instead of issuing separate requests at viewport edges. Requests use newest-first ordering and a batch limit:
 
 - Initial and backward requests omit `since` when no older covered interval provides a stopping point, allowing a full batch of useful older events.

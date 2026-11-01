@@ -64,7 +64,20 @@ conversation.stop();
 
 `start()` follows live messages with the configured recent lookback and restores cached plaintext for events already in the store, optionally decrypting them when auto-unlock is enabled; it never requests cache history or reconciles relay history. `lifecycle$` exposes `idle`, `running`, and `disposed`; `running` means background processing has started, not that history succeeded. `messages$` returns native events already in the shared store and does not start network loading by itself.
 
+For a subscription-owned view, use `watch$()` instead of pairing `start()` with `stop()`:
+
+```ts
+const view$ = merge(conversation.messages$, conversation.watch$());
+const subscription = view$.subscribe(renderMessages);
+// Leaving this view releases only its live-processing interest.
+subscription.unsubscribe();
+```
+
+`watch$()` emits no values and shares live loading, cached-plaintext restoration, and auto-unlock processing with other watchers and `start()`. The last unsubscribe releases that work unless an explicit start still owns it; it never cancels sends, history loaders, or other operations. `lifecycle$` tracks explicit `start()` ownership, so a watch-only conversation stays `idle`. Explicit `stop()` still cancels all conversation operations and completes current watchers; a later subscription starts fresh, while subscribing after disposal errors.
+
 History loading is explicit and scoped to this correspondent: subscribe to `conversation.sync$({ since, until })` for operation-local progress, await `loadHistory({ since, until })` for its final result, or use `createTimelineLoader()` for viewport windows. Legacy clients and conversations no longer expose `status$` or retained `syncStatus$`, and conversation `start()` takes no history option.
+
+The [legacy example](../../apps/examples/src/examples/messages/legacy.tsx) combines subscription-owned watching with a timeline loader and a DOM intersection observer. It disables speculative prefetch, extends the requested window only after successful relay and cache coverage, and doubles quiet-period lookback up to a year, resetting to a month near messages. No relays or incomplete coverage pauses expansion; only successful coverage reaching timestamp zero displays history completion, which describes the current sources rather than every possible relay.
 
 Use `client.start()` separately for account-wide inbox discovery. Stopping a conversation leaves other conversations running; stopping or disposing the client stops all its conversations. Disposing a conversation releases it permanently, and the next `client.conversation(pubkey)` lookup creates a fresh instance.
 

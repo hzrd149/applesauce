@@ -20,7 +20,7 @@ import {
   type MessageAuthRequest,
   type PreparedLegacyMessage,
 } from "applesauce-extra/messages";
-import { createEventLoaderForStore, type TimelineWindow } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, isTimelineWindowCovered, type TimelineWindow } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
@@ -577,9 +577,9 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
 function conversationTimeline$(conversation: LegacyConversation, root: HTMLDivElement, edge: HTMLDivElement) {
   return defer(() => {
     const until = unixNow();
-    const windows = new BehaviorSubject<TimelineWindow>({ since: until - 30 * 86400, until });
+    const windows = new BehaviorSubject<TimelineWindow>({ since: Math.max(0, until - 30 * 86400), until });
     // The conversation supplies its mailbox routes, EventStore and nostr-idb cacheRequest.
-    const loader = conversation.createTimelineLoader({ limit: 50, prefetch: 50 });
+    const loader = conversation.createTimelineLoader({ limit: 50, prefetch: 0 });
     let step = 30 * 86400;
 
     const nearEdge$ = new Observable<boolean>((subscriber) => {
@@ -595,34 +595,32 @@ function conversationTimeline$(conversation: LegacyConversation, root: HTMLDivEl
       messages: conversation.messages$,
       coverage: loader.status$,
       nearEdge: nearEdge$,
+      window: windows,
+      relays: conversation.relays$,
     }).pipe(
       auditTime(50),
-      tap(({ coverage, nearEdge }) => {
-        const window = windows.value;
+      map((view) => {
+        // Cache coverage alone cannot establish that relay history has been loaded.
         const covered =
-          coverage.length > 0 &&
-          coverage.every(
-            (source) =>
-              source.state === "removed" ||
-              ((source.state === "covered" || source.state === "prefetching" || source.state === "incomplete") &&
-                source.window.since === window.since),
-          );
+          view.relays.length > 0 &&
+          view.relays.every((relay) => view.coverage.some((source) => source.source === relay)) &&
+          isTimelineWindowCovered(view.window, view.coverage);
+        return { ...view, covered, complete: view.window.since === 0 && covered };
+      }),
+      tap(({ covered, nearEdge, window, messages }) => {
         if (!nearEdge || !covered || window.since === 0) return;
 
-        // Grow across quiet periods without issuing one request for every empty month.
+        // Reset to a month near messages; double across quiet periods, capped at a year.
+        const foundMessages = messages.some(
+          (message) => message.created_at >= window.since && message.created_at < window.since + step,
+        );
+        step = foundMessages ? 30 * 86400 : Math.min(step * 2, 365 * 86400);
         windows.next({ ...window, since: Math.max(0, window.since - step) });
-        step = Math.min(step * 2, 365 * 86400);
       }),
-      map(({ messages, coverage }) => ({ messages, coverage, since: windows.value.since })),
     );
 
-    return merge(
-      view$,
-      loader(windows).pipe(ignoreElements()),
-      defer(() => conversation.start()).pipe(ignoreElements()),
-    ).pipe(
+    return merge(view$, loader(windows).pipe(ignoreElements()), conversation.watch$()).pipe(
       finalize(() => {
-        conversation.stop();
         windows.complete();
       }),
     );
@@ -645,7 +643,11 @@ function Conversation({
     [conversation, scrollRoot, historyEdge],
   );
   const messages = timeline?.messages;
-  const loading = !timeline?.coverage.length || timeline.coverage.some((source) => source.state === "loading");
+  const loading =
+    !timeline ||
+    (timeline.relays.length > 0 &&
+      !timeline.covered &&
+      !timeline.coverage.some((source) => source.state === "incomplete"));
   const failure = use$(() => conversation.errors$.pipe(map((failure) => String(failure.error))), [conversation]);
   const [error, setError] = useState<string>();
   const [decrypting, setDecrypting] = useState(false);
@@ -706,13 +708,20 @@ function Conversation({
             }
           />
         ))}
-        {messages?.length === 0 && timeline?.since === 0 && !loading && relayErrors.length === 0 && (
-          <p className="text-center opacity-60">No messages</p>
-        )}
+        {messages?.length === 0 && timeline?.complete && <p className="text-center opacity-60">No messages</p>}
         <div ref={setHistoryEdge} className="flex min-h-8 shrink-0 justify-center text-sm opacity-60">
           {loading ? (
             <span className="loading loading-spinner loading-sm" />
-          ) : timeline?.since === 0 ? (
+          ) : relayErrors.length > 0 ? (
+            <span
+              className="text-warning"
+              title={relayErrors.map((source) => `${source.source}: ${String(source.error)}`).join("\n")}
+            >
+              History incomplete
+            </span>
+          ) : !timeline?.relays.length ? (
+            "No history relays"
+          ) : timeline?.complete ? (
             "History loaded"
           ) : (
             "Scroll up for older messages"

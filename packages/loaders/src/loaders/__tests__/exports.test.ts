@@ -26,6 +26,7 @@ describe("exports", () => {
         "createUnifiedEventLoader",
         "createZapsLoader",
         "eventLoadingSequence",
+        "isTimelineWindowCovered",
         "legacyReferenceCountMetric",
         "loadBlocksFromCache",
         "loadBlocksFromFilterMap",
