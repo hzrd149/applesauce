@@ -11,6 +11,7 @@ export type {
   PreparedLegacyMessage,
   LegacyMessageHistoryOptions,
   LegacyMessagesSyncStatus,
+  LegacyMailboxError,
 } from "./legacy/types.js";
 export type {
   WrappedMessagesClientOptions,

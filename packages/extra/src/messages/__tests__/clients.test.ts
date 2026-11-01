@@ -71,6 +71,144 @@ function own<T extends { dispose(): void }>(client: T): T {
 }
 
 describe("standalone messaging clients", () => {
+  it("keeps the legacy client lifecycle idempotent and starts no implicit history sync", async () => {
+    const { options, pool } = setup();
+    const cacheRequest = vi.fn(() => []);
+    const client = own(
+      new LegacyMessagesClient({ ...options, cacheRequest, historySpan: 3600, fallbackRelays: ["wss://dm.test/"] }),
+    );
+    const sync = vi.spyOn(client, "sync$");
+    const lifecycle: string[] = [];
+    const subscription = client.lifecycle$.subscribe((value) => lifecycle.push(value));
+    const before = unixNow();
+
+    await Promise.all([client.start(), client.start()]);
+    expect(cacheRequest).toHaveBeenCalledOnce();
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    for (const [, filter] of pool.subscription.mock.calls as unknown as [string[], Filter][]) {
+      expect(filter.since).toBeGreaterThanOrEqual(before - 3600);
+      expect(filter.since).toBeLessThanOrEqual(unixNow() - 3600);
+    }
+    expect(sync).not.toHaveBeenCalled();
+    expect(pool.req).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+    for (const removed of [
+      "status$",
+      "syncStatus$",
+      "busy$",
+      "publications$",
+      "relayStatus$",
+      "cacheState$",
+      "conversationStorageState$",
+    ])
+      expect(client).not.toHaveProperty(removed);
+
+    client.stop();
+    client.stop();
+    await client.start();
+    expect(pool.subscription).toHaveBeenCalledTimes(4);
+    client.dispose();
+    client.dispose();
+    client.stop();
+    expect(lifecycle).toEqual(["idle", "running", "idle", "running", "disposed"]);
+    expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
+    await expect(client.start()).rejects.toThrow("disposed");
+    subscription.unsubscribe();
+  });
+
+  it("hydrates cached legacy events and restores plaintext without signer prompts", async () => {
+    const { options, eventStore, pool } = setup();
+    const message: NostrEvent = JSON.parse(
+      JSON.stringify(await LegacyMessageFactory.create(alice, "cached").sign(bobSigner)),
+    );
+    const decrypt = vi.spyOn(aliceSigner.nip04, "decrypt");
+    const cacheRequest = vi.fn(() => [message]);
+    const client = own(
+      new LegacyMessagesClient({
+        ...options,
+        cacheRequest,
+        fallbackRelays: ["wss://dm.test/"],
+        decryptionCache: { getItem: async () => "cached", setItem: async () => {} },
+      }),
+    );
+
+    await client.start();
+    await vi.waitFor(() => expect(getEncryptedContent(message)).toBe("cached"));
+    expect(eventStore.hasEvent(message.id)).toBe(true);
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    expect(pool.relay).not.toHaveBeenCalled();
+  });
+
+  it("reports and clears legacy hydration errors on the next successful operation", async () => {
+    const { options, pool } = setup();
+    const failure = new Error("cache offline");
+    const cacheRequest = vi
+      .fn(() => [] as NostrEvent[])
+      .mockImplementationOnce(() => {
+        throw failure;
+      });
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest, fallbackRelays: ["wss://dm.test/"] }));
+    const errors: unknown[] = [];
+    const subscription = client.cacheError$.subscribe((error) => errors.push(error));
+
+    await client.start();
+    expect(await firstValueFrom(client.lifecycle$)).toBe("running");
+    expect(await firstValueFrom(client.cacheError$)).toBe(failure);
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    const progress = await lastValueFrom(client.sync$({ since: 100, until: 200, followRelays: false }).pipe(toArray()));
+    expect(progress.at(-1)).toMatchObject({ done: true, loaded: 0 });
+    expect(progress.at(-1)?.mailboxes).toHaveLength(2);
+    expect(errors).toEqual([undefined, failure, undefined]);
+    expect(await client.loadHistory({ since: 100, until: 200 })).toMatchObject({ done: true });
+    subscription.unsubscribe();
+  });
+
+  it("keeps explicit legacy client sync cold, finite and independent of lifecycle", async () => {
+    const { options, pool } = setup();
+    const cacheRequest = vi.fn(() => []);
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest }));
+    const history$ = client.sync$({ since: 100, until: 200, followRelays: false });
+    expect(cacheRequest).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+    const progress = await lastValueFrom(history$.pipe(toArray()));
+    expect(progress.at(-1)).toMatchObject({ done: true, loaded: 0 });
+    expect(await firstValueFrom(client.lifecycle$)).toBe("idle");
+    expect(pool.subscription).not.toHaveBeenCalled();
+  });
+
+  it("reports live legacy mailbox failures with direction and relay context without ending sibling work", async () => {
+    const { options, pool, eventStore } = setup();
+    const incoming = new Subject<NostrEvent>();
+    const outgoing = new Subject<NostrEvent>();
+    pool.subscription.mockImplementation((...args: unknown[]) => {
+      const filter = args[1] as Filter;
+      return filter.authors ? outgoing : incoming;
+    });
+    const client = own(new LegacyMessagesClient({ ...options, fallbackRelays: ["wss://outbox.test/"] }));
+    const failures: unknown[] = [];
+    const subscription = client.mailboxErrors$.subscribe((failure) => failures.push(failure));
+    await client.start();
+    const incomingError = new Error("incoming offline");
+    incoming.error(incomingError);
+    expect(outgoing.observed).toBe(true);
+    const sent = await LegacyMessageFactory.create(bob, "outgoing").sign(aliceSigner);
+    outgoing.next(sent);
+    expect(eventStore.hasEvent(sent.id)).toBe(true);
+    const outgoingError = new Error("outgoing offline");
+    outgoing.error(outgoingError);
+    expect(failures).toEqual([
+      { mailbox: "incoming", relays: ["wss://dm.test/"], error: incomingError },
+      { mailbox: "outgoing", relays: ["wss://outbox.test/"], error: outgoingError },
+    ]);
+    expect(await firstValueFrom(client.lifecycle$)).toBe("running");
+    const lateFailures: unknown[] = [];
+    const lateSubscription = client.mailboxErrors$.subscribe((failure) => lateFailures.push(failure));
+    expect(lateFailures).toEqual([]);
+    lateSubscription.unsubscribe();
+    subscription.unsubscribe();
+  });
+
   it.each(["legacy", "wrapped"] as const)("reads empty %s history without network work", async (protocol) => {
     const { options, pool } = setup();
     const client = own(protocol === "legacy" ? new LegacyMessagesClient(options) : new WrappedMessagesClient(options));
@@ -196,13 +334,43 @@ describe("standalone messaging clients", () => {
     expect(session.closed).toBe(true);
   });
 
-  it("can start live conversation loading without initial history sync", async () => {
+  it("returns explicit conversation sync progress without starting background loading", async () => {
     const { options, pool } = setup();
-    const client = own(new LegacyMessagesClient(options));
-    await client.conversation(bob).start({ history: false });
-    expect(pool.subscription).toHaveBeenCalled();
+    const cacheRequest = vi.fn(() => []);
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest }));
+    const conversation = client.conversation(bob);
+    const history$ = conversation.sync$({ since: 100, until: 200, followRelays: false });
+    expect(cacheRequest).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+
+    const progress = await lastValueFrom(history$.pipe(toArray()));
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.at(-1)).toMatchObject({ done: true, loaded: 0 });
+    expect(progress.at(-1)?.mailboxes).toHaveLength(2);
+    expect(await firstValueFrom(conversation.lifecycle$)).toBe("idle");
+    expect(pool.subscription).not.toHaveBeenCalled();
+    expect(conversation).not.toHaveProperty("status$");
+    expect(conversation).not.toHaveProperty("syncStatus$");
+  });
+
+  it("starts only live conversation loading with a bounded lookback and no cache history", async () => {
+    const { options, pool } = setup();
+    const cacheRequest = vi.fn(() => []);
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest, historySpan: 3600 }));
+    const conversation = client.conversation(bob);
+    const sync = vi.spyOn(conversation, "sync$");
+    const before = unixNow();
+    await conversation.start();
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    for (const [, filter] of pool.subscription.mock.calls as unknown as [string[], Filter][]) {
+      expect(filter.since).toBeGreaterThanOrEqual(before - 3600);
+      expect(filter.since).toBeLessThanOrEqual(unixNow() - 3600);
+    }
+    expect(sync).not.toHaveBeenCalled();
+    expect(cacheRequest).not.toHaveBeenCalled();
     expect(pool.req).not.toHaveBeenCalled();
     expect(pool.relay).not.toHaveBeenCalled();
+    expect(await firstValueFrom(conversation.lifecycle$)).toBe("running");
   });
 
   it("keeps wrapped conversation stores local, scoped, deduplicated, and reactive", async () => {
@@ -399,27 +567,24 @@ describe("standalone messaging clients", () => {
     expect(pool.subscription).not.toHaveBeenCalled();
 
     await conversation.start();
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
-    expect(await firstValueFrom(client.status$)).toBe("idle");
+    expect(request).not.toHaveBeenCalled();
+    expect(cacheRequest).not.toHaveBeenCalled();
+    expect(await firstValueFrom(client.lifecycle$)).toBe("idle");
     for (const [, filter] of pool.subscription.mock.calls as unknown as [string[], Filter][]) {
       expect(filter.kinds).toEqual([kinds.EncryptedDirectMessage]);
       expect([[alice], [bob]]).toContainEqual(filter.authors);
       expect(filter["#p"]).toEqual(filter.authors?.[0] === alice ? [bob] : [alice]);
     }
-    expect(cacheRequest).toHaveBeenCalled();
+    const progress = await conversation.loadHistory({ since: 100, until: 200 });
+    expect(progress).toMatchObject({ done: true, loaded: 0, mailboxes: expect.any(Array) });
+    expect(progress.mailboxes).toHaveLength(2);
+    expect(await firstValueFrom(conversation.lifecycle$)).toBe("running");
     for (const [filters] of request.mock.calls as unknown as [Filter[]][]) {
       for (const filter of filters) {
         expect(filter.authors).toHaveLength(1);
         expect(filter["#p"]).toEqual(filter.authors?.[0] === alice ? [bob] : [alice]);
       }
     }
-    const filters = cacheRequest.mock.calls[0][0];
-    expect(filters).toEqual([
-      expect.objectContaining({ authors: [bob], "#p": [alice], since: expect.any(Number) }),
-      expect.objectContaining({ authors: [alice], "#p": [bob], since: expect.any(Number) }),
-    ]);
-
-    await conversation.loadHistory({ since: 100, until: 200 });
     expect(cacheRequest).toHaveBeenLastCalledWith([
       { kinds: [kinds.EncryptedDirectMessage], authors: [bob], "#p": [alice], since: 100, until: 200 },
       { kinds: [kinds.EncryptedDirectMessage], authors: [alice], "#p": [bob], since: 100, until: 200 },
@@ -436,16 +601,24 @@ describe("standalone messaging clients", () => {
     const client = own(new LegacyMessagesClient({ ...options, fallbackRelays: ["wss://dm.test/"] }));
     const bobConversation = client.conversation(bob);
     const selfConversation = client.conversation(alice);
+    const lifecycle: string[] = [];
+    const lifecycleSubscription = bobConversation.lifecycle$.subscribe((value) => lifecycle.push(value));
     await bobConversation.start();
     await bobConversation.start();
     await selfConversation.start();
     expect(active).toBe(4);
     bobConversation.stop();
+    bobConversation.stop();
     expect(active).toBe(2);
     await bobConversation.start();
     expect(active).toBe(4);
     client.dispose();
+    bobConversation.dispose();
+    bobConversation.stop();
     expect(active).toBe(0);
+    expect(lifecycle).toEqual(["idle", "running", "idle", "running", "idle", "disposed"]);
+    expect(await firstValueFrom(bobConversation.lifecycle$)).toBe("disposed");
+    lifecycleSubscription.unsubscribe();
     await expect(bobConversation.start()).rejects.toThrow("disposed");
     await expect(selfConversation.start()).rejects.toThrow("disposed");
   });
@@ -471,10 +644,35 @@ describe("standalone messaging clients", () => {
     const subscription = conversation.errors$.subscribe((failure) => failures.push(failure.error));
     await conversation.start();
     await vi.waitFor(() => expect(getEncryptedContent(incoming)).toBe("cached"));
-    await vi.waitFor(() => expect(request).toHaveBeenCalled());
+    expect(request).not.toHaveBeenCalled();
     expect(decrypt).not.toHaveBeenCalled();
+    expect(failures).toEqual([]);
+    await conversation.loadHistory({ since: 100, until: 200 });
+    expect(request).toHaveBeenCalled();
     expect(failures).toContainEqual(new Error("Cache offline"));
     subscription.unsubscribe();
+  });
+
+  it("stores and decrypts live conversation arrivals without history requests", async () => {
+    const { options, pool, eventStore } = setup();
+    const arrivals = new Subject<NostrEvent>();
+    pool.subscription.mockReturnValue(arrivals);
+    const cacheRequest = vi.fn(() => []);
+    const client = own(new LegacyMessagesClient({ ...options, cacheRequest, autoUnlock: true }));
+    const conversation = client.conversation(bob);
+    await conversation.start();
+    const incoming: NostrEvent = JSON.parse(
+      JSON.stringify(await LegacyMessageFactory.create(alice, "live arrival").sign(bobSigner)),
+    );
+
+    arrivals.next(incoming);
+    await vi.waitFor(() => expect(getEncryptedContent(incoming)).toBe("live arrival"));
+    expect(eventStore.hasEvent(incoming.id)).toBe(true);
+    expect(await firstValueFrom(conversation.messages$)).toEqual([incoming]);
+    expect(cacheRequest).not.toHaveBeenCalled();
+    expect(pool.relay).not.toHaveBeenCalled();
+    conversation.stop();
+    expect(arrivals.observed).toBe(false);
   });
 
   it("scopes conversation decryption and sending to its correspondent", async () => {
@@ -739,7 +937,7 @@ describe("standalone messaging clients", () => {
       const errors: unknown[] = [];
       const subscription =
         client instanceof LegacyMessagesClient
-          ? client.cacheState$.subscribe(({ error }) => {
+          ? client.cacheError$.subscribe((error) => {
               if (error) errors.push({ operation: "restore", error });
             })
           : client.errors$.subscribe((error) => errors.push(error));
@@ -783,7 +981,7 @@ describe("standalone messaging clients", () => {
     expect(pool.publish).toHaveBeenCalledTimes(2);
   });
 
-  it("prepares and retries in the conversation while reporting publication state on the client", async () => {
+  it("prepares and retries while reporting publication state on the conversation", async () => {
     const { options, pool } = setup();
     const client = own(new LegacyMessagesClient(options));
     const conversation = client.conversation(bob);
@@ -797,7 +995,8 @@ describe("standalone messaging clients", () => {
       expect(clientPrepare).not.toHaveBeenCalled();
       expect(pool.publish).not.toHaveBeenCalled();
       expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
-      expect(await firstValueFrom(client.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+      expect(client).not.toHaveProperty("publications$");
+      expect(client).not.toHaveProperty("busy$");
 
       pool.publish.mockResolvedValueOnce([{ from: "wss://dm.test/", ok: false }]);
       await expect(prepared.publish()).rejects.toThrow();
@@ -811,7 +1010,7 @@ describe("standalone messaging clients", () => {
       await prepared.publish();
       expect(signerCalls).toHaveBeenCalledTimes(1);
       expect(pool.publish).toHaveBeenCalledTimes(2);
-      expect(await firstValueFrom(client.publications$)).toEqual({ [prepared.message.id]: "accepted" });
+      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "accepted" });
     } finally {
       subscriptions.unsubscribe();
     }
@@ -845,7 +1044,7 @@ describe("standalone messaging clients", () => {
     ]);
   });
 
-  it("aggregates overlapping publications and cancels only the stopped conversation", async () => {
+  it("keeps overlapping publications local and cancels only the stopped conversation", async () => {
     const { options, pool } = setup();
     const client = own(new LegacyMessagesClient(options));
     const conversation = client.conversation(bob);
@@ -863,16 +1062,15 @@ describe("standalone messaging clients", () => {
     const bobPublishing = prepared.publish();
     const bobResult = expect(bobPublishing).rejects.toThrow();
     const selfPublishing = selfPrepared.publish();
-    expect(await firstValueFrom(client.busy$)).toBe(true);
     expect(await firstValueFrom(conversation.busy$)).toBe(true);
     expect(await firstValueFrom(self.busy$)).toBe(true);
     conversation.stop();
     await bobResult;
     expect(await firstValueFrom(conversation.busy$)).toBe(false);
-    expect(await firstValueFrom(client.busy$)).toBe(true);
+    expect(await firstValueFrom(self.busy$)).toBe(true);
     finishPublications.forEach((finish) => finish());
     await selfPublishing;
-    expect(await firstValueFrom(client.busy$)).toBe(false);
+    expect(await firstValueFrom(self.busy$)).toBe(false);
     await expect(prepared.publish()).rejects.toThrow();
   });
 

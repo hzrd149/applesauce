@@ -21,7 +21,11 @@ subscription.unsubscribe();
 client.dispose();
 ```
 
-`start()` restores cached plaintext and starts recent-history and live loading; it does not wait for history or decryption to finish. Signer-backed decryption defaults to off. Use `unlock()` for loaded messages, `unlock(event)` to retry one event, or `setAutoUnlock(true)` for continuous decryption. Observe `status$`, `syncStatus$`, `relayStatus$`, `decryptionState$`, and `errors$` for progress and failures.
+Wrapped `start()` restores cached plaintext and starts recent-history and live loading; it does not wait for history or decryption to finish. Its `status$`, `syncStatus$`, `relayStatus$`, and `errors$` expose progress and failures. Signer-backed decryption defaults to off for both clients. Use `unlock()` for loaded messages, `unlock(event)` to retry one event, or `setAutoUnlock(true)` for continuous decryption; observe `decryptionState$` for decryption progress.
+
+Legacy `client.start()` hydrates encrypted cached events, restores plaintext, and starts live mailbox subscriptions with the configured recent lookback, but never reconciles relay history. `lifecycle$` exposes `idle`, `running`, and `disposed`; `running` means background work is active, not that every operation succeeded. History progress belongs to explicit `sync$()` subscriptions or `loadHistory()` results, not retained client state.
+
+Legacy `cacheError$` and `conversationStorageError$` emit the latest error or `undefined`, cleared by the next successful event-cache hydration or conversation-index read/write respectively. `mailboxErrors$` emits live subscription failures as `{ mailbox: "incoming" | "outgoing", relays, error }`; it does not retain failures or include connection state. Observe `pool.status$` for connections and `client.relays$` for the mailbox relay set. Publication state and `busy$` belong to conversations, not the legacy client.
 
 `messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
 
@@ -45,7 +49,7 @@ Authentication resumes operations still waiting for it; operations that already 
 
 ### Load a legacy conversation independently
 
-Each legacy client belongs to one fixed account. `conversation(pubkey)` returns a stable `LegacyConversation` with its own live loading, history progress, and decryption controls. Opening it does not require `client.start()` or an account-wide history download.
+Each legacy client belongs to one fixed account. `conversation(pubkey)` returns a stable `LegacyConversation` with its own live loading, lifecycle, and decryption controls. Opening it does not require `client.start()` or an account-wide history download.
 
 ```ts
 const conversation = client.conversation(recipient);
@@ -58,7 +62,9 @@ subscription.unsubscribe();
 conversation.stop();
 ```
 
-Cache and relay history queries are restricted to incoming and outgoing messages with that correspondent. `start()` loads the configured recent history window and follows live messages; older history is explicit. `messages$` returns native events already in the shared store and does not start network loading by itself.
+`start()` follows live messages with the configured recent lookback and restores cached plaintext for events already in the store, optionally decrypting them when auto-unlock is enabled; it never requests cache history or reconciles relay history. `lifecycle$` exposes `idle`, `running`, and `disposed`; `running` means background processing has started, not that history succeeded. `messages$` returns native events already in the shared store and does not start network loading by itself.
+
+History loading is explicit and scoped to this correspondent: subscribe to `conversation.sync$({ since, until })` for operation-local progress, await `loadHistory({ since, until })` for its final result, or use `createTimelineLoader()` for viewport windows. Legacy clients and conversations no longer expose `status$` or retained `syncStatus$`, and conversation `start()` takes no history option.
 
 Use `client.start()` separately for account-wide inbox discovery. Stopping a conversation leaves other conversations running; stopping or disposing the client stops all its conversations. Disposing a conversation releases it permanently, and the next `client.conversation(pubkey)` lookup creates a fresh instance.
 

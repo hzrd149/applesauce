@@ -197,6 +197,10 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
   const stats = use$(client.decryptionState$);
   const relays = use$(client.relays$);
   const auth = use$(client.authRequests$) ?? [];
+  const lifecycle = use$(client.lifecycle$);
+  const cacheError = use$(client.cacheError$);
+  const conversationStorageError = use$(client.conversationStorageError$);
+  const mailboxFailure = use$(client.mailboxErrors$);
 
   const autoUnlock = use$(client.autoUnlock$) ?? false;
   const [range, setRange] = useState<HistoryRange>("recent");
@@ -313,6 +317,7 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm opacity-60">
+          <span>{lifecycle}</span>
           <span title={relays?.join("\n")}>{relays?.length ?? 0} relays</span>
           {progress && <span>{progress.loaded} events</span>}
           {relayErrors.length > 0 && (
@@ -358,6 +363,15 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
       )}
       {(error ?? progress?.error) && (
         <p className="p-3 text-sm text-error [overflow-wrap:anywhere]">{error ?? progress?.error}</p>
+      )}
+      {cacheError !== undefined && <p className="p-3 text-sm text-error">Cache: {String(cacheError)}</p>}
+      {conversationStorageError !== undefined && (
+        <p className="p-3 text-sm text-error">Conversations: {String(conversationStorageError)}</p>
+      )}
+      {mailboxFailure && (
+        <p className="p-3 text-sm text-error" title={mailboxFailure.relays.join("\n")}>
+          {mailboxFailure.mailbox}: {String(mailboxFailure.error)}
+        </p>
       )}
     </>
   );
@@ -605,7 +619,7 @@ function conversationTimeline$(conversation: LegacyConversation, root: HTMLDivEl
     return merge(
       view$,
       loader(windows).pipe(ignoreElements()),
-      defer(() => conversation.start({ history: false })).pipe(ignoreElements()),
+      defer(() => conversation.start()).pipe(ignoreElements()),
     ).pipe(
       finalize(() => {
         conversation.stop();

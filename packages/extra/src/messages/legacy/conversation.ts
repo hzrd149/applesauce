@@ -54,7 +54,6 @@ import {
   Subscription,
   switchMap,
   takeUntil,
-  tap,
   timeout,
 } from "rxjs";
 import { withMessageAuth$ } from "../common/authentication.js";
@@ -116,15 +115,10 @@ export class LegacyConversation {
 
   /** The relays used for incoming and outgoing messages */
   readonly relays$: Observable<string[]>;
-  private readonly lifecycle = new BehaviorSubject<"idle" | "loading" | "ready" | "disposed">("idle");
+  private readonly lifecycle = new BehaviorSubject<"idle" | "running" | "disposed">("idle");
 
-  /** The conversation loading lifecycle */
-  readonly status$ = this.lifecycle.asObservable();
-
-  private readonly syncState = new BehaviorSubject<LegacyMessagesSyncStatus | undefined>(undefined);
-
-  /** The latest conversation history reconciliation progress */
-  readonly syncStatus$ = this.syncState.asObservable();
+  /** The background lifecycle, with running indicating started processing rather than history success */
+  readonly lifecycle$ = this.lifecycle.asObservable();
 
   private readonly errors = new Subject<MessageClientError>();
 
@@ -272,17 +266,15 @@ export class LegacyConversation {
   }
 
   /**
-   * Starts live loading and optional recent history without starting the client's inbox
+   * Starts live loading and stored plaintext processing without reconciling history or starting the client's inbox
    * @throws if the conversation is disposed
    */
-  async start(
-    options: { /** Whether to reconcile recent history, default true */ history?: boolean } = {},
-  ): Promise<void> {
+  async start(): Promise<void> {
     this.context();
     if (this.background) return;
 
     const background = (this.background = new Subscription());
-    this.lifecycle.next("loading");
+    this.lifecycle.next("running");
     const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
 
     background.add(
@@ -293,23 +285,6 @@ export class LegacyConversation {
         .subscribe(),
     );
     background.add(merge(...this.mailboxes.map((mailbox) => this.watchMailbox$(mailbox, since))).subscribe());
-
-    if (options.history !== false) {
-      background.add(
-        this.sync$({ since })
-          .pipe(
-            catchError((error) => {
-              this.errors.next({ operation: "sync", error });
-              return EMPTY;
-            }),
-          )
-          .subscribe((progress) => {
-            if (progress.done) this.lifecycle.next("ready");
-          }),
-      );
-    } else {
-      this.lifecycle.next("ready");
-    }
   }
 
   /** Stops only this conversation's loading and outstanding operations */
@@ -319,7 +294,7 @@ export class LegacyConversation {
     this.background?.unsubscribe();
     this.background = undefined;
 
-    if (!this.disposed) this.lifecycle.next("idle");
+    if (!this.disposed && this.lifecycle.value !== "idle") this.lifecycle.next("idle");
   }
 
   /** Permanently releases this conversation without disposing the shared store or pool */
@@ -467,7 +442,6 @@ export class LegacyConversation {
           done: mailboxes.every((mailbox) => mailbox.done),
           loaded: mailboxes.reduce((sum, mailbox) => sum + mailbox.loaded, 0),
         })),
-        tap((progress) => this.syncState.next(progress)),
         takeUntil(fromEvent(context.signal, "abort")),
       );
     });

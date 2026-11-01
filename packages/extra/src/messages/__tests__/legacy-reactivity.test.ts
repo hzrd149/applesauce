@@ -459,7 +459,7 @@ describe("legacy reactive ownership", () => {
     conversation.setAutoUnlock(true);
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
 
-    await conversation.start({ history: false });
+    await conversation.start();
     expect(getItem).toHaveBeenCalledTimes(1);
     conversation.stop();
     finishCache(null);
@@ -483,15 +483,14 @@ describe("legacy reactive ownership", () => {
           key,
         ),
       );
-    expect(await firstValueFrom(client.busy$)).toBe(false);
-    expect(await firstValueFrom(client.publications$)).toEqual({});
-
     const conversation = client.conversation(peer);
+    expect(await firstValueFrom(conversation.busy$)).toBe(false);
+    expect(await firstValueFrom(conversation.publications$)).toEqual({});
     const prepared = await conversation.prepareSend({ content: "prepared" });
-    expect(await firstValueFrom(client.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+    expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
     conversation.dispose();
-    expect(await firstValueFrom(client.publications$)).toEqual({});
-    expect(await firstValueFrom(client.busy$)).toBe(false);
+    expect(client).not.toHaveProperty("publications$");
+    expect(client).not.toHaveProperty("busy$");
     expect(client.conversation(peer)).not.toBe(conversation);
   });
 

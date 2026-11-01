@@ -160,7 +160,7 @@ describe("legacy publication storage", () => {
     expect(values.size).toBe(0);
     expect(await conversation.loadPublications()).toEqual([]);
     await expect(prepared.publish()).rejects.toThrow("discarded");
-    expect(await firstValueFrom(client.publications$)).toEqual({});
+    expect(await firstValueFrom(conversation.publications$)).toEqual({});
     expect(pool.publish).not.toHaveBeenCalled();
     await conversation.prepareSend({ content: "new" });
   });

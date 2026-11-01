@@ -37,7 +37,7 @@ export interface LegacyMessagesClientOptions {
   decryptionTimeout?: number;
   /** The send preparation timeout in milliseconds (default 120000) */
   actionTimeout?: number;
-  /** The initial history lookback in seconds (default 30 days) */
+  /** The live subscription lookback in seconds (default 30 days) */
   historySpan?: number;
   /** The relay authentication callback for live reads and sync */
   onAuthRequired?: SyncAuthHandler;
@@ -95,7 +95,7 @@ export interface LegacyMessageHistoryOptions extends MessageOperationOptions {
 
 /** Reconciliation progress for the incoming and outgoing legacy mailboxes */
 export interface LegacyMessagesSyncStatus {
-  /** The background reconciliation failure, when reconciliation could not complete */
+  /** The reconciliation failure, when reconciliation could not complete */
   error?: unknown;
   /** The results for each mailbox */
   mailboxes: SyncLoaderStatus[];
@@ -103,4 +103,14 @@ export interface LegacyMessagesSyncStatus {
   done: boolean;
   /** The sum of mailbox event counts */
   loaded: number;
+}
+
+/** A live legacy mailbox subscription failure */
+export interface LegacyMailboxError {
+  /** The mailbox direction relative to the owner */
+  mailbox: "incoming" | "outgoing";
+  /** The relay set requested by the failed subscription */
+  relays: readonly string[];
+  /** The subscription failure */
+  error: unknown;
 }

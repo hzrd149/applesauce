@@ -24,7 +24,7 @@ import {
   type Filter,
   type NostrEvent,
 } from "applesauce-core/helpers";
-import { combineLatestByValue, mapEventsToStore, watchEventsUpdates } from "applesauce-core/observable";
+import { mapEventsToStore, watchEventsUpdates } from "applesauce-core/observable";
 import {
   BehaviorSubject,
   concat,
@@ -52,11 +52,12 @@ import {
   Observable,
   of,
   Subscription,
+  Subject,
   takeUntil,
   tap,
 } from "rxjs";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
-import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
+import type { MessageClientError, MessageOperationOptions } from "../common/types.js";
 import { LegacyConversation } from "./conversation.js";
 import type {
   LegacyMessageAvailability,
@@ -64,12 +65,13 @@ import type {
   LegacyMessageSendRequest,
   LegacyMessagesClientOptions,
   LegacyMessagesSyncStatus,
+  LegacyMailboxError,
   PreparedLegacyMessage,
 } from "./types.js";
 
 const log = logger.extend("LegacyMessages");
 type DecryptionActivity = { event: NostrEvent; readers: number; failed: boolean; error?: unknown };
-type Mailbox = { filter: Filter; relays$: Observable<string[]> };
+type Mailbox = { name: "incoming" | "outgoing"; filter: Filter; relays$: Observable<string[]> };
 
 function validateRecipient(request: LegacyMessageSendRequest) {
   if (!isHexKey(request.recipient)) throw new Error("Invalid recipient");
@@ -98,59 +100,35 @@ export class LegacyMessagesClient {
   /** The combined mailbox relay set */
   readonly relays$: Observable<string[]>;
 
-  /** The mailbox relay connection states */
-  readonly relayStatus$: Observable<MessagesRelayStatus[]>;
+  private readonly mailboxErrors = new Subject<LegacyMailboxError>();
+
+  /** The live mailbox subscription failures, including their direction and requested relays */
+  readonly mailboxErrors$ = this.mailboxErrors.asObservable();
 
   /** The current decryption counts and failed event IDs */
   readonly decryptionState$;
 
-  private readonly lifecycle = new BehaviorSubject<"idle" | "loading" | "ready" | "disposed">("idle");
+  private readonly lifecycle = new BehaviorSubject<"idle" | "running" | "disposed">("idle");
 
-  /** The background loading lifecycle, independent of decryption */
-  readonly status$ = this.lifecycle.asObservable();
+  /** The background work lifecycle, independent of operation success */
+  readonly lifecycle$ = this.lifecycle.asObservable();
 
-  private readonly cacheState = new BehaviorSubject<{ error?: unknown }>({});
+  private readonly cacheError = new BehaviorSubject<unknown | undefined>(undefined);
 
-  /** The latest event-cache hydration result */
-  readonly cacheState$ = this.cacheState.asObservable();
+  /** The latest event-cache hydration error, cleared by successful hydration */
+  readonly cacheError$ = this.cacheError.asObservable();
 
-  private readonly conversationStorageState = new BehaviorSubject<{ error?: unknown }>({});
+  private readonly conversationStorageError = new BehaviorSubject<unknown | undefined>(undefined);
 
-  /** The latest conversation-index persistence result */
-  readonly conversationStorageState$ = this.conversationStorageState.asObservable();
-
-  private readonly mailboxFailures = new BehaviorSubject<Record<string, unknown>>({});
+  /** The latest conversation-index read or write error, cleared by a successful storage operation */
+  readonly conversationStorageError$ = this.conversationStorageError.asObservable();
 
   private readonly autoUnlock = new BehaviorSubject(false);
 
   /** Whether stored messages are automatically unlocked, disabled by default */
   readonly autoUnlock$ = this.autoUnlock.asObservable();
 
-  private readonly syncState = new BehaviorSubject<LegacyMessagesSyncStatus | undefined>(undefined);
-
-  /** The latest background history reconciliation progress */
-  readonly syncStatus$ = this.syncState.asObservable();
-
   private readonly conversations = new BehaviorSubject<readonly LegacyConversation[]>([]);
-
-  /** Whether one or more send operations are in progress */
-  readonly busy$ = this.conversations.pipe(
-    combineLatestByValue((conversation) => conversation.busy$),
-    map((busy) => [...busy.values()].some(Boolean)),
-    distinctUntilChanged(),
-  );
-
-  /** The publication states of messages in the client's current conversations */
-  readonly publications$ = this.conversations.pipe(
-    combineLatestByValue((conversation) => conversation.publications$),
-    map(
-      (publications) =>
-        Object.assign({}, ...publications.values()) as Record<
-          string,
-          "prepared" | "publishing" | "accepted" | "failed"
-        >,
-    ),
-  );
 
   private readonly decryptionActivity = new BehaviorSubject<ReadonlyMap<string, DecryptionActivity>>(new Map());
   private readonly pendingDecryptions = new Map<string, Promise<NostrEvent | undefined>>();
@@ -182,10 +160,12 @@ export class LegacyMessagesClient {
     const owner = castUser(this.pubkey, this.eventStore);
     this.mailboxes = [
       {
+        name: "incoming",
         filter: { kinds: [kinds.EncryptedDirectMessage], "#p": [this.pubkey] },
         relays$: this.mailboxRelays$([owner.inboxes$, owner.directMessageRelays$]),
       },
       {
+        name: "outgoing",
         filter: { kinds: [kinds.EncryptedDirectMessage], authors: [this.pubkey] },
         relays$: this.mailboxRelays$([owner.outboxes$]),
       },
@@ -197,15 +177,13 @@ export class LegacyMessagesClient {
 
     // Decryption updates cached content without replacing the stored event.
     this.messages$ = this.eventStore.timeline(this.filters).pipe(watchEventsUpdates(this.eventStore));
-    this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({}), this.mailboxFailures]).pipe(
-      map(([relays, connections, failures]) =>
-        relays.map((url) => ({ url, connection: connections[url], error: failures[url] })),
-      ),
-    );
 
     this.decryptionState$ = this.observeDecryption$(this.messages$);
     this.conversations$ = combineLatest([
-      defer(() => this.restoreConversationIndex()).pipe(switchMap(() => this.knownCorrespondents)),
+      defer(() => this.restoreConversationIndex()).pipe(
+        catchError(() => of(undefined)),
+        switchMap(() => this.knownCorrespondents),
+      ),
       this.eventStore.model(LegacyMessagesGroups, this.pubkey),
     ]).pipe(
       map(([known, loaded]) => {
@@ -226,7 +204,7 @@ export class LegacyMessagesClient {
           concatMap((event) =>
             defer(() => this.rememberCorrespondent(event)).pipe(
               catchError((error) => {
-                this.conversationStorageState.next({ error });
+                this.conversationStorageError.next(error);
                 return EMPTY;
               }),
             ),
@@ -244,15 +222,17 @@ export class LegacyMessagesClient {
     return (this.conversationRestoration ??= Promise.resolve()
       .then(async () => {
         const serialized = await this.options.conversationStorage?.getItem(`conversations:${this.pubkey}`);
-        if (serialized == null) return;
-
-        const record = JSON.parse(serialized);
-        if (record?.version !== 1 || !Array.isArray(record.correspondents) || !record.correspondents.every(isHexKey))
-          throw new Error("Invalid legacy conversation index");
-        this.knownCorrespondents.next([...new Set<string>(record.correspondents)]);
+        if (serialized != null) {
+          const record = JSON.parse(serialized);
+          if (record?.version !== 1 || !Array.isArray(record.correspondents) || !record.correspondents.every(isHexKey))
+            throw new Error("Invalid legacy conversation index");
+          this.knownCorrespondents.next([...new Set<string>(record.correspondents)]);
+        }
+        this.conversationStorageError.next(undefined);
       })
       .catch((error) => {
         this.conversationRestoration = undefined;
+        this.conversationStorageError.next(error);
         throw error;
       }));
   }
@@ -270,7 +250,7 @@ export class LegacyMessagesClient {
       JSON.stringify({ version: 1, correspondents: next }),
     );
     this.knownCorrespondents.next(next);
-    this.conversationStorageState.next({});
+    this.conversationStorageError.next(undefined);
   }
 
   private assertActive() {
@@ -317,7 +297,7 @@ export class LegacyMessagesClient {
   }
 
   private observeConversation(conversation: LegacyConversation): void {
-    const disposed$ = conversation.status$.pipe(filter((lifecycle) => lifecycle === "disposed"));
+    const disposed$ = conversation.lifecycle$.pipe(filter((lifecycle) => lifecycle === "disposed"));
     this.lifetime.add(
       disposed$.pipe(take(1)).subscribe(() => {
         this.conversations.next(this.conversations.value.filter((item) => item !== conversation));
@@ -325,14 +305,14 @@ export class LegacyMessagesClient {
     );
   }
 
-  /** Starts cache restoration, recent history reconciliation and live mailbox loading */
+  /** Starts cache restoration and live mailbox loading without reconciling history */
   async start(): Promise<void> {
     this.assertActive();
     if (this.background) return;
 
     const background = (this.background = new Subscription());
     const context = this.context();
-    this.lifecycle.next("loading");
+    this.lifecycle.next("running");
 
     try {
       await lastValueFrom(this.hydrate$(this.filters, context.signal), { defaultValue: undefined });
@@ -341,19 +321,9 @@ export class LegacyMessagesClient {
       const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
       const decryption$ = this.watchDecryption$(this.eventStore.filters(this.filters), this.autoUnlock);
       const live$ = merge(...this.mailboxes.map((mailbox) => this.watchMailbox$(mailbox, since)));
-      const reconciliation$ = this.sync$({ since }).pipe(
-        tap((progress) => {
-          this.syncState.next(progress);
-          if (progress.done) this.lifecycle.next("ready");
-        }),
-        catchError((error) => {
-          this.syncState.next({ mailboxes: [], done: true, loaded: 0, error });
-          return EMPTY;
-        }),
-      );
-      background.add(merge(decryption$, live$, reconciliation$).subscribe());
+      background.add(merge(decryption$, live$).subscribe());
     } catch (error) {
-      this.stop();
+      if (this.background === background) this.stop();
       throw error;
     }
   }
@@ -367,7 +337,7 @@ export class LegacyMessagesClient {
     this.background?.unsubscribe();
     this.background = undefined;
 
-    if (!this.disposed) this.lifecycle.next("idle");
+    if (!this.disposed && this.lifecycle.value !== "idle") this.lifecycle.next("idle");
   }
 
   /** Permanently releases this client's subscriptions and retry state */
@@ -381,6 +351,7 @@ export class LegacyMessagesClient {
     this.conversations.next([]);
     this.lifetime.unsubscribe();
     this.lifecycle.next("disposed");
+    this.mailboxErrors.complete();
   }
 
   /** Releases this client and its conversations through explicit resource management */
@@ -574,14 +545,15 @@ export class LegacyMessagesClient {
   private hydrate$(filters: Filter[], signal: AbortSignal): Observable<NostrEvent> {
     return defer(() => {
       signal.throwIfAborted();
-      if (!this.options.cacheRequest) return EMPTY;
+      const cacheRequest = this.options.cacheRequest;
+      if (!cacheRequest) return EMPTY;
 
-      return makeCacheRequest(this.options.cacheRequest, filters).pipe(
+      return defer(() => makeCacheRequest(cacheRequest, filters)).pipe(
         timeout({ each: this.options.timeout ?? 4000 }),
         mapEventsToStore(this.options.eventStore),
-        tap({ complete: () => this.cacheState.next({}) }),
+        tap({ complete: () => this.cacheError.next(undefined) }),
         catchError((error) => {
-          this.cacheState.next({ error });
+          this.cacheError.next(error);
           return EMPTY;
         }),
         takeUntil(fromEvent(signal, "abort")),
@@ -593,9 +565,6 @@ export class LegacyMessagesClient {
     return mailbox.relays$.pipe(
       switchMap((relays) => {
         if (!relays.length) return EMPTY;
-        this.mailboxFailures.next(
-          Object.fromEntries(Object.entries(this.mailboxFailures.value).filter(([url]) => !relays.includes(url))),
-        );
         return withMessageAuth$(this.options, (auth) =>
           this.options.pool.subscription(
             relays,
@@ -605,10 +574,7 @@ export class LegacyMessagesClient {
         ).pipe(
           mapEventsToStore(this.options.eventStore),
           catchError((error) => {
-            this.mailboxFailures.next({
-              ...this.mailboxFailures.value,
-              ...Object.fromEntries(relays.map((url) => [url, error])),
-            });
+            this.mailboxErrors.next({ mailbox: mailbox.name, relays, error });
             return EMPTY;
           }),
         );
