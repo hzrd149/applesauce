@@ -505,14 +505,14 @@ function MessageBubble({
           </span>
         )}
       </div>
-      {message.replyTo && (
-        <div className="max-w-xs truncate border-s-2 border-base-300 ps-2 text-sm opacity-60">
-          {parent?.content ?? "Earlier message"}
-        </div>
-      )}
       <div
-        className={`chat-bubble min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${own ? "chat-bubble-primary" : ""}`}
+        className={`chat-bubble flex min-w-0 flex-col gap-1 whitespace-pre-wrap [overflow-wrap:anywhere] ${own ? "chat-bubble-primary" : ""}`}
       >
+        {message.replyTo && (
+          <span className="max-w-xs truncate border-s-2 border-current ps-2 text-sm opacity-60">
+            {parent?.content ?? "Earlier message"}
+          </span>
+        )}
         {message.content}
       </div>
       <div className="chat-footer flex min-w-0 flex-wrap items-center gap-2 text-sm">
