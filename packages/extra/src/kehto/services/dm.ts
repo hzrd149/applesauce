@@ -5,6 +5,7 @@ export * from "./dm/types.js";
 export * from "./dm/router.js";
 export * from "./dm/nostr.js";
 export * from "./dm/adapter.js";
+export { createNdrMessageProtocol, type NdrMessageProtocolOptions } from "./dm/ndr-protocol.js";
 export { DmPublicationError, type DmPublicationResult } from "./dm/publication.js";
 
 export * from "./dm/multi-protocol.js";

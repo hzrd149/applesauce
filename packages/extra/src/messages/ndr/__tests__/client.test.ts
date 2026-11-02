@@ -211,7 +211,8 @@ describe("NdrMessagesClient", () => {
     expect(await firstValueFrom(bobGroup.pending$)).toBe(false);
     expect(await firstValueFrom(bobGroup.canSend$)).toBe(true);
 
-    await aliceGroup.send({ content: "welcome" });
+    const sent = await aliceGroup.send({ content: "welcome" });
+    expect(sent).toMatchObject({ content: "welcome", conversationId: aliceGroup.id, sender: alice.pubkey });
     await waitForMessage(bobGroup.messages$, (m) => m.content === "welcome" && m.sender === alice.pubkey);
 
     await bobGroup.send({ content: "thanks" });

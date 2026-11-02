@@ -108,19 +108,19 @@ Pass a stable `clientMessageId` when retrying a wrapped send. Within the same pr
 
 `createDmAdapterProtocol` includes any existing Kehto `DmAdapter`, including the prebuilt NIP-17, NDR, and Cordn adapters. See the [Kehto services reference](https://kehto.github.io/web/docs/packages/services#scope-boundaries) for the library boundary and [DM adapter APIs](https://kehto.github.io/web/docs/api/modules/_kehto_services.html#dm-nap) for transport requirements. Kehto's `createNip17DmAdapter` accepts an owner secret key; Applesauce's `createWrappedMessageProtocol` uses your existing signer instead.
 
-Given an application-owned `ndrAdapter` and recipient discovery function:
+Given an application-owned adapter and recipient discovery function:
 
 ```ts
 import { createDmAdapterProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
 
-const ndr = createDmAdapterProtocol({
-  id: "ndr",
-  adapter: ndrAdapter,
-  discover$: discoverNdrSupport$,
+const external = createDmAdapterProtocol({
+  id: "external",
+  adapter: existingAdapter,
+  discover$: discoverSupport$,
 });
 const adapter = createMultiProtocolDmAdapter({
-  protocols: [ndr, createWrappedMessageProtocol(nostr)],
-  routeSend: firstMatchingRoute(useProtocolWhenSupported("ndr"), defaultDmRouter),
+  protocols: [external, createWrappedMessageProtocol(nostr)],
+  routeSend: firstMatchingRoute(useProtocolWhenSupported("external"), defaultDmRouter),
 });
 ```
 
@@ -130,13 +130,32 @@ Pass a reactive adapter stream to invalidate sessions when authentication change
 
 Existing adapters own their send approval and publication behavior. The bridge invokes `send()` only after routing selects it, but cannot split or cancel the work inside that call. Native Applesauce adapters offer separate preparation/publication stages, signer support without raw secret keys, shared EventStore decryption caching, and reactive mailbox discovery. Runtime persistence for NDR and other stateful protocols stays owned by the application/runtime.
 
-## NDR Transport
+## NDR Messages Client
 
-Use the standalone [NDR transport integration](../extra/ndr.md) for runtime wiring, explicit storage, persistent outbox, deadlines, and relay-acceptance semantics. The canonical import is `applesauce-extra/messages/ndr`; `applesauce-extra/kehto/services/dm/ndr` remains a compatible alias exporting `createNdrTransport`, `KehtoNdrTransport`, and `KehtoNdrTransportOptions`.
+Use `createNdrMessageProtocol` to wrap a host-owned [NDR messages client](../extra/ndr.md). The client owns encrypted storage, durable history, device registration, the outbox, and the single-writer lock; Kehto supplies routing, normalization, and plaintext send approval.
 
-Attach runtime message consumers before initialization, then complete registration/invite setup explicitly. Feed the initialized runtime into Kehto's `createNdrDmAdapter` and compose it with `createDmAdapterProtocol` as above. Applications must arrange message approval and recipient discovery; the transport has no napplet window context. Filter non-chat runtime events before presenting a chat history.
+```ts
+import { createNdrMessageProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
 
-On toggle-off, account change, or owner teardown, close the runtime and persistent outbox, then dispose the transport. The factory does not follow a reactive signer automatically; dispose and recreate it when authentication changes.
+const ndr = createNdrMessageProtocol({
+  client: activeNdrClient$, // NdrMessagesClient | undefined
+  approve: ({ template, windowId }) => approveMessage(template, windowId),
+});
+const adapter = createMultiProtocolDmAdapter({
+  protocols: [ndr, createWrappedMessageProtocol(nostr)],
+  routeSend: firstMatchingRoute(useProtocolWhenSupported("ndr"), defaultDmRouter),
+});
+```
+
+The host calls `client.start()` and manages registration explicitly. Only clients with a ready lifecycle expose a session. Pass a client directly or a reactive client stream that emits `undefined` on logout; replacement invalidates pending Kehto operations. Closing the protocol releases its subscriptions, while the host remains responsible for `client.dispose()`.
+
+Discovery waits up to `discoveryTimeout` (default 3000 ms) for peer devices. Missing discovery is unknown support, so automatic routing can fall back while an explicit NDR route can still attempt delivery. Direct conversations merge by participants; existing groups retain their native IDs and require matching recipients and accepted membership. Create groups through the client before sending to them through Kehto.
+
+Kehto's `sent` status means submitted: queued and relay-published NDR messages both map to it. Only peer `delivered` or `seen` receipts map to `delivered`. Subscriptions forward changed delivery statuses. Rich attachments, reactions, drafts, and typing remain available through the core client's conversation APIs.
+
+Pass a stable `clientMessageId` to retain the last 100 send handles per client session and conversation/window scope. Retries reuse the original send result, including failures whose durable handoff may be ambiguous; a new ID starts a new send. Checks before approval and dispatch prevent cancelled requests from starting sends, but a client send already in progress can still complete its durable handoff.
+
+For low-level runtime integrations, `createNdrTransport` remains available from `applesauce-extra/messages/ndr`; the older `applesauce-extra/kehto/services/dm/ndr` transport exports remain compatible alongside the new protocol factory.
 
 ### Testing in the messages example
 
@@ -152,9 +171,11 @@ All example protocols start disabled. Expand a protocol's settings using its hea
 
 After changing enabled protocols or device readiness, press **Refresh messages** in the napplet. The installed NAP-DM API has no availability-change or subscription-ended notification, and the composer invalidates existing subscriptions when protocol sessions change. Refresh uses only Kehto's public status, subscription, and history APIs; the example does not use custom iframe messages or polling to hide this limitation.
 
-**Auto** preserves the existing routing policy; selecting NDR explicitly never silently falls back to NIP-17/NIP-04. This first NDR example supports one other recipient, not groups or notes to self. All outgoing messages use the generic **Submitted** status; for NDR this means a local runtime handoff, with separate relay-acceptance entries in the host's **Debug** log. Neither confirms peer receipt.
+**Auto** prefers advertised NDR support before NIP-17/NIP-04; selecting NDR explicitly never silently falls back. The example's new-conversation UI addresses one other recipient; existing client groups can appear in history. **Submitted** means a local handoff, and delivery receipts update the normalized message status.
 
-Turning NDR off cancels its pending approvals and subscriptions without deleting state. A Web Lock prevents two tabs from writing the same account's NDR state; use different browser profiles for independent devices. The last 100 client message IDs are retained for retry deduplication within one runtime/window scope, not across reloads or toggle cycles.
+Turning NDR off cancels its pending approvals and subscriptions without deleting state. A Web Lock prevents two tabs from writing the same account's NDR state; use different browser profiles for independent devices. Retry handles do not survive reloads or toggle cycles.
+
+The example imports history saved by its previous runtime adapter into the client's history once, keeping the existing account storage and device state.
 
 ## Cordn coordinator transport
 

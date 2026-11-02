@@ -426,7 +426,7 @@ export function createMultiProtocolDmAdapter(config: KehtoDmOptions): DmAdapter 
         const subscriptionId = `dm-${++nextSubscriptionId}`;
         const subscription = new Subscription();
         const store = new DmMemoryStore();
-        const seen = new Set<string>();
+        const seen = new Map<string, string>();
         const conversationId = request.conversationId;
         subscriptions.set(subscriptionId, subscription);
         subscription.add(() => subscriptions.delete(subscriptionId));
@@ -448,9 +448,10 @@ export function createMultiProtocolDmAdapter(config: KehtoDmOptions): DmAdapter 
               ),
             ).pipe(
               map((message) => {
-                if (seen.has(message.id)) return;
                 if (conversationId && message.conversationId !== conversationId) return;
-                seen.add(message.id);
+                const fingerprint = JSON.stringify(message);
+                if (seen.get(message.id) === fingerprint) return;
+                seen.set(message.id, fingerprint);
                 onMessage(message);
               }),
             );
