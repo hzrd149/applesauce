@@ -537,7 +537,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   const [error, setError] = useState<string>();
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
-  const { register, getValues, control } = useForm({
+  const { register, getValues, control, handleSubmit } = useForm({
     values: { content: draft?.content ?? "" },
     resetOptions: { keepDirtyValues: true },
   });
@@ -606,21 +606,17 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           sending={!!sending}
         />
       ))}
-      <div className="flex gap-2">
+      <form className="flex gap-2" onSubmit={handleSubmit(() => publish())}>
         <input
           className="input min-w-0 flex-1"
           placeholder="Message"
           disabled={sending}
           {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
-        <button
-          className="btn btn-primary"
-          disabled={sending || !text.trim() || !availability?.canSend}
-          onClick={() => publish()}
-        >
+        <button className="btn btn-primary" type="submit" disabled={sending || !text.trim() || !availability?.canSend}>
           {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
-      </div>
+      </form>
       {availability && !availability.canSend && <p className="text-sm text-warning">No delivery relays</p>}
       {error && <p className="text-sm text-error">{error}</p>}
     </div>

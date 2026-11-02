@@ -24,6 +24,7 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   catchError,
@@ -342,11 +343,22 @@ function Account({ user }: { user: User }) {
 
 function Composer({ conversation }: { conversation: WrappedConversation }) {
   const draft = use$(conversation.draft$);
-  const text = draft?.content ?? "";
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
+  const { register, getValues, control } = useForm({
+    values: { content: draft?.content ?? "" },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
   const [expiration, setExpiration] = useState(0);
   const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
 
   const send = async () => {
     if (busy) return;
@@ -354,6 +366,9 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
     setError(undefined);
 
     try {
+      // Save first so clearing the draft also resets the input
+      await saveDraft();
+
       const expires = expiration ? unixNow() + expiration : undefined;
 
       // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
@@ -383,11 +398,8 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
           className="textarea flex-1"
           rows={1}
           placeholder="Message"
-          value={text}
           disabled={!!prepared || busy}
-          onChange={(event) => {
-            conversation.setDraft({ content: event.target.value }).catch((error) => setError(String(error)));
-          }}
+          {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
         <select
           aria-label="Message expiration"

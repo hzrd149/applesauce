@@ -23,6 +23,7 @@ import type { ISigner } from "applesauce-signers";
 import { PanelLeft, PanelRight, X } from "lucide-react";
 import type { PreparedRegistration } from "nostr-double-ratchet";
 import { type ReactNode, useCallback, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   catchError,
@@ -30,6 +31,7 @@ import {
   defer,
   EMPTY,
   finalize,
+  firstValueFrom,
   ignoreElements,
   merge,
   NEVER,
@@ -560,15 +562,28 @@ function Composer({
   canSend: boolean;
   disabledReason?: string;
 }) {
-  const draft = use$(conversation.draft$);
   const sending = use$(conversation.sending$) ?? false;
   const [error, setError] = useState<string>();
-  const text = draft?.content ?? "";
+  const draft = use$(conversation.draft$);
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
+  const { register, getValues, control } = useForm({
+    values: { content: draft?.content ?? "" },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
   const replyTarget = draft?.replyTo ? messages.find((message) => message.id === draft.replyTo) : undefined;
+
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
 
   const send = async () => {
     setError(undefined);
     try {
+      // The conversation sends the saved draft, so save the text on screen first
+      await saveDraft();
       await conversation.sendDraft();
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -601,12 +616,11 @@ function Composer({
         <input
           className="input min-w-0 flex-1"
           placeholder={disabledReason ?? "Message"}
-          value={text}
           disabled={!canSend}
-          onChange={(event) => {
-            conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
-            if (conversation instanceof NdrConversation) conversation.sendTyping();
-          }}
+          {...register("content", {
+            onChange: () => conversation instanceof NdrConversation && conversation.sendTyping(),
+            onBlur: () => saveDraft().catch((error) => setError(String(error))),
+          })}
         />
         <button className="btn btn-primary" type="submit" disabled={sending || !canSend || !text.trim()}>
           {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
@@ -630,8 +644,13 @@ function MessageList({
   showNames: boolean;
   typing?: boolean;
 }) {
-  const draft = use$(conversation.draft$);
   const [error, setError] = useState<string>();
+
+  // Read the saved draft at click time so text the composer just saved is not overwritten
+  const setReply = async (replyTo: string) => {
+    const latest = await firstValueFrom(conversation.draft$);
+    await conversation.setDraft({ content: latest?.content ?? "", replyTo });
+  };
 
   // Recreated as messages arrive, so a visible conversation keeps marking new messages as seen.
   const watchNewest = useCallback(
@@ -661,11 +680,7 @@ function MessageList({
           parent={message.replyTo ? messages.find((m) => m.id === message.replyTo) : undefined}
           own={message.sender === ownPubkey}
           showName={showNames}
-          onReply={() =>
-            conversation
-              .setDraft({ content: draft?.content ?? "", replyTo: message.id })
-              .catch((error) => setError(String(error)))
-          }
+          onReply={() => setReply(message.id).catch((error) => setError(String(error)))}
           onReact={(content) => conversation.react(message.id, content)}
         />
       ))}
