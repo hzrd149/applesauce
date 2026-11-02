@@ -563,14 +563,14 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
       // The conversation sends the saved draft, so save the text on screen first
       await saveDraft();
 
-      // The message shows as a pending publication once prepared, so clear the form right away
-      reset({ content: "" });
+      // Override draft synchronization's keepDirtyValues so submitted text is actually cleared.
+      reset({ content: "" }, { keepDirtyValues: false });
 
       // The conversation retains signed events so retries do not prompt the signer again.
       delivery = await conversation.prepareDraft();
     } catch (error) {
       // Nothing was handed off, so put the text back for another try
-      reset({ content });
+      reset({ content }, { keepDirtyValues: false });
       setError(String(error));
       return;
     } finally {

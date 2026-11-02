@@ -602,8 +602,8 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     try {
       await saveDraft();
 
-      // Each message shows its publication state once prepared, so clear the form right away
-      reset({ content: "", files: [] });
+      // Override draft synchronization's keepDirtyValues so submitted text and files are actually cleared.
+      reset({ content: "", files: [] }, { keepDirtyValues: false });
 
       const expires = expiration ? unixNow() + expiration : undefined;
 
@@ -628,7 +628,7 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
       await conversation.clearDraft();
     } catch (error) {
       // Prepared messages are only published once all of them are ready, so put the whole message back
-      reset({ content, files: staged });
+      reset({ content, files: staged }, { keepDirtyValues: false });
       setError(String(error));
       return;
     } finally {
