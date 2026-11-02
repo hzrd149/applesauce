@@ -26,9 +26,8 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { Lock, PanelLeft, PanelRight, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
-  auditTime,
   BehaviorSubject,
   combineLatest,
   catchError,
@@ -39,11 +38,9 @@ import {
   map,
   merge,
   NEVER,
-  Observable,
   of,
   shareReplay,
   switchMap,
-  tap,
 } from "rxjs";
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
@@ -57,6 +54,8 @@ import { lookupRelays$ } from "../../settings";
 type HistoryRange = "recent" | "year" | "all";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
+const MONTH = 30 * 86400;
+const YEAR = 365 * 86400;
 const HISTORY_RANGES: { value: HistoryRange; label: string }[] = [
   { value: "recent", label: "Recent" },
   { value: "year", label: "Year" },
@@ -114,9 +113,9 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
 
 /** Returns the start of a preset history range */
 function getHistorySince(range: HistoryRange) {
-  if (range === "year") return unixNow() - 365 * 86400;
+  if (range === "year") return unixNow() - YEAR;
   if (range === "all") return 0;
-  return unixNow() - 30 * 86400;
+  return unixNow() - MONTH;
 }
 
 /** Formats a timestamp as a time for today and a date otherwise */
@@ -491,27 +490,22 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   const draft = use$(conversation.draft$);
   const availability = use$(() => conversation.discover$(), [conversation]);
   const pending = use$(conversation.pendingPublications$);
-  const publishing = use$(conversation.busy$);
-  const [preparing, setPreparing] = useState(false);
+  const sending = use$(conversation.sending$);
   const [error, setError] = useState<string>();
   const text = draft?.content ?? "";
-  const busy = preparing || publishing;
   const hasPending = !!pending?.length;
 
   const publish = async (prepared?: PreparedLegacyMessage) => {
-    if (busy) return;
-    setPreparing(true);
+    if (sending) return;
     setError(undefined);
 
     try {
       // The conversation retains signed events so retries do not prompt the signer again.
-      const delivery = prepared ?? (await conversation.prepareSend({ content: text, replyTo: draft?.replyTo }));
-      await delivery.publish();
+      if (prepared) await conversation.publish(prepared);
+      else await conversation.send({ content: text, replyTo: draft?.replyTo });
       await conversation.clearDraft();
     } catch (error) {
       setError(String(error));
-    } finally {
-      setPreparing(false);
     }
   };
 
@@ -525,7 +519,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           <button
             className="btn btn-ghost btn-sm btn-square"
             title="Cancel reply"
-            disabled={busy || hasPending}
+            disabled={sending || hasPending}
             onClick={() => conversation.setDraft({ content: text }).catch((error) => setError(String(error)))}
           >
             <X className="h-4 w-4" />
@@ -535,12 +529,12 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
       {pending?.map((delivery) => (
         <div key={delivery.message.id} className="flex items-center gap-2">
           <span className="text-sm opacity-60">Unpublished message</span>
-          <button className="btn btn-sm ms-auto" disabled={busy} onClick={() => publish(delivery)}>
+          <button className="btn btn-sm ms-auto" disabled={sending} onClick={() => publish(delivery)}>
             Retry
           </button>
           <button
             className="btn btn-sm btn-ghost"
-            disabled={busy}
+            disabled={sending}
             onClick={() =>
               conversation.discardPublication(delivery.message.id).catch((error) => setError(String(error)))
             }
@@ -554,17 +548,17 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           className="input min-w-0 flex-1"
           placeholder="Message"
           value={text}
-          disabled={busy || hasPending}
+          disabled={sending || hasPending}
           onChange={(event) => {
             conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
           }}
         />
         <button
           className="btn btn-primary"
-          disabled={busy || hasPending || !text.trim() || !availability?.canSend}
+          disabled={sending || hasPending || !text.trim() || !availability?.canSend}
           onClick={() => publish()}
         >
-          {busy ? <span className="loading loading-spinner loading-sm" /> : "Send"}
+          {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
       </div>
       {availability && !availability.canSend && <p className="text-sm text-warning">No delivery relays</p>}
@@ -573,58 +567,16 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   );
 }
 
-/** Loads cached and relay history as the oldest edge approaches the scroll viewport */
-function conversationTimeline$(conversation: LegacyConversation, root: HTMLDivElement, edge: HTMLDivElement) {
-  return defer(() => {
-    const until = unixNow();
-    const windows = new BehaviorSubject<TimelineWindow>({ since: Math.max(0, until - 30 * 86400), until });
-    // The conversation supplies its mailbox routes, EventStore and nostr-idb cacheRequest.
-    const loader = conversation.createTimelineLoader({ limit: 50, prefetch: 0 });
-    let step = 30 * 86400;
+/** Returns the next older history slice, skipping further back across quiet periods */
+function getOlderSlice(slice: TimelineWindow, messages: NostrEvent[]): TimelineWindow {
+  const hasMessages = messages.some(
+    (message) => message.created_at >= slice.since && message.created_at <= slice.until,
+  );
 
-    const nearEdge$ = new Observable<boolean>((subscriber) => {
-      const observer = new IntersectionObserver(([entry]) => subscriber.next(entry.isIntersecting), {
-        root,
-        rootMargin: "300px",
-      });
-      observer.observe(edge);
-      return () => observer.disconnect();
-    });
+  // Reset to a month near messages; double across quiet periods, capped at a year.
+  const step = hasMessages ? MONTH : Math.min((slice.until - slice.since) * 2, YEAR);
 
-    const view$ = combineLatest({
-      messages: conversation.messages$,
-      coverage: loader.status$,
-      nearEdge: nearEdge$,
-      window: windows,
-      relays: conversation.relays$,
-    }).pipe(
-      auditTime(50),
-      map((view) => {
-        // Cache coverage alone cannot establish that relay history has been loaded.
-        const covered =
-          view.relays.length > 0 &&
-          view.relays.every((relay) => view.coverage.some((source) => source.source === relay)) &&
-          isTimelineWindowCovered(view.window, view.coverage);
-        return { ...view, covered, complete: view.window.since === 0 && covered };
-      }),
-      tap(({ covered, nearEdge, window, messages }) => {
-        if (!nearEdge || !covered || window.since === 0) return;
-
-        // Reset to a month near messages; double across quiet periods, capped at a year.
-        const foundMessages = messages.some(
-          (message) => message.created_at >= window.since && message.created_at < window.since + step,
-        );
-        step = foundMessages ? 30 * 86400 : Math.min(step * 2, 365 * 86400);
-        windows.next({ ...window, since: Math.max(0, window.since - step) });
-      }),
-    );
-
-    return merge(view$, loader(windows).pipe(ignoreElements()), conversation.watch$()).pipe(
-      finalize(() => {
-        windows.complete();
-      }),
-    );
-  });
+  return { since: Math.max(0, slice.since - step), until: slice.since };
 }
 
 function Conversation({
@@ -636,18 +588,43 @@ function Conversation({
   conversation: LegacyConversation;
   other: string;
 }) {
-  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
-  const [historyEdge, setHistoryEdge] = useState<HTMLDivElement | null>(null);
-  const timeline = use$(
-    () => (scrollRoot && historyEdge ? conversationTimeline$(conversation, scrollRoot, historyEdge) : undefined),
-    [conversation, scrollRoot, historyEdge],
+  const [slice, setSlice] = useState<TimelineWindow>(() => ({ since: unixNow() - MONTH, until: unixNow() }));
+  // The conversation supplies its mailbox routes, EventStore and nostr-idb cacheRequest.
+  const loader = useMemo(() => conversation.createTimelineLoader({ limit: 50, prefetch: 0 }), [conversation]);
+
+  use$(() => conversation.watch$(), [conversation]);
+  const messages = use$(conversation.messages$);
+  const relays = use$(conversation.relays$);
+
+  // Subscribing to the current slice drives the load while status$ reports its coverage.
+  const coverage = use$(() => merge(loader.status$, loader(slice).pipe(ignoreElements())), [loader, slice]);
+
+  // Cache coverage alone cannot establish that relay history has been loaded.
+  const covered =
+    !!relays?.length &&
+    relays.every((relay) => coverage?.some((source) => source.source === relay)) &&
+    isTimelineWindowCovered(slice, coverage ?? []);
+  const complete = covered && slice.since === 0;
+  const relayErrors = coverage?.filter((source) => source.state === "incomplete") ?? [];
+  const loading = !relays || (relays.length > 0 && !covered && relayErrors.length === 0);
+
+  // Re-created once the slice is covered, so the observer's first callback pages if the edge is still visible.
+  const watchHistoryEdge = useCallback(
+    (edge: HTMLDivElement | null) => {
+      if (!edge || !covered || slice.since === 0) return;
+
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) setSlice(getOlderSlice(slice, messages ?? []));
+        },
+        { root: edge.parentElement, rootMargin: "300px" },
+      );
+      observer.observe(edge);
+      return () => observer.disconnect();
+    },
+    [covered, slice, messages],
   );
-  const messages = timeline?.messages;
-  const loading =
-    !timeline ||
-    (timeline.relays.length > 0 &&
-      !timeline.covered &&
-      !timeline.coverage.some((source) => source.state === "incomplete"));
+
   const failure = use$(() => conversation.errors$.pipe(map((failure) => String(failure.error))), [conversation]);
   const [error, setError] = useState<string>();
   const [decrypting, setDecrypting] = useState(false);
@@ -669,7 +646,6 @@ function Conversation({
   const decryption = use$(conversation.decryptionState$);
 
   const peer = castUser(other, eventStore);
-  const relayErrors = timeline?.coverage.filter((source) => source.state === "incomplete") ?? [];
 
   return (
     <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -690,10 +666,7 @@ function Conversation({
         )}
       </div>
 
-      <div
-        ref={setScrollRoot}
-        className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4"
-      >
+      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4">
         {(error || failure) && <p className="text-sm text-error">{error ?? failure}</p>}
         {messages?.map((event) => (
           <MessageBubble
@@ -708,8 +681,8 @@ function Conversation({
             }
           />
         ))}
-        {messages?.length === 0 && timeline?.complete && <p className="text-center opacity-60">No messages</p>}
-        <div ref={setHistoryEdge} className="flex min-h-8 shrink-0 justify-center text-sm opacity-60">
+        {messages?.length === 0 && complete && <p className="text-center opacity-60">No messages</p>}
+        <div ref={watchHistoryEdge} className="flex min-h-8 shrink-0 justify-center text-sm opacity-60">
           {loading ? (
             <span className="loading loading-spinner loading-sm" />
           ) : relayErrors.length > 0 ? (
@@ -719,9 +692,9 @@ function Conversation({
             >
               History incomplete
             </span>
-          ) : !timeline?.relays.length ? (
+          ) : !relays?.length ? (
             "No history relays"
-          ) : timeline?.complete ? (
+          ) : complete ? (
             "History loaded"
           ) : (
             "Scroll up for older messages"

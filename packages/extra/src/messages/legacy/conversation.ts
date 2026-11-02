@@ -134,8 +134,11 @@ export class LegacyConversation {
   readonly decryptionState$;
   private readonly sending = new BehaviorSubject(0);
 
-  /** Whether one or more send operations are in progress */
-  readonly busy$ = this.sending.pipe(map((count) => count > 0));
+  /** Whether message preparation or publication is active, excluding pending messages awaiting retry */
+  readonly sending$ = this.sending.asObservable().pipe(
+    map((count) => count > 0),
+    distinctUntilChanged(),
+  );
 
   private readonly publications = new BehaviorSubject<
     Record<string, "prepared" | "publishing" | "accepted" | "failed">
@@ -152,6 +155,10 @@ export class LegacyConversation {
     takeUntil(this.publicationDestroyed),
   );
   private readonly pendingDeliveries = new Map<string, LegacyDelivery>();
+  private readonly preparedHandles = new WeakMap<
+    PreparedLegacyMessage,
+    { delivery: LegacyDelivery; generation: AbortSignal }
+  >();
   private publicationOperations: Promise<unknown> = Promise.resolve();
   private publicationsLoaded = false;
   private readonly mailboxes: Mailbox[];
@@ -850,56 +857,74 @@ export class LegacyConversation {
     options: MessageOperationOptions = {},
   ): Promise<PreparedLegacyMessage> {
     const context = this.context(options);
-    if (!this.options.signer?.nip04) throw new Error("Signer does not support this message protocol");
-    const signerPubkey = await firstValueFrom(
-      defer(() => this.options.signer!.getPublicKey()).pipe(
-        timeout({ first: this.options.actionTimeout ?? 120000 }),
-        takeUntil(fromEvent(context.signal, "abort")),
-      ),
-    );
-    if (signerPubkey !== this.options.pubkey) throw new Error("Signer does not match the messages client owner");
-    context.signal.throwIfAborted();
+    this.sending.next(this.sending.value + 1);
 
-    const delivery = await firstValueFrom(
-      this.prepareDelivery$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
-    );
-    this.publications.next({
-      ...this.publications.value,
-      [delivery.event.id]: delivery.accepted ? "accepted" : "prepared",
-    });
-    return this.preparedDelivery(delivery);
+    try {
+      if (!this.options.signer?.nip04) throw new Error("Signer does not support this message protocol");
+      const signerPubkey = await firstValueFrom(
+        defer(() => this.options.signer!.getPublicKey()).pipe(
+          timeout({ first: this.options.actionTimeout ?? 120000 }),
+          takeUntil(fromEvent(context.signal, "abort")),
+        ),
+      );
+      if (signerPubkey !== this.options.pubkey) throw new Error("Signer does not match the messages client owner");
+      context.signal.throwIfAborted();
+
+      const delivery = await firstValueFrom(
+        this.prepareDelivery$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
+      );
+      this.publications.next({
+        ...this.publications.value,
+        [delivery.event.id]: delivery.accepted ? "accepted" : "prepared",
+      });
+      return this.preparedDelivery(delivery);
+    } finally {
+      this.sending.next(this.sending.value - 1);
+    }
   }
 
   private preparedDelivery(delivery: LegacyDelivery): PreparedLegacyMessage {
-    const generation = this.generation.signal;
+    const prepared: PreparedLegacyMessage = {
+      message: delivery.event,
+      publish: (options) => this.publish(prepared, options),
+    };
+    this.preparedHandles.set(prepared, { delivery, generation: this.generation.signal });
+    return prepared;
+  }
+
+  /**
+   * Publishes or retries a message prepared or restored by this conversation without signing again
+   * @throws if disposed, cancelled, the handle is foreign, stale, discarded, already publishing, or publication fails
+   */
+  async publish(prepared: PreparedLegacyMessage, options: MessageOperationOptions = {}): Promise<NostrEvent> {
+    const publication = this.context(options);
+    const handle = this.preparedHandles.get(prepared);
+    if (!handle) throw new Error("DM publication does not belong to this conversation");
+
+    const { delivery, generation } = handle;
+    generation.throwIfAborted();
+    if (delivery.discarded) throw new Error("DM publication discarded");
+    if (delivery.publishing) throw new Error("DM message is already being published");
+
     const setState = (state: "prepared" | "publishing" | "accepted" | "failed") =>
       this.publications.next({ ...this.publications.value, [delivery.event.id]: state });
+    this.sending.next(this.sending.value + 1);
+    setState("publishing");
 
-    return {
-      message: delivery.event,
-      publish: async (publishOptions = {}) => {
-        const publication = this.context(publishOptions);
-        generation.throwIfAborted();
-        if (delivery.discarded) throw new Error("DM publication discarded");
-        this.sending.next(this.sending.value + 1);
-        setState("publishing");
-
-        try {
-          const message = await firstValueFrom(
-            this.publishDelivery$(delivery, publication).pipe(takeUntil(fromEvent(publication.signal, "abort"))),
-          );
-          publication.signal.throwIfAborted();
-          setState("accepted");
-          return message;
-        } catch (error) {
-          setState(delivery.accepted ? "accepted" : "failed");
-          this.errors.next({ operation: "send", error, eventId: delivery.event.id });
-          throw error;
-        } finally {
-          this.sending.next(this.sending.value - 1);
-        }
-      },
-    };
+    try {
+      const message = await firstValueFrom(
+        this.publishDelivery$(delivery, publication).pipe(takeUntil(fromEvent(publication.signal, "abort"))),
+      );
+      publication.signal.throwIfAborted();
+      setState("accepted");
+      return message;
+    } catch (error) {
+      setState(delivery.accepted ? "accepted" : "failed");
+      this.errors.next({ operation: "send", error, eventId: delivery.event.id });
+      throw error;
+    } finally {
+      this.sending.next(this.sending.value - 1);
+    }
   }
 
   /**
@@ -910,7 +935,16 @@ export class LegacyConversation {
     request: Omit<LegacyMessageSendRequest, "recipient">,
     options: MessageOperationOptions = {},
   ): Promise<NostrEvent> {
-    return (await this.prepareSend(request, options)).publish(options);
+    this.context(options);
+    // Retain activity across the handoff between preparation and publication.
+    this.sending.next(this.sending.value + 1);
+
+    try {
+      const prepared = await this.prepareSend(request, options);
+      return await this.publish(prepared, options);
+    } finally {
+      this.sending.next(this.sending.value - 1);
+    }
   }
 
   /**

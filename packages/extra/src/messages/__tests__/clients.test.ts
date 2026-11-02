@@ -1067,15 +1067,15 @@ describe("standalone messaging clients", () => {
     const bobPublishing = prepared.publish();
     const bobResult = expect(bobPublishing).rejects.toThrow();
     const selfPublishing = selfPrepared.publish();
-    expect(await firstValueFrom(conversation.busy$)).toBe(true);
-    expect(await firstValueFrom(self.busy$)).toBe(true);
+    expect(await firstValueFrom(conversation.sending$)).toBe(true);
+    expect(await firstValueFrom(self.sending$)).toBe(true);
     conversation.stop();
     await bobResult;
-    expect(await firstValueFrom(conversation.busy$)).toBe(false);
-    expect(await firstValueFrom(self.busy$)).toBe(true);
+    expect(await firstValueFrom(conversation.sending$)).toBe(false);
+    expect(await firstValueFrom(self.sending$)).toBe(true);
     finishPublications.forEach((finish) => finish());
     await selfPublishing;
-    expect(await firstValueFrom(self.busy$)).toBe(false);
+    expect(await firstValueFrom(self.sending$)).toBe(false);
     await expect(prepared.publish()).rejects.toThrow();
   });
 

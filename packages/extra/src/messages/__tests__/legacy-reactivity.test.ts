@@ -136,7 +136,7 @@ describe("legacy reactive ownership", () => {
 
     viewport.unsubscribe();
     expect(discovery.closed).toBe(false);
-    expect(await firstValueFrom(conversation.busy$)).toBe(true);
+    expect(await firstValueFrom(conversation.sending$)).toBe(true);
     finish();
     await expect(sending).resolves.toBe(prepared.message);
     discovery.unsubscribe();
@@ -598,7 +598,7 @@ describe("legacy reactive ownership", () => {
         ),
       );
     const conversation = client.conversation(peer);
-    expect(await firstValueFrom(conversation.busy$)).toBe(false);
+    expect(await firstValueFrom(conversation.sending$)).toBe(false);
     expect(await firstValueFrom(conversation.publications$)).toEqual({});
     const prepared = await conversation.prepareSend({ content: "prepared" });
     expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
