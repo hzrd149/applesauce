@@ -677,7 +677,7 @@ function Composer({
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
   // Picked files stay in the form, in memory, until the message is sent.
-  const { register, getValues, setValue, control } = useForm<{ content: string; files: File[] }>({
+  const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
     values: { content: draft?.content ?? "", files: [] },
     resetOptions: { keepDirtyValues: true },
   });
@@ -705,8 +705,9 @@ function Composer({
       const attachments = await Promise.all(staged.map((file) => conversation.uploadFile(file)));
       setUploading(false);
 
+      // The client's outbox retries unpublished envelopes, so the form can start the next message
       await conversation.sendDraft(attachments);
-      setFiles(getValues("files").filter((file) => !staged.includes(file)));
+      reset({ content: "", files: [] });
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -756,7 +757,7 @@ function Composer({
         <input
           className="input min-w-0 flex-1"
           placeholder={disabledReason ?? "Message"}
-          disabled={!canSend}
+          disabled={!canSend || busy}
           {...register("content", {
             onChange: () => conversation instanceof NdrConversation && conversation.sendTyping(),
             onBlur: () => saveDraft().catch((error) => setError(String(error))),

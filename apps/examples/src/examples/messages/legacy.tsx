@@ -537,7 +537,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   const [error, setError] = useState<string>();
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
-  const { register, getValues, control, handleSubmit } = useForm({
+  const { register, getValues, control, handleSubmit, reset } = useForm({
     values: { content: draft?.content ?? "" },
     resetOptions: { keepDirtyValues: true },
   });
@@ -564,6 +564,9 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
       setError(String(error));
       return;
     }
+
+    // The prepared message is now a pending publication, so clear the form for the next message
+    reset({ content: "" });
 
     try {
       await conversation.publish(delivery);

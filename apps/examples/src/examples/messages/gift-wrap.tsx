@@ -492,17 +492,47 @@ function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
   );
 }
 
+function FailedPublication({
+  delivery,
+  state,
+  onRetry,
+  onDiscard,
+}: {
+  delivery: PreparedWrappedMessage;
+  state?: string;
+  onRetry: () => void;
+  onDiscard: () => void;
+}) {
+  const publishing = state === "publishing";
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="min-w-0 flex-1 truncate opacity-60">
+        {delivery.message.kind === kinds.FileMessage ? "Attachment" : delivery.message.content}
+      </span>
+      <span className={state === "failed" ? "text-error" : "opacity-60"}>{state}</span>
+      <button className="btn btn-sm" disabled={publishing} onClick={onRetry}>
+        Retry
+      </button>
+      <button className="btn btn-sm btn-ghost" disabled={publishing} onClick={onDiscard}>
+        Discard
+      </button>
+    </div>
+  );
+}
+
 function Composer({ conversation, expiration }: { conversation: WrappedConversation; expiration: number }) {
   const draft = use$(conversation.draft$);
+  const publications = use$(conversation.client.publications$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
   // Picked files stay in the form, in memory, until the message is sent.
-  const { register, getValues, setValue, control } = useForm<{ content: string; files: File[] }>({
+  const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
     values: { content: draft?.content ?? "", files: [] },
     resetOptions: { keepDirtyValues: true },
   });
   const text = useWatch({ control, name: "content" });
   const files = useWatch({ control, name: "files" });
-  const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
+  const [failed, setFailed] = useState<PreparedWrappedMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -528,12 +558,19 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
   };
 
-  // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
+  // Keep failed handles so a retry only republishes the gift wraps relays did not accept
   const publish = async (delivery: PreparedWrappedMessage) => {
-    setPrepared(delivery);
-    await delivery.publish();
-    setPrepared(undefined);
-    if (delivery.message.kind === kinds.PrivateDirectMessage) await conversation.clearDraft();
+    try {
+      await delivery.publish();
+      setFailed((list) => list.filter((pending) => pending !== delivery));
+    } catch (error) {
+      setFailed((list) => (list.includes(delivery) ? list : [...list, delivery]));
+      setError(String(error));
+    }
+  };
+
+  const discard = (delivery: PreparedWrappedMessage) => {
+    setFailed((list) => list.filter((pending) => pending !== delivery));
   };
 
   const send = async () => {
@@ -541,39 +578,56 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     setBusy(true);
     setError(undefined);
 
+    const deliveries: PreparedWrappedMessage[] = [];
     try {
-      // Save first so clearing the draft also resets the input
       await saveDraft();
-      if (prepared) return await publish(prepared);
-
       const expires = expiration ? unixNow() + expiration : undefined;
 
       // NIP-17 sends each file as its own kind 15 message, encrypted and uploaded only now
       for (const file of getValues("files")) {
         const uploaded = await conversation.uploadFile(file);
-        const delivery = await conversation.prepareSend({
-          content: "",
-          file: uploaded,
-          expiration: expires,
-          envelopeExpiration: expires,
-        });
-        setFiles(getValues("files").filter((staged) => staged !== file));
-        await publish(delivery);
+        deliveries.push(
+          await conversation.prepareSend({
+            content: "",
+            file: uploaded,
+            expiration: expires,
+            envelopeExpiration: expires,
+          }),
+        );
       }
 
       const content = getValues("content");
       if (content.trim()) {
-        await publish(await conversation.prepareSend({ content, expiration: expires, envelopeExpiration: expires }));
+        deliveries.push(await conversation.prepareSend({ content, expiration: expires, envelopeExpiration: expires }));
       }
+
+      // Once prepared, the messages are tracked by publication state, so the form can start the next message
+      await conversation.clearDraft();
+      reset({ content: "", files: [] });
     } catch (error) {
       setError(String(error));
+      return;
     } finally {
       setBusy(false);
     }
+
+    for (const delivery of deliveries) await publish(delivery);
   };
 
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
+      {failed.map((delivery) => (
+        <FailedPublication
+          key={delivery.message.id}
+          delivery={delivery}
+          state={publications?.[delivery.message.id]}
+          onRetry={() => {
+            setError(undefined);
+            void publish(delivery);
+          }}
+          onDiscard={() => discard(delivery)}
+        />
+      ))}
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {files.map((file, index) => (
@@ -590,20 +644,17 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
           className="textarea flex-1"
           rows={1}
           placeholder="Message"
-          disabled={!!prepared || busy}
+          disabled={busy}
           onPaste={pasteFiles}
           {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
-        <label
-          className={`btn btn-square btn-ghost ${busy || prepared ? "btn-disabled" : ""}`}
-          title="Attach encrypted files"
-        >
+        <label className={`btn btn-square btn-ghost ${busy ? "btn-disabled" : ""}`} title="Attach encrypted files">
           <Paperclip className="h-5 w-5" />
           <input
             type="file"
             multiple
             className="hidden"
-            disabled={busy || !!prepared}
+            disabled={busy}
             onChange={(event) => {
               const picked = [...(event.target.files ?? [])];
               event.target.value = "";
@@ -611,12 +662,8 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
             }}
           />
         </label>
-        <button
-          className="btn btn-primary"
-          disabled={busy || (!text.trim() && files.length === 0 && !prepared)}
-          onClick={send}
-        >
-          {busy ? <span className="loading loading-spinner loading-sm" /> : prepared ? "Retry" : "Send"}
+        <button className="btn btn-primary" disabled={busy || (!text.trim() && files.length === 0)} onClick={send}>
+          {busy ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
       </div>
       {error && <p className="text-sm text-error">{error}</p>}
