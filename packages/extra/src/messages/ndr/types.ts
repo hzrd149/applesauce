@@ -1,7 +1,9 @@
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import type { EventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { GroupData, StorageAdapter } from "nostr-double-ratchet";
+import type { MessageFileUploader } from "../common/attachments.js";
 
 /** The lifecycle of an NDR client's runtime, lock, and persistence */
 export type NdrClientLifecycle = "idle" | "starting" | "ready" | "locked" | "error" | "disposed";
@@ -36,6 +38,8 @@ export interface NdrMessagesClientOptions {
   lockName?: string | false;
   /** Whether to send a delivered receipt when an incoming message is first stored (default true) */
   deliveredReceipts?: boolean;
+  /** The uploader for encrypted file attachments, such as a Blossom client */
+  upload?: MessageFileUploader;
 }
 
 /** A decrypted chat message with its aggregated reactions and delivery state */
@@ -58,6 +62,8 @@ export interface NdrMessage {
   expiresAt?: number;
   /** The delivery progress, or `received` for incoming messages */
   delivery: NdrDeliveryState;
+  /** The files attached to the message, encrypted when they carry a decryption key */
+  attachments?: FileMetadataFields[];
   /** The owner pubkeys that reacted, grouped by reaction content */
   reactions: Record<string, string[]>;
 }
@@ -110,8 +116,10 @@ export interface NdrClientError {
 
 /** A plaintext message to send */
 export interface NdrSendRequest {
-  /** The message text */
+  /** The message text, which may be empty when there are attachments */
   content: string;
+  /** Uploaded files to attach, from `uploadFile` */
+  attachments?: FileMetadataFields[];
   /** The parent message ID when replying */
   replyTo?: string;
 }

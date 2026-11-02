@@ -30,6 +30,16 @@ describe("NdrHistory", () => {
     expect(restored.messages(bob).map((m) => m.content)).toEqual(["hello"]);
   });
 
+  it("restores message attachments", async () => {
+    const storage = new InMemoryStorageAdapter();
+    const attachments = [{ url: "https://files.example.com/a", type: "image/png", decryptionKey: "11".repeat(32) }];
+    await new NdrHistory(storage, () => 1000).addMessage(message({ attachments }));
+
+    const restored = new NdrHistory(storage, () => 1000);
+    await restored.restore();
+    expect(restored.messages(bob)[0].attachments).toEqual(attachments);
+  });
+
   it("applies reactions that arrive before their message", async () => {
     const history = new NdrHistory(new InMemoryStorageAdapter(), () => 1000);
 

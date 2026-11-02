@@ -31,3 +31,11 @@ export type {
   MessagesRelayStatus,
 } from "./common/types.js";
 export type { MessageAuthRequest } from "./common/authentication.js";
+export {
+  loadAttachment,
+  uploadEncryptedFile,
+  type LoadAttachmentOptions,
+  type MessageFileUploader,
+  type UploadedFile,
+  type UploadEncryptedFileOptions,
+} from "./common/attachments.js";

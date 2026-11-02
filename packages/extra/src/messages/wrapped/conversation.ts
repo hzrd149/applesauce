@@ -3,10 +3,13 @@ import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
   getConversationParticipants,
+  isWrappedMessage,
 } from "applesauce-common/helpers";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import { RumorStore } from "applesauce-core/event-store";
-import { kinds, type Rumor } from "applesauce-core/helpers";
+import type { Rumor } from "applesauce-core/helpers";
 import type { Observable, Subscription } from "rxjs";
+import type { UploadEncryptedFileOptions } from "../common/attachments.js";
 import type { MessageDraft, MessageStorage, MessageOperationOptions } from "../common/types.js";
 import type { WrappedMessagesClient } from "./client.js";
 import { ConversationMessagesModel, ConversationRepliesModel, ConversationThreadsModel } from "./models.js";
@@ -129,6 +132,17 @@ export class WrappedConversation {
   }
 
   /**
+   * Encrypts and uploads a file with the client's uploader, returning the metadata to send with {@link send}
+   * @throws if disposed, no uploader is configured, or the upload fails
+   */
+  async uploadFile(
+    file: Blob,
+    options: MessageOperationOptions & UploadEncryptedFileOptions = {},
+  ): Promise<FileMetadataFields> {
+    return this.client.uploadFile(file, { ...options, ...this.context(options) });
+  }
+
+  /**
    * Sends a message to this conversation's participants
    * @throws if disposed, preparation fails, or publication fails
    */
@@ -145,7 +159,7 @@ export class WrappedConversation {
     request: Omit<WrappedConversationSendRequest, "replyTo">,
     options: MessageOperationOptions = {},
   ): Promise<Rumor> {
-    if (parent.kind !== kinds.PrivateDirectMessage || getConversationIdentifierFromMessage(parent) !== this.id)
+    if (!isWrappedMessage(parent) || getConversationIdentifierFromMessage(parent) !== this.id)
       throw new Error("Reply parent does not belong to this conversation");
     return this.send({ ...request, replyTo: parent.id }, options);
   }

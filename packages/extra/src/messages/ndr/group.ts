@@ -9,7 +9,10 @@ import {
   type Rumor,
 } from "nostr-double-ratchet";
 import { BehaviorSubject, combineLatest, distinctUntilChanged, map, Observable, shareReplay } from "rxjs";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
+import type { UploadEncryptedFileOptions } from "../common/attachments.js";
 import { ConversationDraftState } from "../common/drafts.js";
+import { buildNdrChatMessage } from "./message.js";
 import type { MessageDraft } from "../common/types.js";
 import type { NdrMessagesClient } from "./client.js";
 import { getNdrGroupConversationId } from "./history.js";
@@ -115,18 +118,24 @@ export class NdrGroupConversation {
 
   /**
    * Encrypts a message with this device's sender key, publishes it, and stores it as queued
-   * @throws if the message is empty, the group is unknown, or sending fails
+   * @throws if the message has no text or attachments, the group is unknown, or sending fails
    */
   async send(request: NdrSendRequest): Promise<void> {
-    const content = request.content.trim();
-    if (!content) throw new Error("Message is empty");
+    const { content, tags } = buildNdrChatMessage(request);
     this.record();
 
     await this.track(async () => {
-      const tags = request.replyTo ? [["e", request.replyTo]] : [];
       const { inner } = await this.client.runtime.sendGroupEvent(this.groupId, { kind: 14, content, tags });
-      await this.client.storeSent(this.id, inner, request.replyTo);
+      await this.client.storeSent(this.id, inner);
     });
+  }
+
+  /**
+   * Encrypts a file and uploads the ciphertext, returning the attachment to {@link send}
+   * @throws if no uploader is configured or the upload fails
+   */
+  uploadFile(file: Blob, options?: UploadEncryptedFileOptions): Promise<FileMetadataFields> {
+    return this.client.uploadFile(file, options);
   }
 
   /**

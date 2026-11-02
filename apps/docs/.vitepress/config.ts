@@ -222,6 +222,7 @@ export default defineConfig({
           { text: "Bookmarks", link: "/features/bookmarks" },
           { text: "Code Snippets", link: "/features/code-snippets" },
           { text: "Comments", link: "/features/comments" },
+          { text: "Encrypted Files", link: "/features/encrypted-files" },
           { text: "Follows", link: "/features/follows" },
           { text: "Git", link: "/features/git" },
           { text: "Groups", link: "/features/groups" },

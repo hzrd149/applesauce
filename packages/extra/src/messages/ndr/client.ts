@@ -27,10 +27,13 @@ import {
   switchMap,
   type MonoTypeOperatorFunction,
 } from "rxjs";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
+import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
 import type { MessageStorage } from "../common/types.js";
 import { NdrConversation } from "./conversation.js";
 import { NdrGroupConversation } from "./group.js";
 import { getNdrGroupConversationId, NdrHistory } from "./history.js";
+import { createStoredNdrMessage, isNdrChatRumor } from "./message.js";
 import { createNdrTransport, type NdrTransport } from "./transport.js";
 import type {
   NdrClientError,
@@ -63,11 +66,6 @@ class NdrLockedError extends Error {
 
 function getTag(rumor: Pick<Rumor, "tags">, name: string): string | undefined {
   return rumor.tags.find((tag) => tag[0] === name)?.[1];
-}
-
-function getExpiration(rumor: Rumor): number | undefined {
-  const value = Number(getTag(rumor, "expiration"));
-  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
 /**
@@ -297,18 +295,24 @@ export class NdrMessagesClient {
   }
 
   /** Stores a message this device sent, applying a relay acceptance that may have arrived first */
-  async storeSent(conversationId: string, rumor: Rumor, replyTo?: string): Promise<void> {
-    await this.history.addMessage({
-      id: rumor.id,
-      conversationId,
-      content: rumor.content,
-      sender: this.pubkey,
-      senderDevice: this.state.value.currentDevicePubkey ?? undefined,
-      createdAt: rumor.created_at,
-      replyTo,
-      expiresAt: getExpiration(rumor),
-      delivery: this.publishedIds.has(rumor.id) ? "published" : "queued",
-    });
+  async storeSent(conversationId: string, rumor: Rumor): Promise<void> {
+    await this.history.addMessage(
+      createStoredNdrMessage(rumor, {
+        conversationId,
+        sender: this.pubkey,
+        senderDevice: this.state.value.currentDevicePubkey ?? undefined,
+        delivery: this.publishedIds.has(rumor.id) ? "published" : "queued",
+      }),
+    );
+  }
+
+  /**
+   * Encrypts a file and uploads the ciphertext, returning the attachment to send with a message
+   * @throws if no uploader is configured or the upload fails
+   */
+  async uploadFile(file: Blob, options: UploadEncryptedFileOptions = {}): Promise<FileMetadataFields> {
+    if (!this.options.upload) throw new Error("No file uploader configured");
+    return uploadEncryptedFile(file, this.options.upload, options);
   }
 
   private withLock(work: () => Promise<void>): Promise<void> {
@@ -502,29 +506,27 @@ export class NdrMessagesClient {
     const peer = this.directPeer(rumor, sender);
     if (!peer) return;
 
-    switch (rumor.kind) {
-      case CHAT_KIND: {
-        const incoming = sender !== this.pubkey;
-        const added = await this.history.addMessage({
-          id: rumor.id,
+    // Chat messages include NIP-17 kind 15 file messages, which share their kind with receipts.
+    if (isNdrChatRumor(rumor)) {
+      const incoming = sender !== this.pubkey;
+      const added = await this.history.addMessage(
+        createStoredNdrMessage(rumor, {
           conversationId: peer,
-          content: rumor.content,
           sender,
           senderDevice: meta?.senderDevicePubkey,
-          createdAt: rumor.created_at,
-          replyTo: getTag(rumor, "e"),
-          expiresAt: getExpiration(rumor),
           // A copy from another of this owner's devices already crossed a relay.
           delivery: incoming ? "received" : "published",
-        });
+        }),
+      );
 
-        if (incoming) this.setTyping(peer, undefined);
-        if (added && incoming && this.options.deliveredReceipts !== false) {
-          this.runtime.sendReceipt(peer, "delivered", [rumor.id]).catch((error) => this.report("receipt", error));
-        }
-        break;
+      if (incoming) this.setTyping(peer, undefined);
+      if (added && incoming && this.options.deliveredReceipts !== false) {
+        this.runtime.sendReceipt(peer, "delivered", [rumor.id]).catch((error) => this.report("receipt", error));
       }
+      return;
+    }
 
+    switch (rumor.kind) {
       case REACTION_KIND: {
         const target = getTag(rumor, "e");
         if (target) await this.history.addReaction(peer, { id: rumor.id, target, content: rumor.content, sender });
@@ -559,18 +561,15 @@ export class NdrMessagesClient {
   private async storeGroupRumor(groupId: string, rumor: Rumor, sender: string, senderDevice?: string) {
     const conversationId = getNdrGroupConversationId(groupId);
 
-    if (rumor.kind === CHAT_KIND) {
-      await this.history.addMessage({
-        id: rumor.id,
-        conversationId,
-        content: rumor.content,
-        sender,
-        senderDevice,
-        createdAt: rumor.created_at,
-        replyTo: getTag(rumor, "e"),
-        expiresAt: getExpiration(rumor),
-        delivery: sender === this.pubkey ? "published" : "received",
-      });
+    if (isNdrChatRumor(rumor)) {
+      await this.history.addMessage(
+        createStoredNdrMessage(rumor, {
+          conversationId,
+          sender,
+          senderDevice,
+          delivery: sender === this.pubkey ? "published" : "received",
+        }),
+      );
     } else if (rumor.kind === REACTION_KIND) {
       const target = getTag(rumor, "e");
       if (target)

@@ -45,6 +45,13 @@ await chat.setTtl(86400); // disappearing messages for both sides
 
 `draft$`, `setDraft()`, and `sendDraft()` keep an encrypted draft that survives reloads. The client sends a delivered receipt when an incoming message is first stored; set `deliveredReceipts: false` to disable it.
 
+With an `upload` option on the client, `uploadFile()` encrypts a file and uploads the ciphertext. Attachments go out as `imeta` tags on a kind 14 message, with each URL also in the content so other NDR apps show a link; incoming NIP-17 kind 15 file messages are read too. See [Encrypted Files](../features/encrypted-files.md).
+
+```ts
+const file = await chat.uploadFile(input.files[0]);
+await chat.send({ content: "", attachments: [file] }); // message.attachments on both sides
+```
+
 A message's `delivery` is `queued` when it is encrypted and saved locally, `published` once a relay accepts an envelope, and `delivered` or `seen` when peer receipts arrive. Incoming messages are `received`.
 
 ### Devices and linking

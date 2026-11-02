@@ -40,8 +40,9 @@ export function getConversationParticipants(participants: string | string[] | Ru
   } else if (Array.isArray(participants)) {
     participantList = participants;
   } else {
-    if (participants.kind !== kinds.EncryptedDirectMessage && participants.kind !== kinds.PrivateDirectMessage)
-      throw new Error("Can only get participants from direct message event (4, 14)");
+    const kind = participants.kind;
+    if (kind !== kinds.EncryptedDirectMessage && kind !== kinds.PrivateDirectMessage && kind !== kinds.FileMessage)
+      throw new Error("Can only get participants from direct message event (4, 14, 15)");
 
     participantList = [participants.pubkey, ...participants.tags.filter(isPTag).map((t) => t[1])];
   }

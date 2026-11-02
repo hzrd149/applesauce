@@ -10,6 +10,7 @@ import {
   isGiftWrapUnlocked,
 } from "applesauce-common/helpers";
 import { WrappedMessagesGroups, WrappedMessagesModel } from "applesauce-common/models";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import {
   restoreEncryptedContent,
   kinds,
@@ -49,6 +50,7 @@ import {
   timeout,
 } from "rxjs";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
+import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
 import { configured$, settle } from "../common/helpers.js";
 import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
 import type {
@@ -566,6 +568,20 @@ export class WrappedMessagesClient {
         }
       },
     };
+  }
+
+  /**
+   * Encrypts a file and uploads the ciphertext, returning the metadata for a file message
+   * @throws if no uploader is configured or the upload fails
+   */
+  async uploadFile(
+    file: Blob,
+    options: MessageOperationOptions & UploadEncryptedFileOptions = {},
+  ): Promise<FileMetadataFields> {
+    if (!this.options.upload) throw new Error("No file uploader configured");
+
+    const context = this.context(options);
+    return uploadEncryptedFile(file, this.options.upload, { metadata: options.metadata, signal: context.signal });
   }
 
   /** Publishes one envelope per participant and retains failed envelopes for retry */

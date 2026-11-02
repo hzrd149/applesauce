@@ -1,11 +1,14 @@
-import { getWrappedMessageParent } from "applesauce-common/helpers";
+import { getWrappedMessageParent, isWrappedMessage } from "applesauce-common/helpers";
 import type { Model } from "applesauce-core/event-store";
 import { kinds, type Rumor } from "applesauce-core/helpers";
 import { map } from "rxjs";
 
-/** Returns the kind-14 timeline from a conversation rumor store */
+/** Returns the chat and file message timeline from a conversation rumor store */
 export function ConversationMessagesModel(): Model<Rumor[], Rumor> {
-  return (store) => store.timeline({ kinds: [kinds.PrivateDirectMessage] });
+  return (store) =>
+    store
+      .timeline({ kinds: [kinds.PrivateDirectMessage, kinds.FileMessage] })
+      .pipe(map((messages) => messages.filter(isWrappedMessage)));
 }
 
 /** Returns root messages with replies from a conversation rumor store */

@@ -5,6 +5,8 @@ import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loade
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
+import type { MessageFileUploader } from "../common/attachments.js";
 import type { MessageStorage, MessageOperationOptions } from "../common/types.js";
 
 /** Dependencies and policies for a NIP-17 inbox */
@@ -41,14 +43,18 @@ export interface WrappedMessagesClientOptions {
   authTimeout?: number | false;
   /** Whether to mirror the newest conversation rumor lifetime on sends */
   mirrorExpiration?: boolean;
+  /** The uploader for encrypted file attachments, such as a Blossom client */
+  upload?: MessageFileUploader;
 }
 
 /** A plaintext NIP-17 message with explicit recipients */
 export interface WrappedMessageSendRequest {
   /** The recipient pubkeys, with the sender copy added automatically */
   recipients: readonly string[];
-  /** The unmodified plaintext */
+  /** The unmodified plaintext, ignored when a file is sent */
   content: string;
+  /** An uploaded file to send as a kind-15 file message instead of the text content */
+  file?: FileMetadataFields;
   /** The parent rumor ID */
   replyTo?: string;
   /** The absolute rumor expiration timestamp in seconds */
@@ -79,7 +85,7 @@ export interface WrappedMessageAvailability {
 
 /** Prepared gift wraps retained for per-recipient retries */
 export interface PreparedWrappedMessage {
-  /** The native kind-14 rumor */
+  /** The native kind-14 or kind-15 rumor */
   message: Rumor;
   /** The current relay acceptance outcomes for each participant */
   readonly publications: readonly WrappedMessagePublicationResult[];

@@ -1,26 +1,31 @@
 /**
- * A double-ratchet NdrMessagesClient with direct chats, groups, reactions, receipts, typing, and app-key device management
- * @tags messages, ndr, double-ratchet, app-keys, multi-device, groups, dm, receipts, typing, storage
+ * A double-ratchet NdrMessagesClient with direct chats, groups, encrypted attachments, reactions, receipts, typing, and app-key device management
+ * @tags messages, ndr, double-ratchet, app-keys, multi-device, groups, dm, receipts, typing, storage, files, blossom
  * @related messages/legacy, messages/gift-wrap, napplet/messages
  */
 import { castUser, User } from "applesauce-common/casts";
+import { isEncryptedFile, type FileMetadataFields } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import {
   createNdrStorage,
   getNdrGroupId,
+  loadAttachment,
   NdrConversation,
   NdrMessagesClient,
   type NdrConversationSummary,
   type NdrDevice,
   type NdrGroupConversation,
+  type MessageFileUploader,
   type NdrMessage,
 } from "applesauce-extra/messages/ndr";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { PanelLeft, PanelRight, X } from "lucide-react";
+import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import { createUploadAuth } from "blossom-client-sdk/auth";
+import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
 import type { PreparedRegistration } from "nostr-double-ratchet";
 import { type ReactNode, useCallback, useState } from "react";
 import {
@@ -30,12 +35,16 @@ import {
   defer,
   EMPTY,
   finalize,
+  firstValueFrom,
+  from,
   ignoreElements,
   merge,
   NEVER,
+  type Observable,
   of,
   shareReplay,
   switchMap,
+  timeout,
 } from "rxjs";
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
@@ -47,6 +56,8 @@ import { lookupRelays$ } from "../../settings";
 
 // NDR device keys have no NIP-65 mailboxes, so invites and envelopes use one explicit relay set.
 const NDR_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
+// Used when the user has not published a Blossom server list
+const FALLBACK_BLOSSOM_SERVERS = [new URL("https://blossom.band"), new URL("https://nostr.download")];
 const REACTIONS = ["👍", "❤️", "😂", "🎉"];
 const TTL_OPTIONS: { label: string; seconds: number | null }[] = [
   { label: "Keep messages", seconds: null },
@@ -78,6 +89,25 @@ const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
+/** Creates an uploader that stores encrypted blobs on the user's Blossom servers */
+function createBlossomUploader(signer: ISigner, user: User): MessageFileUploader {
+  return async (blob, { signal }) => {
+    const servers = await firstValueFrom(
+      user.blossomServers$.pipe(timeout({ first: 4000, with: () => of(undefined) })),
+    );
+
+    // Plain uploads only: media optimization would re-encode the ciphertext and break decryption.
+    const results = await multiServerUpload(servers?.length ? servers : FALLBACK_BLOSSOM_SERVERS, blob, {
+      signal,
+      onAuth: (_server, sha256, type) => createUploadAuth((draft) => signer.signEvent(draft), sha256, { type }),
+    });
+
+    const uploads = [...results.values()];
+    if (!uploads[0]) throw new Error("No Blossom server accepted the file");
+    return { url: uploads[0].url, fallback: uploads.slice(1).map((upload) => upload.url) };
+  };
+}
+
 // The stream owns the client; a signer is optional so another device can link this one
 const client$ = combineLatest([signer$, user$, storage$]).pipe(
   switchMap(([signer, user, storage]) => {
@@ -93,6 +123,8 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
         pool,
         relays: NDR_RELAYS,
         storage: createNdrStorage(secure),
+        // Blossom uploads need an auth signature, so a linked device without a signer cannot attach files.
+        upload: signer ? createBlossomUploader(signer, user) : undefined,
       });
 
       return merge(
@@ -112,6 +144,34 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: true }),
 );
+
+/** Downloads and decrypts an attachment into an object URL, revoked when the subscription ends */
+function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string; error?: string }> {
+  if (!isEncryptedFile(file)) return of({ url: file.url });
+
+  return defer(() => {
+    const controller = new AbortController();
+
+    return from(loadAttachment(file, { signal: controller.signal })).pipe(
+      switchMap((blob) => {
+        const url = URL.createObjectURL(blob);
+        return merge(of({ url }), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
+      }),
+      catchError((error) => of({ error: error instanceof Error ? error.message : String(error) })),
+      finalize(() => controller.abort()),
+    );
+  });
+}
+
+/** Returns the message text without the attachment URLs that other NDR apps show as links */
+function messageText(message: NdrMessage) {
+  const urls = new Set(message.attachments?.map((file) => file.url));
+  return message.content
+    .split("\n")
+    .filter((line) => !urls.has(line.trim()))
+    .join("\n")
+    .trim();
+}
 
 /** Formats a timestamp as a time for today and a date otherwise */
 function formatShortTime(timestamp: number) {
@@ -472,6 +532,28 @@ function ReactionChips({ message }: { message: NdrMessage }) {
   );
 }
 
+function Attachment({ file }: { file: FileMetadataFields }) {
+  const source = use$(() => attachmentSource$(file), [file]);
+  const type = file.type ?? "";
+
+  if (!source) return <span className="loading loading-spinner loading-sm" title="Decrypting" />;
+  if (source.error || !source.url)
+    return (
+      <span className="text-sm text-error" title={file.url}>
+        {source.error ?? "Missing file"}
+      </span>
+    );
+
+  if (type.startsWith("image/")) return <img src={source.url} alt={file.alt} className="max-h-72 rounded" />;
+  if (type.startsWith("video/")) return <video src={source.url} controls className="max-h-72 rounded" />;
+  if (type.startsWith("audio/")) return <audio src={source.url} controls />;
+  return (
+    <a href={source.url} download className="link" title={type}>
+      Download file
+    </a>
+  );
+}
+
 function MessageBubble({
   message,
   parent,
@@ -490,6 +572,7 @@ function MessageBubble({
   const author = castUser(message.sender, eventStore);
   const [picking, setPicking] = useState(false);
   const { error, run } = useAction();
+  const text = messageText(message);
 
   return (
     <div className={`chat min-w-0 ${own ? "chat-end" : "chat-start"}`}>
@@ -511,9 +594,12 @@ function MessageBubble({
         </div>
       )}
       <div
-        className={`chat-bubble min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${own ? "chat-bubble-primary" : ""}`}
+        className={`chat-bubble flex min-w-0 flex-col gap-2 whitespace-pre-wrap [overflow-wrap:anywhere] ${own ? "chat-bubble-primary" : ""}`}
       >
-        {message.content}
+        {text && <span>{text}</span>}
+        {message.attachments?.map((file) => (
+          <Attachment key={file.url} file={file} />
+        ))}
       </div>
       <div className="chat-footer flex min-w-0 flex-wrap items-center gap-2 text-sm">
         <ReactionChips message={message} />
@@ -563,6 +649,7 @@ function Composer({
   const draft = use$(conversation.draft$);
   const sending = use$(conversation.sending$) ?? false;
   const [error, setError] = useState<string>();
+  const [attaching, setAttaching] = useState(false);
   const text = draft?.content ?? "";
   const replyTarget = draft?.replyTo ? messages.find((message) => message.id === draft.replyTo) : undefined;
 
@@ -574,6 +661,22 @@ function Composer({
       setError(error instanceof Error ? error.message : String(error));
     }
   };
+
+  // The file is encrypted and uploaded first, then sent as a kind 14 message with an imeta tag
+  const attach = async (file: File) => {
+    setAttaching(true);
+    setError(undefined);
+    try {
+      const uploaded = await conversation.uploadFile(file);
+      await conversation.send({ content: "", attachments: [uploaded], replyTo: draft?.replyTo });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAttaching(false);
+    }
+  };
+
+  const canAttach = canSend && !attaching && !!conversation.client.signer;
 
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
@@ -608,6 +711,22 @@ function Composer({
             if (conversation instanceof NdrConversation) conversation.sendTyping();
           }}
         />
+        <label
+          className={`btn btn-square btn-ghost ${canAttach ? "" : "btn-disabled"}`}
+          title={conversation.client.signer ? "Attach an encrypted file" : "Uploads need the account signer"}
+        >
+          {attaching ? <span className="loading loading-spinner loading-sm" /> : <Paperclip className="h-5 w-5" />}
+          <input
+            type="file"
+            className="hidden"
+            disabled={!canAttach}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void attach(file);
+            }}
+          />
+        </label>
         <button className="btn btn-primary" type="submit" disabled={sending || !canSend || !text.trim()}>
           {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
@@ -984,7 +1103,7 @@ function RowShell({
         </div>
         <div className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-sm opacity-60">
-            {preview ?? summary.lastMessage?.content ?? "No messages"}
+            {preview ?? (summary.lastMessage ? messageText(summary.lastMessage) || "Attachment" : "No messages")}
           </span>
           {summary.unread > 0 && <span className="badge badge-primary">{summary.unread}</span>}
         </div>

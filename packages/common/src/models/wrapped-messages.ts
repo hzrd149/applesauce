@@ -9,7 +9,7 @@ import {
   getConversationIdentifierFromMessage,
   getConversationParticipants,
 } from "../helpers/messages.js";
-import { getWrappedMessageParent } from "../helpers/wrapped-messages.js";
+import { getWrappedMessageParent, isWrappedMessage } from "../helpers/wrapped-messages.js";
 
 /**
  * A model that returns all wrapped messages for a pubkey
@@ -27,7 +27,7 @@ export function WrappedMessagesModel(self: string): Model<Rumor[]> {
             rumors
               .map((gift) => getGiftWrapRumor(gift))
               .filter((e) => !!e)
-              .filter((e) => e.kind === kinds.PrivateDirectMessage && getConversationParticipants(e).includes(self))
+              .filter((e) => isWrappedMessage(e) && getConversationParticipants(e).includes(self))
               .map((rumor) => [rumor.id, rumor]),
           ).values(),
         ].sort((a, b) => b.created_at - a.created_at),
@@ -72,7 +72,7 @@ export function WrappedMessagesGroup(self: string, participants: string | string
       map((rumors) =>
         rumors.filter(
           (rumor) =>
-            rumor.kind === kinds.PrivateDirectMessage &&
+            isWrappedMessage(rumor) &&
             // Only select message for this conversation (the identifier from the message will include "self")
             getConversationIdentifierFromMessage(rumor) === identifier,
         ),

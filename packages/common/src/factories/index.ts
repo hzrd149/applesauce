@@ -14,6 +14,7 @@ export * from "./group.js";
 export * from "./group-management.js";
 export * from "./legacy-message.js";
 export * from "./wrapped-message.js";
+export * from "./file-message.js";
 export * from "./app-data.js";
 export * from "./zap-goal.js";
 export * from "./zap-request.js";

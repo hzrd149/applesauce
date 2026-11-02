@@ -27,8 +27,8 @@ export function setSubject(subject: string): EventOperation {
 
 /** Makes the wrapped message a reply to the parent message */
 export function setParent(parent: Rumor | string): EventOperation {
-  if (typeof parent !== "string" && parent.kind !== kinds.PrivateDirectMessage)
-    throw new Error("Parent must be a private direct message event");
+  if (typeof parent !== "string" && parent.kind !== kinds.PrivateDirectMessage && parent.kind !== kinds.FileMessage)
+    throw new Error("Parent must be a private direct message or file message");
 
   const id = typeof parent === "string" ? parent : parent.id;
   // TODO: support relay hints

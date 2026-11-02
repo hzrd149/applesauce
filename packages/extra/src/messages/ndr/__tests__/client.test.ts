@@ -5,6 +5,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { InMemoryStorageAdapter } from "nostr-double-ratchet";
 import { filter, firstValueFrom, map, merge, Observable, of, Subject, timeout } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MessageFileUploader } from "../../common/attachments.js";
 import { NdrMessagesClient } from "../client.js";
 import type { NdrMessage } from "../types.js";
 
@@ -48,6 +49,11 @@ function createRelay() {
   };
 }
 
+/** An uploader that pretends to store blobs on a file server */
+const upload: MessageFileUploader = async (blob) => ({
+  url: `https://files.example.com/${blob.size}-${Math.random()}`,
+});
+
 function createClient(relay: ReturnType<typeof createRelay>, key: number, signed = true) {
   const secret = new Uint8Array(32).fill(key);
   const pubkey = getPublicKey(secret);
@@ -61,6 +67,7 @@ function createClient(relay: ReturnType<typeof createRelay>, key: number, signed
     fetchTimeoutMs: 200,
     appKeysTimeoutMs: 300,
     lockName: false,
+    upload,
   });
   clients.push(client);
   return client;
@@ -131,6 +138,47 @@ describe("NdrMessagesClient", () => {
     expect(replied.replyTo).toBe(received.id);
   });
 
+  it("sends encrypted attachments as imeta and still applies receipts", { timeout: 20000 }, async () => {
+    const relay = createRelay();
+    const alice = createClient(relay, 1);
+    const bob = createClient(relay, 2);
+    await Promise.all([register(alice), register(bob)]);
+
+    const toBob = alice.conversation(bob.pubkey);
+    const file = await toBob.uploadFile(new Blob(["png bytes"], { type: "image/png" }));
+    const sent = await toBob.send({ content: "look", attachments: [file] });
+    expect(sent?.content).toBe(`look\n${file.url}`);
+
+    const received = await waitForMessage(bob.conversation(alice.pubkey).messages$, (m) => m.id === sent!.id);
+    expect(received.attachments).toEqual([
+      expect.objectContaining({ url: file.url, type: "image/png", decryptionKey: file.decryptionKey }),
+    ]);
+
+    // Bob's delivered receipt (also kind 15) must not be mistaken for a file.
+    await waitForMessage(toBob.messages$, (m) => m.id === sent!.id && m.delivery === "delivered");
+    await expect(toBob.send({ content: " " })).rejects.toThrow("Message is empty");
+  });
+
+  it("stores an incoming NIP-17 kind 15 file message as a chat message", { timeout: 20000 }, async () => {
+    const relay = createRelay();
+    const alice = createClient(relay, 1);
+    const bob = createClient(relay, 2);
+    await Promise.all([register(alice), register(bob)]);
+
+    const url = "https://files.example.com/photo";
+    const tags = [
+      ["file-type", "image/jpeg"],
+      ["encryption-algorithm", "aes-gcm"],
+      ["decryption-key", "11".repeat(32)],
+      ["decryption-nonce", "22".repeat(12)],
+    ];
+    const rumor = await alice.runtime.sendMessage(bob.pubkey, url, { kind: 15, tags });
+
+    const received = await waitForMessage(bob.conversation(alice.pubkey).messages$, (m) => m.id === rumor.id);
+    expect(received.content).toBe("");
+    expect(received.attachments).toEqual([expect.objectContaining({ url, type: "image/jpeg" })]);
+  });
+
   it("creates a group, delivers the invitation, and exchanges group messages", { timeout: 20000 }, async () => {
     const relay = createRelay();
     const alice = createClient(relay, 1);
@@ -168,6 +216,11 @@ describe("NdrMessagesClient", () => {
 
     await bobGroup.send({ content: "thanks" });
     await waitForMessage(aliceGroup.messages$, (m) => m.content === "thanks" && m.sender === bob.pubkey);
+
+    const file = await aliceGroup.uploadFile(new Blob(["group photo"], { type: "image/webp" }));
+    await aliceGroup.send({ content: "", attachments: [file] });
+    const attached = await waitForMessage(bobGroup.messages$, (m) => m.attachments?.[0]?.url === file.url);
+    expect(attached.attachments?.[0]).toMatchObject({ type: "image/webp", decryptionKey: file.decryptionKey });
 
     await aliceGroup.rename("Core team");
     await firstValueFrom(

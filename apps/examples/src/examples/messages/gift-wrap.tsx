@@ -1,20 +1,31 @@
 /**
- * A NIP-17 inbox with local WrappedConversation views, cached history and retryable publication
- * @tags nip-17, nip-44, nip-59, nip-77, messages, gift-wrap, encryption, dm, sync
- * @related messages/personal-notes, messages/legacy, loader/sync-loader
+ * A NIP-17 inbox with local WrappedConversation views, encrypted file messages, cached history and retryable publication
+ * @tags nip-17, nip-44, nip-59, nip-77, messages, gift-wrap, encryption, dm, sync, files, blossom
+ * @related messages/personal-notes, messages/legacy, messages/ndr, loader/sync-loader
  */
 import { castUser, User } from "applesauce-common/casts";
-import { createConversationIdentifier, getRumorGiftWraps, getRumorSeals, type Rumor } from "applesauce-common/helpers";
+import {
+  createConversationIdentifier,
+  getMessageAttachments,
+  getRumorGiftWraps,
+  getRumorSeals,
+  isEncryptedFile,
+  type FileMetadataFields,
+  type Rumor,
+} from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
   getProfilePicture,
+  kinds,
   persistEventsToCache,
   unixNow,
   type NostrEvent,
 } from "applesauce-core/helpers";
 import {
+  loadAttachment,
   WrappedMessagesClient,
+  type MessageFileUploader,
   type WrappedConversation,
   type PreparedWrappedMessage,
 } from "applesauce-extra/messages";
@@ -22,6 +33,9 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
+import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
+import { createUploadAuth } from "blossom-client-sdk/auth";
+import { Paperclip } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
 import {
@@ -31,13 +45,17 @@ import {
   defer,
   EMPTY,
   finalize,
+  firstValueFrom,
+  from,
   ignoreElements,
   map,
   merge,
   NEVER,
+  type Observable,
   of,
   shareReplay,
   switchMap,
+  timeout,
 } from "rxjs";
 
 import JsonBlock from "../../components/json-block";
@@ -57,6 +75,9 @@ const HISTORY_RANGES: { value: HistoryRange; label: string }[] = [
   { value: "all", label: "All" },
 ];
 
+// Used when the user has not published a Blossom server list
+const FALLBACK_BLOSSOM_SERVERS = [new URL("https://blossom.band"), new URL("https://nostr.download")];
+
 const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
 const storage$ = new BehaviorSubject<SecureStorage | undefined>(undefined);
@@ -70,6 +91,25 @@ const cacheRequest = async (filters: Parameters<typeof getEventsForFilters>[1]) 
 
 persistEventsToCache(eventStore, (events) => addEvents(db, events));
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, cacheRequest });
+
+/** Creates an uploader that stores encrypted blobs on the user's Blossom servers */
+function createBlossomUploader(signer: ISigner, user: User): MessageFileUploader {
+  return async (blob, { signal }) => {
+    const servers = await firstValueFrom(
+      user.blossomServers$.pipe(timeout({ first: 4000, with: () => of(undefined) })),
+    );
+
+    // Plain uploads only: media optimization would re-encode the ciphertext and break decryption.
+    const results = await multiServerUpload(servers?.length ? servers : FALLBACK_BLOSSOM_SERVERS, blob, {
+      signal,
+      onAuth: (_server, sha256, type) => createUploadAuth((draft) => signer.signEvent(draft), sha256, { type }),
+    });
+
+    const uploads = [...results.values()];
+    if (!uploads[0]) throw new Error("No Blossom server accepted the file");
+    return { url: uploads[0].url, fallback: uploads.slice(1).map((upload) => upload.url) };
+  };
+}
 
 // The stream owns the client; switching accounts or leaving the page disposes it
 const client$ = combineLatest([signer$, user$, storage$]).pipe(
@@ -93,6 +133,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
           removeItem: (key) => drafts.removeItem(key),
         },
         authTimeout: false,
+        upload: createBlossomUploader(signer, user),
       });
 
       return merge(
@@ -112,6 +153,24 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: true }),
 );
+
+/** Downloads and decrypts an attachment into an object URL, revoked when the subscription ends */
+function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string; error?: string }> {
+  if (!isEncryptedFile(file)) return of({ url: file.url });
+
+  return defer(() => {
+    const controller = new AbortController();
+
+    return from(loadAttachment(file, { signal: controller.signal })).pipe(
+      switchMap((blob) => {
+        const url = URL.createObjectURL(blob);
+        return merge(of({ url }), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
+      }),
+      catchError((error) => of({ error: error instanceof Error ? error.message : String(error) })),
+      finalize(() => controller.abort()),
+    );
+  });
+}
 
 /** Returns the start of a history range, or undefined for the client's recent sync */
 function getHistorySince(range: HistoryRange) {
@@ -322,7 +381,9 @@ function ConversationRow({
           {others.length > 1 && <span className="badge badge-ghost">{others.length}</span>}
           <span className="ms-auto shrink-0 text-sm opacity-60">{formatShortTime(group.lastMessage.created_at)}</span>
         </div>
-        <span className="truncate text-sm opacity-60">{group.lastMessage.content}</span>
+        <span className="truncate text-sm opacity-60">
+          {group.lastMessage.kind === kinds.FileMessage ? "Attachment" : group.lastMessage.content}
+        </span>
       </div>
     </button>
   );
@@ -348,33 +409,42 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
-  const send = async () => {
+  const deliver = async (prepare: () => Promise<PreparedWrappedMessage>) => {
     if (busy) return;
     setBusy(true);
     setError(undefined);
 
     try {
-      const expires = expiration ? unixNow() + expiration : undefined;
-
       // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
-      const delivery =
-        prepared ??
-        (await conversation.prepareSend({
-          content: text,
-          expiration: expires,
-          envelopeExpiration: expires,
-        }));
+      const delivery = prepared ?? (await prepare());
       setPrepared(delivery);
 
       await delivery.publish();
       setPrepared(undefined);
-      await conversation.clearDraft();
+      if (delivery.message.kind === kinds.PrivateDirectMessage) await conversation.clearDraft();
     } catch (error) {
       setError(String(error));
     } finally {
       setBusy(false);
     }
   };
+
+  const expires = () => (expiration ? unixNow() + expiration : undefined);
+
+  const send = () =>
+    deliver(() => conversation.prepareSend({ content: text, expiration: expires(), envelopeExpiration: expires() }));
+
+  // The file is encrypted and uploaded first, then sent as a kind 15 file message
+  const attach = (file: File) =>
+    deliver(async () => {
+      const uploaded = await conversation.uploadFile(file);
+      return conversation.prepareSend({
+        content: "",
+        file: uploaded,
+        expiration: expires(),
+        envelopeExpiration: expires(),
+      });
+    });
 
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
@@ -401,7 +471,23 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
           <option value={86400}>1 day</option>
           <option value={7 * 86400}>1 week</option>
         </select>
-        <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={send}>
+        <label
+          className={`btn btn-square btn-ghost ${busy || prepared ? "btn-disabled" : ""}`}
+          title="Attach an encrypted file"
+        >
+          <Paperclip className="h-5 w-5" />
+          <input
+            type="file"
+            className="hidden"
+            disabled={busy || !!prepared}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void attach(file);
+            }}
+          />
+        </label>
+        <button className="btn btn-primary" disabled={busy || (!text.trim() && !prepared)} onClick={send}>
           {busy ? <span className="loading loading-spinner loading-sm" /> : prepared ? "Retry" : "Send"}
         </button>
       </div>
@@ -443,6 +529,28 @@ function MessageDetails({
   );
 }
 
+function Attachment({ file }: { file: FileMetadataFields }) {
+  const source = use$(() => attachmentSource$(file), [file]);
+  const type = file.type ?? "";
+
+  if (!source) return <span className="loading loading-spinner loading-sm" title="Decrypting" />;
+  if (source.error || !source.url)
+    return (
+      <span className="text-sm text-error" title={file.url}>
+        {source.error ?? "Missing file"}
+      </span>
+    );
+
+  if (type.startsWith("image/")) return <img src={source.url} alt={file.alt} className="max-h-72 rounded" />;
+  if (type.startsWith("video/")) return <video src={source.url} controls className="max-h-72 rounded" />;
+  if (type.startsWith("audio/")) return <audio src={source.url} controls />;
+  return (
+    <a href={source.url} download className="link" title={type}>
+      Download file
+    </a>
+  );
+}
+
 function MessageBubble({
   message,
   self,
@@ -456,6 +564,7 @@ function MessageBubble({
 }) {
   const author = castUser(message.pubkey, eventStore);
   const isOwn = message.pubkey === self;
+  const attachments = getMessageAttachments(message);
 
   return (
     <div className={`chat ${isOwn ? "chat-end" : "chat-start"}`}>
@@ -466,8 +575,12 @@ function MessageBubble({
         <Name user={author} />
         <time className="opacity-60">{formatShortTime(message.created_at)}</time>
       </div>
-      <div className={`chat-bubble ${isOwn ? "chat-bubble-primary" : ""}`}>
-        <NoteContent event={message} />
+      <div className={`chat-bubble flex flex-col gap-2 ${isOwn ? "chat-bubble-primary" : ""}`}>
+        {/* A file message's content is only the encrypted file URL */}
+        {message.kind !== kinds.FileMessage && <NoteContent event={message} />}
+        {attachments.map((file) => (
+          <Attachment key={file.url} file={file} />
+        ))}
       </div>
       <div className="chat-footer gap-2 text-sm">
         {status && <span className="opacity-60">{status}</span>}

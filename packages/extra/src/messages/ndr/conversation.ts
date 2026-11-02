@@ -11,7 +11,10 @@ import {
   switchMap,
   timer,
 } from "rxjs";
+import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
+import type { UploadEncryptedFileOptions } from "../common/attachments.js";
 import { ConversationDraftState } from "../common/drafts.js";
+import { buildNdrChatMessage } from "./message.js";
 import type { MessageDraft } from "../common/types.js";
 import type { NdrMessagesClient } from "./client.js";
 import type { NdrMessage, NdrSendRequest } from "./types.js";
@@ -137,19 +140,25 @@ export class NdrConversation {
 
   /**
    * Encrypts and queues a message for every peer and sibling device, then stores it as queued
-   * @throws if the message is empty or the runtime cannot send
+   * @throws if the message has no text or attachments, or the runtime cannot send
    */
   async send(request: NdrSendRequest): Promise<NdrMessage | undefined> {
-    const content = request.content.trim();
-    if (!content) throw new Error("Message is empty");
+    const { content, tags } = buildNdrChatMessage(request);
 
     return this.track(async () => {
-      const tags = request.replyTo ? [["e", request.replyTo]] : [];
       const rumor = await this.client.runtime.sendMessage(this.peer, content, { tags });
 
-      await this.client.storeSent(this.id, rumor, request.replyTo);
+      await this.client.storeSent(this.id, rumor);
       return this.client.history.messages(this.id).find((message) => message.id === rumor.id);
     });
+  }
+
+  /**
+   * Encrypts a file and uploads the ciphertext, returning the attachment to {@link send}
+   * @throws if no uploader is configured or the upload fails
+   */
+  uploadFile(file: Blob, options?: UploadEncryptedFileOptions): Promise<FileMetadataFields> {
+    return this.client.uploadFile(file, options);
   }
 
   /**

@@ -1,7 +1,8 @@
 import { logger } from "applesauce-core";
 import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
-import { GiftWrapFactory, WrappedMessageFactory } from "applesauce-common/factories";
+import { FileMessageFactory, GiftWrapFactory, WrappedMessageFactory } from "applesauce-common/factories";
+import { isWrappedMessage } from "applesauce-common/helpers/wrapped-messages";
 import {
   getConversationParticipants,
   getGiftWrapSeal,
@@ -165,7 +166,7 @@ export class WrappedMessageSession {
       rumor = await unlockGiftWrap(event, owner.signer);
     }
     const participants = getConversationParticipants(rumor);
-    if (rumor.kind !== kinds.PrivateDirectMessage || !participants.includes(owner.pubkey)) return;
+    if (!isWrappedMessage(rumor) || !participants.includes(owner.pubkey)) return;
     if (config.mirrorExpiration) expiration.observe(rumor, participants);
     return rumor;
   }
@@ -298,9 +299,12 @@ export class WrappedMessageSession {
         const createdAt = unixNow();
         const expirationTimestamp =
           request.expiration ?? (config.mirrorExpiration ? expiration.expiration(participants, createdAt) : undefined);
-        let factory = WrappedMessageFactory.create([...new Set(request.recipients)], request.content).created(
-          createdAt,
-        );
+        const recipients = [...new Set(request.recipients)];
+        let factory = (
+          request.file
+            ? FileMessageFactory.create(recipients, request.file)
+            : WrappedMessageFactory.create(recipients, request.content)
+        ).created(createdAt);
         if (expirationTimestamp !== undefined) factory = factory.expiration(expirationTimestamp);
         if (request.replyTo) factory = factory.replyTo(request.replyTo);
         const template = await factory.as(owner.signer).stamp();

@@ -1,6 +1,12 @@
-import { getTagValue } from "applesauce-core/helpers/event";
+import { getTagValue, kinds } from "applesauce-core/helpers/event";
+import { isValidFileMessage } from "./file-message.js";
 import { Rumor } from "./gift-wrap.js";
 import { getConversationParticipants } from "./messages.js";
+
+/** Checks if a rumor is a NIP-17 chat message (kind 14) or a valid file message (kind 15) */
+export function isWrappedMessage(rumor: Rumor): boolean {
+  return rumor.kind === kinds.PrivateDirectMessage || isValidFileMessage(rumor);
+}
 
 /** Returns the subject of a wrapped direct message */
 export function getWrappedMessageSubject(message: Rumor): string | undefined {

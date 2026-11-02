@@ -13,6 +13,7 @@ export * as ForumThread from "./forum-thread.js";
 export * as Client from "./client.js";
 export * as Comment from "./comment.js";
 export * as ExternalIdentities from "./external-identities.js";
+export * as FileMessage from "./file-message.js";
 export * as FileMetadata from "./file-metadata.js";
 export * as Geohash from "./geohash.js";
 export * as GiftWrap from "./gift-wrap.js";

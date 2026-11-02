@@ -10,10 +10,7 @@ export type FileMetadataFields = {
   type?: string;
   /** sha256 hash of the file */
   sha256?: string;
-  /**
-   * The original sha256 hash before the file was transformed
-   * @deprecated
-   */
+  /** The sha256 hash of the original file before it was transformed or encrypted */
   originalSha256?: string;
   /** size of the file in bytes */
   size?: number;
@@ -35,6 +32,12 @@ export type FileMetadataFields = {
   blurhash?: string;
   /** fallback URLs */
   fallback?: string[];
+  /** The algorithm the file is encrypted with, usually "aes-gcm" */
+  encryptionAlgorithm?: string;
+  /** The hex encoded key to decrypt the file */
+  decryptionKey?: string;
+  /** The hex encoded nonce to decrypt the file */
+  decryptionNonce?: string;
 };
 
 /** A kind 1063 file metadata event */
@@ -42,6 +45,11 @@ export type FileMetadataEvent = KnownEvent<1063>;
 
 /** Alias for {@link FileMetadataFields} */
 export type MediaAttachment = FileMetadataFields;
+
+/** Checks if a file is encrypted and carries the key and nonce to decrypt it */
+export function isEncryptedFile(file: FileMetadataFields): boolean {
+  return !!file.decryptionKey && !!file.decryptionNonce;
+}
 
 /** Type guard for a valid kind 1063 file metadata event */
 export function isValidFileMetadata(event?: NostrEvent): event is FileMetadataEvent {
@@ -81,6 +89,9 @@ export function parseFileMetadataTags(tags: string[][]): FileMetadataFields {
   if (fields.summary) metadata.summary = fields.summary;
   if (fields.alt) metadata.alt = fields.alt;
   if (fields.blurhash) metadata.blurhash = fields.blurhash;
+  if (fields["encryption-algorithm"]) metadata.encryptionAlgorithm = fields["encryption-algorithm"];
+  if (fields["decryption-key"]) metadata.decryptionKey = fields["decryption-key"];
+  if (fields["decryption-nonce"]) metadata.decryptionNonce = fields["decryption-nonce"];
 
   return metadata;
 }
@@ -156,6 +167,9 @@ export function createFileMetadataTags(attachment: FileMetadataFields): NameValu
   if (attachment.alt) add("alt", attachment.alt);
   if (attachment.fallback && attachment.fallback?.length > 0)
     for (const url of attachment.fallback) add("fallback", url);
+  if (attachment.encryptionAlgorithm) add("encryption-algorithm", attachment.encryptionAlgorithm);
+  if (attachment.decryptionKey) add("decryption-key", attachment.decryptionKey);
+  if (attachment.decryptionNonce) add("decryption-nonce", attachment.decryptionNonce);
 
   return tags;
 }
