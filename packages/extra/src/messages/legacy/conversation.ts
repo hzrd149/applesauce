@@ -122,7 +122,7 @@ export class LegacyConversation {
 
   private readonly errors = new Subject<MessageClientError>();
 
-  /** Nonterminal conversation loading, decryption, and publication failures */
+  /** Nonterminal conversation loading, decryption, storage, and publication failures */
   readonly errors$ = this.errors.asObservable();
 
   private readonly autoUnlock: BehaviorSubject<boolean>;
@@ -878,6 +878,42 @@ export class LegacyConversation {
         [delivery.event.id]: delivery.accepted ? "accepted" : "prepared",
       });
       return this.preparedDelivery(delivery);
+    } finally {
+      this.sending.next(this.sending.value - 1);
+    }
+  }
+
+  /**
+   * Prepares the current draft and removes only its unchanged revision before publication.
+   * Returns the prepared handle even if removal fails, reporting storage failures through errors$.
+   * @throws if disposed, cancelled before preparation succeeds, no draft exists, or preparation fails
+   */
+  async prepareDraft(options: MessageOperationOptions = {}): Promise<PreparedLegacyMessage> {
+    const context = this.context(options);
+    // Keep activity continuous through restoration, preparation, and draft removal.
+    this.sending.next(this.sending.value + 1);
+
+    try {
+      const snapshot = await this.drafts.load();
+      context.signal.throwIfAborted();
+      if (!snapshot) throw new Error("No conversation draft to prepare");
+
+      const prepared = await this.prepareSend(snapshot, context);
+      // Once prepared, never lose the caller's access to the retained signed event.
+      if (!context.signal.aborted && !this.disposed) {
+        try {
+          await this.drafts.clearIfCurrent(snapshot, context.signal);
+        } catch (error) {
+          if (!this.disposed && (!context.signal.aborted || error !== context.signal.reason)) {
+            this.errors.next({
+              operation: "storage",
+              error: new Error("Failed to remove prepared conversation draft", { cause: error }),
+              eventId: prepared.message.id,
+            });
+          }
+        }
+      }
+      return prepared;
     } finally {
       this.sending.next(this.sending.value - 1);
     }

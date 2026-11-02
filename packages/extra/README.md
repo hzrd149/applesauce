@@ -29,7 +29,17 @@ Legacy `cacheError$` and `conversationStorageError$` emit the latest error or `u
 
 `LegacyConversation.sending$` emits distinct booleans while preparation or publication is active, including signer prompts and storage work; `send()` stays active across both phases, and overlapping operations stay active until all settle. Prepared messages waiting for publication or retry are not active. Wrapped messaging retains its existing `busy$` API.
 
-Use `conversation.publish(prepared, options)` to publish or retry a legacy handle from `prepareSend()`, `loadPublications()`, or `pendingPublications$`; `prepared.publish(options)` is a convenience proxy. Retries reuse the signed event and frozen relays without signer prompts. Handles belong to their exact conversation and become invalid on `stop()`; reload pending publications to recover fresh handles.
+Use `conversation.publish(prepared, options)` to publish or retry a legacy handle from `prepareDraft()`, `prepareSend()`, `loadPublications()`, or `pendingPublications$`; `prepared.publish(options)` is a convenience proxy. Retries reuse the signed event and frozen relays without signer prompts. Handles belong to their exact conversation and become invalid on `stop()`; reload pending publications to recover fresh handles.
+
+`prepareDraft()` restores the current draft and forwards its content, reply, and expiration to preparation, then clears only that unchanged draft revision before publication; newer edits survive, including identical replacements. Preparation failure preserves the draft, and no draft rejects without signing. Ordinary `prepareSend()`, `send()`, and publication retries never change drafts.
+
+```ts
+await conversation.setDraft({ content: "Hello", replyTo: parent.id });
+const prepared = await conversation.prepareDraft();
+await conversation.publish(prepared);
+```
+
+`sending$` stays active through the complete draft handoff, including storage. If draft removal fails after preparation, the handle is still returned and `errors$` reports a contextual `storage` error with its event ID; the draft remains available. Cancellation before preparation succeeds preserves the draft; cancellation after success skips removal if it has not started and still returns the handle. An already-started storage removal may finish after cancellation, but queued newer edits are preserved. With `publicationStorage`, preparation retains the signed event durably before removing the draft; after `stop()` or disposal, recover pending publications through an active conversation.
 
 `messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
 

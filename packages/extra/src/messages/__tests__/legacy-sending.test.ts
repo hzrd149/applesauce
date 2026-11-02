@@ -59,6 +59,284 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function draftStorage() {
+  const values = new Map<string, string>();
+  return {
+    values,
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value);
+    }),
+    removeItem: vi.fn(async (key: string) => {
+      values.delete(key);
+    }),
+  };
+}
+
+describe("legacy draft handoff", () => {
+  it("restores and hands off content, reply, and expiration before publication", async () => {
+    const drafts = draftStorage();
+    const { conversation, pool, storage } = setup({ draftStorage: drafts });
+    const draft = { content: "saved", replyTo: "a".repeat(64), expiration: 2000000000 };
+    drafts.values.set(`draft:${conversation.id}`, JSON.stringify({ version: 1, draft }));
+    const prepare = vi.spyOn(conversation, "prepareSend");
+    drafts.removeItem.mockImplementationOnce(async (key) => {
+      expect(storage.setItem).toHaveBeenCalledOnce();
+      expect(await conversation.loadPublications()).toHaveLength(1);
+      drafts.values.delete(key);
+    });
+
+    const prepared = await conversation.prepareDraft();
+    expect(prepare).toHaveBeenCalledWith(draft, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(prepared.message.tags).toContainEqual(["e", draft.replyTo]);
+    expect(prepared.message.tags).toContainEqual(["expiration", String(draft.expiration)]);
+    expect(await conversation.loadDraft()).toBeUndefined();
+    expect(drafts.values.size).toBe(0);
+    expect(pool.publish).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing drafts without a signer prompt and accepts empty saved content", async () => {
+    const { conversation } = setup();
+    const prompt = vi.spyOn(signer, "getPublicKey");
+    await expect(conversation.prepareDraft()).rejects.toThrow("No conversation draft");
+    expect(prompt).not.toHaveBeenCalled();
+    await conversation.setDraft({ content: "" });
+    await conversation.prepareDraft();
+    expect(await conversation.loadDraft()).toBeUndefined();
+  });
+
+  it.each(["signing", "retention"])("preserves the draft on failed %s", async (failure) => {
+    const drafts = draftStorage();
+    const { conversation, storage } = setup({ draftStorage: drafts });
+    await conversation.setDraft({ content: "keep" });
+    if (failure === "signing") vi.spyOn(signer, "signEvent").mockRejectedValueOnce(new Error("sign failed"));
+    else storage.setItem.mockRejectedValueOnce(new Error("retain failed"));
+
+    await expect(conversation.prepareDraft()).rejects.toThrow("failed");
+    expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+    expect(drafts.removeItem).not.toHaveBeenCalled();
+    expect(await conversation.loadPublications()).toEqual([]);
+  });
+
+  it.each([false, true])("preserves edits during preparation, identical replacement: %s", async (identical) => {
+    const { conversation } = setup();
+    await conversation.setDraft({ content: "captured" });
+    const prompt = deferred<string>();
+    const getKey = vi.spyOn(signer, "getPublicKey").mockReturnValueOnce(prompt.promise);
+    const preparing = conversation.prepareDraft();
+    await vi.waitFor(() => expect(getKey).toHaveBeenCalled());
+    await conversation.setDraft({ content: "newer" });
+    if (identical) await conversation.setDraft({ content: "captured" });
+    prompt.resolve(owner);
+    await preparing;
+    expect(await conversation.loadDraft()).toEqual({ content: identical ? "captured" : "newer" });
+  });
+
+  it("returns a recoverable handle and reports contextual storage failure when clearing fails", async () => {
+    const drafts = draftStorage();
+    const { conversation, pool } = setup({ draftStorage: drafts });
+    await conversation.setDraft({ content: "keep" });
+    const failure = new Error("disk unavailable");
+    drafts.removeItem.mockRejectedValueOnce(failure);
+    const errors = subscribeSpyTo(conversation.errors$);
+    const prepared = await conversation.prepareDraft();
+
+    expect(errors.getLastValue()).toMatchObject({
+      operation: "storage",
+      eventId: prepared.message.id,
+      error: { message: "Failed to remove prepared conversation draft", cause: failure },
+    });
+    expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+    expect(drafts.values.size).toBe(1);
+    expect((await conversation.loadPublications())[0].message).toBe(prepared.message);
+    await conversation.publish(prepared);
+    expect(pool.publish).toHaveBeenCalledOnce();
+    expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+    errors.unsubscribe();
+  });
+
+  it("never clears an unrelated draft on publish retries or ordinary preparation and sends", async () => {
+    const { conversation, pool } = setup();
+    await conversation.setDraft({ content: "handoff" });
+    const prepared = await conversation.prepareDraft();
+    await conversation.setDraft({ content: "next" });
+    pool.publish.mockRejectedValueOnce(new Error("offline"));
+    await expect(conversation.publish(prepared)).rejects.toThrow("offline");
+    await conversation.publish(prepared);
+    const direct = await conversation.prepareSend({ content: "not the draft" });
+    await direct.publish();
+    await conversation.send({ content: "also independent" });
+    expect(await conversation.loadDraft()).toEqual({ content: "next" });
+  });
+
+  it("keeps sending active through slow draft removal and serializes a newer edit after it", async () => {
+    const drafts = draftStorage();
+    const { conversation } = setup({ draftStorage: drafts });
+    await conversation.setDraft({ content: "captured" });
+    const removal = deferred<void>();
+    drafts.removeItem.mockImplementationOnce(async (key) => {
+      await removal.promise;
+      drafts.values.delete(key);
+    });
+    const activity = subscribeSpyTo(conversation.sending$);
+    const preparing = conversation.prepareDraft();
+    await vi.waitFor(() => expect(drafts.removeItem).toHaveBeenCalled());
+    expect(activity.getValues()).toEqual([false, true]);
+    const editing = conversation.setDraft({ content: "newer" });
+    removal.resolve();
+    await Promise.all([preparing, editing]);
+    expect(activity.getValues()).toEqual([false, true, false]);
+    expect(await conversation.loadDraft()).toEqual({ content: "newer" });
+    activity.unsubscribe();
+  });
+
+  it.each(["abort", "stop", "dispose"] as const)(
+    "preserves the saved draft when %s cancels preparation",
+    async (cancel) => {
+      const drafts = draftStorage();
+      const { conversation } = setup({ draftStorage: drafts });
+      await conversation.setDraft({ content: "keep" });
+      const controller = new AbortController();
+      const prompt = deferred<string>();
+      const getKey = vi.spyOn(signer, "getPublicKey").mockReturnValueOnce(prompt.promise);
+      const activity = subscribeSpyTo(conversation.sending$);
+      const preparing = conversation.prepareDraft({ signal: controller.signal });
+      const rejected = expect(preparing).rejects.toThrow();
+      await vi.waitFor(() => expect(getKey).toHaveBeenCalled());
+      if (cancel === "abort") controller.abort();
+      else conversation[cancel]();
+      await rejected;
+      prompt.resolve(owner);
+      expect(drafts.removeItem).not.toHaveBeenCalled();
+      expect(drafts.values.size).toBe(1);
+      expect(activity.getValues()).toEqual([false, true, false]);
+      if (cancel !== "dispose") expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+      activity.unsubscribe();
+    },
+  );
+
+  it.each(["abort", "stop", "dispose"] as const)(
+    "returns the prepared handle without clearing when %s follows successful preparation",
+    async (cancel) => {
+      const drafts = draftStorage();
+      const { conversation, storage } = setup({ draftStorage: drafts });
+      await conversation.setDraft({ content: "keep" });
+      const controller = new AbortController();
+      const prepareSend = conversation.prepareSend.bind(conversation);
+      vi.spyOn(conversation, "prepareSend").mockImplementationOnce(async (request, options) => {
+        const prepared = await prepareSend(request, options);
+        if (cancel === "abort") controller.abort();
+        else conversation[cancel]();
+        return prepared;
+      });
+      const prepared = await conversation.prepareDraft({ signal: controller.signal });
+      expect(prepared.message.id).toBeTruthy();
+      expect(storage.setItem).toHaveBeenCalledOnce();
+      expect(drafts.removeItem).not.toHaveBeenCalled();
+      expect(drafts.values.size).toBe(1);
+      if (cancel === "abort") await conversation.publish(prepared);
+      else await expect(conversation.publish(prepared)).rejects.toThrow();
+      if (cancel === "stop") {
+        const [fresh] = await conversation.loadPublications();
+        await conversation.publish(fresh);
+        expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+      }
+    },
+  );
+
+  it.each(["abort", "stop", "dispose"] as const)(
+    "retains access to the handle when %s occurs during draft removal",
+    async (cancel) => {
+      const drafts = draftStorage();
+      const { conversation } = setup({ draftStorage: drafts });
+      await conversation.setDraft({ content: "captured" });
+      const controller = new AbortController();
+      const removal = deferred<void>();
+      drafts.removeItem.mockImplementationOnce(async (key) => {
+        await removal.promise;
+        drafts.values.delete(key);
+      });
+      const activity = subscribeSpyTo(conversation.sending$);
+      const preparing = conversation.prepareDraft({ signal: controller.signal });
+      await vi.waitFor(() => expect(drafts.removeItem).toHaveBeenCalled());
+      // Storage already started cannot be cancelled; a subsequent edit stays behind it.
+      const editing = cancel === "dispose" ? undefined : conversation.setDraft({ content: "newer" });
+      if (cancel === "abort") controller.abort();
+      else conversation[cancel]();
+      expect(activity.getValues()).toEqual([false, true]);
+      removal.resolve();
+      const prepared = await preparing;
+      await editing;
+      expect(prepared.message.id).toBeTruthy();
+      expect(activity.getValues()).toEqual([false, true, false]);
+      if (cancel !== "dispose") expect(await conversation.loadDraft()).toEqual({ content: "newer" });
+      activity.unsubscribe();
+    },
+  );
+
+  it("still reports a storage failure when cancellation occurs during removal", async () => {
+    const drafts = draftStorage();
+    const { conversation } = setup({ draftStorage: drafts });
+    await conversation.setDraft({ content: "keep" });
+    const removal = deferred<void>();
+    drafts.removeItem.mockReturnValueOnce(removal.promise);
+    const controller = new AbortController();
+    const errors = subscribeSpyTo(conversation.errors$);
+    const preparing = conversation.prepareDraft({ signal: controller.signal });
+    await vi.waitFor(() => expect(drafts.removeItem).toHaveBeenCalled());
+    controller.abort();
+    removal.reject(new Error("disk failed"));
+    const prepared = await preparing;
+    expect(errors.getLastValue()).toMatchObject({ operation: "storage", eventId: prepared.message.id });
+    expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+    errors.unsubscribe();
+  });
+
+  it("does not sign or clear after cancellation during draft restoration", async () => {
+    const drafts = draftStorage();
+    const restored = deferred<string>();
+    const getItem = vi.fn(() => restored.promise);
+    const { conversation } = setup({ draftStorage: { ...drafts, getItem } });
+    const controller = new AbortController();
+    const sign = vi.spyOn(signer, "getPublicKey");
+    const preparing = conversation.prepareDraft({ signal: controller.signal });
+    const rejected = expect(preparing).rejects.toThrow();
+    await vi.waitFor(() => expect(getItem).toHaveBeenCalled());
+    controller.abort();
+    restored.resolve(JSON.stringify({ version: 1, draft: { content: "restored" } }));
+    await rejected;
+    expect(sign).not.toHaveBeenCalled();
+    expect(drafts.removeItem).not.toHaveBeenCalled();
+    expect(await conversation.loadDraft()).toEqual({ content: "restored" });
+  });
+
+  it.each(["abort", "stop", "dispose"] as const)(
+    "preserves the draft and durable publication when %s interrupts retention",
+    async (cancel) => {
+      const drafts = draftStorage();
+      const { conversation, storage } = setup({ draftStorage: drafts });
+      await conversation.setDraft({ content: "keep" });
+      const retention = deferred<void>();
+      storage.setItem.mockReturnValueOnce(retention.promise);
+      const controller = new AbortController();
+      const preparing = conversation.prepareDraft({ signal: controller.signal });
+      const rejected = expect(preparing).rejects.toThrow();
+      await vi.waitFor(() => expect(storage.setItem).toHaveBeenCalled());
+      if (cancel === "abort") controller.abort();
+      else conversation[cancel]();
+      await rejected;
+      retention.resolve();
+      expect(drafts.removeItem).not.toHaveBeenCalled();
+      expect(drafts.values.size).toBe(1);
+      // A completed durable write is recoverable, but cancellation before success never hands off the draft.
+      if (cancel !== "dispose") {
+        expect(await conversation.loadPublications()).toHaveLength(1);
+        expect(await conversation.loadDraft()).toEqual({ content: "keep" });
+      }
+    },
+  );
+});
+
 describe("legacy conversation sending activity", () => {
   it.each(["direct", "proxy"] as const)("shares activity, states, and retries through %s publication", async (path) => {
     const { conversation, pool } = setup();

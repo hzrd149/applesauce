@@ -181,3 +181,35 @@ it("shares restored state across subscriptions and retries failed reads", async 
   expect(storage.getItem).toHaveBeenCalledTimes(2);
   drafts.dispose();
 });
+
+it("conditionally clears immutable revisions rather than matching draft fields", async () => {
+  const { storage } = createStorage(true);
+  const drafts = new ConversationDraftState("draft", storage);
+  const signal = new AbortController().signal;
+  await drafts.set({ content: "first" });
+  const captured = (await drafts.load())!;
+  await drafts.set({ content: "other" });
+  await drafts.set({ content: "first" });
+  await drafts.clearIfCurrent(captured, signal);
+  expect(storage.removeItem).not.toHaveBeenCalled();
+  const current = (await drafts.load())!;
+  expect(current).not.toBe(captured);
+  await drafts.clearIfCurrent(current, signal);
+  expect(storage.removeItem).toHaveBeenCalledOnce();
+  expect(await drafts.load()).toBeUndefined();
+  drafts.dispose();
+});
+
+it("checks conditional removal cancellation inside the serialized storage queue", async () => {
+  const { storage } = createStorage();
+  const drafts = new ConversationDraftState("draft", storage);
+  await drafts.set({ content: "saved" });
+  const captured = (await drafts.load())!;
+  const controller = new AbortController();
+  const clearing = drafts.clearIfCurrent(captured, controller.signal);
+  controller.abort();
+  await expect(clearing).rejects.toThrow();
+  expect(storage.removeItem).not.toHaveBeenCalled();
+  expect(await drafts.load()).toBe(captured);
+  drafts.dispose();
+});

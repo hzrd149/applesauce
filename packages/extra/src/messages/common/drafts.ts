@@ -98,6 +98,23 @@ export class ConversationDraftState {
     });
   }
 
+  /**
+   * Removes only the captured immutable draft revision while its operation is active
+   * @throws if disposed, cancelled before removal starts, or storage fails
+   */
+  clearIfCurrent(snapshot: Readonly<MessageDraft>, signal: AbortSignal): Promise<void> {
+    return this.enqueue(async () => {
+      signal.throwIfAborted();
+      // Each successful edit creates a new frozen object, even for identical content.
+      if (this.draft.value !== snapshot) return;
+
+      await this.storage?.removeItem(this.key);
+      this.assertActive();
+      this.loaded = true;
+      this.draft.next(undefined);
+    });
+  }
+
   /** Releases local draft state while preserving the saved draft */
   dispose(): void {
     if (this.disposed) return;

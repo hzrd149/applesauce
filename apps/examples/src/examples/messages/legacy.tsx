@@ -493,7 +493,6 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   const sending = use$(conversation.sending$);
   const [error, setError] = useState<string>();
   const text = draft?.content ?? "";
-  const hasPending = !!pending?.length;
 
   const publish = async (prepared?: PreparedLegacyMessage) => {
     if (sending) return;
@@ -501,9 +500,8 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
 
     try {
       // The conversation retains signed events so retries do not prompt the signer again.
-      if (prepared) await conversation.publish(prepared);
-      else await conversation.send({ content: text, replyTo: draft?.replyTo });
-      await conversation.clearDraft();
+      const delivery = prepared ?? (await conversation.prepareDraft());
+      await conversation.publish(delivery);
     } catch (error) {
       setError(String(error));
     }
@@ -519,7 +517,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           <button
             className="btn btn-ghost btn-sm btn-square"
             title="Cancel reply"
-            disabled={sending || hasPending}
+            disabled={sending}
             onClick={() => conversation.setDraft({ content: text }).catch((error) => setError(String(error)))}
           >
             <X className="h-4 w-4" />
@@ -548,14 +546,14 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           className="input min-w-0 flex-1"
           placeholder="Message"
           value={text}
-          disabled={sending || hasPending}
+          disabled={sending}
           onChange={(event) => {
             conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
           }}
         />
         <button
           className="btn btn-primary"
-          disabled={sending || hasPending || !text.trim() || !availability?.canSend}
+          disabled={sending || !text.trim() || !availability?.canSend}
           onClick={() => publish()}
         >
           {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
