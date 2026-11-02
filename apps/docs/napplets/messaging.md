@@ -132,33 +132,11 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## NDR Transport
 
-`createNdrTransport` supplies the published `nostr-double-ratchet@0.0.183` runtime's relay and owner-signing hooks without taking over its protocol state. Import it separately from `applesauce-extra/kehto/services/dm/ndr`:
-
-```ts
-import { NdrRuntime } from "nostr-double-ratchet";
-import { createNdrTransport } from "applesauce-extra/kehto/services/dm/ndr";
-
-const transport = createNdrTransport(context, {
-  ownerPubkey,
-  signer,
-  relays: ndrRelays,
-  onSubscriptionError: reportError,
-});
-const runtime = new NdrRuntime({ ...transport, storage });
-await runtime.initForOwner(ownerPubkey);
-```
-
-Supply an account-bound signer and explicit discovery/delivery relays. NDR device and session keys do not necessarily have NIP-65 mailboxes. The transport preserves device-signed envelopes and uses the signer only for unsigned events belonging to `ownerPubkey`, filling NDR's empty owner-pubkey placeholder when necessary; it does not request the account's secret key or automatically approve registration or messaging.
-
-Incoming signed events are verified before reaching the runtime and shared EventStore. Fetches merge cached and relay events, deduplicate by event ID, and finish at relay completion or `fetchTimeoutMs` (default 4000). Live subscriptions replay matching cached events and continue with network/store updates; failures call `onSubscriptionError`. Each subscription deduplicates independently, so a later subscription can replay history for recovery.
-
-Publication resolves only when at least one relay accepts the exact signed envelope; all-relay rejection fails without caching the publication. `actionTimeoutMs` bounds signing/publication (default 60000). A timeout or disposal cannot retract a signature prompt or an event already submitted to a relay, but prevents subsequent transport steps and late cache writes.
-
-The runtime still owns device registration, invitations, ratchet state, and its delivery queue. Configure durable account-scoped storage and the runtime's enqueue/outbox hooks separately; an NDR runtime send may mean queued locally, not acknowledged by a relay. Restoring encrypted relay events alone does not restore advanced ratchet state or application message history.
+Use the standalone [NDR transport integration](../features/ndr.md) for runtime wiring, explicit storage, persistent outbox, deadlines, and relay-acceptance semantics. The canonical import is `applesauce-extra/messages/ndr`; `applesauce-extra/kehto/services/dm/ndr` remains a compatible alias exporting `createNdrTransport`, `KehtoNdrTransport`, and `KehtoNdrTransportOptions`.
 
 Attach runtime message consumers before initialization, then complete registration/invite setup explicitly. Feed the initialized runtime into Kehto's `createNdrDmAdapter` and compose it with `createDmAdapterProtocol` as above. Applications must arrange message approval and recipient discovery; the transport has no napplet window context. Filter non-chat runtime events before presenting a chat history.
 
-On toggle-off, account change, or owner teardown, call both `runtime.close()` and `transport.dispose()`. Disposing the transport stops subscriptions and rejects pending fetch/sign/publication work without closing the shared pool or clearing persistent protocol state. The factory does not follow a reactive signer automatically; dispose and recreate it when authentication changes.
+On toggle-off, account change, or owner teardown, close the runtime and persistent outbox, then dispose the transport. The factory does not follow a reactive signer automatically; dispose and recreate it when authentication changes.
 
 ### Testing in the messages example
 
