@@ -25,6 +25,7 @@ import {
 import {
   loadAttachment,
   WrappedMessagesClient,
+  type MessageAuthRequest,
   type MessageFileUploader,
   type WrappedConversation,
   type PreparedWrappedMessage,
@@ -35,9 +36,9 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import { Paperclip, X } from "lucide-react";
+import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { type ReactNode, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
@@ -238,6 +239,31 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function AuthenticationRelay({ request, onAuthenticate }: { request: MessageAuthRequest; onAuthenticate: () => void }) {
+  const relay = pool.relay(request.url);
+  const name = use$(relay.name$);
+  const icon = use$(relay.icon$);
+
+  return (
+    <button
+      className="flex min-w-0 items-center gap-2 rounded p-2 text-left hover:bg-base-200 disabled:opacity-60"
+      disabled={request.state === "authenticating"}
+      title={request.error ? String(request.error) : request.url}
+      onClick={onAuthenticate}
+    >
+      <img src={icon} alt="" className="h-6 w-6 shrink-0 rounded" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{name ?? new URL(request.url).hostname}</span>
+        {request.state === "failed" && (
+          <span className="block text-sm text-error [overflow-wrap:anywhere]">{String(request.error)}</span>
+        )}
+      </span>
+      {request.state === "authenticating" && <span className="loading loading-spinner loading-sm" />}
+      {request.state === "failed" && <span className="text-sm text-error">Retry</span>}
+    </button>
+  );
+}
+
 function InboxStatus({ client }: { client: WrappedMessagesClient }) {
   const lifecycle = use$(client.status$);
   const sync = use$(client.syncStatus$);
@@ -246,8 +272,9 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
   const auth = use$(client.authRequests$) ?? [];
   const failure = use$(() => client.errors$.pipe(map((failure) => String(failure.error))), [client]);
 
-  const [decrypting, setDecrypting] = useState(false);
+  const [autoUnlock, setAutoUnlock] = useState(false);
   const [range, setRange] = useState<HistoryRange>("recent");
+  const [authenticatingAll, setAuthenticatingAll] = useState(false);
   const [error, setError] = useState<string>();
 
   // Reconcile older history on top of the client's recent sync while a range is selected
@@ -261,48 +288,63 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
     .flatMap((mailbox) => Object.values(mailbox.relays))
     .filter((relay) => relay.error);
 
-  const toggleDecrypting = () => {
-    client.setAutoUnlock(!decrypting);
-    setDecrypting(!decrypting);
+  const toggleAutoUnlock = (enabled: boolean) => {
+    client.setAutoUnlock(enabled);
+    setAutoUnlock(enabled);
   };
 
   const retryFailed = async () => {
+    setError(undefined);
+
     for (const id of stats?.failed ?? []) {
       const event = eventStore.getEvent(id);
       if (event) await client.retryDecryption(event).catch((error) => setError(String(error)));
     }
   };
 
-  const authenticate = async (url: string) => {
+  const authenticate = (url: string) => {
+    setError(undefined);
+    client.authenticate(url).catch((error) => setError(String(error)));
+  };
+
+  const authenticateAll = async () => {
+    setAuthenticatingAll(true);
+    setError(undefined);
+
     try {
-      setError(undefined);
-      await client.authenticate(url);
+      await client.authenticateAll();
     } catch (error) {
       setError(String(error));
+    } finally {
+      setAuthenticatingAll(false);
     }
   };
 
   return (
     <>
-      <Section title="Inbox">
+      <Section title="Decryption">
+        <label className="flex items-center justify-between gap-3 text-sm">
+          Auto-decrypt messages
+          <input
+            type="checkbox"
+            className="toggle toggle-sm"
+            checked={autoUnlock}
+            onChange={(event) => toggleAutoUnlock(event.target.checked)}
+          />
+        </label>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-ghost">{lifecycle ?? "loading"}</span>
-          <span className="badge badge-ghost" title={relays?.join("\n")}>
-            {relays ? `${relays.length} relays` : "…"}
-          </span>
-          <span className="badge badge-ghost">
-            {!progress?.done && <span className="loading loading-spinner loading-sm" />}
-            {progress?.loaded ?? 0} events
-          </span>
-          {relayErrors.length > 0 && (
-            <span
-              className="badge badge-error"
-              title={relayErrors.map((relay) => `${relay.relay}: ${relay.error?.message}`).join("\n")}
-            >
-              {relayErrors.length} failed
-            </span>
+          <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
+          <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
+          {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
+          {!!stats?.failed.length && (
+            <button className="btn btn-sm ms-auto" title="Retry decrypting failed messages" onClick={retryFailed}>
+              Retry
+            </button>
           )}
         </div>
+      </Section>
+
+      <Section title="Inbox">
         <div className="join">
           {HISTORY_RANGES.map((option) => (
             <button
@@ -314,48 +356,73 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
             </button>
           ))}
         </div>
-      </Section>
-
-      <Section title="Decryption">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
-          <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
-          {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
-        </div>
-        <div className="flex gap-2">
-          <button className={`btn btn-sm flex-1 ${decrypting ? "btn-active" : ""}`} onClick={toggleDecrypting}>
-            {decrypting ? "Stop decrypting" : "Decrypt messages"}
-          </button>
-          {!!stats?.failed.length && (
-            <button className="btn btn-sm" onClick={retryFailed}>
-              Retry
-            </button>
+        <div className="flex flex-wrap items-center gap-2 text-sm opacity-60">
+          <span>{lifecycle ?? "idle"}</span>
+          <span title={relays?.join("\n")}>{relays?.length ?? 0} relays</span>
+          <span className="flex items-center gap-1">
+            {progress && !progress.done && <span className="loading loading-spinner loading-sm" />}
+            {progress?.loaded ?? 0} events
+          </span>
+          {relayErrors.length > 0 && (
+            <span
+              className="text-error"
+              title={relayErrors.map((relay) => `${relay.relay}: ${relay.error?.message}`).join("\n")}
+            >
+              {relayErrors.length} failed
+            </span>
           )}
         </div>
       </Section>
 
-      {(auth.length > 0 || error || failure) && (
-        <Section title="Attention">
-          {auth.map(({ url, state, error }) => (
-            <button
-              key={url}
-              className="btn btn-sm"
-              disabled={state === "authenticating" || !client.signer}
-              title={error ? String(error) : url}
-              onClick={() => authenticate(url)}
-            >
-              {state === "authenticating"
-                ? "Authenticating"
-                : state === "failed"
-                  ? "Retry authentication"
-                  : "Authenticate"}{" "}
-              {new URL(url).hostname}
-            </button>
+      {auth.length > 0 && (
+        <Section title="Authentication">
+          {auth.map((request) => (
+            <AuthenticationRelay key={request.url} request={request} onAuthenticate={() => authenticate(request.url)} />
           ))}
-          {(error ?? failure) && <p className="text-sm text-error">{error ?? failure}</p>}
+          <button
+            className="btn btn-sm"
+            disabled={authenticatingAll || auth.every((request) => request.state === "authenticating")}
+            onClick={authenticateAll}
+          >
+            {authenticatingAll && <span className="loading loading-spinner loading-sm" />}
+            Auth all
+          </button>
         </Section>
       )}
+
+      {(error ?? failure) && <p className="p-3 text-sm text-error [overflow-wrap:anywhere]">{error ?? failure}</p>}
     </>
+  );
+}
+
+/** Shows the rumor, seals and gift wraps behind a message */
+function MessageDetails({
+  conversation,
+  id,
+  onClose,
+}: {
+  conversation: WrappedConversation;
+  id: string;
+  onClose: () => void;
+}) {
+  const message = use$(() => conversation.eventStore.event(id), [conversation, id]);
+
+  return (
+    <div className="flex flex-col gap-2 border-b border-base-300 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm opacity-60">Message</span>
+        <button className="btn btn-sm btn-square btn-ghost" title="Close message details" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {message ? (
+        <div className="text-sm">
+          <JsonBlock value={{ rumor: message, seals: getRumorSeals(message), wraps: getRumorGiftWraps(message) }} />
+        </div>
+      ) : (
+        <p className="text-sm opacity-60">Message unavailable</p>
+      )}
+    </div>
   );
 }
 
@@ -425,7 +492,7 @@ function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
   );
 }
 
-function Composer({ conversation }: { conversation: WrappedConversation }) {
+function Composer({ conversation, expiration }: { conversation: WrappedConversation; expiration: number }) {
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
   // Picked files stay in the form, in memory, until the message is sent.
@@ -435,12 +502,25 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
   });
   const text = useWatch({ control, name: "content" });
   const files = useWatch({ control, name: "files" });
-  const [expiration, setExpiration] = useState(0);
   const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   const setFiles = (next: File[]) => setValue("files", next, { shouldDirty: true });
+
+  // Picked and pasted files are only kept in memory until Send encrypts and uploads them
+  const stageFiles = (picked: File[]) => {
+    if (picked.length > 0) setFiles([...getValues("files"), ...picked]);
+  };
+
+  const pasteFiles = (event: ClipboardEvent) => {
+    const pasted = [...event.clipboardData.files];
+    if (pasted.length === 0) return;
+
+    // Keep the pasted file out of the text, but let plain text paste normally
+    event.preventDefault();
+    stageFiles(pasted);
+  };
 
   // Saves the draft when the input loses focus or a message is sent, not on every keystroke
   const saveDraft = async () => {
@@ -511,20 +591,9 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
           rows={1}
           placeholder="Message"
           disabled={!!prepared || busy}
+          onPaste={pasteFiles}
           {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
-        <select
-          aria-label="Message expiration"
-          className="select w-36"
-          value={expiration}
-          disabled={!!prepared || busy}
-          onChange={(event) => setExpiration(Number(event.target.value))}
-        >
-          <option value={0}>Never expire</option>
-          <option value={3600}>1 hour</option>
-          <option value={86400}>1 day</option>
-          <option value={7 * 86400}>1 week</option>
-        </select>
         <label
           className={`btn btn-square btn-ghost ${busy || prepared ? "btn-disabled" : ""}`}
           title="Attach encrypted files"
@@ -538,7 +607,7 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
             onChange={(event) => {
               const picked = [...(event.target.files ?? [])];
               event.target.value = "";
-              setFiles([...getValues("files"), ...picked]);
+              stageFiles(picked);
             }}
           />
         </label>
@@ -552,39 +621,6 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
       </div>
       {error && <p className="text-sm text-error">{error}</p>}
     </div>
-  );
-}
-
-function MessageDetails({
-  conversation,
-  id,
-  onClose,
-}: {
-  conversation: WrappedConversation;
-  id: string;
-  onClose: () => void;
-}) {
-  const message = use$(() => conversation.eventStore.event(id), [conversation, id]);
-
-  return (
-    <dialog
-      className="modal"
-      ref={(node) => {
-        if (node && !node.open) node.showModal();
-      }}
-      onClose={onClose}
-    >
-      <div className="modal-box max-w-4xl">
-        {message ? (
-          <JsonBlock value={{ rumor: message, seals: getRumorSeals(message), wraps: getRumorGiftWraps(message) }} />
-        ) : (
-          <p>Message unavailable</p>
-        )}
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button>Close</button>
-      </form>
-    </dialog>
   );
 }
 
@@ -651,17 +687,23 @@ function MessageBubble({
   );
 }
 
-function Conversation({ conversation }: { conversation: WrappedConversation }) {
+function Conversation({
+  conversation,
+  onInspect,
+}: {
+  conversation: WrappedConversation;
+  onInspect: (id: string) => void;
+}) {
   const messages = use$(conversation.messages$);
   const publications = use$(conversation.client.publications$);
-  const [inspecting, setInspecting] = useState<string>();
+  const [expiration, setExpiration] = useState(0);
 
   const others = conversation.participants
     .filter((pubkey) => pubkey !== conversation.client.pubkey)
     .map((pubkey) => castUser(pubkey, eventStore));
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
+    <main className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
       <div className="flex items-center gap-3 border-b border-base-300 p-3">
         {others.length === 0 ? (
           <span className="font-medium">Notes to self</span>
@@ -676,9 +718,20 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
           </>
         )}
         <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
+        <select
+          aria-label="Message expiration"
+          className="select select-sm w-36"
+          value={expiration}
+          onChange={(event) => setExpiration(Number(event.target.value))}
+        >
+          <option value={0}>Never expire</option>
+          <option value={3600}>1 hour</option>
+          <option value={86400}>1 day</option>
+          <option value={7 * 86400}>1 week</option>
+        </select>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4">
         {messages === undefined ? (
           <span className="loading loading-dots mx-auto" />
         ) : messages.length === 0 ? (
@@ -690,16 +743,13 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
               message={message}
               self={conversation.client.pubkey}
               status={publications?.[message.id]}
-              onInspect={() => setInspecting(message.id)}
+              onInspect={() => onInspect(message.id)}
             />
           ))
         )}
       </div>
 
-      <Composer conversation={conversation} />
-      {inspecting && (
-        <MessageDetails conversation={conversation} id={inspecting} onClose={() => setInspecting(undefined)} />
-      )}
+      <Composer conversation={conversation} expiration={expiration} />
     </main>
   );
 }
@@ -707,10 +757,24 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
   const groups = use$(client.conversations$);
   const [selected, setSelected] = useState(client.pubkey);
+  const [inspecting, setInspecting] = useState<string>();
+  const [conversationsOpen, setConversationsOpen] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(true);
   const conversation = client.conversation(selected);
 
+  // Message details belong to the open conversation, so close them when switching
+  const selectConversation = (id: string) => {
+    setSelected(id);
+    setInspecting(undefined);
+  };
+
   const startConversation = (pubkey: string) => {
-    if (pubkey) setSelected(createConversationIdentifier(client.pubkey, [pubkey]));
+    if (pubkey) selectConversation(createConversationIdentifier(client.pubkey, [pubkey]));
+  };
+
+  const inspectMessage = (id: string) => {
+    setInspecting(id);
+    setDrawerOpen(true);
   };
 
   // Keep notes to self pinned at the top even before it has any messages
@@ -718,54 +782,98 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
   const otherGroups = groups?.filter((group) => group.id !== client.pubkey) ?? [];
 
   return (
-    <div className="flex min-h-0 grow">
-      <aside className="flex w-72 shrink-0 flex-col border-e border-base-300">
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="border-b border-base-300 p-3">
-            <PubkeyPicker value="" placeholder="Start a conversation" onChange={startConversation} />
-          </div>
-
-          <InboxStatus client={client} />
-
-          {selfGroup ? (
-            <ConversationRow
-              group={selfGroup}
-              self={user}
-              active={selected === selfGroup.id}
-              onSelect={() => setSelected(selfGroup.id)}
-            />
-          ) : (
-            <button
-              className={`flex w-full items-center gap-3 border-b border-base-300 p-3 text-left ${selected === client.pubkey ? "bg-base-200" : ""}`}
-              onClick={() => setSelected(client.pubkey)}
-            >
-              <Avatar user={user} size="h-10 w-10" />
-              <span className="font-medium">Notes to self</span>
-            </button>
-          )}
-
-          {groups === undefined ? (
-            <div className="flex justify-center p-6">
-              <span className="loading loading-dots" />
+    <div className="flex min-h-0 min-w-0 grow flex-col overflow-x-hidden">
+      <header className="flex shrink-0 items-center justify-between border-b border-base-300 px-3 py-2">
+        <button
+          className="btn btn-sm btn-square btn-ghost"
+          aria-label="Toggle conversations drawer"
+          title={conversationsOpen ? "Hide conversations" : "Show conversations"}
+          aria-expanded={conversationsOpen}
+          aria-controls="conversations-drawer"
+          onClick={() => setConversationsOpen(!conversationsOpen)}
+        >
+          <PanelLeft className="h-5 w-5" />
+        </button>
+        <button
+          className="btn btn-sm btn-square btn-ghost"
+          aria-label="Toggle inbox status drawer"
+          title={drawerOpen ? "Hide inbox status" : "Show inbox status"}
+          aria-expanded={drawerOpen}
+          aria-controls="inbox-drawer"
+          onClick={() => setDrawerOpen(!drawerOpen)}
+        >
+          <PanelRight className="h-5 w-5" />
+        </button>
+      </header>
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-x-hidden">
+        <aside
+          id="conversations-drawer"
+          aria-label="Conversations"
+          hidden={!conversationsOpen}
+          className="flex w-72 shrink-0 flex-col border-e border-base-300"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-base-300 p-3">
+              <PubkeyPicker value="" placeholder="Start a conversation" onChange={startConversation} />
             </div>
-          ) : otherGroups.length === 0 ? (
-            <p className="p-6 text-center opacity-60">No conversations</p>
-          ) : (
-            otherGroups.map((group) => (
-              <ConversationRow
-                key={group.id}
-                group={group}
-                self={user}
-                active={selected === group.id}
-                onSelect={() => setSelected(group.id)}
-              />
-            ))
-          )}
-        </div>
-        <Account user={user} />
-      </aside>
 
-      <Conversation key={conversation.id} conversation={conversation} />
+            {selfGroup ? (
+              <ConversationRow
+                group={selfGroup}
+                self={user}
+                active={selected === selfGroup.id}
+                onSelect={() => selectConversation(selfGroup.id)}
+              />
+            ) : (
+              <button
+                className={`flex w-full items-center gap-3 border-b border-base-300 p-3 text-left ${selected === client.pubkey ? "bg-base-200" : ""}`}
+                onClick={() => selectConversation(client.pubkey)}
+              >
+                <Avatar user={user} size="h-10 w-10" />
+                <span className="font-medium">Notes to self</span>
+              </button>
+            )}
+
+            {groups === undefined ? (
+              <div className="flex justify-center p-6">
+                <span className="loading loading-dots" />
+              </div>
+            ) : otherGroups.length === 0 ? (
+              <p className="p-6 text-center opacity-60">No conversations</p>
+            ) : (
+              otherGroups.map((group) => (
+                <ConversationRow
+                  key={group.id}
+                  group={group}
+                  self={user}
+                  active={selected === group.id}
+                  onSelect={() => selectConversation(group.id)}
+                />
+              ))
+            )}
+          </div>
+          <Account user={user} />
+        </aside>
+
+        <Conversation key={conversation.id} conversation={conversation} onInspect={inspectMessage} />
+
+        <aside
+          id="inbox-drawer"
+          aria-label="Inbox status"
+          hidden={!drawerOpen}
+          className="w-80 shrink-0 overflow-x-hidden overflow-y-auto border-s border-base-300 bg-base-100"
+        >
+          {inspecting && (
+            <MessageDetails
+              key={inspecting}
+              conversation={conversation}
+              id={inspecting}
+              onClose={() => setInspecting(undefined)}
+            />
+          )}
+          <InboxStatus client={client} />
+        </aside>
+      </div>
     </div>
   );
 }
