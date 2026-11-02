@@ -680,12 +680,13 @@ function Composer({
 }) {
   const sending = use$(conversation.sending$) ?? false;
   const [error, setError] = useState<string>();
-  const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
   // Staged files are restored with the draft and stay plaintext until the message is sent.
+  // While submitting, the form ignores the draft so the cleared input does not refill before the client removes it.
   const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
-    values: { content: draft?.content ?? "", files: [...(draft?.files ?? [])] },
+    values: submitting ? undefined : { content: draft?.content ?? "", files: [...(draft?.files ?? [])] },
     resetOptions: { keepDirtyValues: true },
   });
   const text = useWatch({ control, name: "content" });
@@ -726,28 +727,31 @@ function Composer({
   };
 
   const send = async () => {
+    setSubmitting(true);
     setError(undefined);
+
+    const content = getValues("content");
+    const staged = getValues("files");
     try {
       // The conversation sends the saved draft, so save the text on screen first
       await saveDraft();
 
-      // Files are encrypted and uploaded only now, then sent with the text as one message
-      const staged = getValues("files");
-      setUploading(staged.length > 0);
-      const attachments = await Promise.all(staged.map((file) => conversation.uploadFile(file)));
-      setUploading(false);
-
-      // The client's outbox retries unpublished envelopes, so the form can start the next message
-      await conversation.sendDraft(attachments);
+      // The message shows as queued once sent, and the client's outbox retries it, so clear the form right away
       reset({ content: "", files: [] });
+
+      // Files are encrypted and uploaded only now, then sent with the text as one message
+      const attachments = await Promise.all(staged.map((file) => conversation.uploadFile(file)));
+      await conversation.sendDraft(attachments);
     } catch (error) {
+      // Nothing was handed off, so put the message back for another try
+      reset({ content, files: staged });
       setError(error instanceof Error ? error.message : String(error));
     } finally {
-      setUploading(false);
+      setSubmitting(false);
     }
   };
 
-  const busy = sending || uploading;
+  const busy = sending || submitting;
   const canAttach = canSend && !busy && !!conversation.client.signer;
 
   return (
