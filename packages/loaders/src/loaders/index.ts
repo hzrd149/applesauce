@@ -1,5 +1,6 @@
 export * from "./address-loader.js";
 export * from "./dns-identity-loader.js";
+export * from "./namecoin-identity-loader.js";
 export * from "./event-loader.js";
 export * from "./reactions-loader.js";
 export * from "./social-graph.js";
