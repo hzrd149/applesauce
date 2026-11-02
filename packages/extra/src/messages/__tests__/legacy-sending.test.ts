@@ -338,40 +338,47 @@ describe("legacy draft handoff", () => {
 });
 
 describe("legacy conversation sending activity", () => {
-  it.each(["direct", "proxy"] as const)("shares activity, states, and retries through %s publication", async (path) => {
-    const { conversation, pool } = setup();
-    const prepared = await conversation.prepareSend({ content: "same event" });
-    const sign = vi.spyOn(signer, "signEvent");
-    const activity = subscribeSpyTo(conversation.sending$);
-    const states = subscribeSpyTo(conversation.publications$);
-    const errors = subscribeSpyTo(conversation.errors$);
-    const publish = () => (path === "direct" ? conversation.publish(prepared) : prepared.publish());
-    pool.publish.mockRejectedValueOnce(new Error("offline"));
+  it.each(["direct", "proxy", "id"] as const)(
+    "shares activity, states, and retries through %s publication",
+    async (path) => {
+      const { conversation, pool } = setup();
+      const prepared = await conversation.prepareSend({ content: "same event" });
+      const sign = vi.spyOn(signer, "signEvent");
+      const activity = subscribeSpyTo(conversation.sending$);
+      const states = subscribeSpyTo(prepared.state$);
+      const errors = subscribeSpyTo(conversation.errors$);
+      const publish = () =>
+        path === "proxy" ? prepared.publish() : conversation.publish(path === "id" ? prepared.message.id : prepared);
+      pool.publish.mockRejectedValueOnce(new Error("offline"));
 
-    await expect(publish()).rejects.toThrow("offline");
-    expect(states.getLastValue()).toEqual({ [prepared.message.id]: "failed" });
-    expect(errors.getLastValue()).toMatchObject({ operation: "send", eventId: prepared.message.id });
-    expect(await publish()).toBe(prepared.message);
-    expect(states.getValues().map((value) => value[prepared.message.id])).toEqual([
-      "prepared",
-      "publishing",
-      "failed",
-      "publishing",
-      "accepted",
-    ]);
-    expect(activity.getValues()).toEqual([false, true, false, true, false]);
-    for (const call of pool.publish.mock.calls as unknown[][]) {
-      expect(call[0]).toEqual(["wss://dm.test/"]);
-      expect(call[1]).toBe(prepared.message);
-    }
-    expect(sign).not.toHaveBeenCalled();
-    await conversation.publish(prepared);
-    await prepared.publish();
-    expect(pool.publish).toHaveBeenCalledTimes(2);
-    activity.unsubscribe();
-    states.unsubscribe();
-    errors.unsubscribe();
-  });
+      await expect(publish()).rejects.toThrow("offline");
+      expect(states.getLastValue()).toEqual({
+        status: "failed",
+        error: expect.objectContaining({ message: "offline" }),
+      });
+      expect(errors.getValues()).toEqual([]);
+      expect(await publish()).toBe(prepared.message);
+      expect(states.getValues().map((value) => value.status)).toEqual([
+        "prepared",
+        "publishing",
+        "failed",
+        "publishing",
+        "accepted",
+      ]);
+      expect(activity.getValues()).toEqual([false, true, false, true, false]);
+      for (const call of pool.publish.mock.calls as unknown[][]) {
+        expect(call[0]).toEqual(["wss://dm.test/"]);
+        expect(call[1]).toBe(prepared.message);
+      }
+      expect(sign).not.toHaveBeenCalled();
+      await conversation.publish(prepared);
+      await prepared.publish();
+      expect(pool.publish).toHaveBeenCalledTimes(2);
+      activity.unsubscribe();
+      states.unsubscribe();
+      errors.unsubscribe();
+    },
+  );
 
   it("keeps the convenience handle a proxy to the canonical method", async () => {
     const { conversation } = setup();
@@ -380,6 +387,18 @@ describe("legacy conversation sending activity", () => {
     const options = { signal: new AbortController().signal };
     await prepared.publish(options);
     expect(publish).toHaveBeenCalledWith(prepared, options);
+  });
+
+  it("delegates handle state subscriptions to the conversation without an independent state source", async () => {
+    const { conversation } = setup();
+    const prepared = await conversation.prepareSend({ content: "proxy state" });
+    const observe = vi.spyOn(conversation, "publicationState$");
+    const state$ = prepared.state$;
+    expect(observe).not.toHaveBeenCalled();
+    expect(await firstValueFrom(state$)).toEqual({ status: "prepared" });
+    expect(observe).toHaveBeenCalledWith(prepared);
+    conversation.stop();
+    await expect(firstValueFrom(state$)).rejects.toThrow();
   });
 
   it("publishes restored pending handles directly without signing", async () => {
@@ -412,7 +431,6 @@ describe("legacy conversation sending activity", () => {
       }
       if (invalid === "disposed") conversation.dispose();
       const activity = subscribeSpyTo(conversation.sending$);
-      const states = subscribeSpyTo(conversation.publications$);
       const errors = subscribeSpyTo(conversation.errors$);
       storage.removeItem.mockClear();
       storage.setItem.mockClear();
@@ -421,13 +439,11 @@ describe("legacy conversation sending activity", () => {
       if (invalid === "stale" || invalid === "discarded" || invalid === "disposed")
         await expect(prepared.publish()).rejects.toThrow();
       expect(activity.getValues()).toEqual([false]);
-      expect(states.getValues()).toHaveLength(1);
       expect(errors.getValues()).toEqual([]);
       expect(pool.publish).not.toHaveBeenCalled();
       expect(storage.removeItem).not.toHaveBeenCalled();
       expect(storage.setItem).not.toHaveBeenCalled();
       activity.unsubscribe();
-      states.unsubscribe();
       errors.unsubscribe();
     },
   );
@@ -452,11 +468,11 @@ describe("legacy conversation sending activity", () => {
       const publication = deferred<typeof accepted>();
       pool.publish.mockReturnValueOnce(publication.promise);
       const activity = subscribeSpyTo(conversation.sending$);
-      const states = subscribeSpyTo(conversation.publications$);
+      const states = subscribeSpyTo(prepared.state$);
       const errors = subscribeSpyTo(conversation.errors$);
       const publishing = first === "direct" ? conversation.publish(prepared) : prepared.publish();
       await expect(first === "direct" ? alias.publish() : conversation.publish(alias)).rejects.toThrow("already");
-      expect(states.getLastValue()).toEqual({ [prepared.message.id]: "publishing" });
+      expect(states.getLastValue()).toEqual({ status: "publishing" });
       expect(errors.getValues()).toEqual([]);
       expect(activity.getValues()).toEqual([false, true]);
       publication.resolve(accepted);

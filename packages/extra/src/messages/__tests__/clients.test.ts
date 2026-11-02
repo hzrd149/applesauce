@@ -903,11 +903,11 @@ describe("standalone messaging clients", () => {
     const client = own(new LegacyMessagesClient(options));
     const errors: unknown[] = [];
     const sub = client.decryptionState$.subscribe((state) => {
-      errors.splice(0, errors.length, ...Object.values(state.errors));
+      errors.splice(0, errors.length, ...state.errors.values());
     });
     await client.unlock();
     expect(getEncryptedContent(eventStore.getEvent(good.id)!)).toBe("good");
-    expect((await firstValueFrom(client.decryptionState$)).failed).toEqual([bad.id]);
+    expect([...(await firstValueFrom(client.decryptionState$)).errors.keys()]).toEqual([bad.id]);
     expect(errors).toHaveLength(1);
     sub.unsubscribe();
   });
@@ -999,14 +999,17 @@ describe("standalone messaging clients", () => {
       const prepared = await conversation.prepareSend({ content: "retry" });
       expect(clientPrepare).not.toHaveBeenCalled();
       expect(pool.publish).not.toHaveBeenCalled();
-      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+      expect(await firstValueFrom(prepared.state$)).toEqual({ status: "prepared" });
       expect(client).not.toHaveProperty("publications$");
       expect(client).not.toHaveProperty("busy$");
 
       pool.publish.mockResolvedValueOnce([{ from: "wss://dm.test/", ok: false }]);
       await expect(prepared.publish()).rejects.toThrow();
-      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "failed" });
-      expect(conversationErrors).toHaveLength(1);
+      expect(await firstValueFrom(conversation.publicationState$(prepared))).toEqual({
+        status: "failed",
+        error: expect.any(Error),
+      });
+      expect(conversationErrors).toHaveLength(0);
       expect(client).not.toHaveProperty("errors$");
 
       const [retried] = await conversation.loadPublications();
@@ -1015,7 +1018,7 @@ describe("standalone messaging clients", () => {
       await prepared.publish();
       expect(signerCalls).toHaveBeenCalledTimes(1);
       expect(pool.publish).toHaveBeenCalledTimes(2);
-      expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "accepted" });
+      expect(await firstValueFrom(conversation.publicationState$(prepared.message.id))).toEqual({ status: "accepted" });
     } finally {
       subscriptions.unsubscribe();
     }

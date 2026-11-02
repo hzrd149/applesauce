@@ -60,6 +60,7 @@ import { MessageAuthentication, withMessageAuth$ } from "../common/authenticatio
 import type { MessageClientError, MessageOperationOptions } from "../common/types.js";
 import { LegacyConversation } from "./conversation.js";
 import type {
+  LegacyDecryptionState,
   LegacyMessageAvailability,
   LegacyMessageHistoryOptions,
   LegacyMessageSendRequest,
@@ -70,7 +71,7 @@ import type {
 } from "./types.js";
 
 const log = logger.extend("LegacyMessages");
-type DecryptionActivity = { event: NostrEvent; readers: number; failed: boolean; error?: unknown };
+type DecryptionActivity = { readers: number; failed: boolean; error?: unknown };
 type Mailbox = { name: "incoming" | "outgoing"; filter: Filter; relays$: Observable<string[]> };
 
 function validateRecipient(request: LegacyMessageSendRequest) {
@@ -105,8 +106,8 @@ export class LegacyMessagesClient {
   /** The live mailbox subscription failures, including their direction and requested relays */
   readonly mailboxErrors$ = this.mailboxErrors.asObservable();
 
-  /** The current decryption counts and failed event IDs */
-  readonly decryptionState$;
+  /** The current decryption snapshot for loaded account messages */
+  readonly decryptionState$: Observable<LegacyDecryptionState>;
 
   private readonly lifecycle = new BehaviorSubject<"idle" | "running" | "disposed">("idle");
 
@@ -367,7 +368,7 @@ export class LegacyMessagesClient {
 
   private updateDecryption(event: NostrEvent, change: (previous: DecryptionActivity) => DecryptionActivity) {
     const next = new Map(this.decryptionActivity.value);
-    const updated = change(next.get(event.id) ?? { event, readers: 0, failed: false });
+    const updated = change(next.get(event.id) ?? { readers: 0, failed: false });
     if (!updated.readers && !updated.failed) next.delete(event.id);
     else next.set(event.id, updated);
     this.decryptionActivity.next(next);
@@ -450,23 +451,31 @@ export class LegacyMessagesClient {
    * Derives decryption counts for the account or one conversation
    * @internal
    */
-  observeDecryption$(messages$: Observable<NostrEvent[]>, correspondent?: string) {
+  observeDecryption$(messages$: Observable<NostrEvent[]>): Observable<LegacyDecryptionState> {
     return combineLatest([messages$, this.decryptionActivity]).pipe(
       map(([events, operations]) => {
-        const relevant = [...operations.values()].filter(
-          ({ event }) => !correspondent || getLegacyMessageCorrespondent(event, this.options.pubkey) === correspondent,
-        );
-        const failed = relevant.filter((operation) => operation.failed).map(({ event }) => event.id);
-        const failedIds = new Set(failed);
+        let unlocked = 0;
+        let pending = 0;
+        const errors = new Map<string, unknown>();
+
+        for (const event of events) {
+          // Plaintext from any route takes precedence over an earlier failed attempt.
+          if (isEncryptedContentUnlocked(event)) {
+            unlocked++;
+            continue;
+          }
+
+          const activity = operations.get(event.id);
+          if (activity && activity.readers > 0) pending++;
+          if (activity?.failed) errors.set(event.id, activity.error);
+        }
+
         return {
           total: events.length,
-          unlocked: events.filter(isEncryptedContentUnlocked).length,
-          locked: events.filter((event) => !isEncryptedContentUnlocked(event) && !failedIds.has(event.id)).length,
-          failed,
-          errors: Object.fromEntries(
-            relevant.filter((operation) => operation.failed).map(({ event, error }) => [event.id, error]),
-          ),
-          pending: relevant.filter((operation) => operation.readers > 0).length,
+          unlocked,
+          locked: events.length - unlocked,
+          pending,
+          errors,
         };
       }),
     );
@@ -481,7 +490,7 @@ export class LegacyMessagesClient {
 
     return processing$.pipe(
       catchError((error) => {
-        onError?.({ operation, error, eventId: event.id });
+        if (operation === "restore") onError?.({ operation, error, eventId: event.id });
         return EMPTY;
       }),
     );

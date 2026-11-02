@@ -5,6 +5,9 @@ export { WrappedConversation, type WrappedConversationSendRequest } from "./wrap
 export { ConversationMessagesModel, ConversationThreadsModel, ConversationRepliesModel } from "./wrapped/models.js";
 export { WrappedMessagePublicationError } from "./wrapped/publication.js";
 export type {
+  LegacyDecryptionState,
+  LegacyPublicationState,
+  LegacyPublicationReference,
   LegacyMessagesClientOptions,
   LegacyMessageSendRequest,
   LegacyMessageAvailability,

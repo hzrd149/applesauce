@@ -4,6 +4,8 @@ import {
   finalizeEvent,
   getEncryptedContent,
   kinds,
+  restoreEncryptedContent,
+  setEncryptedContentCache,
   type EncryptedContentCache,
   type NostrEvent,
 } from "applesauce-core/helpers";
@@ -237,13 +239,187 @@ describe("legacy reactive ownership", () => {
     await expect(client.unlock(event)).rejects.toBe(failure);
     expect(await firstValueFrom(client.decryptionState$)).toMatchObject({
       pending: 0,
-      failed: [event.id],
-      errors: { [event.id]: failure },
+      locked: 1,
+      errors: new Map([[event.id, failure]]),
     });
     expect(client).not.toHaveProperty("errors$");
 
     await client.retryDecryption(event);
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ failed: [], errors: {} });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ locked: 0, errors: new Map() });
+  });
+
+  it("excludes nonstore failures and removes failures when loaded events leave the scope", async () => {
+    const { client, eventStore } = setup();
+    const loaded = await encryptedMessage("loaded failure");
+    const nonstore = await encryptedMessage("nonstore failure");
+    eventStore.add(loaded);
+    const conversation = client.conversation(peer);
+    const accountState = subscribeSpyTo(client.decryptionState$);
+    const conversationState = subscribeSpyTo(conversation.decryptionState$);
+    const failure = new Error("rejected");
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValue(failure);
+
+    await expect(client.unlock(nonstore)).rejects.toBe(failure);
+    expect(accountState.getLastValue()).toEqual({
+      total: 1,
+      unlocked: 0,
+      locked: 1,
+      pending: 0,
+      errors: new Map(),
+    });
+    await expect(conversation.unlock(loaded)).rejects.toBe(failure);
+    expect(accountState.getLastValue()?.errors.get(loaded.id)).toBe(failure);
+    expect(conversationState.getLastValue()?.errors.get(loaded.id)).toBe(failure);
+
+    eventStore.remove(loaded);
+    await vi.waitFor(() => expect(accountState.getLastValue()?.total).toBe(0));
+    await vi.waitFor(() => expect(conversationState.getLastValue()?.total).toBe(0));
+    for (const state of [accountState, conversationState]) {
+      expect(state.getLastValue()).toEqual({ total: 0, unlocked: 0, locked: 0, pending: 0, errors: new Map() });
+      state.unsubscribe();
+    }
+  });
+
+  it.each(["cache", "helper"])("clears public failures after independent %s plaintext restoration", async (route) => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("restored");
+    eventStore.add(event);
+    const state = subscribeSpyTo(client.conversation(peer).decryptionState$);
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(new Error("rejected"));
+    await expect(client.unlock(event)).rejects.toThrow("rejected");
+    expect(state.getLastValue()?.errors.has(event.id)).toBe(true);
+
+    if (route === "cache") {
+      await restoreEncryptedContent(event, { getItem: async () => "restored", setItem: async () => {} });
+    } else setEncryptedContentCache(event, "");
+
+    expect(state.getLastValue()).toEqual({ total: 1, unlocked: 1, locked: 0, pending: 0, errors: new Map() });
+    state.unsubscribe();
+  });
+
+  it("clears a timeout failure when the signer succeeds without another reader", async () => {
+    vi.useFakeTimers();
+    const { client, eventStore } = setup(100);
+    const event = await encryptedMessage("late success");
+    eventStore.add(event);
+    const state = subscribeSpyTo(client.decryptionState$);
+    let finish!: (plaintext: string) => void;
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const unlocking = expect(client.unlock(event)).rejects.toThrow("Timeout");
+    await vi.advanceTimersByTimeAsync(100);
+    await unlocking;
+    expect(state.getLastValue()?.errors.has(event.id)).toBe(true);
+
+    finish("late success");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.getLastValue()).toEqual({ total: 1, unlocked: 1, locked: 0, pending: 0, errors: new Map() });
+    state.unsubscribe();
+  });
+
+  it("keeps undefined rejection values present in the errors map", async () => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("undefined failure");
+    eventStore.add(event);
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(undefined);
+    await expect(client.conversation(peer).unlock(event)).rejects.toBeUndefined();
+
+    const state = await firstValueFrom(client.decryptionState$);
+    expect(state).toMatchObject({ total: 1, unlocked: 0, locked: 1, pending: 0 });
+    expect(state.errors.has(event.id)).toBe(true);
+    expect(state.errors.get(event.id)).toBeUndefined();
+    expect(state).not.toHaveProperty("failed");
+  });
+
+  it.each(["explicit", "bulk", "auto"])("does not duplicate %s decryption failures", async (source) => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("one error channel");
+    eventStore.add(event);
+    const conversation = client.conversation(peer);
+    const errors = subscribeSpyTo(conversation.errors$);
+    const failure = new Error("rejected");
+    vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(failure);
+
+    if (source === "explicit") await expect(conversation.unlock(event)).rejects.toBe(failure);
+    else if (source === "bulk") await conversation.unlock();
+    else {
+      conversation.setAutoUnlock(true);
+      const watcher = conversation.watch$().subscribe();
+      await vi.waitFor(async () =>
+        expect((await firstValueFrom(conversation.decryptionState$)).errors.has(event.id)).toBe(true),
+      );
+      watcher.unsubscribe();
+    }
+
+    expect((await firstValueFrom(conversation.decryptionState$)).errors.get(event.id)).toBe(failure);
+    expect(errors.getValues()).toEqual([]);
+    errors.unsubscribe();
+  });
+
+  it.each(["bulk", "auto"])("retains %s failures for remounts until a shared retry succeeds", async (source) => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("shared retry");
+    eventStore.add(event);
+    const conversation = client.conversation(peer);
+    const failure = { reason: "signer unavailable" };
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(failure);
+    const initialState = subscribeSpyTo(conversation.decryptionState$);
+
+    if (source === "bulk") await client.unlock();
+    else {
+      conversation.setAutoUnlock(true);
+      const watcher = conversation.watch$().subscribe();
+      await vi.waitFor(() => expect(initialState.getLastValue()?.errors.get(event.id)).toBe(failure));
+      watcher.unsubscribe();
+    }
+
+    expect(initialState.getLastValue()?.errors.get(event.id)).toBe(failure);
+    initialState.unsubscribe();
+    const remountedState = subscribeSpyTo(conversation.decryptionState$);
+    expect(remountedState.getLastValue()?.errors.get(event.id)).toBe(failure);
+
+    let finish!: (plaintext: string) => void;
+    decrypt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const retrying = client.unlock(event);
+    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(2));
+    expect(remountedState.getLastValue()).toMatchObject({ pending: 1, errors: new Map([[event.id, failure]]) });
+
+    finish("shared retry");
+    await retrying;
+    expect(remountedState.getLastValue()).toMatchObject({ pending: 0, unlocked: 1, errors: new Map() });
+    remountedState.unsubscribe();
+  });
+
+  it.each(["abort", "dispose"])("does not record conversation unlock %s as a decryption failure", async (ending) => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("cancelled bubble");
+    eventStore.add(event);
+    const conversation = client.conversation(peer);
+    const controller = new AbortController();
+    let finish!: (plaintext: string) => void;
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const unlocking = expect(conversation.unlock(event, { signal: controller.signal })).rejects.toThrow();
+    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+
+    if (ending === "abort") controller.abort();
+    else conversation.dispose();
+    await unlocking;
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, errors: new Map() });
+    finish("cancelled bubble");
   });
 
   it("serializes signer calls across client unlocks, conversations, and readers", async () => {
@@ -261,7 +437,7 @@ describe("legacy reactive ownership", () => {
     const secondUnlock = client.conversation(peer).unlock(second);
     const reading = lastValueFrom(client.readMessages$({ history: true }));
     await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 3 });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ total: 1, locked: 1, pending: 1 });
 
     finish[0]("first");
     await firstUnlock;
@@ -301,7 +477,7 @@ describe("legacy reactive ownership", () => {
     finish[1]("next");
     await nextUnlock;
     expect(getEncryptedContent(cancelled)).toBeUndefined();
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [] });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, errors: new Map() });
   });
 
   it("holds the signer slot across timeouts and stop until the actual call settles", async () => {
@@ -354,7 +530,7 @@ describe("legacy reactive ownership", () => {
     await nextUnlock;
     expect(decrypt).toHaveBeenCalledTimes(2);
     expect(getEncryptedContent(next)).toBe("next");
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [first.id] });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ total: 0, pending: 0, errors: new Map() });
   });
 
   it("finishes bulk unlock after synchronous and asynchronous failures and decrypts remaining events", async () => {
@@ -374,14 +550,19 @@ describe("legacy reactive ownership", () => {
     });
     const errors: string[] = [];
     client.decryptionState$.subscribe((state) => {
-      errors.splice(0, errors.length, ...state.failed);
+      errors.splice(0, errors.length, ...state.errors.keys());
     });
 
     await client.unlock();
 
     expect(getEncryptedContent(good)).toBe("good");
     expect(new Set(errors)).toEqual(new Set([first.id, second.id]));
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, locked: 0, unlocked: 1 });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({
+      total: 3,
+      pending: 0,
+      locked: 2,
+      unlocked: 1,
+    });
     expect(decrypt).toHaveBeenCalledTimes(3);
 
     await client.unlock();
@@ -400,7 +581,7 @@ describe("legacy reactive ownership", () => {
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
     const errors: { operation: string; eventId: string; error: unknown }[] = [];
     client.decryptionState$.subscribe((state) => {
-      for (const [eventId, error] of Object.entries(state.errors)) {
+      for (const [eventId, error] of state.errors) {
         if (!errors.some((failure) => failure.eventId === eventId))
           errors.push({ operation: "decrypt", eventId, error });
       }
@@ -411,7 +592,9 @@ describe("legacy reactive ownership", () => {
     expect(decrypt).toHaveBeenCalledTimes(1);
     expect(decrypt.mock.calls[0][1]).toBe(good.content);
     expect(getEncryptedContent(good)).toBe("good");
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [malformed.id] });
+    const state = await firstValueFrom(client.decryptionState$);
+    expect(state).toMatchObject({ pending: 0, locked: 1 });
+    expect([...state.errors.keys()]).toEqual([malformed.id]);
     expect(errors).toContainEqual({
       operation: "decrypt",
       eventId: malformed.id,
@@ -468,6 +651,42 @@ describe("legacy reactive ownership", () => {
     expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ pending: 0, unlocked: 1 });
   });
 
+  it("counts pending loaded locked events rather than readers or queued nonstore work", async () => {
+    const { client, eventStore } = setup();
+    const event = await encryptedMessage("shared pending");
+    const nonstore = await encryptedMessage("queued nonstore");
+    eventStore.add(event);
+    const state = subscribeSpyTo(client.decryptionState$);
+    let finish!: (plaintext: string) => void;
+    const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt").mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = client.unlock(event);
+    const second = client.conversation(peer).unlock(event);
+    const queued = client.unlock(nonstore);
+    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+    expect(state.getLastValue()).toMatchObject({ total: 1, locked: 1, pending: 1 });
+
+    eventStore.remove(event);
+    await vi.waitFor(() => expect(state.getLastValue()).toMatchObject({ total: 0, locked: 0, pending: 0 }));
+    eventStore.add(event);
+    await vi.waitFor(() => expect(state.getLastValue()).toMatchObject({ total: 1, locked: 1, pending: 1 }));
+    setEncryptedContentCache(event, "external success");
+    expect(state.getLastValue()).toEqual({ total: 1, unlocked: 1, locked: 0, pending: 0, errors: new Map() });
+
+    finish("shared pending");
+    await Promise.all([first, second, queued]);
+    for (const snapshot of state.getValues()) {
+      expect(snapshot.total).toBe(snapshot.unlocked + snapshot.locked);
+      expect(snapshot.pending).toBeLessThanOrEqual(snapshot.locked);
+      expect(snapshot.errors.size).toBeLessThanOrEqual(snapshot.locked);
+    }
+    state.unsubscribe();
+  });
+
   it("reports read failures in shared state and clears them after an explicit retry", async () => {
     const { client, eventStore } = setup();
     const event = await encryptedMessage("retry");
@@ -476,20 +695,20 @@ describe("legacy reactive ownership", () => {
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt").mockRejectedValueOnce(new Error("signer unavailable"));
     const errors: { operation: string; eventId: string; error: unknown }[] = [];
     const subscription = client.decryptionState$.subscribe((state) => {
-      for (const [eventId, error] of Object.entries(state.errors)) {
+      for (const [eventId, error] of state.errors) {
         if (!errors.some((failure) => failure.eventId === eventId))
           errors.push({ operation: "decrypt", eventId, error });
       }
     });
 
     expect(await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()))).toEqual([]);
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [event.id] });
-    expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ pending: 0, failed: [event.id] });
+    expect([...(await firstValueFrom(client.decryptionState$)).errors.keys()]).toEqual([event.id]);
+    expect([...(await firstValueFrom(conversation.decryptionState$)).errors.keys()]).toEqual([event.id]);
     await conversation.unlock();
     expect(decrypt).toHaveBeenCalledTimes(1);
 
     await client.retryDecryption(event);
-    expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ unlocked: 1, failed: [] });
+    expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ unlocked: 1, errors: new Map() });
     expect(errors).toHaveLength(1);
     subscription.unsubscribe();
   });
@@ -510,13 +729,13 @@ describe("legacy reactive ownership", () => {
     const unlocking = expect(client.unlock(event)).rejects.toThrow("Timeout");
     await vi.advanceTimersByTimeAsync(100);
     await unlocking;
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [event.id] });
+    expect([...(await firstValueFrom(client.decryptionState$)).errors.keys()]).toEqual([event.id]);
 
     const retrying = client.retryDecryption(event);
     finish("late");
     await retrying;
     expect(decrypt).toHaveBeenCalledTimes(1);
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [], unlocked: 1 });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, errors: new Map(), unlocked: 1 });
   });
 
   it("drops queued decryption on unsubscribe and starts fresh on another subscription", async () => {
@@ -555,7 +774,7 @@ describe("legacy reactive ownership", () => {
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
     await client.unlock(unrelated);
     expect(decrypt).not.toHaveBeenCalled();
-    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, failed: [] });
+    expect(await firstValueFrom(client.decryptionState$)).toMatchObject({ pending: 0, errors: new Map() });
   });
 
   it.each(["stop", "unsubscribe"])("does not prompt after %s during plaintext cache restoration", async (ending) => {
@@ -580,7 +799,7 @@ describe("legacy reactive ownership", () => {
     // Flush the cache and decryption promise continuations before checking for a late prompt.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(decrypt).not.toHaveBeenCalled();
-    expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ pending: 0, failed: [] });
+    expect(await firstValueFrom(conversation.decryptionState$)).toMatchObject({ pending: 0, errors: new Map() });
   });
 
   it("derives publications for late subscribers and releases disposed conversations", async () => {
@@ -599,9 +818,9 @@ describe("legacy reactive ownership", () => {
       );
     const conversation = client.conversation(peer);
     expect(await firstValueFrom(conversation.sending$)).toBe(false);
-    expect(await firstValueFrom(conversation.publications$)).toEqual({});
+    expect(conversation).not.toHaveProperty("publications$");
     const prepared = await conversation.prepareSend({ content: "prepared" });
-    expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "prepared" });
+    expect(await firstValueFrom(prepared.state$)).toEqual({ status: "prepared" });
     conversation.dispose();
     expect(client).not.toHaveProperty("publications$");
     expect(client).not.toHaveProperty("busy$");
