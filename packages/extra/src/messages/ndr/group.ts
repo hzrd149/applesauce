@@ -139,15 +139,14 @@ export class NdrGroupConversation {
   }
 
   /**
-   * Sends the current draft and removes it only if it was not edited meanwhile
-   * @throws if there is no draft or sending fails
+   * Sends the current draft with optional uploaded attachments and removes the draft only if it was not edited meanwhile
+   * @throws if there is no text or attachments, or sending fails
    */
-  async sendDraft(): Promise<void> {
+  async sendDraft(attachments: FileMetadataFields[] = []): Promise<void> {
     const draft = await this.drafts.load();
-    if (!draft?.content.trim()) throw new Error("Message is empty");
 
-    await this.send({ content: draft.content, replyTo: draft.replyTo });
-    await this.drafts.clearIfCurrent(draft, new AbortController().signal);
+    await this.send({ content: draft?.content ?? "", replyTo: draft?.replyTo, attachments });
+    if (draft) await this.drafts.clearIfCurrent(draft, new AbortController().signal);
   }
 
   /**

@@ -28,6 +28,7 @@ import { createUploadAuth } from "blossom-client-sdk/auth";
 import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
 import type { PreparedRegistration } from "nostr-double-ratchet";
 import { type ReactNode, useCallback, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   catchError,
@@ -38,6 +39,7 @@ import {
   firstValueFrom,
   from,
   ignoreElements,
+  map,
   merge,
   NEVER,
   type Observable,
@@ -145,7 +147,15 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
-/** Downloads and decrypts an attachment into an object URL, revoked when the subscription ends */
+/** Creates an object URL for a blob that is revoked when the subscription ends */
+function objectUrl$(blob: Blob): Observable<string> {
+  return defer(() => {
+    const url = URL.createObjectURL(blob);
+    return merge(of(url), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
+  });
+}
+
+/** Downloads and decrypts an attachment into an object URL */
 function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string; error?: string }> {
   if (!isEncryptedFile(file)) return of({ url: file.url });
 
@@ -153,10 +163,7 @@ function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string;
     const controller = new AbortController();
 
     return from(loadAttachment(file, { signal: controller.signal })).pipe(
-      switchMap((blob) => {
-        const url = URL.createObjectURL(blob);
-        return merge(of({ url }), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
-      }),
+      switchMap((blob) => objectUrl$(blob).pipe(map((url) => ({ url })))),
       catchError((error) => of({ error: error instanceof Error ? error.message : String(error) })),
       finalize(() => controller.abort()),
     );
@@ -635,6 +642,24 @@ function MessageBubble({
   );
 }
 
+function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const preview = use$(() => (file.type.startsWith("image/") ? objectUrl$(file) : of(undefined)), [file]);
+
+  return (
+    <div className="flex items-center gap-2 rounded border border-base-300 p-1 pe-2 text-sm" title={file.type}>
+      {preview ? (
+        <img src={preview} alt={file.name} className="h-10 w-10 rounded object-cover" />
+      ) : (
+        <Paperclip className="h-4 w-4" />
+      )}
+      <span className="max-w-40 truncate">{file.name}</span>
+      <button className="btn btn-ghost btn-sm btn-square" type="button" title="Remove file" onClick={onRemove}>
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function Composer({
   conversation,
   messages,
@@ -646,52 +671,79 @@ function Composer({
   canSend: boolean;
   disabledReason?: string;
 }) {
-  const draft = use$(conversation.draft$);
   const sending = use$(conversation.sending$) ?? false;
   const [error, setError] = useState<string>();
-  const [attaching, setAttaching] = useState(false);
-  const text = draft?.content ?? "";
+  const [uploading, setUploading] = useState(false);
+  const draft = use$(conversation.draft$);
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
+  // Picked files stay in the form, in memory, until the message is sent.
+  const { register, getValues, setValue, control } = useForm<{ content: string; files: File[] }>({
+    values: { content: draft?.content ?? "", files: [] },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
+  const files = useWatch({ control, name: "files" });
   const replyTarget = draft?.replyTo ? messages.find((message) => message.id === draft.replyTo) : undefined;
+
+  const setFiles = (next: File[]) => setValue("files", next, { shouldDirty: true });
+
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
 
   const send = async () => {
     setError(undefined);
     try {
-      await conversation.sendDraft();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    }
-  };
+      // The conversation sends the saved draft, so save the text on screen first
+      await saveDraft();
 
-  // The file is encrypted and uploaded first, then sent as a kind 14 message with an imeta tag
-  const attach = async (file: File) => {
-    setAttaching(true);
-    setError(undefined);
-    try {
-      const uploaded = await conversation.uploadFile(file);
-      await conversation.send({ content: "", attachments: [uploaded], replyTo: draft?.replyTo });
+      // Files are encrypted and uploaded only now, then sent with the text as one message
+      const staged = getValues("files");
+      setUploading(staged.length > 0);
+      const attachments = await Promise.all(staged.map((file) => conversation.uploadFile(file)));
+      setUploading(false);
+
+      await conversation.sendDraft(attachments);
+      setFiles(getValues("files").filter((file) => !staged.includes(file)));
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
-      setAttaching(false);
+      setUploading(false);
     }
   };
 
-  const canAttach = canSend && !attaching && !!conversation.client.signer;
+  const busy = sending || uploading;
+  const canAttach = canSend && !busy && !!conversation.client.signer;
 
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
       {draft?.replyTo && (
         <div className="flex items-center gap-2 text-sm">
           <span className="min-w-0 flex-1 truncate border-s-2 border-base-300 ps-2 opacity-60">
-            {replyTarget?.content ?? "Earlier message"}
+            {replyTarget ? messageText(replyTarget) || "Attachment" : "Earlier message"}
           </span>
           <button
             className="btn btn-ghost btn-sm btn-square"
             title="Cancel reply"
-            onClick={() => conversation.setDraft({ content: text }).catch((error) => setError(String(error)))}
+            onClick={() =>
+              conversation.setDraft({ content: getValues("content") }).catch((error) => setError(String(error)))
+            }
           >
             <X className="h-4 w-4" />
           </button>
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((file, index) => (
+            <StagedFile
+              key={`${index}:${file.name}`}
+              file={file}
+              onRemove={() => setFiles(files.filter((staged) => staged !== file))}
+            />
+          ))}
         </div>
       )}
       <form
@@ -704,31 +756,35 @@ function Composer({
         <input
           className="input min-w-0 flex-1"
           placeholder={disabledReason ?? "Message"}
-          value={text}
           disabled={!canSend}
-          onChange={(event) => {
-            conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
-            if (conversation instanceof NdrConversation) conversation.sendTyping();
-          }}
+          {...register("content", {
+            onChange: () => conversation instanceof NdrConversation && conversation.sendTyping(),
+            onBlur: () => saveDraft().catch((error) => setError(String(error))),
+          })}
         />
         <label
           className={`btn btn-square btn-ghost ${canAttach ? "" : "btn-disabled"}`}
-          title={conversation.client.signer ? "Attach an encrypted file" : "Uploads need the account signer"}
+          title={conversation.client.signer ? "Attach encrypted files" : "Uploads need the account signer"}
         >
-          {attaching ? <span className="loading loading-spinner loading-sm" /> : <Paperclip className="h-5 w-5" />}
+          <Paperclip className="h-5 w-5" />
           <input
             type="file"
+            multiple
             className="hidden"
             disabled={!canAttach}
             onChange={(event) => {
-              const file = event.target.files?.[0];
+              const picked = [...(event.target.files ?? [])];
               event.target.value = "";
-              if (file) void attach(file);
+              setFiles([...getValues("files"), ...picked]);
             }}
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={sending || !canSend || !text.trim()}>
-          {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={busy || !canSend || (!text.trim() && files.length === 0)}
+        >
+          {busy ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
       </form>
       {error && <p className="text-sm text-error">{error}</p>}
@@ -749,8 +805,13 @@ function MessageList({
   showNames: boolean;
   typing?: boolean;
 }) {
-  const draft = use$(conversation.draft$);
   const [error, setError] = useState<string>();
+
+  // Read the saved draft at click time so text the composer just saved is not overwritten
+  const setReply = async (replyTo: string) => {
+    const latest = await firstValueFrom(conversation.draft$);
+    await conversation.setDraft({ content: latest?.content ?? "", replyTo });
+  };
 
   // Recreated as messages arrive, so a visible conversation keeps marking new messages as seen.
   const watchNewest = useCallback(
@@ -780,11 +841,7 @@ function MessageList({
           parent={message.replyTo ? messages.find((m) => m.id === message.replyTo) : undefined}
           own={message.sender === ownPubkey}
           showName={showNames}
-          onReply={() =>
-            conversation
-              .setDraft({ content: draft?.content ?? "", replyTo: message.id })
-              .catch((error) => setError(String(error)))
-          }
+          onReply={() => setReply(message.id).catch((error) => setError(String(error)))}
           onReact={(content) => conversation.react(message.id, content)}
         />
       ))}

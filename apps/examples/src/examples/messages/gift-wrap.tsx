@@ -35,9 +35,10 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import { Paperclip } from "lucide-react";
+import { Paperclip, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   catchError,
@@ -154,7 +155,15 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
-/** Downloads and decrypts an attachment into an object URL, revoked when the subscription ends */
+/** Creates an object URL for a blob that is revoked when the subscription ends */
+function objectUrl$(blob: Blob): Observable<string> {
+  return defer(() => {
+    const url = URL.createObjectURL(blob);
+    return merge(of(url), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
+  });
+}
+
+/** Downloads and decrypts an attachment into an object URL */
 function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string; error?: string }> {
   if (!isEncryptedFile(file)) return of({ url: file.url });
 
@@ -162,10 +171,7 @@ function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string;
     const controller = new AbortController();
 
     return from(loadAttachment(file, { signal: controller.signal })).pipe(
-      switchMap((blob) => {
-        const url = URL.createObjectURL(blob);
-        return merge(of({ url }), NEVER).pipe(finalize(() => URL.revokeObjectURL(url)));
-      }),
+      switchMap((blob) => objectUrl$(blob).pipe(map((url) => ({ url })))),
       catchError((error) => of({ error: error instanceof Error ? error.message : String(error) })),
       finalize(() => controller.abort()),
     );
@@ -401,27 +407,84 @@ function Account({ user }: { user: User }) {
   );
 }
 
+function StagedFile({ file, onRemove }: { file: File; onRemove: () => void }) {
+  const preview = use$(() => (file.type.startsWith("image/") ? objectUrl$(file) : of(undefined)), [file]);
+
+  return (
+    <div className="flex items-center gap-2 rounded border border-base-300 p-1 pe-2 text-sm" title={file.type}>
+      {preview ? (
+        <img src={preview} alt={file.name} className="h-10 w-10 rounded object-cover" />
+      ) : (
+        <Paperclip className="h-4 w-4" />
+      )}
+      <span className="max-w-40 truncate">{file.name}</span>
+      <button className="btn btn-ghost btn-sm btn-square" title="Remove file" onClick={onRemove}>
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 function Composer({ conversation }: { conversation: WrappedConversation }) {
   const draft = use$(conversation.draft$);
-  const text = draft?.content ?? "";
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
+  // Picked files stay in the form, in memory, until the message is sent.
+  const { register, getValues, setValue, control } = useForm<{ content: string; files: File[] }>({
+    values: { content: draft?.content ?? "", files: [] },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
+  const files = useWatch({ control, name: "files" });
   const [expiration, setExpiration] = useState(0);
   const [prepared, setPrepared] = useState<PreparedWrappedMessage>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
-  const deliver = async (prepare: () => Promise<PreparedWrappedMessage>) => {
+  const setFiles = (next: File[]) => setValue("files", next, { shouldDirty: true });
+
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
+
+  // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
+  const publish = async (delivery: PreparedWrappedMessage) => {
+    setPrepared(delivery);
+    await delivery.publish();
+    setPrepared(undefined);
+    if (delivery.message.kind === kinds.PrivateDirectMessage) await conversation.clearDraft();
+  };
+
+  const send = async () => {
     if (busy) return;
     setBusy(true);
     setError(undefined);
 
     try {
-      // Keep the prepared gift wraps so a retry only republishes to recipients that were not accepted
-      const delivery = prepared ?? (await prepare());
-      setPrepared(delivery);
+      // Save first so clearing the draft also resets the input
+      await saveDraft();
+      if (prepared) return await publish(prepared);
 
-      await delivery.publish();
-      setPrepared(undefined);
-      if (delivery.message.kind === kinds.PrivateDirectMessage) await conversation.clearDraft();
+      const expires = expiration ? unixNow() + expiration : undefined;
+
+      // NIP-17 sends each file as its own kind 15 message, encrypted and uploaded only now
+      for (const file of getValues("files")) {
+        const uploaded = await conversation.uploadFile(file);
+        const delivery = await conversation.prepareSend({
+          content: "",
+          file: uploaded,
+          expiration: expires,
+          envelopeExpiration: expires,
+        });
+        setFiles(getValues("files").filter((staged) => staged !== file));
+        await publish(delivery);
+      }
+
+      const content = getValues("content");
+      if (content.trim()) {
+        await publish(await conversation.prepareSend({ content, expiration: expires, envelopeExpiration: expires }));
+      }
     } catch (error) {
       setError(String(error));
     } finally {
@@ -429,35 +492,26 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
     }
   };
 
-  const expires = () => (expiration ? unixNow() + expiration : undefined);
-
-  const send = () =>
-    deliver(() => conversation.prepareSend({ content: text, expiration: expires(), envelopeExpiration: expires() }));
-
-  // The file is encrypted and uploaded first, then sent as a kind 15 file message
-  const attach = (file: File) =>
-    deliver(async () => {
-      const uploaded = await conversation.uploadFile(file);
-      return conversation.prepareSend({
-        content: "",
-        file: uploaded,
-        expiration: expires(),
-        envelopeExpiration: expires(),
-      });
-    });
-
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {files.map((file, index) => (
+            <StagedFile
+              key={`${index}:${file.name}`}
+              file={file}
+              onRemove={() => setFiles(files.filter((staged) => staged !== file))}
+            />
+          ))}
+        </div>
+      )}
       <div className="flex gap-2">
         <textarea
           className="textarea flex-1"
           rows={1}
           placeholder="Message"
-          value={text}
           disabled={!!prepared || busy}
-          onChange={(event) => {
-            conversation.setDraft({ content: event.target.value }).catch((error) => setError(String(error)));
-          }}
+          {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
         <select
           aria-label="Message expiration"
@@ -473,21 +527,26 @@ function Composer({ conversation }: { conversation: WrappedConversation }) {
         </select>
         <label
           className={`btn btn-square btn-ghost ${busy || prepared ? "btn-disabled" : ""}`}
-          title="Attach an encrypted file"
+          title="Attach encrypted files"
         >
           <Paperclip className="h-5 w-5" />
           <input
             type="file"
+            multiple
             className="hidden"
             disabled={busy || !!prepared}
             onChange={(event) => {
-              const file = event.target.files?.[0];
+              const picked = [...(event.target.files ?? [])];
               event.target.value = "";
-              if (file) void attach(file);
+              setFiles([...getValues("files"), ...picked]);
             }}
           />
         </label>
-        <button className="btn btn-primary" disabled={busy || (!text.trim() && !prepared)} onClick={send}>
+        <button
+          className="btn btn-primary"
+          disabled={busy || (!text.trim() && files.length === 0 && !prepared)}
+          onClick={send}
+        >
           {busy ? <span className="loading loading-spinner loading-sm" /> : prepared ? "Retry" : "Send"}
         </button>
       </div>
