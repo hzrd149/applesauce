@@ -21,7 +21,7 @@ These examples are reference implementations for developers and other agents. Wo
 - Order the module as imports, constants, module-level subjects, store/pool/loaders/actions, stream and helper functions, components, and the default export.
 - Keep each example self-contained. Inline its constants, helpers, and components instead of creating `src/helpers`, `src/components`, or `src/lib` modules. Shared imports are limited to basics such as `LoginView`, `PubkeyPicker`, `NoteContent`, `lookupRelays$`, and `extra/verifier`. If inlining makes a multi-mode example too large, split it into separate examples instead of lazy-loading local modules.
 - Built-in napplets for the `napplet/*` examples are the one exception: their sources live in `src/napplets/<name>/` and are imported as `index.html?napplet`.
-- Write data flow as module-level stream functions named with a `$` suffix that take casts or plain inputs, such as `bookmarks$(user, list)`, and subscribe to them with `use$(() => bookmarks$(user, list), [user, list])`.
+- Write reusable data flow as module-level stream functions named with a `$` suffix that take casts or plain inputs, such as `bookmarks$(user, list)`, and subscribe to them with `use$(() => bookmarks$(user, list), [user, list])`. Keep wiring that only one component needs, such as local paging state or DOM observers, in that component instead of moving it into a stream function.
 
 ## React and RxJS
 
@@ -31,7 +31,10 @@ These examples are reference implementations for developers and other agents. Wo
 - Use `useState` for component-local UI state such as form text, busy and error flags, selections, filters, and page limits. Do not wrap local state in `useMemo(() => new BehaviorSubject(...))` plus `use$`; the RxJS focus is for demonstrating applesauce's reactive streams, not for replacing React state.
 - Use a `BehaviorSubject` only when the value feeds an observable pipeline that outlives a single render input, or is shared across components; shared state belongs in a module-level subject. When a local value only parameterizes a stream, keep it in `useState` and pass it to the `use$` factory dependencies.
 - Derive values from their source instead of maintaining duplicate state or synchronizing it with effects. Use RxJS operators for stream composition; pure render calculations and `useMemo` are appropriate for presentation.
-- Keep loading, filtering, transformation, and related-data resolution in observable chains instead of coordinating them through effects and state setters. Subscribe to the resulting streams with `use$` at the component boundary.
+- Keep loading, filtering, transformation, and related-data resolution in observable chains instead of coordinating them through effects. Subscribe to the resulting streams with `use$` at the component boundary.
+- Use RxJS for applesauce's streams, not for component state. Call `use$` once per source stream, such as `conversation.messages$` and `loader.status$`, and compute flags like `covered` or `complete` in render instead of building a `combineLatest` view model that bundles streams with local state.
+- Do not wrap browser APIs such as `IntersectionObserver`, `ResizeObserver`, or DOM events in `new Observable` to feed a pipeline. Set them up in a ref callback that returns its cleanup and updates `useState` from the callback.
+- Do not drive state changes from `tap` or keep mutable counters inside a stream. Update React state from callbacks, and pass it into `use$` factory dependencies so the subscription follows it.
 - Prefer `switchMap` for changing observable inputs so obsolete requests are unsubscribed. When using the `use$` factory form, include every input that should replace the subscription in its dependency array.
 - Compose loading, completion, and error status into streams. Handle errors per relay when one failed relay should not terminate the other subscriptions, and provide an initial loading value.
 - Keep accumulators inside `defer` or the subscription pipeline so each subscription starts with fresh state. Share streams with reference-counted sharing when multiple consumers need the same work.
@@ -48,9 +51,27 @@ const results = use$(() => search(query), [query]);
 return <input value={query} onChange={(e) => setQuery(e.target.value)} />;
 ```
 
+```tsx
+// ✅ State in React, streams through use$, DOM in a ref callback
+const [slice, setSlice] = useState(firstSlice);
+const coverage = use$(() => merge(loader.status$, loader(slice).pipe(ignoreElements())), [loader, slice]);
+const covered = isTimelineWindowCovered(slice, coverage ?? []);
+
+const watchEdge = useCallback((edge: HTMLDivElement | null) => {
+  if (!edge || !covered) return;
+  const observer = new IntersectionObserver(([e]) => e.isIntersecting && setSlice(older(slice)));
+  observer.observe(edge);
+  return () => observer.disconnect();
+}, [covered, slice]);
+
+// ❌ An inline Observable and a BehaviorSubject driven from tap
+const nearEdge$ = new Observable((s) => { /* IntersectionObserver */ });
+combineLatest({ nearEdge: nearEdge$, window: windows$ }).pipe(tap(() => windows$.next(older())));
+```
+
 ## Applesauce Integration
 
-- Create the `EventStore`, `RelayPool`, loaders and other foundational classes at the top of the module. Do not create them in `useMemo`, in `useState` or in a factory function passed to a hook.
+- Create the `EventStore`, `RelayPool`, loaders and other foundational classes at the top of the module. Do not create them in `useMemo`, in `useState` or in a factory function passed to a hook. Loaders built from a prop, such as `conversation.createTimelineLoader()`, are the exception and belong in `useMemo` keyed on that prop.
 - Examples are not only about React. Creating RxJS classes and subjects outside React is acceptable, and often expected, because it keeps examples simpler and more reactive.
 - Pass the shared optimistic verifier to every store, `new EventStore({ verifyEvent })` with `verifyEvent` from `extra/verifier`, unless the example is about signature verification.
 - Reuse one `EventStore` and `RelayPool` for related data within an example, and keep infrastructure ownership and cleanup explicit.
