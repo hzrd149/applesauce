@@ -684,7 +684,7 @@ function Composer({
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
   // Staged files are restored with the draft and stay plaintext until the message is sent.
-  // While submitting, the form ignores the draft so the cleared input does not refill before the client removes it.
+  // While submitting, keep the form stable until the client finishes preparing and clearing the draft.
   const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
     values: submitting ? undefined : { content: draft?.content ?? "", files: [...(draft?.files ?? [])] },
     resetOptions: { keepDirtyValues: true },
@@ -730,21 +730,18 @@ function Composer({
     setSubmitting(true);
     setError(undefined);
 
-    const content = getValues("content");
     const staged = getValues("files");
     try {
       // The conversation sends the saved draft, so save the text on screen first
       await saveDraft();
 
-      // The message shows as queued once sent, and the client's outbox retries it, so clear the form right away
-      reset({ content: "", files: [] });
-
       // Files are encrypted and uploaded only now, then sent with the text as one message
       const attachments = await Promise.all(staged.map((file) => conversation.uploadFile(file)));
       await conversation.sendDraft(attachments);
+
+      // Explicit resets inherit keepDirtyValues, so override it after the message is safely queued.
+      reset({ content: "", files: [] }, { keepDirtyValues: false });
     } catch (error) {
-      // Nothing was handed off, so put the message back for another try
-      reset({ content, files: staged });
       setError(error instanceof Error ? error.message : String(error));
     } finally {
       setSubmitting(false);

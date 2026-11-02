@@ -95,6 +95,48 @@ afterEach(() => {
 });
 
 describe("NdrMessagesClient", () => {
+  describe.each(["direct", "group"] as const)("%s drafts", (type) => {
+    function conversation() {
+      const client = createClient(createRelay(), 1);
+      return type === "direct" ? client.conversation("peer") : client.group("group");
+    }
+
+    it("clears the saved draft and notifies subscribers after preparation", async () => {
+      const chat = conversation();
+      const draft = { content: "prepared message", replyTo: "parent" };
+      await chat.setDraft(draft);
+      const send = vi.spyOn(chat, "send").mockResolvedValue(undefined);
+
+      await chat.sendDraft();
+
+      expect(send).toHaveBeenCalledWith({ ...draft, attachments: [] });
+      expect(await firstValueFrom(chat.draft$)).toBeUndefined();
+      expect(await chat.client.draftStorage().getItem(`draft:${chat.id}`)).toBeNull();
+    });
+
+    it("preserves the draft when preparation fails", async () => {
+      const chat = conversation();
+      await chat.setDraft({ content: "retry me" });
+      vi.spyOn(chat, "send").mockRejectedValue(new Error("Preparation failed"));
+
+      await expect(chat.sendDraft()).rejects.toThrow("Preparation failed");
+      expect(await firstValueFrom(chat.draft$)).toMatchObject({ content: "retry me" });
+    });
+
+    it("preserves edits made during preparation", async () => {
+      const chat = conversation();
+      await chat.setDraft({ content: "submitted" });
+      vi.spyOn(chat, "send").mockImplementation(async () => {
+        await chat.setDraft({ content: "next message" });
+        return undefined;
+      });
+
+      await chat.sendDraft();
+
+      expect(await firstValueFrom(chat.draft$)).toMatchObject({ content: "next message" });
+    });
+  });
+
   it("registers a device and lists it with its label", async () => {
     const alice = createClient(createRelay(), 1);
     await register(alice);
