@@ -151,13 +151,10 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
   }
   /** Removes an event from the database and notifies all subscriptions */
   remove(eventOrId: string | E): boolean {
-    let event = typeof eventOrId === "string" ? this.events.get(eventOrId) : eventOrId;
+    const id = typeof eventOrId === "string" ? eventOrId : eventOrId.id;
+    // Resolve the indexed instance without reordering the LRU while prune iterates it.
+    const event = this.events.items.get(id)?.value;
     if (!event) return false;
-
-    const id = event.id;
-
-    // only remove events that are known
-    if (!this.events.has(id)) return false;
 
     // Remove from author index, dropping the index entry when it becomes empty so
     // the map does not accumulate empty Sets keyed by every pubkey ever seen
