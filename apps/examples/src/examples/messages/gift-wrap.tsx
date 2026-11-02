@@ -134,6 +134,12 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
           },
           removeItem: (key) => drafts.removeItem(key),
         },
+        // Pasted and picked files are kept encrypted at rest until they are sent
+        draftFileStorage: {
+          getItem: (key) => drafts.getBlob(key),
+          setItem: (key, blob) => drafts.setBlob(key, blob),
+          removeItem: (key) => drafts.removeItem(key),
+        },
         authTimeout: false,
         upload: createBlossomUploader(signer, user),
       });
@@ -524,21 +530,39 @@ function FailedPublication({
 function Composer({ conversation, expiration }: { conversation: WrappedConversation; expiration: number }) {
   const draft = use$(conversation.draft$);
   const publications = use$(conversation.client.publications$);
+  const [failed, setFailed] = useState<PreparedWrappedMessage[]>([]);
+  const [busy, setBusy] = useState(false);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
-  // Picked files stay in the form, in memory, until the message is sent.
+  // Staged files are restored with the draft and stay plaintext until the message is sent.
+  // While sending, the form ignores the draft so the cleared input does not refill before it is removed.
   const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
-    values: { content: draft?.content ?? "", files: [] },
+    values: busy ? undefined : { content: draft?.content ?? "", files: [...(draft?.files ?? [])] },
     resetOptions: { keepDirtyValues: true },
   });
   const text = useWatch({ control, name: "content" });
   const files = useWatch({ control, name: "files" });
-  const [failed, setFailed] = useState<PreparedWrappedMessage[]>([]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
-  const setFiles = (next: File[]) => setValue("files", next, { shouldDirty: true });
+  // Saves the draft when the input loses focus, files change, or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    const staged = getValues("files");
+    const savedFiles = draft?.files ?? [];
+    const filesChanged = staged.length !== savedFiles.length || staged.some((file, i) => file !== savedFiles[i]);
 
-  // Picked and pasted files are only kept in memory until Send encrypts and uploads them
+    const contentChanged = content !== (draft?.content ?? "");
+    if (!contentChanged && !filesChanged) return;
+
+    await conversation.setDraft({ ...draft, content, files: staged });
+  };
+
+  // Staged files are saved with the draft right away so a reload keeps them
+  const setFiles = (next: File[]) => {
+    setValue("files", next, { shouldDirty: true });
+    saveDraft().catch((error) => setError(String(error)));
+  };
+
+  // Picked and pasted files are only encrypted and uploaded when the message is sent
   const stageFiles = (picked: File[]) => {
     if (picked.length > 0) setFiles([...getValues("files"), ...picked]);
   };
@@ -550,12 +574,6 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     // Keep the pasted file out of the text, but let plain text paste normally
     event.preventDefault();
     stageFiles(pasted);
-  };
-
-  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
-  const saveDraft = async () => {
-    const content = getValues("content");
-    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
   };
 
   // Keep failed handles so a retry only republishes the gift wraps relays did not accept
@@ -578,13 +596,19 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     setBusy(true);
     setError(undefined);
 
+    const content = getValues("content");
+    const staged = getValues("files");
     const deliveries: PreparedWrappedMessage[] = [];
     try {
       await saveDraft();
+
+      // Each message shows its publication state once prepared, so clear the form right away
+      reset({ content: "", files: [] });
+
       const expires = expiration ? unixNow() + expiration : undefined;
 
       // NIP-17 sends each file as its own kind 15 message, encrypted and uploaded only now
-      for (const file of getValues("files")) {
+      for (const file of staged) {
         const uploaded = await conversation.uploadFile(file);
         deliveries.push(
           await conversation.prepareSend({
@@ -596,15 +620,15 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
         );
       }
 
-      const content = getValues("content");
       if (content.trim()) {
         deliveries.push(await conversation.prepareSend({ content, expiration: expires, envelopeExpiration: expires }));
       }
 
-      // Once prepared, the messages are tracked by publication state, so the form can start the next message
+      // Once prepared, the messages are tracked by publication state, so the saved draft is no longer needed
       await conversation.clearDraft();
-      reset({ content: "", files: [] });
     } catch (error) {
+      // Prepared messages are only published once all of them are ready, so put the whole message back
+      reset({ content, files: staged });
       setError(String(error));
       return;
     } finally {

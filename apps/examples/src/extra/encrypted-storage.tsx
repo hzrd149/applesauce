@@ -114,6 +114,31 @@ export default class SecureStorage {
     return decryptedText;
   }
 
+  /** Encrypts and stores a blob's bytes along with its type */
+  async setBlob(key: string, blob: Blob): Promise<void> {
+    if (!this.encryptionKey) throw new Error("Storage locked");
+
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const data = cbc(this.encryptionKey, iv).encrypt(new Uint8Array(await blob.arrayBuffer()));
+
+    await this.database.setItem(key, { iv, data, type: blob.type });
+  }
+
+  /** Retrieves and decrypts a blob stored with setBlob */
+  async getBlob(key: string): Promise<Blob | null> {
+    if (!this.encryptionKey) throw new Error("Storage locked");
+
+    const encryptedPackage = (await this.database.getItem(key)) as {
+      iv: Uint8Array;
+      data: Uint8Array;
+      type: string;
+    } | null;
+    if (!encryptedPackage) return null;
+
+    const bytes = cbc(this.encryptionKey, encryptedPackage.iv).decrypt(encryptedPackage.data);
+    return new Blob([bytes], { type: encryptedPackage.type });
+  }
+
   // Remove an item
   async removeItem(key: string): Promise<void> {
     if (!this.unlocked) throw new Error("Storage locked");

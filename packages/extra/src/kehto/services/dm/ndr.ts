@@ -1,3 +1,5 @@
+export { createNdrMessageProtocol, type NdrMessageProtocol, type NdrMessageProtocolOptions } from "./ndr-protocol.js";
+
 /** Compatibility exports for the standalone NDR transport */
 export {
   createNdrTransport,

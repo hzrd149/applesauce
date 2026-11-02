@@ -10,7 +10,7 @@ import { RumorStore } from "applesauce-core/event-store";
 import type { Rumor } from "applesauce-core/helpers";
 import type { Observable, Subscription } from "rxjs";
 import type { UploadEncryptedFileOptions } from "../common/attachments.js";
-import type { MessageDraft, MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { MessageDraft, MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
 import type { WrappedMessagesClient } from "./client.js";
 import { ConversationMessagesModel, ConversationRepliesModel, ConversationThreadsModel } from "./models.js";
 import type { PreparedWrappedMessage, WrappedMessageSendRequest } from "./types.js";
@@ -48,10 +48,12 @@ export class WrappedConversation {
     participants: string | string[],
     /** The optional plaintext draft storage */
     draftStorage?: MessageStorage,
+    /** The optional storage for files staged in drafts */
+    draftFileStorage?: MessageFileStorage,
   ) {
     this.id = createConversationIdentifier(client.pubkey, getConversationParticipants(participants));
     this.participants = Object.freeze(getConversationParticipants(this.id));
-    this.drafts = new ConversationDraftState(`draft:${this.id}`, draftStorage);
+    this.drafts = new ConversationDraftState(`draft:${this.id}`, draftStorage, draftFileStorage);
     this.draft$ = this.drafts.draft$;
 
     // Mirror the owner timeline locally, including removals, for reply and thread models.

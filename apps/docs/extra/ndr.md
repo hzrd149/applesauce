@@ -43,7 +43,7 @@ chat.sendTyping(); // throttled
 await chat.setTtl(86400); // disappearing messages for both sides
 ```
 
-`draft$`, `setDraft()`, and `sendDraft()` keep an encrypted draft that survives reloads. The client sends a delivered receipt when an incoming message is first stored; set `deliveredReceipts: false` to disable it.
+`draft$`, `setDraft()`, and `sendDraft()` keep an encrypted draft that survives reloads. Pass `draftFileStorage` to keep staged files in the draft too (see [draft attachments](../features/encrypted-files.md#draft-attachments)). The client sends a delivered receipt when an incoming message is first stored; set `deliveredReceipts: false` to disable it.
 
 With an `upload` option on the client, `uploadFile()` encrypts a file and uploads the ciphertext. Attachments go out as `imeta` tags on a kind 14 message, with each URL also in the content so other NDR apps show a link; incoming NIP-17 kind 15 file messages are read too. See [Encrypted Files](../features/encrypted-files.md).
 

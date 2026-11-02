@@ -26,15 +26,18 @@ export interface MessagesRelayStatus {
   error?: unknown;
 }
 
-/** An application-scoped string key/value adapter with synchronous or asynchronous methods */
-export interface MessageStorage {
-  /** Returns a serialized value, or null when the key is absent */
-  getItem(key: string): string | null | Promise<string | null>;
-  /** Stores a serialized value synchronously or asynchronously */
-  setItem(key: string, value: string): unknown;
+/** An application-scoped key/value adapter with synchronous or asynchronous methods, satisfied by a localForage instance */
+export interface MessageStorage<T = string> {
+  /** Returns a stored value, or null when the key is absent */
+  getItem(key: string): T | null | Promise<T | null>;
+  /** Stores a value synchronously or asynchronously */
+  setItem(key: string, value: T): unknown;
   /** Removes a value synchronously or asynchronously */
   removeItem(key: string): unknown;
 }
+
+/** An application-scoped adapter for plaintext draft files, satisfied by a localForage instance */
+export type MessageFileStorage = MessageStorage<Blob>;
 
 /** An editable plaintext message retained independently of preparation and publication */
 export interface MessageDraft {
@@ -44,4 +47,6 @@ export interface MessageDraft {
   replyTo?: string;
   /** The absolute message expiration timestamp in seconds */
   expiration?: number;
+  /** Files staged for sending, persisted only when the client has draft file storage */
+  files?: readonly File[];
 }

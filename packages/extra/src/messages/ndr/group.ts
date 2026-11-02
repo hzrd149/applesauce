@@ -53,7 +53,7 @@ export class NdrGroupConversation {
     readonly groupId: string,
   ) {
     this.id = getNdrGroupConversationId(groupId);
-    this.drafts = new ConversationDraftState(`draft:${this.id}`, client.draftStorage());
+    this.drafts = new ConversationDraftState(`draft:${this.id}`, client.draftStorage(), client.draftFileStorage());
     this.draft$ = this.drafts.draft$;
 
     const history = client.history;
@@ -120,13 +120,14 @@ export class NdrGroupConversation {
    * Encrypts a message with this device's sender key, publishes it, and stores it as queued
    * @throws if the message has no text or attachments, the group is unknown, or sending fails
    */
-  async send(request: NdrSendRequest): Promise<void> {
+  async send(request: NdrSendRequest): Promise<NdrMessage | undefined> {
     const { content, tags } = buildNdrChatMessage(request);
     this.record();
 
-    await this.track(async () => {
+    return this.track(async () => {
       const { inner } = await this.client.runtime.sendGroupEvent(this.groupId, { kind: 14, content, tags });
       await this.client.storeSent(this.id, inner);
+      return this.client.history.messages(this.id).find((message) => message.id === inner.id);
     });
   }
 

@@ -29,7 +29,7 @@ import {
 } from "rxjs";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
-import type { MessageStorage } from "../common/types.js";
+import type { MessageFileStorage, MessageStorage } from "../common/types.js";
 import { NdrConversation } from "./conversation.js";
 import { NdrGroupConversation } from "./group.js";
 import { getNdrGroupConversationId, NdrHistory } from "./history.js";
@@ -277,6 +277,11 @@ export class NdrMessagesClient {
       setItem: (key, value) => this.storage.put(`app-drafts/${key}`, value),
       removeItem: (key) => this.storage.del(`app-drafts/${key}`),
     };
+  }
+
+  /** The application's storage for files staged in drafts, if any */
+  draftFileStorage(): MessageFileStorage | undefined {
+    return this.options.draftFileStorage;
   }
 
   private async refreshPending() {

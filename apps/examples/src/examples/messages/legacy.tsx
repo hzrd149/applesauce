@@ -535,13 +535,16 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   const pending = use$(conversation.pendingPublications$);
   const sending = use$(conversation.sending$);
   const [error, setError] = useState<string>();
+  const [submitting, setSubmitting] = useState(false);
   const draft = use$(conversation.draft$);
-  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
+  // While submitting, the form ignores the draft so the cleared input does not refill before the client removes it.
   const { register, getValues, control, handleSubmit, reset } = useForm({
-    values: { content: draft?.content ?? "" },
+    values: submitting ? undefined : { content: draft?.content ?? "" },
     resetOptions: { keepDirtyValues: true },
   });
   const text = useWatch({ control, name: "content" });
+  const busy = sending || submitting;
 
   // Saves the draft when the input loses focus or a message is sent, not on every keystroke
   const saveDraft = async () => {
@@ -550,23 +553,29 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
   };
 
   const publish = async () => {
-    if (sending) return;
+    if (busy) return;
+    setSubmitting(true);
     setError(undefined);
 
+    const content = getValues("content");
     let delivery: PreparedLegacyMessage;
     try {
       // The conversation sends the saved draft, so save the text on screen first
       await saveDraft();
 
+      // The message shows as a pending publication once prepared, so clear the form right away
+      reset({ content: "" });
+
       // The conversation retains signed events so retries do not prompt the signer again.
       delivery = await conversation.prepareDraft();
     } catch (error) {
+      // Nothing was handed off, so put the text back for another try
+      reset({ content });
       setError(String(error));
       return;
+    } finally {
+      setSubmitting(false);
     }
-
-    // The prepared message is now a pending publication, so clear the form for the next message
-    reset({ content: "" });
 
     try {
       await conversation.publish(delivery);
@@ -594,7 +603,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           <button
             className="btn btn-ghost btn-sm btn-square"
             title="Cancel reply"
-            disabled={sending}
+            disabled={busy}
             onClick={() => conversation.setDraft({ content: text }).catch((error) => setError(String(error)))}
           >
             <X className="h-4 w-4" />
@@ -606,18 +615,18 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
           key={delivery.message.id}
           conversation={conversation}
           delivery={delivery}
-          sending={!!sending}
+          sending={busy}
         />
       ))}
       <form className="flex gap-2" onSubmit={handleSubmit(() => publish())}>
         <input
           className="input min-w-0 flex-1"
           placeholder="Message"
-          disabled={sending}
+          disabled={busy}
           {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
-        <button className="btn btn-primary" type="submit" disabled={sending || !text.trim() || !availability?.canSend}>
-          {sending ? <span className="loading loading-spinner loading-sm" /> : "Send"}
+        <button className="btn btn-primary" type="submit" disabled={busy || !text.trim() || !availability?.canSend}>
+          {busy ? <span className="loading loading-spinner loading-sm" /> : "Send"}
         </button>
       </form>
       {availability && !availability.canSend && <p className="text-sm text-warning">No delivery relays</p>}

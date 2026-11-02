@@ -44,13 +44,17 @@ import {
   createKehtoCommonService,
   createWrappedMessageProtocol,
   createLegacyMessageProtocol,
+  createNdrMessageProtocol,
   defaultDmRouter,
   firstMatchingRoute,
   useProtocolWhenSupported,
   type DmProtocolAdapter,
+  type DmProtocolMessage,
   type KehtoContext,
 } from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
+import { createNdrStorage, NdrMessagesClient } from "applesauce-extra/messages/ndr";
+import type { NdrRuntimeState } from "nostr-double-ratchet";
 import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -62,6 +66,7 @@ import {
   BehaviorSubject,
   catchError,
   combineLatest,
+  defer,
   EMPTY,
   ignoreElements,
   map,
@@ -78,7 +83,6 @@ import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import UnlockView from "../../components/unlock-view";
 import RelayPicker from "../../components/relay-picker";
 import SecureStorage from "../../extra/encrypted-storage";
-import { createNdrMessageProtocol } from "../../extra/ndr-message-protocol";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
 // The built-in napplet is bundled into one HTML string by the vite config
@@ -300,17 +304,110 @@ const kehtoContext: KehtoContext = {
   approve: ({ template }) => approve(template),
 };
 
-// NDR owns its encrypted runtime internally and plugs into the same adapter interface.
-const { protocol: ndrProtocol, view$: ndrView$ } = createNdrMessageProtocol({
-  pool,
-  eventStore,
-  enabled$: ndrEnabled$,
-  storage$,
-  signer$,
-  ownerPubkey$: user$.pipe(map((user) => user?.pubkey)),
-  relays$: ndrRelays$,
-  approve,
-  addLog,
+type NdrView = {
+  phase: "disabled" | "login" | "starting" | "register" | "ready" | "error";
+  state?: NdrRuntimeState;
+  client?: NdrMessagesClient;
+  error?: string;
+  run?: (action: "register" | "invite") => Promise<void>;
+};
+
+function ndrAccount$(secure: SecureStorage, signer: ISigner, pubkey: string, relays: string[]) {
+  return new Observable<NdrView>((subscriber) => {
+    const database = secure.createInstance({ name: "napplet-messages-ndr", storeName: `account_${pubkey}` });
+    const storage = createNdrStorage(database);
+    const client = new NdrMessagesClient({
+      pool,
+      eventStore,
+      signer,
+      pubkey,
+      relays,
+      storage,
+      lockName: `napplet-messages-ndr:${pubkey}`,
+    });
+    const lifetime = new AbortController();
+    const run = async (action: "register" | "invite") => {
+      lifetime.signal.throwIfAborted();
+      if (action === "register") {
+        const registration = await client.prepareRegistration();
+        lifetime.signal.throwIfAborted();
+        await client.publishRegistration(registration);
+      } else await client.republishInvite();
+      addLog("out", "ndr invite submitted");
+    };
+
+    const subscription = combineLatest([client.lifecycle$, client.state$]).subscribe(([lifecycle, state]) => {
+      const initialized = lifecycle === "ready";
+      subscriber.next({
+        phase: initialized
+          ? state.canSendPrivateMessages
+            ? "ready"
+            : "register"
+          : lifecycle === "error" || lifecycle === "locked"
+            ? "error"
+            : "starting",
+        state,
+        client: initialized ? client : undefined,
+        run: initialized ? run : undefined,
+      });
+    });
+    subscription.add(
+      client.errors$.subscribe(({ operation, error }) => addLog("error", `ndr ${operation}`, String(error))),
+    );
+    void client
+      .start()
+      .then(async () => {
+        // Import the old example's history after the client has acquired its account lock.
+        lifetime.signal.throwIfAborted();
+        if (await storage.get("migrations/kehto-history")) return;
+        for (const key of await storage.list("messages/")) {
+          lifetime.signal.throwIfAborted();
+          const message = await storage.get<DmProtocolMessage>(key);
+          const peer = message?.participants.find((participant) => participant !== pubkey);
+          if (!message || !peer) continue;
+          lifetime.signal.throwIfAborted();
+          await client.history.addMessage({
+            id: message.id,
+            conversationId: peer,
+            content: message.content,
+            sender: message.senderPubkey,
+            createdAt: message.createdAt,
+            delivery: message.senderPubkey === pubkey ? "queued" : "received",
+          });
+        }
+        lifetime.signal.throwIfAborted();
+        await storage.put("migrations/kehto-history", true);
+      })
+      .catch((error) => subscriber.next({ phase: "error", error: String(error) }));
+
+    return () => {
+      lifetime.abort();
+      for (const prompt of prompts$.value.filter((prompt) => prompt.protocol === "NDR")) answer(prompt, false);
+      subscription.unsubscribe();
+      client.dispose();
+    };
+  });
+}
+
+const ndrView$ = combineLatest([ndrEnabled$, storage$, signer$, user$, ndrRelays$]).pipe(
+  switchMap(([enabled, storage, signer, user, relays]) => {
+    if (!enabled) return of<NdrView>({ phase: "disabled" });
+    if (!storage || !signer || !user) return of<NdrView>({ phase: "login" });
+    return defer(async () => {
+      if ((await signer.getPublicKey()) !== user.pubkey) throw new Error("Waiting for the current account signer");
+      return user.pubkey;
+    }).pipe(
+      switchMap((pubkey) => ndrAccount$(storage, signer, pubkey, relays)),
+      startWith<NdrView>({ phase: "starting" }),
+      catchError((error) => of<NdrView>({ phase: "error", error: String(error) })),
+    );
+  }),
+  shareReplay({ bufferSize: 1, refCount: true }),
+);
+
+const ndrProtocol = createNdrMessageProtocol({
+  client: ndrView$.pipe(map((view) => view.client)),
+  approve: ({ template }) => approve(template, "NDR"),
 });
 
 /** Stops a protocol's session work while disabled without rebuilding the host */
@@ -654,7 +751,7 @@ function NdrSetup({ onClose }: { onClose: () => void }) {
             </span>
           )}
           {view?.phase === "login" && <span>Sign in and unlock storage to continue</span>}
-          {inviteSubmitted && <span>Invite submitted. Relay acknowledgements appear in the message log.</span>}
+          {inviteSubmitted && <span>Invite submitted.</span>}
           {(error || view?.error) && (
             <p role="alert" className="text-error break-words">
               {error ?? view?.error}

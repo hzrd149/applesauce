@@ -63,10 +63,24 @@ await conversation.send({ content: "", file }); // NDR: send({ content: "", atta
 
 `loadAttachment(file)` downloads from the URL or its fallbacks and decrypts the result into a `Blob`. Wrap it in `URL.createObjectURL` to render an image or video, and revoke the URL when the view unmounts.
 
+### Draft attachments
+
+Drafts can hold staged files with `setDraft({ content, files })`. Without more setup they stay in memory, but a `draftFileStorage` adapter restores them with the draft after a reload. Any object with localForage's `getItem`, `setItem`, and `removeItem` works, including a localForage instance. The adapter receives plaintext files, so use an encrypting store when that matters:
+
+```ts
+const client = new NdrMessagesClient({
+  ...options,
+  draftFileStorage: localforage.createInstance({ name: "draft-files" }),
+});
+
+await conversation.setDraft({ content: "", files: [pastedFile] });
+```
+
 **Examples:** [Gift-wrapped Messages](https://applesauce.build/examples/#/example/messages/gift-wrap), [Double-ratchet Messages](https://applesauce.build/examples/#/example/messages/ndr)
 
 ## Best Practices
 
 - Upload ciphertext as `application/octet-stream` with plain uploads, never media uploads, which re-encode the file and break decryption.
 - Use the user's [Blossom servers](./blossom-servers.md) as upload targets, with a fallback list for users who have none.
+- Stage pasted and picked files in the draft and upload them only on send, so a discarded draft never reaches a server.
 - Upload before publishing, so a failed relay publish can be retried without uploading the file again.

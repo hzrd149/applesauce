@@ -73,7 +73,7 @@ export class NdrConversation {
     readonly peer: string,
   ) {
     this.id = peer;
-    this.drafts = new ConversationDraftState(`draft:${peer}`, client.draftStorage());
+    this.drafts = new ConversationDraftState(`draft:${peer}`, client.draftStorage(), client.draftFileStorage());
     this.draft$ = this.drafts.draft$;
 
     const history = client.history;

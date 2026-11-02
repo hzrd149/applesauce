@@ -9,9 +9,10 @@ describe("exports", () => {
   it("exports the Cordn coordinator separately", () => {
     expect(Object.keys(cordn)).toEqual(["createCordnCoordinator"]);
   });
-  it("exports the NDR transport separately", () => {
+  it("exports the NDR protocol and compatibility transport separately", () => {
     expect(Object.keys(ndr).sort()).toMatchInlineSnapshot(`
       [
+        "createNdrMessageProtocol",
         "createNdrTransport",
       ]
     `);
@@ -43,6 +44,7 @@ describe("exports", () => {
         "createLegacyMessageProtocol",
         "createListsOptions",
         "createMultiProtocolDmAdapter",
+        "createNdrMessageProtocol",
         "createOutboxRouter",
         "createResourceOptions",
         "createUploadOptions",
