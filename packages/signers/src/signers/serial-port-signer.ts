@@ -112,7 +112,9 @@ export class SerialPortSigner implements ISigner {
                 continue;
               }
 
-              this.log("Received: ", method, data);
+              // /shared-secret responses are raw ECDH conversation keys and /sign-message
+              // responses are signatures over drafts — only the key and ping methods log verbatim
+              this.log("Received: ", method, SerialPortSigner.SAFE_LOG_METHODS.includes(method) ? data : "[redacted]");
 
               if (this.lastCommand) {
                 this.lastCommand.resolve(data);
@@ -167,7 +169,8 @@ export class SerialPortSigner implements ISigner {
 
   async sendCommand(method: string, params: string[] = []) {
     if (!this.writer) return;
-    this.log("Send command", method, params);
+    // /restore params carry the raw private key in hex — only the key and ping methods log verbatim
+    this.log("Send command", method, SerialPortSigner.SAFE_LOG_METHODS.includes(method) ? params : "[redacted]");
     const message = [method].concat(params).join(" ");
     await this.writer.write(message + "\n");
   }
@@ -291,4 +294,10 @@ export class SerialPortSigner implements ISigner {
     SerialPortSigner.METHOD_SHARED_SECRET,
     SerialPortSigner.METHOD_RESTORE,
   ];
+
+  /** Methods whose params and responses are safe to log verbatim. Everything else ([restore]
+   *  carries the raw private key, [shared-secret] returns ECDH conversation keys, [sign-message]
+   *  returns draft signatures) logs as "[redacted]" so an enabled debug namespace cannot capture
+   *  key material. */
+  static SAFE_LOG_METHODS = [SerialPortSigner.METHOD_PING, SerialPortSigner.METHOD_PUBLIC_KEY];
 }
