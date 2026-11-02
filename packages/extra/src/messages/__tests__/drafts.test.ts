@@ -1,8 +1,9 @@
 import { EventStore } from "applesauce-core";
 import type { RelayPool } from "applesauce-relay";
 import { firstValueFrom } from "rxjs";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { LegacyMessagesClient, WrappedMessagesClient, type MessageStorage } from "../index.js";
+import localforage from "localforage";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
+import { LegacyMessagesClient, WrappedMessagesClient, type MessageFileStorage, type MessageStorage } from "../index.js";
 import { ConversationDraftState } from "../common/drafts.js";
 
 const alice = "a".repeat(64);
@@ -212,4 +213,154 @@ it("checks conditional removal cancellation inside the serialized storage queue"
   expect(storage.removeItem).not.toHaveBeenCalled();
   expect(await drafts.load()).toBe(captured);
   drafts.dispose();
+});
+
+function createFileStorage() {
+  const blobs = new Map<string, Blob>();
+  const fileStorage: MessageFileStorage = {
+    getItem: vi.fn(async (key: string) => blobs.get(key) ?? null),
+    setItem: vi.fn(async (key: string, blob: Blob) => void blobs.set(key, blob)),
+    removeItem: vi.fn(async (key: string) => void blobs.delete(key)),
+  };
+  return { fileStorage, blobs };
+}
+
+const image = () => new File(["png bytes"], "image.png", { type: "image/png", lastModified: 1000 });
+
+describe("draft files", () => {
+  it("restores staged files after a reload", async () => {
+    const { storage } = createStorage(true);
+    const { fileStorage, blobs } = createFileStorage();
+    const drafts = new ConversationDraftState("draft", storage, fileStorage);
+    await drafts.set({ content: "look", files: [image()] });
+    drafts.dispose();
+
+    const restored = await new ConversationDraftState("draft", storage, fileStorage).load();
+    expect(blobs.size).toBe(1);
+    expect(restored?.content).toBe("look");
+    expect(restored?.files).toHaveLength(1);
+
+    const file = restored!.files![0];
+    expect([file.name, file.type, file.lastModified]).toEqual(["image.png", "image/png", 1000]);
+    expect(await file.text()).toBe("png bytes");
+  });
+
+  it("does not rewrite a file that is already saved", async () => {
+    const { storage } = createStorage();
+    const { fileStorage } = createFileStorage();
+    const drafts = new ConversationDraftState("draft", storage, fileStorage);
+    const file = image();
+    await drafts.set({ content: "", files: [file] });
+    await drafts.set({ content: "edited", files: [file] });
+    expect(fileStorage.setItem).toHaveBeenCalledOnce();
+
+    // Files restored from storage are recognized too
+    const restored = new ConversationDraftState("draft", storage, fileStorage);
+    const draft = (await restored.load())!;
+    await restored.set({ ...draft, content: "again" });
+    expect(fileStorage.setItem).toHaveBeenCalledOnce();
+  });
+
+  it("removes the bytes of files taken out of the draft", async () => {
+    const { storage } = createStorage();
+    const { fileStorage, blobs } = createFileStorage();
+    const drafts = new ConversationDraftState("draft", storage, fileStorage);
+    const kept = image();
+    await drafts.set({ content: "", files: [kept, image()] });
+    expect(blobs.size).toBe(2);
+
+    await drafts.set({ content: "", files: [kept] });
+    expect(blobs.size).toBe(1);
+  });
+
+  it.each(["clear", "clearIfCurrent"] as const)("removes saved files with %s", async (method) => {
+    const { storage, values } = createStorage();
+    const { fileStorage, blobs } = createFileStorage();
+    const drafts = new ConversationDraftState("draft", storage, fileStorage);
+    await drafts.set({ content: "", files: [image()] });
+
+    if (method === "clear") await drafts.clear();
+    else await drafts.clearIfCurrent((await drafts.load())!, new AbortController().signal);
+    expect(values.size).toBe(0);
+    expect(blobs.size).toBe(0);
+  });
+
+  it("removes files saved in an earlier session when the draft is replaced before loading", async () => {
+    const { storage } = createStorage();
+    const { fileStorage, blobs } = createFileStorage();
+    await new ConversationDraftState("draft", storage, fileStorage).set({ content: "", files: [image()] });
+
+    await new ConversationDraftState("draft", storage, fileStorage).set({ content: "text only" });
+    expect(blobs.size).toBe(0);
+  });
+
+  it("skips a file whose bytes are missing", async () => {
+    const { storage } = createStorage();
+    const { fileStorage, blobs } = createFileStorage();
+    await new ConversationDraftState("draft", storage, fileStorage).set({ content: "hi", files: [image()] });
+    blobs.clear();
+
+    const restored = await new ConversationDraftState("draft", storage, fileStorage).load();
+    expect(restored).toEqual({ content: "hi" });
+  });
+
+  it("loads a draft saved before files were supported", async () => {
+    const { storage, values } = createStorage();
+    const { fileStorage } = createFileStorage();
+    values.set("draft", JSON.stringify({ version: 1, draft: { content: "old" } }));
+    expect(await new ConversationDraftState("draft", storage, fileStorage).load()).toEqual({ content: "old" });
+  });
+
+  it("keeps files in memory only without file storage", async () => {
+    const { storage, values } = createStorage();
+    const drafts = new ConversationDraftState("draft", storage);
+    const file = image();
+    await drafts.set({ content: "", files: [file] });
+    expect((await drafts.load())?.files).toEqual([file]);
+    expect(JSON.parse(values.get("draft")!).files).toEqual([]);
+    drafts.dispose();
+
+    expect((await new ConversationDraftState("draft", storage).load())?.files).toBeUndefined();
+  });
+
+  it("rejects files that are not File objects", async () => {
+    const drafts = new ConversationDraftState("draft");
+    await expect(drafts.set({ content: "", files: ["image.png" as unknown as File] })).rejects.toThrow(
+      "Invalid conversation draft",
+    );
+  });
+});
+
+describe("localForage compatibility", () => {
+  it("accepts a localForage instance as draft and draft file storage", () => {
+    expectTypeOf<LocalForage>().toMatchTypeOf<MessageStorage>();
+    expectTypeOf<LocalForage>().toMatchTypeOf<MessageFileStorage>();
+  });
+
+  it("restores staged files from a localForage instance", async () => {
+    const values = new Map<string, unknown>();
+    const driver = "memory-draft-test";
+    await localforage.defineDriver({
+      _driver: driver,
+      _support: true,
+      _initStorage: async () => {},
+      getItem: async (key: string) => (values.get(key) ?? null) as never,
+      setItem: async (key: string, value: unknown) => {
+        values.set(key, value);
+        return value as never;
+      },
+      removeItem: async (key: string) => void values.delete(key),
+      clear: async () => values.clear(),
+      length: async () => values.size,
+      key: async (index: number) => [...values.keys()][index],
+      keys: async () => [...values.keys()],
+      iterate: async () => undefined as never,
+    });
+
+    const store = localforage.createInstance({ name: "drafts", driver });
+    await new ConversationDraftState("draft", store, store).set({ content: "look", files: [image()] });
+
+    const restored = await new ConversationDraftState("draft", store, store).load();
+    expect(await restored?.files?.[0].text()).toBe("png bytes");
+  });
 });

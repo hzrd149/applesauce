@@ -7,7 +7,7 @@ import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import type { MessageFileUploader } from "../common/attachments.js";
-import type { MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
 
 /** Dependencies and policies for a NIP-17 inbox */
 export interface WrappedMessagesClientOptions {
@@ -25,6 +25,8 @@ export interface WrappedMessagesClientOptions {
   decryptionCache?: EncryptedContentCache;
   /** The optional plaintext draft storage, separated by account and protocol by the application */
   draftStorage?: MessageStorage;
+  /** The optional storage for files staged in drafts, which receives them unencrypted */
+  draftFileStorage?: MessageFileStorage;
   /** Whether to decrypt arriving envelopes with the signer (default false) */
   autoUnlock?: boolean;
   /** The fallback read relays, never publication targets */

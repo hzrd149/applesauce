@@ -245,7 +245,7 @@ export class WrappedMessagesClient {
     const id = createConversationIdentifier(this.pubkey, getConversationParticipants(participants));
     let conversation = this.conversationInstances.get(id);
     if (!conversation || conversation.isDisposed) {
-      conversation = new WrappedConversation(this, id, this.options.draftStorage);
+      conversation = new WrappedConversation(this, id, this.options.draftStorage, this.options.draftFileStorage);
       this.conversationInstances.set(id, conversation);
     }
 

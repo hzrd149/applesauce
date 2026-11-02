@@ -53,7 +53,7 @@ export class NdrGroupConversation {
     readonly groupId: string,
   ) {
     this.id = getNdrGroupConversationId(groupId);
-    this.drafts = new ConversationDraftState(`draft:${this.id}`, client.draftStorage());
+    this.drafts = new ConversationDraftState(`draft:${this.id}`, client.draftStorage(), client.draftFileStorage());
     this.draft$ = this.drafts.draft$;
 
     const history = client.history;

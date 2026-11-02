@@ -27,7 +27,7 @@ import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
 import type { PreparedRegistration } from "nostr-double-ratchet";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useCallback, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
@@ -118,6 +118,8 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
     return defer(() => {
       // Ratchet state, the outbox, and decrypted history live in one encrypted store per account.
       const secure = storage.createInstance({ name: "ndr-messages", storeName: `account_${user.pubkey}` });
+      // Staged draft files are blobs, so they live in their own encrypted store beside the ratchet state.
+      const draftFiles = storage.createInstance({ name: "ndr-messages", storeName: `draft_files_${user.pubkey}` });
       const client = new NdrMessagesClient({
         pubkey: user.pubkey,
         signer,
@@ -125,6 +127,11 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
         pool,
         relays: NDR_RELAYS,
         storage: createNdrStorage(secure),
+        draftFileStorage: {
+          getItem: (key) => draftFiles.getBlob(key),
+          setItem: (key, blob) => draftFiles.setBlob(key, blob),
+          removeItem: (key) => draftFiles.removeItem(key),
+        },
         // Blossom uploads need an auth signature, so a linked device without a signer cannot attach files.
         upload: signer ? createBlossomUploader(signer, user) : undefined,
       });
@@ -676,21 +683,46 @@ function Composer({
   const [uploading, setUploading] = useState(false);
   const draft = use$(conversation.draft$);
   // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing.
-  // Picked files stay in the form, in memory, until the message is sent.
+  // Staged files are restored with the draft and stay plaintext until the message is sent.
   const { register, getValues, setValue, control, reset } = useForm<{ content: string; files: File[] }>({
-    values: { content: draft?.content ?? "", files: [] },
+    values: { content: draft?.content ?? "", files: [...(draft?.files ?? [])] },
     resetOptions: { keepDirtyValues: true },
   });
   const text = useWatch({ control, name: "content" });
   const files = useWatch({ control, name: "files" });
   const replyTarget = draft?.replyTo ? messages.find((message) => message.id === draft.replyTo) : undefined;
 
-  const setFiles = (next: File[]) => setValue("files", next, { shouldDirty: true });
-
-  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  // Saves the draft when the input loses focus, files change, or a message is sent, not on every keystroke
   const saveDraft = async () => {
     const content = getValues("content");
-    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+    const staged = getValues("files");
+    const savedFiles = draft?.files ?? [];
+    const filesChanged = staged.length !== savedFiles.length || staged.some((file, i) => file !== savedFiles[i]);
+
+    const contentChanged = content !== (draft?.content ?? "");
+    if (!contentChanged && !filesChanged) return;
+
+    await conversation.setDraft({ ...draft, content, files: staged });
+  };
+
+  // Staged files are saved with the draft right away so a reload keeps them
+  const setFiles = (next: File[]) => {
+    setValue("files", next, { shouldDirty: true });
+    saveDraft().catch((error) => setError(String(error)));
+  };
+
+  // Picked and pasted files are only encrypted and uploaded when the message is sent
+  const stageFiles = (picked: File[]) => {
+    if (picked.length > 0) setFiles([...getValues("files"), ...picked]);
+  };
+
+  const pasteFiles = (event: ClipboardEvent) => {
+    const pasted = [...event.clipboardData.files];
+    if (pasted.length === 0) return;
+
+    // Keep the pasted file out of the text, but let plain text paste normally
+    event.preventDefault();
+    stageFiles(pasted);
   };
 
   const send = async () => {
@@ -758,6 +790,7 @@ function Composer({
           className="input min-w-0 flex-1"
           placeholder={disabledReason ?? "Message"}
           disabled={!canSend || busy}
+          onPaste={(event) => canAttach && pasteFiles(event)}
           {...register("content", {
             onChange: () => conversation instanceof NdrConversation && conversation.sendTyping(),
             onBlur: () => saveDraft().catch((error) => setError(String(error))),
@@ -776,7 +809,7 @@ function Composer({
             onChange={(event) => {
               const picked = [...(event.target.files ?? [])];
               event.target.value = "";
-              setFiles([...getValues("files"), ...picked]);
+              stageFiles(picked);
             }}
           />
         </label>

@@ -740,6 +740,9 @@ importers:
       '@kehto/shell':
         specifier: ^0.24.4
         version: 0.24.4(@napplet/core@0.34.0)(@napplet/nap@0.34.0(typescript@7.0.2))(nostr-tools@2.25.2(typescript@7.0.2))
+      localforage:
+        specifier: ^1.10.0
+        version: 1.10.0
       nostr-double-ratchet:
         specifier: 0.0.183
         version: 0.0.183(typescript@7.0.2)

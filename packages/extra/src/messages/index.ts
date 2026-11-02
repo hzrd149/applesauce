@@ -28,6 +28,7 @@ export type {
 } from "./wrapped/types.js";
 export type {
   MessageStorage,
+  MessageFileStorage,
   MessageDraft,
   MessageOperationOptions,
   MessageClientError,

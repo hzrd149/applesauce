@@ -4,6 +4,7 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { GroupData, StorageAdapter } from "nostr-double-ratchet";
 import type { MessageFileUploader } from "../common/attachments.js";
+import type { MessageFileStorage } from "../common/types.js";
 
 /** The lifecycle of an NDR client's runtime, lock, and persistence */
 export type NdrClientLifecycle = "idle" | "starting" | "ready" | "locked" | "error" | "disposed";
@@ -40,6 +41,8 @@ export interface NdrMessagesClientOptions {
   deliveredReceipts?: boolean;
   /** The uploader for encrypted file attachments, such as a Blossom client */
   upload?: MessageFileUploader;
+  /** The optional storage for files staged in drafts, which receives them unencrypted */
+  draftFileStorage?: MessageFileStorage;
 }
 
 /** A decrypted chat message with its aggregated reactions and delivery state */

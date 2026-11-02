@@ -101,8 +101,8 @@
     "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
-    "@contextvm/sdk": "0.13.10",
     "@contextvm/mcp-sdk": "1.30.0",
+    "@contextvm/sdk": "0.13.10",
     "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
@@ -133,13 +133,14 @@
     }
   },
   "devDependencies": {
-    "@contextvm/sdk": "0.13.10",
     "@contextvm/mcp-sdk": "1.30.0",
+    "@contextvm/sdk": "0.13.10",
     "@hirez_io/observer-spy": "^2.2.0",
     "@kehto/nip": "^0.7.0",
     "@kehto/runtime": "^0.26.0",
     "@kehto/services": "^0.25.1",
     "@kehto/shell": "^0.24.4",
+    "localforage": "^1.10.0",
     "nostr-double-ratchet": "0.0.183",
     "rimraf": "^6.1.3",
     "typescript": "^7.0.2",
