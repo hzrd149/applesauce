@@ -57,7 +57,7 @@ const protocols = [createWrappedMessageProtocol(nostr), createLegacyMessageProto
 
 The adapters await cache restoration before asking the signer to decrypt and persist newly decrypted content afterward. Keys are event IDs, compatible with `persistEncryptedContent`: legacy entries contain message text, gift-wrap entries contain serialized seals, and seal entries contain serialized rumors. Both NIP-17 layers must be cached to avoid all decryption calls after a reload. The sender's own copy is also cached during send preparation.
 
-Provide secure storage, such as the encrypted storage used in the [messaging examples](/examples/), since cache values are decrypted content. The host controls storage access and its account lifecycle; the adapters do not add account prefixes or manage storage encryption. Cache read failures fall back to the signer, and write failures do not prevent delivery. Event persistence remains separate from this plaintext cache.
+Provide secure storage, such as the encrypted storage used in the [messaging examples](https://applesauce.build/examples/), since cache values are decrypted content. The host controls storage access and its account lifecycle; the adapters do not add account prefixes or manage storage encryption. Cache read failures fall back to the signer, and write failures do not prevent delivery. Event persistence remains separate from this plaintext cache.
 
 ## Custom Protocols and Routing
 
@@ -132,7 +132,7 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## NDR Transport
 
-Use the standalone [NDR transport integration](../features/ndr.md) for runtime wiring, explicit storage, persistent outbox, deadlines, and relay-acceptance semantics. The canonical import is `applesauce-extra/messages/ndr`; `applesauce-extra/kehto/services/dm/ndr` remains a compatible alias exporting `createNdrTransport`, `KehtoNdrTransport`, and `KehtoNdrTransportOptions`.
+Use the standalone [NDR transport integration](../extra/ndr.md) for runtime wiring, explicit storage, persistent outbox, deadlines, and relay-acceptance semantics. The canonical import is `applesauce-extra/messages/ndr`; `applesauce-extra/kehto/services/dm/ndr` remains a compatible alias exporting `createNdrTransport`, `KehtoNdrTransport`, and `KehtoNdrTransportOptions`.
 
 Attach runtime message consumers before initialization, then complete registration/invite setup explicitly. Feed the initialized runtime into Kehto's `createNdrDmAdapter` and compose it with `createDmAdapterProtocol` as above. Applications must arrange message approval and recipient discovery; the transport has no napplet window context. Filter non-chat runtime events before presenting a chat history.
 

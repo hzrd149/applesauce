@@ -222,7 +222,6 @@ export default defineConfig({
           { text: "Bookmarks", link: "/features/bookmarks" },
           { text: "Code Snippets", link: "/features/code-snippets" },
           { text: "Comments", link: "/features/comments" },
-          { text: "Double-ratchet Messaging", link: "/features/ndr" },
           { text: "Follows", link: "/features/follows" },
           { text: "Git", link: "/features/git" },
           { text: "Groups", link: "/features/groups" },
@@ -240,6 +239,11 @@ export default defineConfig({
           { text: "User Statuses", link: "/features/user-statuses" },
           { text: "Zaps", link: "/features/zaps" },
         ],
+      },
+      {
+        text: "Extras",
+        collapsed: false,
+        items: [{ text: "Double-ratchet Messaging", link: "/extra/ndr" }],
       },
       {
         text: "Napplets",

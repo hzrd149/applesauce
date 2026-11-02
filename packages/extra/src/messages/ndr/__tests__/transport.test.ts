@@ -92,6 +92,17 @@ describe("standalone NDR transport", () => {
     expect(stop).not.toThrow();
   });
 
+  it("publishes device-signed envelopes but rejects owner signing without a signer", async () => {
+    const { transport, pool } = create({ signer: undefined });
+    const event = envelope("linked");
+
+    await expect(transport.nostrPublish(event)).resolves.toEqual(event);
+    expect(pool.publish).toHaveBeenCalledTimes(1);
+
+    const unsigned = { kind: 37368, content: "", tags: [], created_at: 100, pubkey: "" };
+    await expect(transport.nostrSign(unsigned)).rejects.toThrow("No owner signer");
+  });
+
   it("wires the upstream runtime and durable outbox without treating enqueue as relay acceptance", async () => {
     const { transport, pool, signer } = create();
     pool.request.mockReturnValue(EMPTY);
