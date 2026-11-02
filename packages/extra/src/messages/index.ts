@@ -33,4 +33,4 @@ export type {
   MessageClientError,
   MessagesRelayStatus,
 } from "./common/types.js";
-export type { MessageAuthRequest } from "./common/authentication.js";
+export type { MessageAuthRequest, MessageAuthenticationResult } from "./common/authentication.js";

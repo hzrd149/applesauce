@@ -48,7 +48,7 @@ import {
   tap,
   timeout,
 } from "rxjs";
-import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
+import { MessageAuthentication, type MessageAuthenticationResult, withMessageAuth$ } from "../common/authentication.js";
 import { configured$, settle } from "../common/helpers.js";
 import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
 import type {
@@ -203,6 +203,15 @@ export class WrappedMessagesClient {
   authenticate(url: string): Promise<void> {
     this.assertActive();
     return this.authentication.authenticate(url);
+  }
+
+  /**
+   * Authenticates the current pending challenges sequentially and returns per-relay outcomes
+   * @throws if the client is disposed or stop/dispose cancels the batch
+   */
+  authenticateAll(): Promise<MessageAuthenticationResult[]> {
+    this.assertActive();
+    return this.authentication.authenticateAll();
   }
 
   private context(options: MessageOperationOptions = {}) {

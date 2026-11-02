@@ -27,6 +27,7 @@ import type { ISigner } from "applesauce-signers";
 import { Lock, PanelLeft, PanelRight, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   combineLatest,
@@ -187,7 +188,12 @@ function AuthenticationRelay({ request, onAuthenticate }: { request: MessageAuth
       onClick={onAuthenticate}
     >
       <img src={icon} alt="" className="h-6 w-6 shrink-0 rounded" />
-      <span className="min-w-0 flex-1 truncate">{name ?? new URL(request.url).hostname}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{name ?? new URL(request.url).hostname}</span>
+        {request.state === "failed" && (
+          <span className="block text-sm text-error [overflow-wrap:anywhere]">{String(request.error)}</span>
+        )}
+      </span>
       {request.state === "authenticating" && <span className="loading loading-spinner loading-sm" />}
       {request.state === "failed" && <span className="text-sm text-error">Retry</span>}
     </button>
@@ -241,21 +247,6 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
     .filter((relay) => relay.error);
 
   const [authenticatingAll, setAuthenticatingAll] = useState(false);
-
-  const authenticate = async (urls: string[]) => {
-    setError(undefined);
-    const failures: string[] = [];
-
-    // Queue signer prompts and keep trying the remaining relays after a rejection.
-    for (const url of urls) {
-      try {
-        await client.authenticate(url);
-      } catch (error) {
-        failures.push(`${new URL(url).hostname}: ${String(error)}`);
-      }
-    }
-    if (failures.length) setError(failures.join("; "));
-  };
 
   // Only signed-in users can answer auth challenges
   const pendingAuth = client.signer ? auth : [];
@@ -339,7 +330,8 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
               key={request.url}
               request={request}
               onAuthenticate={() => {
-                void authenticate([request.url]);
+                setError(undefined);
+                void client.authenticate(request.url).catch((error) => setError(String(error)));
               }}
             />
           ))}
@@ -348,10 +340,11 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
             disabled={authenticatingAll || pendingAuth.every((request) => request.state === "authenticating")}
             onClick={async () => {
               setAuthenticatingAll(true);
+              setError(undefined);
               try {
-                await authenticate(
-                  pendingAuth.filter((request) => request.state !== "authenticating").map((request) => request.url),
-                );
+                await client.authenticateAll();
+              } catch (error) {
+                setError(String(error));
               } finally {
                 setAuthenticatingAll(false);
               }
@@ -538,12 +531,23 @@ function PendingPublication({
 }
 
 function Composer({ conversation }: { conversation: LegacyConversation }) {
-  const draft = use$(conversation.draft$);
   const availability = use$(() => conversation.discover$(), [conversation]);
   const pending = use$(conversation.pendingPublications$);
   const sending = use$(conversation.sending$);
   const [error, setError] = useState<string>();
-  const text = draft?.content ?? "";
+  const draft = use$(conversation.draft$);
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
+  const { register, getValues, control } = useForm({
+    values: { content: draft?.content ?? "" },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
+
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
 
   const publish = async () => {
     if (sending) return;
@@ -551,6 +555,9 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
 
     let delivery: PreparedLegacyMessage;
     try {
+      // The conversation sends the saved draft, so save the text on screen first
+      await saveDraft();
+
       // The conversation retains signed events so retries do not prompt the signer again.
       delivery = await conversation.prepareDraft();
     } catch (error) {
@@ -603,11 +610,8 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
         <input
           className="input min-w-0 flex-1"
           placeholder="Message"
-          value={text}
           disabled={sending}
-          onChange={(event) => {
-            conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
-          }}
+          {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
         <button
           className="btn btn-primary"
@@ -697,7 +701,12 @@ function Conversation({
     }
   };
 
-  const draft = use$(conversation.draft$);
+  // Read the saved draft at click time so text the composer just saved is not overwritten
+  const setReply = async (replyTo: string) => {
+    const latest = await firstValueFrom(conversation.draft$);
+    await conversation.setDraft({ content: latest?.content ?? "", replyTo });
+  };
+
   const decryption = use$(conversation.decryptionState$);
 
   const peer = castUser(other, eventStore);
@@ -730,11 +739,7 @@ function Conversation({
             event={event}
             error={decryption?.errors.get(event.id)}
             hasError={decryption?.errors.has(event.id) ?? false}
-            onReply={() =>
-              conversation
-                .setDraft({ content: draft?.content ?? "", replyTo: event.id })
-                .catch((error) => setError(String(error)))
-            }
+            onReply={() => setReply(event.id).catch((error) => setError(String(error)))}
           />
         ))}
         {messages?.length === 0 && complete && <p className="text-center opacity-60">No messages</p>}

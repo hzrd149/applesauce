@@ -56,7 +56,7 @@ import {
   takeUntil,
   tap,
 } from "rxjs";
-import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
+import { MessageAuthentication, type MessageAuthenticationResult, withMessageAuth$ } from "../common/authentication.js";
 import type { MessageClientError, MessageOperationOptions } from "../common/types.js";
 import { LegacyConversation } from "./conversation.js";
 import type {
@@ -265,6 +265,15 @@ export class LegacyMessagesClient {
   authenticate(url: string): Promise<void> {
     this.assertActive();
     return this.authentication.authenticate(url);
+  }
+
+  /**
+   * Authenticates the current pending challenges sequentially and returns per-relay outcomes
+   * @throws if the client is disposed or stop/dispose cancels the batch
+   */
+  authenticateAll(): Promise<MessageAuthenticationResult[]> {
+    this.assertActive();
+    return this.authentication.authenticateAll();
   }
 
   private context(options: MessageOperationOptions = {}) {

@@ -484,10 +484,16 @@ describe("standalone messaging clients", () => {
       expect(await firstValueFrom(client.authRequests$)).toHaveLength(1);
       expect(onAuthRequired).toHaveBeenCalled();
       expect(relay.authenticate).not.toHaveBeenCalled();
+      const batch = client.authenticateAll();
       await client.authenticate(relay.url);
+      expect(await batch).toEqual([{ url: relay.url, status: "authenticated" }]);
+      expect(relay.authenticate).toHaveBeenCalledTimes(1);
       expect(await firstValueFrom(client.authRequests$)).toEqual([]);
       client.stop();
       expect(challenge$.observed).toBe(false);
+      expect(await client.authenticateAll()).toEqual([]);
+      client.dispose();
+      expect(() => client.authenticateAll()).toThrow("disposed");
     },
   );
 
