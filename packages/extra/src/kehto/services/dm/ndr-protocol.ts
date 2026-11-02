@@ -1,13 +1,17 @@
 import type { DmSendRequest } from "@kehto/services";
 import { unixNow } from "applesauce-core/helpers";
 import {
+  concat,
   defer,
   distinctUntilChanged,
   filter,
+  finalize,
+  ignoreElements,
   isObservable,
   map,
   merge,
   mergeMap,
+  NEVER,
   Observable,
   of,
   ReplaySubject,
@@ -17,24 +21,41 @@ import {
   takeUntil,
   timeout,
 } from "rxjs";
-import type { NdrMessagesClient } from "../../../messages/ndr/client.js";
+import { NdrMessagesClient } from "../../../messages/ndr/client.js";
 import { getNdrGroupId } from "../../../messages/ndr/history.js";
-import type { NdrMessage } from "../../../messages/ndr/types.js";
+import type { NdrMessage, NdrMessagesClientOptions } from "../../../messages/ndr/types.js";
 import { approveMessage } from "./approval.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
 import { DmPreparationCache } from "./preparation-cache.js";
 import type { DmProtocolAdapter, DmProtocolMessage, DmProtocolSession } from "./types.js";
 
-/** Options for exposing a host-owned NDR messages client to Kehto */
-export interface NdrMessageProtocolOptions extends Pick<NostrMessageProtocolOptions, "approve" | "actionTimeout"> {
-  /** The host-started client, or an account-scoped stream that emits undefined on logout */
-  client: NdrMessagesClient | Observable<NdrMessagesClient | undefined>;
+/** Options for wrapping an app-owned NDR client or constructing a protocol-owned client */
+export type NdrMessageProtocolOptions = Pick<NostrMessageProtocolOptions, "approve" | "actionTimeout"> & {
   /** The maximum wait for peer device discovery in milliseconds (default 3000) */
   discoveryTimeout?: number;
+} & (
+    | {
+        /** The host-started client, or an account-scoped stream that emits undefined on logout */
+        client: NdrMessagesClient | Observable<NdrMessagesClient | undefined>;
+        /** Client construction is exclusive with supplying a client */
+        clientOptions?: never;
+      }
+    | {
+        /** Options for a client started and disposed by the protocol */
+        clientOptions: NdrMessagesClientOptions;
+        /** An existing client is exclusive with construction options */
+        client?: never;
+      }
+  );
+
+/** An NDR protocol exposing its current client for device setup and host controls */
+export interface NdrMessageProtocol extends DmProtocolAdapter {
+  /** The active client, shared with protocol sessions */
+  client$: Observable<NdrMessagesClient | undefined>;
 }
 
-/** Creates a Kehto protocol over an NDR client whose startup and disposal remain host-owned */
-export function createNdrMessageProtocol(config: NdrMessageProtocolOptions): DmProtocolAdapter {
+/** Creates a Kehto protocol that owns only clients constructed from clientOptions */
+export function createNdrMessageProtocol(config: NdrMessageProtocolOptions): NdrMessageProtocol {
   const closed$ = new ReplaySubject<void>(1);
   const sessions = new WeakMap<NdrMessagesClient, DmProtocolSession>();
   let closed = false;
@@ -183,8 +204,24 @@ export function createNdrMessageProtocol(config: NdrMessageProtocolOptions): DmP
     };
   }
 
-  const clients$ = isObservable(config.client) ? config.client : of(config.client);
-  const session$ = defer(() => (closed ? of(undefined) : clients$)).pipe(
+  const clientOptions = config.clientOptions;
+  const source$ = clientOptions
+    ? defer(() => {
+        const client = new NdrMessagesClient(clientOptions);
+
+        return concat(of(client), defer(() => client.start()).pipe(ignoreElements()), NEVER).pipe(
+          finalize(() => client.dispose()),
+        );
+      })
+    : isObservable(config.client)
+      ? config.client
+      : of(config.client);
+  // Invalidate sessions before disposing owned clients; retain ownership until close.
+  const clients$ = merge(
+    closed$.pipe(map(() => undefined)),
+    defer(() => (closed ? of(undefined) : source$)).pipe(takeUntil(closed$)),
+  ).pipe(shareReplay({ bufferSize: 1, refCount: false }));
+  const session$ = clients$.pipe(
     distinctUntilChanged(),
     switchMap((client) =>
       client
@@ -207,7 +244,8 @@ export function createNdrMessageProtocol(config: NdrMessageProtocolOptions): DmP
 
   return {
     id: "ndr",
-    session$: merge(session$, closed$.pipe(map(() => undefined))).pipe(shareReplay({ bufferSize: 1, refCount: true })),
+    client$: clients$,
+    session$: merge(closed$.pipe(map(() => undefined)), session$).pipe(shareReplay({ bufferSize: 1, refCount: true })),
     close: () => {
       if (closed) return;
       closed = true;

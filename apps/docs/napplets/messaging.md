@@ -23,7 +23,7 @@ const host = createKehtoHost(context, {
 
 Use `createKehtoDmService(context)` to support both default protocols. Omit the `dm` registry entry entirely when your app does not support messaging.
 
-`createMultiProtocolDmAdapter` from `applesauce-extra/kehto` composes message protocol adapters into Kehto's existing `DmAdapter`; `createDmOptions` wraps it as service options. Wrapped NIP-17 and legacy NIP-04 adapters own their Nostr dependencies; custom adapters can use other transports and authentication.
+`createMultiProtocolDmAdapter` from `applesauce-extra/kehto` composes message protocol adapters into Kehto's existing `DmAdapter`; `createDmOptions` wraps it as service options. Legacy NIP-04 and NDR integrations can borrow an application's client or construct their own; custom adapters can use other transports and authentication.
 
 ## Usage
 
@@ -43,6 +43,28 @@ The default send router continues the last observed eligible conversation protoc
 NIP-17 supports groups and self messages. Legacy messages support one peer or self messages, read incoming inboxes and outgoing outboxes, and publish to the recipient's inbox/DM relays plus the sender's outboxes. Kehto message ids are namespaced by protocol; conversations merge by their participants, with a `group:` prefix for more than two participants. Protocol-owned conversations can supply an opaque `conversation` identity instead; their ids remain separate even when participants match.
 
 NIP-17 publication requires nonempty kind-10050 relay advertisements for every participant, including the sender's backup copy. Missing or empty advertisements prevent sending; configured fallback relays are used only for reading wrapped messages. Content mentions never add recipients or change the requested text.
+
+## Client ownership
+
+Both `createLegacyMessageProtocol` and `createNdrMessageProtocol` accept either `client` or `clientOptions`:
+
+```ts
+const legacy = createLegacyMessageProtocol({ client: activeLegacyClient$, approve });
+const ndr = createNdrMessageProtocol({
+  clientOptions: { pubkey, signer, eventStore, pool, relays, storage },
+  approve,
+});
+```
+
+`client` accepts an existing instance or a client stream that emits `undefined` on logout. The application starts and disposes these clients; closing the protocol never stops them. Legacy sessions require a running client, and NDR sessions require a ready client.
+
+`clientOptions` takes the core client's complete constructor options, including its storage and relay configuration. Construction and startup begin with the first subscription to `session$` or `client$`. The created client stays alive between requests until `protocol.close()`; closing the containing DM adapter also closes its protocols. Shared stores and pools remain application-owned. Create a new protocol for a different account, or supply a reactive app-owned client stream.
+
+Both explicit ownership modes expose `protocol.client$` for host controls such as NDR registration, legacy authentication, and unlocking. NDR registration remains an explicit host action.
+
+Legacy's explicit client modes read unlocked messages and observe subsequent unlock updates without initiating signer prompts. Configure `clientOptions.autoUnlock` or use the client's `unlock()` and `setAutoUnlock()` methods from host controls. History requests still call the client's finite `loadHistory()` before reading a snapshot; live relay loading follows the client's lifecycle.
+
+The existing `createLegacyMessageProtocol({ eventStore, pool, signer, ... })` signature remains supported with its subscription-owned loading and automatic decryption behavior. In both APIs, Kehto owns plaintext send approval and window-scoped retry identities, while the core client owns encryption and publication retries.
 
 ## Decrypted content cache
 
@@ -132,7 +154,7 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## NDR Messages Client
 
-Use `createNdrMessageProtocol` to wrap a host-owned [NDR messages client](../extra/ndr.md). The client owns encrypted storage, durable history, device registration, the outbox, and the single-writer lock; Kehto supplies routing, normalization, and plaintext send approval.
+Use `createNdrMessageProtocol` to wrap or construct an [NDR messages client](../extra/ndr.md), following the [client ownership options](#client-ownership). The client owns encrypted storage, durable history, device registration, the outbox, and the single-writer lock; Kehto supplies routing, normalization, and plaintext send approval.
 
 ```ts
 import { createNdrMessageProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
@@ -147,7 +169,7 @@ const adapter = createMultiProtocolDmAdapter({
 });
 ```
 
-The host calls `client.start()` and manages registration explicitly. Only clients with a ready lifecycle expose a session. Pass a client directly or a reactive client stream that emits `undefined` on logout; replacement invalidates pending Kehto operations. Closing the protocol releases its subscriptions, while the host remains responsible for `client.dispose()`.
+For an app-owned client, the host calls `client.start()` and `client.dispose()`. With `clientOptions`, the protocol owns those calls. Only clients with a ready lifecycle expose a session. A reactive client stream can emit `undefined` on logout; replacement invalidates pending Kehto operations. Registration remains explicit in either mode.
 
 Discovery waits up to `discoveryTimeout` (default 3000 ms) for peer devices. Missing discovery is unknown support, so automatic routing can fall back while an explicit NDR route can still attempt delivery. Direct conversations merge by participants; existing groups retain their native IDs and require matching recipients and accepted membership. Create groups through the client before sending to them through Kehto.
 
