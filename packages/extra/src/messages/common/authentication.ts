@@ -43,7 +43,6 @@ export interface MessageAuthRequest {
 
 type AuthOptions = { onAuthRequired?: SyncAuthHandler; authTimeout?: number | false; waitForAuth?: string };
 type AuthenticationAttempt = {
-  challenge: string | null;
   controller: AbortController;
   result: Promise<MessageAuthenticationResult>;
   individual?: Promise<void>;
@@ -87,9 +86,7 @@ export class MessageAuthentication {
       this.pending.delete(key);
       cleanup.unsubscribe();
       const attempt = this.attempts.get(context.url);
-      const stillPending = [...this.pending.values()].some(
-        (pending) => pending.context.url === context.url && pending.context.challenge === attempt?.challenge,
-      );
+      const stillPending = [...this.pending.values()].some((pending) => pending.context.url === context.url);
       if (!authenticated && attempt && !stillPending) attempt.controller.abort();
       this.emit();
     };
@@ -108,12 +105,13 @@ export class MessageAuthentication {
       }),
     );
 
-    // A replacement challenge invalidates requests tied to the previous challenge.
-    let currentChallenge = context.challenge;
+    // Challenges are display context; approval and operation lifetimes belong to the relay.
     cleanup.add(
       relay.challenge$.subscribe((challenge) => {
-        if (currentChallenge !== null && challenge !== currentChallenge) remove();
-        currentChallenge = challenge;
+        const pending = this.pending.get(key);
+        if (!pending || pending.context.challenge === challenge) return;
+        pending.context = { ...pending.context, challenge };
+        this.emit();
       }),
     );
 
@@ -131,10 +129,10 @@ export class MessageAuthentication {
     const contexts = new Map([...this.pending.values()].map(({ context }) => [context.url, context]));
     this.requests.next(
       [...contexts].map(([url, context]) => ({
-        ...(previous.get(url)?.context.challenge === context.challenge ? previous.get(url) : undefined),
+        ...previous.get(url),
         url,
         context,
-        state: previous.get(url)?.context.challenge === context.challenge ? previous.get(url)!.state : "pending",
+        state: previous.get(url)?.state ?? "pending",
       })),
     );
   }
@@ -146,7 +144,7 @@ export class MessageAuthentication {
   authenticate(url: string): Promise<void> {
     const request = this.requests.value.find((request) => request.url === url);
     if (!request) return Promise.reject(new Error("No pending authentication request"));
-    const attempt = this.enqueue(request);
+    const attempt = this.enqueue(url);
     return (attempt.individual ??= attempt.result.then((result) => {
       if (result.status === "failed") throw result.error;
       if (result.status === "skipped") throw new Error("Authentication request is no longer pending");
@@ -154,13 +152,13 @@ export class MessageAuthentication {
   }
 
   /**
-   * Authenticates a snapshot of pending challenges sequentially, retaining per-relay failures
+   * Authenticates a snapshot of pending relays sequentially, retaining per-relay failures
    * @throws if clear cancels the batch, including when its client stops or is disposed
    */
   authenticateAll(): Promise<MessageAuthenticationResult[]> {
     const signal = this.generation.signal;
     // Reserve all snapshot entries now so individual clicks share their queued attempts.
-    const attempts = this.requests.value.map((request) => this.enqueue(request).result);
+    const attempts = this.requests.value.map(({ url }) => this.enqueue(url).result);
     return this.untilAborted(Promise.all(attempts), signal);
   }
 
@@ -176,19 +174,14 @@ export class MessageAuthentication {
     });
   }
 
-  private enqueue(request: MessageAuthRequest) {
-    const {
-      url,
-      context: { challenge },
-    } = request;
+  private enqueue(url: string) {
     const running = this.attempts.get(url);
-    if (running?.challenge === challenge && !running.controller.signal.aborted) return running;
+    if (running && !running.controller.signal.aborted) return running;
 
     const controller = new AbortController();
     const generation = this.generation.signal;
     const signal = AbortSignal.any([generation, controller.signal]);
-    const isCurrent = () =>
-      this.requests.value.some((request) => request.url === url && request.context.challenge === challenge);
+    const isCurrent = () => !generation.aborted && this.requests.value.some((request) => request.url === url);
     const update = (state: MessageAuthRequest["state"], error?: unknown) => {
       if (!isCurrent()) return;
       this.requests.next(
@@ -200,9 +193,8 @@ export class MessageAuthentication {
       const signing: Promise<unknown>[] = [];
       try {
         generation.throwIfAborted();
-        if (!isCurrent() || signal.aborted || challenge === null) return { url, status: "skipped" };
+        if (!isCurrent() || signal.aborted) return { url, status: "skipped" };
         const relay = this.pool.relay(url);
-        if ((await firstValueFrom(relay.challenge$)) !== challenge) return { url, status: "skipped" };
         if ((await firstValueFrom(relay.authenticatedPubkeys$)).includes(this.pubkey))
           return { url, status: "skipped" };
         signal.throwIfAborted();
@@ -215,14 +207,12 @@ export class MessageAuthentication {
           {
             signEvent: (event) => {
               signal.throwIfAborted();
-              if (!isCurrent() || event.tags.find((tag) => tag[0] === "challenge")?.[1] !== challenge)
-                throw new Error("Authentication challenge changed");
               const signed = this.signer!.signEvent(event);
               signing.push(signed);
               return signed;
             },
           },
-          { signal, challengeRetries: 0 },
+          { signal },
         );
         signal.throwIfAborted();
         if (!response.ok) throw new Error(response.message ?? "Relay rejected authentication");
@@ -239,7 +229,6 @@ export class MessageAuthentication {
     // Never release the queue until underlying signer work has settled, even after clear().
     this.queue = work.catch(() => {});
     const attempt: AuthenticationAttempt = {
-      challenge,
       controller,
       result: this.untilAborted(work, generation),
     };
@@ -249,7 +238,7 @@ export class MessageAuthentication {
       }
     });
     this.attempts.set(url, attempt);
-    if (challenge !== null) update("authenticating");
+    update("authenticating");
     return attempt;
   }
 

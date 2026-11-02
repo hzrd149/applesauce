@@ -1,7 +1,7 @@
 import type { SyncAuthContext } from "applesauce-loaders/loaders";
-import type { RelayPool } from "applesauce-relay";
+import { Relay, type RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, firstValueFrom, NEVER } from "rxjs";
+import { BehaviorSubject, firstValueFrom, NEVER, of } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
 
@@ -82,21 +82,20 @@ describe("message authentication batches", () => {
     expect(await tracker.authenticateAll()).toEqual([]);
   });
 
-  it("skips missing challenges without signing", async () => {
+  it("delegates missing challenge acquisition to the relay", async () => {
     const { tracker, entries, track } = batchSetup();
     entries[0].relay.challenge$.next(null);
     entries[0].context = { ...entries[0].context, challenge: null };
     track(0);
-    expect(await tracker.authenticateAll()).toEqual([{ url: entries[0].relay.url, status: "skipped" }]);
-    expect(entries[0].relay.authenticate).not.toHaveBeenCalled();
-    expect((await firstValueFrom(tracker.requests$))[0].state).toBe("pending");
+    expect(await tracker.authenticateAll()).toEqual([{ url: entries[0].relay.url, status: "authenticated" }]);
+    expect(entries[0].relay.authenticate).toHaveBeenCalledWith(expect.anything(), { signal: expect.any(AbortSignal) });
   });
 
   it("preserves individual rejection when a queued requirement is released", async () => {
     const { tracker, entries, track } = batchSetup();
-    track(0);
+    const release = track(0);
     const attempt = tracker.authenticate(entries[0].relay.url);
-    entries[0].relay.challenge$.next(null);
+    release();
     await expect(attempt).rejects.toThrow("no longer pending");
     expect(entries[0].relay.authenticate).not.toHaveBeenCalled();
   });
@@ -126,7 +125,7 @@ describe("message authentication batches", () => {
     await tracker.authenticate(entries[1].relay.url);
   });
 
-  it.each(["changed", "satisfied", "released"])("skips queued %s requests", async (reason) => {
+  it.each(["satisfied", "released"])("skips queued %s requests", async (reason) => {
     const { tracker, entries, track } = batchSetup();
     const first = deferred<{ ok: boolean; message: string }>();
     entries[0].relay.authenticate.mockReturnValueOnce(first.promise);
@@ -134,7 +133,6 @@ describe("message authentication batches", () => {
     const release = track(1);
     const batch = tracker.authenticateAll();
     await vi.waitFor(() => expect(entries[0].relay.authenticate).toHaveBeenCalled());
-    if (reason === "changed") entries[1].relay.challenge$.next("replacement");
     if (reason === "satisfied") entries[1].relay.authenticatedPubkeys$.next([pubkey]);
     if (reason === "released") release();
     first.resolve({ ok: true, message: "accepted" });
@@ -142,20 +140,25 @@ describe("message authentication batches", () => {
     expect(entries[1].relay.authenticate).not.toHaveBeenCalled();
   });
 
-  it("does not deduplicate new challenge consent with an obsolete attempt", async () => {
+  it("preserves queued approval and deduplicates clicks across changed challenges", async () => {
     const { tracker, entries, track } = batchSetup();
     const first = deferred<{ ok: boolean; message: string }>();
     entries[0].relay.authenticate.mockReturnValueOnce(first.promise);
     track(0);
     track(1);
     const batch = tracker.authenticateAll();
+    const click = tracker.authenticate(entries[1].relay.url);
     await vi.waitFor(() => expect(entries[0].relay.authenticate).toHaveBeenCalled());
     entries[1].relay.challenge$.next("replacement");
     entries[1].context = { ...entries[1].context, challenge: "replacement" };
     track(1);
-    const click = tracker.authenticate(entries[1].relay.url);
+    expect(tracker.authenticate(entries[1].relay.url)).toBe(click);
+    expect((await firstValueFrom(tracker.requests$))[1]).toMatchObject({
+      context: { challenge: "replacement" },
+      state: "authenticating",
+    });
     first.resolve({ ok: true, message: "accepted" });
-    expect((await batch)[1].status).toBe("skipped");
+    expect((await batch)[1].status).toBe("authenticated");
     await click;
     expect(entries[1].relay.authenticate).toHaveBeenCalledTimes(1);
   });
@@ -242,6 +245,126 @@ describe("message authentication batches", () => {
     await next;
     signEvent.mockRestore();
   });
+
+  it("does not let a stopped generation authenticate new requests for the same relay", async () => {
+    const { tracker, entries, track } = batchSetup();
+    const owner = deferred<string>();
+    const getPublicKey = vi.spyOn(signer, "getPublicKey").mockReturnValueOnce(owner.promise);
+    track(0);
+    const old = tracker.authenticate(entries[0].relay.url);
+    const rejected = expect(old).rejects.toThrow();
+    await vi.waitFor(() => expect(getPublicKey).toHaveBeenCalled());
+    tracker.clear();
+    await rejected;
+    track(0);
+    const next = tracker.authenticate(entries[0].relay.url);
+    owner.resolve(pubkey);
+    await next;
+    expect(entries[0].relay.authenticate).toHaveBeenCalledTimes(1);
+    getPublicKey.mockRestore();
+  });
+});
+
+describe("message authentication with Relay.authenticate", () => {
+  function realRelaySetup(signEvent = vi.fn(signer.signEvent.bind(signer))) {
+    const relay = new Relay("wss://auth.test/");
+    // Keep the real challenge acquisition and signing policy without opening a socket.
+    const exchange = vi.spyOn(relay as any, "authExchange").mockImplementation(() => {
+      relay.authenticatedPubkeys$.next([pubkey]);
+      return of({ ok: true, message: "accepted" });
+    });
+    const authenticate = vi.spyOn(relay, "authenticate");
+    const pool = { relay: () => relay } as unknown as RelayPool;
+    const tracker = new MessageAuthentication(pool, pubkey, { getPublicKey: async () => pubkey, signEvent });
+    const context: SyncAuthContext = {
+      relay,
+      url: relay.url,
+      challenge: null,
+      requirement: pubkey,
+      missingPubkeys: [pubkey],
+      reason: "auth-required",
+    };
+    tracker.track(context, false);
+    cleanup.push(() => {
+      tracker.clear();
+      relay.close();
+    });
+    return { relay, tracker, context, exchange, authenticate, signEvent };
+  }
+
+  it("uses the current challenge when a queued relay reaches the signer", async () => {
+    const { relay, context, signEvent } = realRelaySetup();
+    const blocking = setup();
+    blocking.relay.url = "wss://blocking.test/";
+    blocking.context.url = blocking.relay.url;
+    const response = deferred<{ ok: boolean; message: string }>();
+    blocking.relay.authenticate.mockReturnValueOnce(response.promise);
+    const pool = {
+      relay: (url: string) => (url === relay.url ? relay : blocking.relay),
+    } as unknown as RelayPool;
+    const tracker = new MessageAuthentication(pool, pubkey, { getPublicKey: async () => pubkey, signEvent });
+    cleanup.push(() => tracker.clear());
+    tracker.track(blocking.context, false);
+    tracker.track(context, false);
+    relay.challenge$.next("original");
+    const batch = tracker.authenticateAll();
+    await vi.waitFor(() => expect(blocking.relay.authenticate).toHaveBeenCalledTimes(1));
+    relay.challenge$.next("replacement");
+    expect(signEvent).not.toHaveBeenCalled();
+    response.resolve({ ok: true, message: "accepted" });
+    expect((await batch).map((result) => result.status)).toEqual(["authenticated", "authenticated"]);
+    expect(signEvent).toHaveBeenCalledTimes(1);
+    expect(signEvent.mock.calls[0][0].tags).toContainEqual(["challenge", "replacement"]);
+  });
+
+  it("waits for a challenge instead of skipping relay approval", async () => {
+    const { relay, tracker, authenticate, signEvent } = realRelaySetup();
+    const attempt = tracker.authenticate(relay.url);
+    await vi.waitFor(() => expect(authenticate).toHaveBeenCalledTimes(1));
+    expect(signEvent).not.toHaveBeenCalled();
+    relay.challenge$.next("arrived");
+    await attempt;
+    expect(signEvent.mock.calls[0][0].tags).toContainEqual(["challenge", "arrived"]);
+  });
+
+  it("delegates in-flight challenge freshness and the default retry to the relay", async () => {
+    const signed = deferred<Awaited<ReturnType<typeof signer.signEvent>>>();
+    const signEvent = vi.fn(signer.signEvent.bind(signer)).mockReturnValueOnce(signed.promise);
+    const { relay, tracker, authenticate, exchange } = realRelaySetup(signEvent);
+    relay.challenge$.next("original");
+    const attempt = tracker.authenticate(relay.url);
+    await vi.waitFor(() => expect(signEvent).toHaveBeenCalledTimes(1));
+    relay.challenge$.next("replacement");
+    expect(tracker.authenticate(relay.url)).toBe(attempt);
+    expect((await firstValueFrom(tracker.requests$))[0]).toMatchObject({ state: "authenticating" });
+    signed.resolve(await signer.signEvent(signEvent.mock.calls[0][0]));
+    await attempt;
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    expect(authenticate.mock.calls[0][1]).toEqual({ signal: expect.any(AbortSignal) });
+    expect(signEvent).toHaveBeenCalledTimes(2);
+    expect(signEvent.mock.calls[1][0].tags).toContainEqual(["challenge", "replacement"]);
+    expect(exchange).toHaveBeenCalledTimes(1);
+    expect(exchange.mock.calls[0][0].tags).toContainEqual(["challenge", "replacement"]);
+  });
+
+  it("retains relay failures when challenge changes exhaust the default retry budget", async () => {
+    const { relay, tracker, exchange, signEvent } = realRelaySetup();
+    let changes = 0;
+    signEvent.mockImplementation(async (event) => {
+      relay.challenge$.next(`replacement-${++changes}`);
+      return signer.signEvent(event);
+    });
+    relay.challenge$.next("original");
+    await expect(tracker.authenticate(relay.url)).rejects.toThrow("challenge changed too many times");
+    expect(signEvent).toHaveBeenCalledTimes(2);
+    expect(exchange).not.toHaveBeenCalled();
+    expect((await firstValueFrom(tracker.requests$))[0]).toMatchObject({ state: "failed" });
+    relay.challenge$.next("next");
+    expect((await firstValueFrom(tracker.requests$))[0]).toMatchObject({
+      state: "failed",
+      context: { challenge: "next" },
+    });
+  });
 });
 
 describe("message authentication", () => {
@@ -270,6 +393,37 @@ describe("message authentication", () => {
     expect(await firstValueFrom(tracker.requests$)).toEqual([]);
   });
 
+  it("keeps approval and the remaining operation alive when another operation tears down", async () => {
+    const { tracker, relay, context, options } = setup();
+    const settled = vi.fn();
+    const response = deferred<{ ok: boolean; message: string }>();
+    relay.authenticate.mockReturnValueOnce(response.promise);
+    const first = withMessageAuth$(options, (auth) => {
+      void Promise.resolve(auth.onAuthRequired!(context)).then(settled);
+      return NEVER;
+    }).subscribe();
+    const second = withMessageAuth$(options, (auth) => {
+      void Promise.resolve(auth.onAuthRequired!(context)).then(settled);
+      return NEVER;
+    }).subscribe();
+    cleanup.push(
+      () => first.unsubscribe(),
+      () => second.unsubscribe(),
+    );
+    const attempt = tracker.authenticate(relay.url);
+    await vi.waitFor(() => expect(relay.authenticate).toHaveBeenCalledTimes(1));
+    relay.challenge$.next("replacement");
+    expect(settled).not.toHaveBeenCalled();
+    first.unsubscribe();
+    await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+    expect(relay.authenticate.mock.calls[0][1]!.signal!.aborted).toBe(false);
+    expect(tracker.authenticate(relay.url)).toBe(attempt);
+    relay.authenticatedPubkeys$.next([pubkey]);
+    response.resolve({ ok: true, message: "accepted" });
+    await attempt;
+    expect(settled).toHaveBeenCalledTimes(2);
+  });
+
   it("retains rejected requests for explicit retry", async () => {
     const { tracker, relay, open } = setup();
     relay.authenticate.mockResolvedValueOnce({ ok: false, message: "denied" });
@@ -280,7 +434,7 @@ describe("message authentication", () => {
     expect(await firstValueFrom(tracker.requests$)).toEqual([]);
   });
 
-  it("clears externally satisfied and stale challenges", async () => {
+  it("clears externally satisfied requests but preserves requirements across challenges", async () => {
     const { tracker, relay, open } = setup();
     open();
     relay.authenticatedPubkeys$.next(["another-account"]);
@@ -290,7 +444,11 @@ describe("message authentication", () => {
     relay.authenticatedPubkeys$.next([]);
     open();
     relay.challenge$.next(null);
-    expect(await firstValueFrom(tracker.requests$)).toEqual([]);
+    expect(await firstValueFrom(tracker.requests$)).toMatchObject([{ context: { challenge: null }, state: "pending" }]);
+    relay.challenge$.next("replacement");
+    expect(await firstValueFrom(tracker.requests$)).toMatchObject([
+      { context: { challenge: "replacement" }, state: "pending" },
+    ]);
   });
 
   it("expires requests and cleans up relay observers", async () => {
