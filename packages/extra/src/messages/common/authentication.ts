@@ -1,7 +1,30 @@
 import type { SyncAuthContext, SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { BehaviorSubject, defer, finalize, Observable, Subscription } from "rxjs";
+import { BehaviorSubject, defer, finalize, firstValueFrom, Observable, Subscription } from "rxjs";
+
+/** The outcome of one relay in an authentication batch */
+export type MessageAuthenticationResult =
+  | {
+      /** The relay URL */
+      url: string;
+      /** The successful outcome */
+      status: "authenticated";
+    }
+  | {
+      /** The relay URL */
+      url: string;
+      /** The obsolete or satisfied request */
+      status: "skipped";
+    }
+  | {
+      /** The relay URL */
+      url: string;
+      /** The unsuccessful outcome */
+      status: "failed";
+      /** The authentication failure */
+      error: unknown;
+    };
 
 /** A relay authentication request awaiting user action */
 export interface MessageAuthRequest {
@@ -19,6 +42,12 @@ export interface MessageAuthRequest {
 }
 
 type AuthOptions = { onAuthRequired?: SyncAuthHandler; authTimeout?: number | false; waitForAuth?: string };
+type AuthenticationAttempt = {
+  challenge: string | null;
+  controller: AbortController;
+  result: Promise<MessageAuthenticationResult>;
+  individual?: Promise<void>;
+};
 const trackers = new WeakMap<SyncAuthHandler, MessageAuthentication>();
 
 /** Tracks account-owned authentication requests without prompting the signer automatically */
@@ -29,8 +58,8 @@ export class MessageAuthentication {
   readonly requests$ = this.requests.asObservable();
 
   private readonly pending = new Map<symbol, { context: SyncAuthContext; cleanup: Subscription }>();
-  private readonly attempts = new Map<string, Promise<void>>();
-  private readonly controllers = new Map<string, AbortController>();
+  private readonly attempts = new Map<string, AuthenticationAttempt>();
+  private queue: Promise<unknown> = Promise.resolve();
   private generation = new AbortController();
 
   /** Creates an authentication tracker for a fixed account */
@@ -57,8 +86,11 @@ export class MessageAuthentication {
       if (!this.pending.has(key)) return;
       this.pending.delete(key);
       cleanup.unsubscribe();
-      if (!authenticated && ![...this.pending.values()].some((pending) => pending.context.url === context.url))
-        this.controllers.get(context.url)?.abort();
+      const attempt = this.attempts.get(context.url);
+      const stillPending = [...this.pending.values()].some(
+        (pending) => pending.context.url === context.url && pending.context.challenge === attempt?.challenge,
+      );
+      if (!authenticated && attempt && !stillPending) attempt.controller.abort();
       this.emit();
     };
     this.pending.set(key, { context, cleanup });
@@ -99,10 +131,10 @@ export class MessageAuthentication {
     const contexts = new Map([...this.pending.values()].map(({ context }) => [context.url, context]));
     this.requests.next(
       [...contexts].map(([url, context]) => ({
-        ...previous.get(url),
+        ...(previous.get(url)?.context.challenge === context.challenge ? previous.get(url) : undefined),
         url,
         context,
-        state: previous.get(url)?.state ?? "pending",
+        state: previous.get(url)?.context.challenge === context.challenge ? previous.get(url)!.state : "pending",
       })),
     );
   }
@@ -112,45 +144,112 @@ export class MessageAuthentication {
    * @throws if no request or matching signer exists, authentication fails, or the operation is cancelled
    */
   authenticate(url: string): Promise<void> {
+    const request = this.requests.value.find((request) => request.url === url);
+    if (!request) return Promise.reject(new Error("No pending authentication request"));
+    const attempt = this.enqueue(request);
+    return (attempt.individual ??= attempt.result.then((result) => {
+      if (result.status === "failed") throw result.error;
+      if (result.status === "skipped") throw new Error("Authentication request is no longer pending");
+    }));
+  }
+
+  /**
+   * Authenticates a snapshot of pending challenges sequentially, retaining per-relay failures
+   * @throws if clear cancels the batch, including when its client stops or is disposed
+   */
+  authenticateAll(): Promise<MessageAuthenticationResult[]> {
+    const signal = this.generation.signal;
+    // Reserve all snapshot entries now so individual clicks share their queued attempts.
+    const attempts = this.requests.value.map((request) => this.enqueue(request).result);
+    return this.untilAborted(Promise.all(attempts), signal);
+  }
+
+  private untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      if (signal.aborted) abort();
+      promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+    });
+  }
+
+  private enqueue(request: MessageAuthRequest) {
+    const {
+      url,
+      context: { challenge },
+    } = request;
     const running = this.attempts.get(url);
-    if (running) return running;
+    if (running?.challenge === challenge && !running.controller.signal.aborted) return running;
+
     const controller = new AbortController();
-    this.controllers.set(url, controller);
-    const signal = AbortSignal.any([this.generation.signal, controller.signal]);
-    const attempt = Promise.resolve()
-      .then(async () => {
+    const generation = this.generation.signal;
+    const signal = AbortSignal.any([generation, controller.signal]);
+    const isCurrent = () =>
+      this.requests.value.some((request) => request.url === url && request.context.challenge === challenge);
+    const update = (state: MessageAuthRequest["state"], error?: unknown) => {
+      if (!isCurrent()) return;
+      this.requests.next(
+        this.requests.value.map((request) => (request.url === url ? { ...request, state, error } : request)),
+      );
+    };
+    const work = this.queue.then(async (): Promise<MessageAuthenticationResult> => {
+      // Relay cancellation can settle before an extension's non-cancellable signing prompt.
+      const signing: Promise<unknown>[] = [];
+      try {
+        generation.throwIfAborted();
+        if (!isCurrent() || signal.aborted || challenge === null) return { url, status: "skipped" };
+        const relay = this.pool.relay(url);
+        if ((await firstValueFrom(relay.challenge$)) !== challenge) return { url, status: "skipped" };
+        if ((await firstValueFrom(relay.authenticatedPubkeys$)).includes(this.pubkey))
+          return { url, status: "skipped" };
         signal.throwIfAborted();
-        if (!this.requests.value.some((request) => request.url === url))
-          throw new Error("No pending authentication request");
         if (!this.signer) throw new Error("A signer is required");
         if ((await this.signer.getPublicKey()) !== this.pubkey)
           throw new Error("Signer does not match message client owner");
         signal.throwIfAborted();
-        const response = await this.pool.relay(url).authenticate(this.signer, { signal });
+        if (!isCurrent()) return { url, status: "skipped" };
+        const response = await relay.authenticate(
+          {
+            signEvent: (event) => {
+              signal.throwIfAborted();
+              if (!isCurrent() || event.tags.find((tag) => tag[0] === "challenge")?.[1] !== challenge)
+                throw new Error("Authentication challenge changed");
+              const signed = this.signer!.signEvent(event);
+              signing.push(signed);
+              return signed;
+            },
+          },
+          { signal, challengeRetries: 0 },
+        );
         signal.throwIfAborted();
         if (!response.ok) throw new Error(response.message ?? "Relay rejected authentication");
-      })
-      .catch((error) => {
-        if (!signal.aborted)
-          this.requests.next(
-            this.requests.value.map((request) =>
-              request.url === url ? { ...request, state: "failed", error } : request,
-            ),
-          );
-        throw error;
-      })
-      .finally(() => {
-        if (this.attempts.get(url) === attempt) {
-          this.attempts.delete(url);
-          this.controllers.delete(url);
-        }
-      });
+        return { url, status: "authenticated" };
+      } catch (error) {
+        generation.throwIfAborted();
+        if (signal.aborted || !isCurrent()) return { url, status: "skipped" };
+        update("failed", error);
+        return { url, status: "failed", error };
+      } finally {
+        await Promise.allSettled(signing);
+      }
+    });
+    // Never release the queue until underlying signer work has settled, even after clear().
+    this.queue = work.catch(() => {});
+    const attempt: AuthenticationAttempt = {
+      challenge,
+      controller,
+      result: this.untilAborted(work, generation),
+    };
+    attempt.result = attempt.result.finally(() => {
+      if (this.attempts.get(url) === attempt) {
+        this.attempts.delete(url);
+      }
+    });
     this.attempts.set(url, attempt);
-    this.requests.next(
-      this.requests.value.map((request) =>
-        request.url === url ? { ...request, state: "authenticating", error: undefined } : request,
-      ),
-    );
+    if (challenge !== null) update("authenticating");
     return attempt;
   }
 
@@ -159,7 +258,6 @@ export class MessageAuthentication {
     this.generation.abort();
     this.generation = new AbortController();
     this.attempts.clear();
-    this.controllers.clear();
     for (const { cleanup } of this.pending.values()) cleanup.unsubscribe();
     this.pending.clear();
     this.requests.next([]);

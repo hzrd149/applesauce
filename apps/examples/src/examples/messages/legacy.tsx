@@ -27,6 +27,7 @@ import type { ISigner } from "applesauce-signers";
 import { Lock, PanelLeft, PanelRight, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   combineLatest,
@@ -34,6 +35,7 @@ import {
   concat,
   defer,
   finalize,
+  firstValueFrom,
   ignoreElements,
   map,
   merge,
@@ -41,6 +43,7 @@ import {
   of,
   shareReplay,
   switchMap,
+  timeout,
 } from "rxjs";
 
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
@@ -185,7 +188,12 @@ function AuthenticationRelay({ request, onAuthenticate }: { request: MessageAuth
       onClick={onAuthenticate}
     >
       <img src={icon} alt="" className="h-6 w-6 shrink-0 rounded" />
-      <span className="min-w-0 flex-1 truncate">{name ?? new URL(request.url).hostname}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{name ?? new URL(request.url).hostname}</span>
+        {request.state === "failed" && (
+          <span className="block text-sm text-error [overflow-wrap:anywhere]">{String(request.error)}</span>
+        )}
+      </span>
       {request.state === "authenticating" && <span className="loading loading-spinner loading-sm" />}
       {request.state === "failed" && <span className="text-sm text-error">Retry</span>}
     </button>
@@ -240,21 +248,6 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
 
   const [authenticatingAll, setAuthenticatingAll] = useState(false);
 
-  const authenticate = async (urls: string[]) => {
-    setError(undefined);
-    const failures: string[] = [];
-
-    // Queue signer prompts and keep trying the remaining relays after a rejection.
-    for (const url of urls) {
-      try {
-        await client.authenticate(url);
-      } catch (error) {
-        failures.push(`${new URL(url).hostname}: ${String(error)}`);
-      }
-    }
-    if (failures.length) setError(failures.join("; "));
-  };
-
   // Only signed-in users can answer auth challenges
   const pendingAuth = client.signer ? auth : [];
 
@@ -274,8 +267,8 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
           <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
-          {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
-          {client.signer && (stats?.locked ?? 0) > 0 && (
+          {!!stats?.errors.size && <span className="badge badge-error">{stats.errors.size} failed</span>}
+          {client.signer && stats && stats.locked - stats.errors.size > 0 && (
             <button
               className="btn btn-sm ms-auto"
               title="Decrypt all locked messages currently in memory"
@@ -337,7 +330,8 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
               key={request.url}
               request={request}
               onAuthenticate={() => {
-                void authenticate([request.url]);
+                setError(undefined);
+                void client.authenticate(request.url).catch((error) => setError(String(error)));
               }}
             />
           ))}
@@ -346,10 +340,11 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
             disabled={authenticatingAll || pendingAuth.every((request) => request.state === "authenticating")}
             onClick={async () => {
               setAuthenticatingAll(true);
+              setError(undefined);
               try {
-                await authenticate(
-                  pendingAuth.filter((request) => request.state !== "authenticating").map((request) => request.url),
-                );
+                await client.authenticateAll();
+              } catch (error) {
+                setError(String(error));
               } finally {
                 setAuthenticatingAll(false);
               }
@@ -424,24 +419,30 @@ function Account({ user, readOnly }: { user: User; readOnly: boolean }) {
 }
 
 function MessageBubble({
-  client,
+  conversation,
   event,
-  publication,
+  error,
+  hasError,
   onReply,
 }: {
-  client: LegacyMessagesClient;
+  conversation: LegacyConversation;
   event: NostrEvent;
-  publication?: string;
+  error?: unknown;
+  hasError: boolean;
   onReply: () => void;
 }) {
   const content = use$(() => eventStore.model(EncryptedContentModel, event), [event]);
-  const [error, setError] = useState<string>();
+  const client = conversation.client;
 
   const author = castUser(event.pubkey, eventStore);
   const isOwn = event.pubkey === client.pubkey;
   const parent = getLegacyMessageParent(event);
 
-  const unlock = () => client.unlock(event).catch((error) => setError(String(error)));
+  const unlock = () => {
+    void conversation.unlock(event).catch(() => {
+      // Decryption failures live in shared state; cancellation must not become a bubble error.
+    });
+  };
 
   return (
     <div className={`chat min-w-0 ${isOwn ? "chat-end" : "chat-start"}`}>
@@ -469,13 +470,12 @@ function MessageBubble({
         ) : (
           <button className="inline-flex items-center gap-1" onClick={unlock}>
             <Lock className="h-4 w-4" />
-            {error ? "Retry decryption" : "Decrypt"}
+            {hasError ? "Retry decryption" : "Decrypt"}
           </button>
         )}
       </div>
       <div className="chat-footer flex min-w-0 flex-wrap gap-2 text-sm [overflow-wrap:anywhere]">
-        {publication && <span className="opacity-60">{publication}</span>}
-        {error && <span className="text-error">{error}</span>}
+        {hasError && content === undefined && <span className="text-error">{String(error)}</span>}
         {client.signer && (
           <button className="link opacity-60" onClick={onReply}>
             Reply
@@ -486,24 +486,98 @@ function MessageBubble({
   );
 }
 
+function PendingPublication({
+  conversation,
+  delivery,
+  sending,
+}: {
+  conversation: LegacyConversation;
+  delivery: PreparedLegacyMessage;
+  sending: boolean;
+}) {
+  const state = use$(delivery.state$);
+  const [error, setError] = useState<string>();
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="opacity-60">{state?.status ?? "prepared"}</span>
+      {state?.status === "failed" && <span className="text-error">{String(state.error)}</span>}
+      {error && <span className="text-error">{error}</span>}
+      <button
+        className="btn btn-sm ms-auto"
+        disabled={sending || state?.status === "publishing"}
+        onClick={() => {
+          setError(undefined);
+          // IDs resolve the same conversation-owned signed event as the convenience handle.
+          void conversation.publish(delivery.message.id).catch(() => {
+            // Publication failures are rendered from state$, not copied into local state.
+          });
+        }}
+      >
+        Retry
+      </button>
+      <button
+        className="btn btn-sm btn-ghost"
+        disabled={sending || state?.status === "publishing"}
+        onClick={() => {
+          setError(undefined);
+          void conversation.discardPublication(delivery.message.id).catch((error) => setError(String(error)));
+        }}
+      >
+        Discard
+      </button>
+    </div>
+  );
+}
+
 function Composer({ conversation }: { conversation: LegacyConversation }) {
-  const draft = use$(conversation.draft$);
   const availability = use$(() => conversation.discover$(), [conversation]);
   const pending = use$(conversation.pendingPublications$);
   const sending = use$(conversation.sending$);
   const [error, setError] = useState<string>();
-  const text = draft?.content ?? "";
+  const draft = use$(conversation.draft$);
+  // The input stays uncontrolled, and `values` follows the saved draft without overwriting unsaved typing
+  const { register, getValues, control } = useForm({
+    values: { content: draft?.content ?? "" },
+    resetOptions: { keepDirtyValues: true },
+  });
+  const text = useWatch({ control, name: "content" });
 
-  const publish = async (prepared?: PreparedLegacyMessage) => {
+  // Saves the draft when the input loses focus or a message is sent, not on every keystroke
+  const saveDraft = async () => {
+    const content = getValues("content");
+    if (content !== (draft?.content ?? "")) await conversation.setDraft({ ...draft, content });
+  };
+
+  const publish = async () => {
     if (sending) return;
     setError(undefined);
 
+    let delivery: PreparedLegacyMessage;
     try {
+      // The conversation sends the saved draft, so save the text on screen first
+      await saveDraft();
+
       // The conversation retains signed events so retries do not prompt the signer again.
-      const delivery = prepared ?? (await conversation.prepareDraft());
-      await conversation.publish(delivery);
+      delivery = await conversation.prepareDraft();
     } catch (error) {
       setError(String(error));
+      return;
+    }
+
+    try {
+      await conversation.publish(delivery);
+    } catch (error) {
+      // Read the replayed state only; stopped or stale handles may no longer expose it.
+      const state = await firstValueFrom(
+        delivery.state$.pipe(
+          timeout({ first: 0, with: () => of(undefined) }),
+          catchError(() => of(undefined)),
+        ),
+        { defaultValue: undefined },
+      );
+      // Only the matching publication failure is already visible in the pending row.
+      if (state?.status !== "failed" || state.error !== error) setError(String(error));
     }
   };
 
@@ -525,31 +599,19 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
         </div>
       )}
       {pending?.map((delivery) => (
-        <div key={delivery.message.id} className="flex items-center gap-2">
-          <span className="text-sm opacity-60">Unpublished message</span>
-          <button className="btn btn-sm ms-auto" disabled={sending} onClick={() => publish(delivery)}>
-            Retry
-          </button>
-          <button
-            className="btn btn-sm btn-ghost"
-            disabled={sending}
-            onClick={() =>
-              conversation.discardPublication(delivery.message.id).catch((error) => setError(String(error)))
-            }
-          >
-            Discard
-          </button>
-        </div>
+        <PendingPublication
+          key={delivery.message.id}
+          conversation={conversation}
+          delivery={delivery}
+          sending={!!sending}
+        />
       ))}
       <div className="flex gap-2">
         <input
           className="input min-w-0 flex-1"
           placeholder="Message"
-          value={text}
           disabled={sending}
-          onChange={(event) => {
-            conversation.setDraft({ ...draft, content: event.target.value }).catch((error) => setError(String(error)));
-          }}
+          {...register("content", { onBlur: () => saveDraft().catch((error) => setError(String(error))) })}
         />
         <button
           className="btn btn-primary"
@@ -639,8 +701,12 @@ function Conversation({
     }
   };
 
-  const draft = use$(conversation.draft$);
-  const publications = use$(conversation.publications$);
+  // Read the saved draft at click time so text the composer just saved is not overwritten
+  const setReply = async (replyTo: string) => {
+    const latest = await firstValueFrom(conversation.draft$);
+    await conversation.setDraft({ content: latest?.content ?? "", replyTo });
+  };
+
   const decryption = use$(conversation.decryptionState$);
 
   const peer = castUser(other, eventStore);
@@ -651,7 +717,7 @@ function Conversation({
         <Avatar user={peer} size="h-8 w-8" />
         <Name user={peer} />
         <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
-        {client.signer && (decryption?.locked ?? 0) > 0 && (
+        {client.signer && decryption && decryption.locked - decryption.errors.size > 0 && (
           <button
             className="btn btn-sm"
             title="Decrypt all loaded messages in this conversation"
@@ -669,14 +735,11 @@ function Conversation({
         {messages?.map((event) => (
           <MessageBubble
             key={event.id}
-            client={client}
+            conversation={conversation}
             event={event}
-            publication={publications?.[event.id]}
-            onReply={() =>
-              conversation
-                .setDraft({ content: draft?.content ?? "", replyTo: event.id })
-                .catch((error) => setError(String(error)))
-            }
+            error={decryption?.errors.get(event.id)}
+            hasError={decryption?.errors.has(event.id) ?? false}
+            onReply={() => setReply(event.id).catch((error) => setError(String(error)))}
           />
         ))}
         {messages?.length === 0 && complete && <p className="text-center opacity-60">No messages</p>}

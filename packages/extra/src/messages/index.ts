@@ -5,6 +5,9 @@ export { WrappedConversation, type WrappedConversationSendRequest } from "./wrap
 export { ConversationMessagesModel, ConversationThreadsModel, ConversationRepliesModel } from "./wrapped/models.js";
 export { WrappedMessagePublicationError } from "./wrapped/publication.js";
 export type {
+  LegacyDecryptionState,
+  LegacyPublicationState,
+  LegacyPublicationReference,
   LegacyMessagesClientOptions,
   LegacyMessageSendRequest,
   LegacyMessageAvailability,
@@ -30,7 +33,7 @@ export type {
   MessageClientError,
   MessagesRelayStatus,
 } from "./common/types.js";
-export type { MessageAuthRequest } from "./common/authentication.js";
+export type { MessageAuthRequest, MessageAuthenticationResult } from "./common/authentication.js";
 export {
   loadAttachment,
   uploadEncryptedFile,

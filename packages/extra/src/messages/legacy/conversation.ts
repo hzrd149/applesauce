@@ -45,6 +45,7 @@ import {
   EMPTY,
   finalize,
   firstValueFrom,
+  from,
   fromEvent,
   lastValueFrom,
   map,
@@ -61,6 +62,9 @@ import { configured$, withFallback$ } from "../common/helpers.js";
 import type { MessageDraft, MessageClientError, MessageOperationOptions } from "../common/types.js";
 import type { LegacyMessagesClient } from "./client.js";
 import type {
+  LegacyDecryptionState,
+  LegacyPublicationReference,
+  LegacyPublicationState,
   LegacyMessageAvailability,
   PreparedLegacyMessage,
   LegacyMessageHistoryOptions,
@@ -93,9 +97,12 @@ function isRelayUrl(value: unknown): value is string {
 
 /** A signed message retained for publish retries */
 interface LegacyDelivery extends StoredLegacyPublication {
-  accepted: boolean;
+  state: BehaviorSubject<LegacyPublicationState>;
+  // This mutex outlives cancelled readers until uncancellable relay work settles.
   publishing: boolean;
-  discarded?: boolean;
+  removing?: boolean;
+  durable: boolean;
+  handle?: { value: PreparedLegacyMessage; generation: AbortSignal };
 }
 
 /** An independently loaded NIP-04 conversation belonging to one fixed-account client */
@@ -122,7 +129,7 @@ export class LegacyConversation {
 
   private readonly errors = new Subject<MessageClientError>();
 
-  /** Nonterminal conversation loading, decryption, storage, and publication failures */
+  /** Nonterminal conversation loading, cache restoration, and storage failures */
   readonly errors$ = this.errors.asObservable();
 
   private readonly autoUnlock: BehaviorSubject<boolean>;
@@ -130,8 +137,8 @@ export class LegacyConversation {
   /** Whether this conversation's stored messages are automatically unlocked, disabled by default */
   readonly autoUnlock$: Observable<boolean>;
 
-  /** The decryption counts and failed event IDs for this conversation */
-  readonly decryptionState$;
+  /** The current decryption snapshot for loaded conversation messages */
+  readonly decryptionState$: Observable<LegacyDecryptionState>;
   private readonly sending = new BehaviorSubject(0);
 
   /** Whether message preparation or publication is active, excluding pending messages awaiting retry */
@@ -140,13 +147,6 @@ export class LegacyConversation {
     distinctUntilChanged(),
   );
 
-  private readonly publications = new BehaviorSubject<
-    Record<string, "prepared" | "publishing" | "accepted" | "failed">
-  >({});
-
-  /** The publication states of messages sent during this conversation's lifetime */
-  readonly publications$ = this.publications.asObservable();
-
   private readonly pendingPublications = new BehaviorSubject<readonly PreparedLegacyMessage[]>([]);
   private readonly publicationDestroyed = new ReplaySubject<void>(1);
   /** The unpublished messages, restored on subscription without publishing or starting message loading */
@@ -154,7 +154,8 @@ export class LegacyConversation {
     switchMap(() => this.pendingPublications.asObservable()),
     takeUntil(this.publicationDestroyed),
   );
-  private readonly pendingDeliveries = new Map<string, LegacyDelivery>();
+  // Terminal records remain owned for ID lookup; only durable entries are written to storage.
+  private readonly deliveries = new Map<string, LegacyDelivery>();
   private readonly preparedHandles = new WeakMap<
     PreparedLegacyMessage,
     { delivery: LegacyDelivery; generation: AbortSignal }
@@ -243,7 +244,7 @@ export class LegacyConversation {
       );
     }).pipe(takeUntil(this.publicationDestroyed), shareReplay({ bufferSize: 1, refCount: true }));
 
-    this.decryptionState$ = client.observeDecryption$(this.messages$, correspondent);
+    this.decryptionState$ = client.observeDecryption$(this.messages$);
   }
 
   private get relayTimeout() {
@@ -308,6 +309,7 @@ export class LegacyConversation {
   stop(): void {
     this.generation.abort();
     this.generation = new AbortController();
+    this.emitPendingPublications();
     this.background?.unsubscribe();
     this.background = undefined;
 
@@ -325,8 +327,8 @@ export class LegacyConversation {
     this.publicationDestroyed.complete();
     this.pendingPublications.next([]);
     this.pendingPublications.complete();
-    this.pendingDeliveries.clear();
-    this.publications.next({});
+    for (const delivery of this.deliveries.values()) delivery.state.complete();
+    this.deliveries.clear();
     this.lifecycle.next("disposed");
   }
 
@@ -483,9 +485,6 @@ export class LegacyConversation {
       try {
         await this.client.unlock(item, context);
       } catch (error) {
-        if (!context.signal.aborted) {
-          this.errors.next({ operation: "decrypt", error, eventId: item.id });
-        }
         if (event || context.signal.aborted) throw error;
       }
     }
@@ -514,6 +513,8 @@ export class LegacyConversation {
   }
 
   private enqueuePublication<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.disposed) return Promise.reject(new Error("Conversation disposed"));
+
     const result = this.publicationOperations.then(async () => {
       this.context();
       return operation();
@@ -526,8 +527,8 @@ export class LegacyConversation {
   private emitPendingPublications(): void {
     if (this.disposed) return;
     this.pendingPublications.next(
-      [...this.pendingDeliveries.values()]
-        .filter((delivery) => !delivery.accepted)
+      [...this.deliveries.values()]
+        .filter((delivery) => !["accepted", "discarded"].includes(delivery.state.value.status))
         .map((delivery) => this.preparedDelivery(delivery)),
     );
   }
@@ -541,8 +542,9 @@ export class LegacyConversation {
         ? []
         : this.parsePublications(serialized).map((entry) => ({
             ...entry,
-            accepted: false,
+            state: new BehaviorSubject<LegacyPublicationState>({ status: "prepared" }),
             publishing: false,
+            durable: true,
           }));
     // Validate the complete record before making any restored handle available.
     for (const delivery of restored) {
@@ -554,8 +556,7 @@ export class LegacyConversation {
       this.context();
     }
     for (const delivery of restored) {
-      this.pendingDeliveries.set(delivery.event.id, delivery);
-      this.publications.next({ ...this.publications.value, [delivery.event.id]: "prepared" });
+      this.deliveries.set(delivery.event.id, delivery);
     }
     this.publicationsLoaded = true;
     this.emitPendingPublications();
@@ -565,11 +566,12 @@ export class LegacyConversation {
     const storage = this.options.publicationStorage;
     if (!storage) return;
     const key = `publication:${this.id}`;
-    if (!deliveries.size) {
+    const retained = [...deliveries.values()].filter((delivery) => delivery.durable);
+    if (!retained.length) {
       await storage.removeItem(key);
       return;
     }
-    const messages = [...deliveries.values()].map((delivery) => ({
+    const messages = retained.map((delivery) => ({
       event: delivery.event,
       relays: delivery.relays,
       preparedAt: delivery.preparedAt,
@@ -629,40 +631,36 @@ export class LegacyConversation {
   }
 
   /**
-   * Removes an unpublished message and invalidates its retained publication handles
-   * @throws if disposed, the message is being published, or storage fails
+   * Discards an unpublished message after removing its durable record, retaining its terminal state in memory
+   * @throws if disposed, the reference is unknown, foreign or stale, publication is active, or storage fails
    */
-  discardPublication(eventId: string): Promise<void> {
+  discardPublication(reference: LegacyPublicationReference): Promise<void> {
     return this.enqueuePublication(async () => {
-      await this.restorePublications();
-      const delivery = this.pendingDeliveries.get(eventId);
-      if (!delivery) return;
+      const delivery = await this.resolvePublication(reference);
       if (delivery.publishing) throw new Error("DM message is already being published");
+      if (["accepted", "discarded"].includes(delivery.state.value.status)) return;
       // Prevent publication from starting while removal is waiting on storage.
-      delivery.discarded = true;
+      delivery.removing = true;
       try {
-        const next = new Map(this.pendingDeliveries);
-        next.delete(eventId);
+        const next = new Map(this.deliveries);
+        next.delete(delivery.event.id);
         await this.writePublications(next);
-        this.pendingDeliveries.delete(eventId);
-        const publications = { ...this.publications.value };
-        delete publications[eventId];
-        this.publications.next(publications);
+        delivery.durable = false;
+        delivery.state.next({ status: "discarded" });
         this.emitPendingPublications();
-      } catch (error) {
-        delivery.discarded = false;
-        throw error;
+      } finally {
+        delivery.removing = false;
       }
     });
   }
 
   private async removeAcceptedPublication(delivery: LegacyDelivery): Promise<void> {
+    if (!delivery.durable) return;
     await this.enqueuePublication(async () => {
-      const next = new Map(this.pendingDeliveries);
+      const next = new Map(this.deliveries);
       next.delete(delivery.event.id);
       await this.writePublications(next);
-      this.pendingDeliveries.delete(delivery.event.id);
-      this.emitPendingPublications();
+      delivery.durable = false;
     });
   }
 
@@ -770,17 +768,18 @@ export class LegacyConversation {
                 preparedAt: unixNow(),
                 event,
                 relays,
-                accepted: false,
+                state: new BehaviorSubject<LegacyPublicationState>({ status: "prepared" }),
                 publishing: false,
+                durable: true,
               };
               await this.enqueuePublication(async () => {
                 assertCurrent();
-                const next = new Map(this.pendingDeliveries);
+                const next = new Map(this.deliveries);
                 next.set(event.id, delivery);
                 await this.writePublications(next);
                 // A completed durable write remains pending even if its caller was cancelled while writing.
                 if (!this.disposed) {
-                  this.pendingDeliveries.set(event.id, delivery);
+                  this.deliveries.set(event.id, delivery);
                   this.emitPendingPublications();
                 }
               });
@@ -810,14 +809,16 @@ export class LegacyConversation {
   private publishDelivery$(delivery: LegacyDelivery, context: { signal: AbortSignal }) {
     return defer(async () => {
       context.signal.throwIfAborted();
-      if (delivery.discarded) throw new Error("DM publication discarded");
+      if (delivery.state.value.status === "discarded" || delivery.removing) throw new Error("DM publication discarded");
       if (delivery.publishing) throw new Error("DM message is already being published");
-      if (delivery.accepted) {
+      if (delivery.state.value.status === "accepted") {
         await this.cleanupAcceptedPublication(delivery);
         return delivery.event;
       }
 
+      const previousState = delivery.state.value;
       delivery.publishing = true;
+      delivery.state.next({ status: "publishing" });
       try {
         // Release auth prompts on cancellation, but retain late acceptance to prevent resending.
         const results = await firstValueFrom(
@@ -837,11 +838,18 @@ export class LegacyConversation {
         }
         this.options.eventStore.add(delivery.event);
 
-        delivery.accepted = true;
+        if (this.disposed) return delivery.event;
+        delivery.state.next({ status: "accepted" });
         this.emitPendingPublications();
         await this.cleanupAcceptedPublication(delivery);
         context.signal.throwIfAborted();
         return delivery.event;
+      } catch (error) {
+        if (!this.disposed && delivery.state.getValue().status !== "accepted") {
+          // Cancellation ends the reader, not delivery; only an actual noncancelled failure is recorded.
+          delivery.state.next(context.signal.aborted ? previousState : { status: "failed", error });
+        }
+        throw error;
       } finally {
         delivery.publishing = false;
       }
@@ -873,10 +881,6 @@ export class LegacyConversation {
       const delivery = await firstValueFrom(
         this.prepareDelivery$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
       );
-      this.publications.next({
-        ...this.publications.value,
-        [delivery.event.id]: delivery.accepted ? "accepted" : "prepared",
-      });
       return this.preparedDelivery(delivery);
     } finally {
       this.sending.next(this.sending.value - 1);
@@ -920,44 +924,81 @@ export class LegacyConversation {
   }
 
   private preparedDelivery(delivery: LegacyDelivery): PreparedLegacyMessage {
+    if (delivery.handle?.generation === this.generation.signal) return delivery.handle.value;
+
     const prepared: PreparedLegacyMessage = {
       message: delivery.event,
+      state$: defer(() => this.publicationState$(prepared)),
       publish: (options) => this.publish(prepared, options),
     };
     this.preparedHandles.set(prepared, { delivery, generation: this.generation.signal });
+    delivery.handle = { value: prepared, generation: this.generation.signal };
     return prepared;
   }
 
+  private resolvePublication(reference: LegacyPublicationReference): LegacyDelivery | Promise<LegacyDelivery> {
+    this.context();
+    if (typeof reference !== "string") {
+      const handle = this.preparedHandles.get(reference);
+      if (!handle) throw new Error("DM publication does not belong to this conversation");
+      handle.generation.throwIfAborted();
+      return handle.delivery;
+    }
+
+    const delivery = this.deliveries.get(reference);
+    if (delivery) return delivery;
+
+    return this.restorePublications().then(() => {
+      const restored = this.deliveries.get(reference);
+      if (!restored) throw new Error("Unknown DM publication");
+      return restored;
+    });
+  }
+
+  /** Observes a publication lazily, restoring IDs as needed and completing on stop or disposal */
+  publicationState$(reference: LegacyPublicationReference): Observable<LegacyPublicationState> {
+    return defer(() => {
+      const context = this.context();
+      // Serialize restoration with durable outbox writes, without retaining a subscription after stop.
+      const resolve = () => this.resolvePublication(reference);
+      const delivery =
+        typeof reference === "string" && !this.deliveries.has(reference)
+          ? this.enqueuePublication(async () => resolve())
+          : resolve();
+      const delivery$ = delivery instanceof Promise ? from(delivery) : of(delivery);
+      return delivery$.pipe(
+        switchMap((delivery) => delivery.state.asObservable()),
+        takeUntil(fromEvent(context.signal, "abort")),
+      );
+    });
+  }
+
   /**
-   * Publishes or retries a message prepared or restored by this conversation without signing again
-   * @throws if disposed, cancelled, the handle is foreign, stale, discarded, already publishing, or publication fails
+   * Publishes or retries a conversation-owned handle or message ID without signing again
+   * @throws if disposed, cancelled, the reference is unknown, foreign, stale, discarded, already publishing, or publication fails
    */
-  async publish(prepared: PreparedLegacyMessage, options: MessageOperationOptions = {}): Promise<NostrEvent> {
+  async publish(reference: LegacyPublicationReference, options: MessageOperationOptions = {}): Promise<NostrEvent> {
     const publication = this.context(options);
-    const handle = this.preparedHandles.get(prepared);
-    if (!handle) throw new Error("DM publication does not belong to this conversation");
-
-    const { delivery, generation } = handle;
-    generation.throwIfAborted();
-    if (delivery.discarded) throw new Error("DM publication discarded");
-    if (delivery.publishing) throw new Error("DM message is already being published");
-
-    const setState = (state: "prepared" | "publishing" | "accepted" | "failed") =>
-      this.publications.next({ ...this.publications.value, [delivery.event.id]: state });
+    const delivery =
+      typeof reference === "string" && !this.deliveries.has(reference)
+        ? this.enqueuePublication(async () => this.resolvePublication(reference))
+        : this.resolvePublication(reference);
+    if (!(delivery instanceof Promise)) {
+      if (delivery.state.value.status === "discarded" || delivery.removing) throw new Error("DM publication discarded");
+      if (delivery.publishing) throw new Error("DM message is already being published");
+    }
+    const delivery$ = delivery instanceof Promise ? from(delivery) : of(delivery);
     this.sending.next(this.sending.value + 1);
-    setState("publishing");
 
     try {
       const message = await firstValueFrom(
-        this.publishDelivery$(delivery, publication).pipe(takeUntil(fromEvent(publication.signal, "abort"))),
+        delivery$.pipe(
+          switchMap((delivery) => this.publishDelivery$(delivery, publication)),
+          takeUntil(fromEvent(publication.signal, "abort")),
+        ),
       );
       publication.signal.throwIfAborted();
-      setState("accepted");
       return message;
-    } catch (error) {
-      setState(delivery.accepted ? "accepted" : "failed");
-      this.errors.next({ operation: "send", error, eventId: delivery.event.id });
-      throw error;
     } finally {
       this.sending.next(this.sending.value - 1);
     }

@@ -3,8 +3,9 @@ import { kinds, finalizeEvent, unixNow, type NostrEvent } from "applesauce-core/
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { firstValueFrom } from "rxjs";
+import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LegacyMessagesClient, type MessageStorage } from "../index.js";
+import { LegacyMessagesClient, type MessageStorage, type PreparedLegacyMessage } from "../index.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
 const bobKey = new Uint8Array(32).fill(2);
@@ -68,6 +69,241 @@ function setup(storage?: MessageStorage, withSigner = true) {
 }
 
 describe("legacy publication storage", () => {
+  it.each(["observe", "publish", "discard"])("restores a durable publication lazily by ID to %s", async (operation) => {
+    const { storage, values } = storageAdapter(true);
+    const original = setup(storage);
+    const prepared = await original.conversation.prepareSend({ content: "restore by ID" });
+    original.client.dispose();
+    const { conversation, pool } = setup(storage, false);
+    vi.mocked(storage.getItem).mockClear();
+    const state$ = conversation.publicationState$(prepared.message.id);
+    expect(storage.getItem).not.toHaveBeenCalled();
+
+    if (operation === "observe") {
+      expect(await firstValueFrom(state$)).toEqual({ status: "prepared" });
+      expect(values.size).toBe(1);
+      expect(pool.publish).not.toHaveBeenCalled();
+    } else if (operation === "publish") {
+      expect((await conversation.publish(prepared.message.id)).id).toBe(prepared.message.id);
+      expect(await firstValueFrom(state$)).toEqual({ status: "accepted" });
+      expect(values.size).toBe(0);
+    } else {
+      await conversation.discardPublication(prepared.message.id);
+      expect(await firstValueFrom(state$)).toEqual({ status: "discarded" });
+      expect(values.size).toBe(0);
+      expect(pool.publish).not.toHaveBeenCalled();
+    }
+    expect(storage.getItem).toHaveBeenCalledOnce();
+    expect(pool.subscription).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown IDs even when the signed message exists in the shared EventStore", async () => {
+    const { conversation, client, pool } = setup();
+    const event = finalizeEvent(
+      { kind: kinds.EncryptedDirectMessage, created_at: 1, content: "encrypted", tags: [["p", bob]] },
+      aliceKey,
+    );
+    client.eventStore.add(event);
+    const state$ = conversation.publicationState$(event.id);
+    await expect(firstValueFrom(state$)).rejects.toThrow("Unknown");
+    await expect(conversation.publish(event.id)).rejects.toThrow("Unknown");
+    await expect(conversation.discardPublication(event.id)).rejects.toThrow("Unknown");
+    expect(pool.publish).not.toHaveBeenCalled();
+  });
+
+  it.each(["foreign", "forged", "stale"])("validates %s references for observation and discard", async (invalid) => {
+    const { conversation, pool } = setup();
+    let prepared = await conversation.prepareSend({ content: "owned" });
+    if (invalid === "foreign") prepared = await setup().conversation.prepareSend({ content: "foreign" });
+    if (invalid === "forged") prepared = { ...prepared } as PreparedLegacyMessage;
+    if (invalid === "stale") conversation.stop();
+    const state$ = conversation.publicationState$(prepared);
+    await expect(firstValueFrom(state$)).rejects.toThrow();
+    await expect(conversation.discardPublication(prepared)).rejects.toThrow();
+    expect(await conversation.loadPublications()).toHaveLength(1);
+    expect(pool.publish).not.toHaveBeenCalled();
+  });
+
+  it("keeps handles stable within a generation and completes active state observers on stop", async () => {
+    const { conversation } = setup();
+    const prepared = await conversation.prepareSend({ content: "stable" });
+    expect((await conversation.loadPublications())[0]).toBe(prepared);
+    expect((await firstValueFrom(conversation.pendingPublications$))[0]).toBe(prepared);
+    expect(prepared.state$).toBe(prepared.state$);
+    const states = subscribeSpyTo(prepared.state$);
+    const ids = subscribeSpyTo(conversation.publicationState$(prepared.message.id));
+    const pending = subscribeSpyTo(conversation.pendingPublications$);
+    await vi.waitFor(() => expect(pending.getLastValue()?.[0]).toBe(prepared));
+
+    conversation.stop();
+    expect(states.receivedComplete()).toBe(true);
+    expect(ids.receivedComplete()).toBe(true);
+    const fresh = pending.getLastValue()![0];
+    expect(fresh).not.toBe(prepared);
+    expect((await conversation.loadPublications())[0]).toBe(fresh);
+    await expect(firstValueFrom(prepared.state$)).rejects.toThrow();
+    await expect(prepared.publish()).rejects.toThrow();
+    expect(await firstValueFrom(fresh.state$)).toEqual({ status: "prepared" });
+    await conversation.publish(prepared.message.id);
+    expect(await firstValueFrom(fresh.state$)).toEqual({ status: "accepted" });
+    expect(states.getValues()).toEqual([{ status: "prepared" }]);
+    pending.unsubscribe();
+  });
+
+  it("retains discarded state across handle and ID observation without persisting or resurrecting it", async () => {
+    const { storage, values } = storageAdapter();
+    const { conversation, client } = setup(storage);
+    const prepared = await conversation.prepareSend({ content: "discard" });
+    const states = subscribeSpyTo(prepared.state$);
+    await conversation.discardPublication(prepared);
+    await conversation.discardPublication(prepared.message.id);
+    expect(states.getValues()).toEqual([{ status: "prepared" }, { status: "discarded" }]);
+    expect(await firstValueFrom(conversation.publicationState$(prepared.message.id))).toEqual({ status: "discarded" });
+    await expect(conversation.publish(prepared.message.id)).rejects.toThrow("discarded");
+    expect(values.size).toBe(0);
+    client.dispose();
+    expect(states.receivedComplete()).toBe(true);
+    const reloaded = setup(storage);
+    await expect(firstValueFrom(reloaded.conversation.publicationState$(prepared.message.id))).rejects.toThrow(
+      "Unknown",
+    );
+  });
+
+  it("retains accepted state through cleanup and stop but never reconstructs it after reload", async () => {
+    const { storage } = storageAdapter();
+    const { conversation, client, pool } = setup(storage);
+    const prepared = await conversation.prepareSend({ content: "accepted" });
+    await prepared.publish();
+    conversation.stop();
+    await expect(prepared.publish()).rejects.toThrow();
+    expect(await conversation.publish(prepared.message.id)).toBe(prepared.message);
+    await conversation.discardPublication(prepared.message.id);
+    expect(await firstValueFrom(conversation.publicationState$(prepared.message.id))).toEqual({ status: "accepted" });
+    expect(pool.publish).toHaveBeenCalledOnce();
+    client.dispose();
+    await expect(setup(storage).conversation.publish(prepared.message.id)).rejects.toThrow("Unknown");
+  });
+
+  it.each([new Error("original"), undefined])(
+    "retains the exact publication failure %s without duplicate errors",
+    async (error) => {
+      const { conversation, pool } = setup();
+      const prepared = await conversation.prepareSend({ content: "fail" });
+      const states = subscribeSpyTo(prepared.state$);
+      const ids = subscribeSpyTo(conversation.publicationState$(prepared.message.id));
+      const errors = subscribeSpyTo(conversation.errors$);
+      pool.publish.mockRejectedValueOnce(error);
+      await expect(conversation.publish(prepared.message.id)).rejects.toBe(error);
+      const failed = states.getLastValue();
+      expect(failed).toEqual({ status: "failed", error });
+      if (failed?.status === "failed") expect(failed.error).toBe(error);
+      expect(ids.getValues()).toEqual(states.getValues());
+      expect(errors.getValues()).toEqual([]);
+      await prepared.publish();
+      expect(states.getValues().map((state) => state.status)).toEqual([
+        "prepared",
+        "publishing",
+        "failed",
+        "publishing",
+        "accepted",
+      ]);
+      states.unsubscribe();
+      ids.unsubscribe();
+      errors.unsubscribe();
+    },
+  );
+
+  it.each(["stop", "abort"])(
+    "keeps late partial acceptance canonical after %s and blocks concurrent retries",
+    async (ending) => {
+      const { storage, values } = storageAdapter();
+      const { conversation, pool } = setup(storage);
+      const prepared = await conversation.prepareSend({ content: "late acceptance" });
+      let finish!: () => void;
+      pool.publish.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = () =>
+              resolve([
+                { from: "wss://dm.test/", ok: false },
+                { from: "wss://accepted.test/", ok: true },
+              ]);
+          }),
+      );
+      const states = subscribeSpyTo(prepared.state$);
+      const errors = subscribeSpyTo(conversation.errors$);
+      const controller = new AbortController();
+      const publishing = prepared.publish({ signal: controller.signal });
+      const cancelled = expect(publishing).rejects.toThrow();
+      await expect(conversation.publish(prepared.message.id)).rejects.toThrow("already");
+      if (ending === "stop") conversation.stop();
+      else controller.abort();
+      await cancelled;
+      expect(await firstValueFrom(conversation.publicationState$(prepared.message.id))).toEqual({
+        status: "publishing",
+      });
+      await expect(conversation.publish(prepared.message.id)).rejects.toThrow("already");
+      await expect(conversation.discardPublication(prepared.message.id)).rejects.toThrow("already");
+      finish();
+      await vi.waitFor(() => expect(values.size).toBe(0));
+      expect(await firstValueFrom(conversation.publicationState$(prepared.message.id))).toEqual({ status: "accepted" });
+      await conversation.publish(prepared.message.id);
+      expect(pool.publish).toHaveBeenCalledOnce();
+      expect(states.getValues().some((state) => state.status === "failed")).toBe(false);
+      expect(errors.getValues()).toEqual([]);
+      states.unsubscribe();
+      errors.unsubscribe();
+    },
+  );
+
+  it("does not turn cancelled network rejection into a delivery failure", async () => {
+    const { conversation, pool } = setup();
+    const prepared = await conversation.prepareSend({ content: "cancelled" });
+    let reject!: (error: unknown) => void;
+    pool.publish.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const states = subscribeSpyTo(prepared.state$);
+    const controller = new AbortController();
+    const publishing = prepared.publish({ signal: controller.signal });
+    const cancelled = expect(publishing).rejects.toThrow();
+    controller.abort();
+    await cancelled;
+    reject(new Error("network after cancellation"));
+    await vi.waitFor(() => expect(states.getLastValue()).toEqual({ status: "prepared" }));
+    expect(states.getValues().some((state) => state.status === "failed")).toBe(false);
+    await conversation.publish(prepared.message.id);
+    states.unsubscribe();
+  });
+
+  it("exposes acceptance before blocked storage cleanup finishes and releases observers on disposal", async () => {
+    const { storage } = storageAdapter();
+    const { conversation, pool } = setup(storage);
+    const prepared = await conversation.prepareSend({ content: "cleanup" });
+    let finish!: () => void;
+    vi.mocked(storage.removeItem).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const publishing = prepared.publish();
+    await vi.waitFor(() => expect(storage.removeItem).toHaveBeenCalledOnce());
+    expect(await firstValueFrom(prepared.state$)).toEqual({ status: "accepted" });
+    const states = subscribeSpyTo(prepared.state$);
+    const cancelled = expect(publishing).rejects.toThrow();
+    conversation.dispose();
+    expect(states.receivedComplete()).toBe(true);
+    await cancelled;
+    await expect(firstValueFrom(prepared.state$)).rejects.toThrow("disposed");
+    await expect(conversation.discardPublication(prepared.message.id)).rejects.toThrow("disposed");
+    finish();
+    expect(pool.publish).toHaveBeenCalledOnce();
+  });
+
   it.each([false, true])(
     "persists encrypted events and restores publish handles without a signer, async: %s",
     async (asynchronous) => {
@@ -141,12 +377,54 @@ describe("legacy publication storage", () => {
     expect(await prepared.publish()).toBe(prepared.message);
     expect(values.size).toBe(1);
     expect(errors).toEqual([expect.objectContaining({ operation: "storage", eventId: prepared.message.id })]);
-    expect(await firstValueFrom(conversation.publications$)).toEqual({ [prepared.message.id]: "accepted" });
+    expect(await firstValueFrom(prepared.state$)).toEqual({ status: "accepted" });
     expect(await conversation.loadPublications()).toEqual([]);
-    await prepared.publish();
+    await conversation.publish(prepared.message.id);
     expect(values.size).toBe(0);
     expect(pool.publish).toHaveBeenCalledOnce();
     subscription.unsubscribe();
+  });
+
+  it("preserves failed cleanup during other outbox writes without persisting clean terminal records", async () => {
+    const { storage, values } = storageAdapter();
+    const { conversation, pool, key } = setup(storage);
+    const accepted = await conversation.prepareSend({ content: "accepted" });
+    vi.mocked(storage.removeItem).mockRejectedValueOnce(new Error("cleanup failed"));
+    await accepted.publish();
+    const discarded = await conversation.prepareSend({ content: "discard" });
+    await conversation.discardPublication(discarded);
+    const pending = await conversation.prepareSend({ content: "pending" });
+    const savedIds = () => JSON.parse(values.get(key)!).messages.map((entry: { event: NostrEvent }) => entry.event.id);
+    expect(savedIds()).toEqual([accepted.message.id, pending.message.id]);
+    await conversation.publish(accepted.message.id);
+    expect(savedIds()).toEqual([pending.message.id]);
+    const next = await conversation.prepareSend({ content: "next" });
+    expect(savedIds()).toEqual([pending.message.id, next.message.id]);
+    expect(pool.publish).toHaveBeenCalledOnce();
+    expect(await firstValueFrom(accepted.state$)).toEqual({ status: "accepted" });
+    expect(await firstValueFrom(discarded.state$)).toEqual({ status: "discarded" });
+  });
+
+  it("shares lazy ID restoration across simultaneous publication calls without double publication", async () => {
+    const { storage } = storageAdapter(true);
+    const original = setup(storage);
+    const prepared = await original.conversation.prepareSend({ content: "restore concurrently" });
+    original.client.dispose();
+    const { conversation, pool } = setup(storage, false);
+    vi.mocked(storage.getItem).mockClear();
+    let finish!: () => void;
+    pool.publish.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve([{ from: "wss://dm.test/", ok: true }]);
+        }),
+    );
+    const first = conversation.publish(prepared.message.id);
+    await expect(conversation.publish(prepared.message.id)).rejects.toThrow("already");
+    expect(pool.publish).toHaveBeenCalledOnce();
+    expect(storage.getItem).toHaveBeenCalledOnce();
+    finish();
+    await first;
   });
 
   it("discards durably and invalidates retained handles without publishing", async () => {
@@ -160,7 +438,7 @@ describe("legacy publication storage", () => {
     expect(values.size).toBe(0);
     expect(await conversation.loadPublications()).toEqual([]);
     await expect(prepared.publish()).rejects.toThrow("discarded");
-    expect(await firstValueFrom(conversation.publications$)).toEqual({});
+    expect(await firstValueFrom(prepared.state$)).toEqual({ status: "discarded" });
     expect(pool.publish).not.toHaveBeenCalled();
     await conversation.prepareSend({ content: "new" });
   });
