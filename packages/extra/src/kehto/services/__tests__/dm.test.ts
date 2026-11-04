@@ -147,12 +147,14 @@ describe("kehto DM lifecycle", () => {
     const onMessage = vi.fn();
     const live = await dm.subscribe({}, onMessage);
     eventStore.add(first);
+    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
     eventStore.add(second);
     await dm.unsubscribe(live.subscriptionId);
     delayed.resolve(await original(first.pubkey, first.content));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(onMessage).not.toHaveBeenCalled();
-    expect(decrypt).toHaveBeenCalledTimes(2);
+    // Cancelling the last reader prevents the next layer as well as queued envelopes.
+    expect(decrypt).toHaveBeenCalledTimes(1);
   });
 
   it("cancels a send during approval even if the same account returns", async () => {

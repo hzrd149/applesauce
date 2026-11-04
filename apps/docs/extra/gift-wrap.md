@@ -145,6 +145,8 @@ authentication.unsubscribe();
 
 `authenticate(url)` handles one pending relay and rejects on failure. `authenticateAll()` snapshots pending relays and returns individual `{ url, status }` results: `authenticated`, `skipped`, or `failed` (with `error`). One relay's failure does not reject the whole batch; `stop()`/`dispose()` cancellation can. Duplicate attempts for a relay are shared. `authTimeout` defaults to `false`, allowing approval to remain pending for the operation's lifetime.
 
+Use `onAuthRequired` for application policy after a request is recorded. When `autoAuth` is enabled, automatic authentication follows the callback. A receiver shared with [WrappedMessagesClient](./messages.md#share-an-application-receiver) retains its own authentication policy and signer.
+
 ## Integration
 
 ### Shared envelopes, separate plaintext

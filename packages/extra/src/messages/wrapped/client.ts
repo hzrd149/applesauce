@@ -1,57 +1,31 @@
-import { mapEventsToStore } from "applesauce-core/observable";
-import { logger } from "applesauce-core";
-import { castUser } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
   getConversationParticipants,
-  getGiftWrapRumor,
-  getGiftWrapSeal,
   isGiftWrapUnlocked,
 } from "applesauce-common/helpers";
-import { WrappedMessagesGroups, WrappedMessagesModel } from "applesauce-common/models";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
-import {
-  restoreEncryptedContent,
-  kinds,
-  mergeRelaySets,
-  notifyEventUpdate,
-  unixNow,
-  type Filter,
-  type NostrEvent,
-  type Rumor,
-} from "applesauce-core/helpers";
-import { watchEventsUpdates } from "applesauce-core/observable";
-import { createSyncLoader } from "applesauce-loaders/loaders";
+import { unixNow, type NostrEvent, type Rumor } from "applesauce-core/helpers";
 import {
   BehaviorSubject,
   catchError,
   combineLatest,
-  concatMap,
   defer,
-  distinctUntilChanged,
   EMPTY,
-  filter,
   firstValueFrom,
   fromEvent,
-  isObservable,
   lastValueFrom,
   map,
   Observable,
   of,
   ReplaySubject,
-  shareReplay,
-  startWith,
   Subject,
   Subscription,
-  switchMap,
   takeUntil,
-  tap,
   timeout,
 } from "rxjs";
-import { MessageAuthentication, type MessageAuthenticationResult, withMessageAuth$ } from "../common/authentication.js";
+import { MessageAuthentication, type MessageAuthenticationResult } from "../common/authentication.js";
 import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
-import { configured$, settle } from "../common/helpers.js";
 import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
 import type {
   WrappedMessageAvailability,
@@ -63,8 +37,9 @@ import type {
 } from "./types.js";
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
-
-const log = logger.extend("WrappedMessages");
+import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
+import { selectWrappedMessages, groupWrappedMessages } from "./models.js";
+import { readWrappedMessages$ } from "./reading.js";
 
 const TWO_DAYS = 2 * 24 * 60 * 60;
 
@@ -82,7 +57,12 @@ export class WrappedMessagesClient {
   /** The account signer */
   readonly signer;
 
-  /** The validated, deduplicated kind-14 rumors */
+  /** The incoming receiver, owned by this client only when constructed internally */
+  readonly receiver: GiftWrapReceiver;
+  private readonly ownsReceiver: boolean;
+  private readonly subscriptions = new Subscription();
+
+  /** The validated, deduplicated chat and file rumors */
   readonly messages$: Observable<Rumor[]>;
 
   /** The conversations discovered after decryption */
@@ -110,9 +90,6 @@ export class WrappedMessagesClient {
   /** Nonterminal failures from individual operations */
   readonly errors$ = this.errors.asObservable();
 
-  private readonly failed = new BehaviorSubject<ReadonlySet<string>>(new Set());
-  private readonly pending = new BehaviorSubject<number>(0);
-  private readonly autoUnlock = new BehaviorSubject(false);
   private readonly destroyed = new ReplaySubject<void>(1);
   private readonly syncState = new BehaviorSubject<WrappedMessagesSyncStatus | undefined>(undefined);
 
@@ -136,22 +113,57 @@ export class WrappedMessagesClient {
 
   /** The pending relay authentication requests */
   readonly authRequests$;
-  private readonly inboxFilter: Filter;
   private background?: Subscription;
   private generation = new AbortController();
   private disposed = false;
   private readonly conversationInstances = new Map<string, WrappedConversation>();
 
-  /** Creates a stopped wrapped client using shared application dependencies */
+  /**
+   * Creates a stopped wrapped client using shared application dependencies
+   * @throws if an injected receiver does not match the account, store, or pool, or receiver configuration is invalid
+   */
   constructor(private readonly options: WrappedMessagesClientOptions) {
+    if (options.receiver && options.receiverOptions)
+      throw new Error("Receiver and receiverOptions are mutually exclusive");
+    if (
+      options.receiver &&
+      (options.receiver.pubkey !== options.pubkey ||
+        options.receiver.eventStore !== options.eventStore ||
+        options.receiver.pool !== options.pool)
+    )
+      throw new Error("Receiver must match the client account, event store, and relay pool");
+
+    this.ownsReceiver = !options.receiver;
+    this.receiver =
+      options.receiver ??
+      new GiftWrapReceiver({
+        signer: options.signer,
+        cacheRequest: options.cacheRequest,
+        decryptionCache: options.decryptionCache,
+        autoUnlock: options.autoUnlock,
+        fallbackRelays: options.fallbackRelays,
+        timeout: options.timeout ?? 4000,
+        decryptionTimeout: options.decryptionTimeout,
+        historySpan: (options.historySpan ?? 30 * 86400) + TWO_DAYS,
+        authTimeout: options.authTimeout,
+        onAuthRequired: options.onAuthRequired,
+        ...options.receiverOptions,
+        pubkey: options.pubkey,
+        eventStore: options.eventStore,
+        pool: options.pool,
+      });
     this.authentication = new MessageAuthentication(options.pool, options.pubkey, options.signer);
-    this.authRequests$ = this.authentication.requests$;
+    this.authRequests$ = combineLatest([this.authentication.requests$, this.receiver.authRequests$]).pipe(
+      map(([sending, receiving]) => [
+        ...new Map([...sending, ...receiving].map((request) => [request.url, request])).values(),
+      ]),
+      takeUntil(this.destroyed),
+    );
     options = this.options = { ...options, ...this.authentication.configure(options) };
     this.pubkey = options.pubkey;
     this.eventStore = options.eventStore;
     this.pool = options.pool;
     this.signer = options.signer;
-    this.autoUnlock.next(options.autoUnlock ?? false);
 
     const signer = options.signer ?? {
       getPublicKey: async () => options.pubkey,
@@ -160,36 +172,42 @@ export class WrappedMessagesClient {
       },
     };
     const owner = { pubkey: this.pubkey, signer };
-    this.session = new WrappedMessageSession(options, owner, (error, event) => this.report("decrypt", error, event.id));
+    this.session = new WrappedMessageSession(options, owner, async (event, signal) => {
+      try {
+        await this.receiver.unlock(event, { signal });
+      } catch {
+        // Receiver errors remain observable independently of accepted publication.
+        signal.throwIfAborted();
+      }
+    });
 
-    const user = castUser(this.pubkey, this.eventStore);
-    const fallback$ = configured$(options.fallbackRelays, []).pipe(catchError(() => of([])));
-    this.relays$ = combineLatest([user.directMessageRelays$.pipe(startWith(undefined)), fallback$]).pipe(
-      map(([advertised, fallback]) => mergeRelaySets(advertised?.length ? advertised : fallback)),
-      // Stable normalized sets keep unrelated store updates from restarting network work.
-      map((relays) => relays.sort()),
-      distinctUntilChanged((a, b) => a.join() === b.join()),
-      // Share selection across live loading, history sync, and relay status until unused.
-      shareReplay({ bufferSize: 1, refCount: true }),
-    );
-    this.inboxFilter = { kinds: [kinds.GiftWrap], "#p": [this.pubkey] };
-    // Unlocking changes cached envelope contents without replacing the stored event.
-    this.giftWraps$ = this.eventStore.timeline(this.inboxFilter).pipe(watchEventsUpdates(this.eventStore));
+    this.relays$ = this.receiver.relays$;
+    this.giftWraps$ = this.receiver.giftWraps$;
     this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
       map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
     );
 
-    this.messages$ = this.eventStore.model(WrappedMessagesModel, this.pubkey);
-    this.conversations$ = this.eventStore.model(WrappedMessagesGroups, this.pubkey);
+    this.messages$ = this.receiver.rumors$.pipe(
+      map((rumors) => selectWrappedMessages(rumors, this.pubkey)),
+      takeUntil(this.destroyed),
+    );
+    this.conversations$ = this.messages$.pipe(map(groupWrappedMessages));
+
+    this.subscriptions.add(
+      this.receiver.errors$.subscribe(({ operation, error, eventId }) => {
+        const clientOperation = operation === "cache" ? "restore" : operation === "persistence" ? "storage" : operation;
+        this.report(clientOperation, error, eventId);
+      }),
+    );
 
     // Derive counts from envelopes; rumor models expose only successfully decrypted messages.
-    this.decryptionState$ = combineLatest([this.giftWraps$, this.failed, this.pending]).pipe(
-      map(([events, failed, pending]) => ({
-        total: events.length,
-        unlocked: events.filter(isGiftWrapUnlocked).length,
-        locked: events.filter((event) => !isGiftWrapUnlocked(event) && !failed.has(event.id)).length,
-        failed: [...failed],
-        pending,
+    this.decryptionState$ = combineLatest([this.giftWraps$, this.receiver.decryptionState$]).pipe(
+      map(([events, state]) => ({
+        total: state.total,
+        unlocked: state.unlocked,
+        locked: events.filter((event) => !isGiftWrapUnlocked(event) && !state.errors.has(event.id)).length,
+        failed: [...state.errors.keys()],
+        pending: state.pending,
       })),
     );
   }
@@ -199,12 +217,19 @@ export class WrappedMessagesClient {
   }
 
   /**
-   * Authenticates a pending relay using this client's signer
+   * Authenticates a pending relay through its receiving or publication owner
    * @throws if the client is disposed, no matching signer or request exists, or authentication fails
    */
   authenticate(url: string): Promise<void> {
-    this.assertActive();
-    return this.authentication.authenticate(url);
+    const context = this.context();
+    return firstValueFrom(
+      defer(async () => {
+        const receiving = await firstValueFrom(this.receiver.authRequests$);
+        context.signal.throwIfAborted();
+        const owner = receiving.some((request) => request.url === url) ? this.receiver : this.authentication;
+        await owner.authenticate(url);
+      }).pipe(takeUntil(fromEvent(context.signal, "abort"))),
+    );
   }
 
   /**
@@ -212,8 +237,29 @@ export class WrappedMessagesClient {
    * @throws if the client is disposed or stop/dispose cancels the batch
    */
   authenticateAll(): Promise<MessageAuthenticationResult[]> {
-    this.assertActive();
-    return this.authentication.authenticateAll();
+    const context = this.context();
+    return firstValueFrom(
+      defer(async () => {
+        const requests = await firstValueFrom(this.authRequests$);
+        const results: MessageAuthenticationResult[] = [];
+        for (const { url } of requests) {
+          context.signal.throwIfAborted();
+          const pending = await firstValueFrom(this.authRequests$);
+          if (!pending.some((request) => request.url === url)) {
+            results.push({ url, status: "skipped" });
+            continue;
+          }
+          try {
+            await this.authenticate(url);
+            results.push({ url, status: "authenticated" });
+          } catch (error) {
+            context.signal.throwIfAborted();
+            results.push({ url, status: "failed", error });
+          }
+        }
+        return results;
+      }).pipe(takeUntil(fromEvent(context.signal, "abort"))),
+    );
   }
 
   private context(options: MessageOperationOptions = {}) {
@@ -252,7 +298,7 @@ export class WrappedMessagesClient {
     return conversation;
   }
 
-  /** Starts cache restoration, recent history reconciliation and live inbox loading */
+  /** Starts owned receiving and reconciliation, or attaches to an application-managed receiver */
   async start(): Promise<void> {
     this.assertActive();
     if (this.background) return;
@@ -262,90 +308,30 @@ export class WrappedMessagesClient {
     this.lifecycle.next("loading");
 
     try {
-      await this.hydrate(context.signal);
+      if (!this.ownsReceiver) {
+        this.lifecycle.next("ready");
+        return;
+      }
+
+      await this.receiver.start();
       if (context.signal.aborted || background.closed) return;
-
-      // Restore cached plaintext in order; one failed event must not stop later restores.
+      // A failed checkpoint restore can stop receiving after start() has returned.
       background.add(
-        this.eventStore
-          .filters(this.inboxFilter)
-          .pipe(
-            concatMap((event) =>
-              defer(() => this.restore(event)).pipe(
-                timeout({ first: this.options.decryptionTimeout ?? 60000 }),
-                catchError((error) => {
-                  this.report("restore", error, event.id);
-                  return EMPTY;
-                }),
-              ),
-            ),
-          )
-          .subscribe(),
+        this.receiver.lifecycle$.subscribe((lifecycle) => {
+          if (lifecycle !== "running" && this.background === background) this.stop();
+        }),
       );
-
-      // Disabling auto-unlock unsubscribes the current queue; signer work runs sequentially.
-      background.add(
-        this.autoUnlock
-          .pipe(
-            switchMap((enabled) =>
-              enabled
-                ? this.eventStore.filters(this.inboxFilter).pipe(
-                    concatMap((event) =>
-                      defer(async () => {
-                        if (context.signal.aborted || isGiftWrapUnlocked(event) || this.failed.value.has(event.id))
-                          return;
-                        await this.unlock(event, context);
-                      }).pipe(catchError(() => EMPTY)),
-                    ),
-                  )
-                : EMPTY,
-            ),
-          )
-          .subscribe(),
-      );
-
+      if (context.signal.aborted || background.closed) return;
       const since = unixNow() - (this.options.historySpan ?? 30 * 86400);
       background.add(
-        this.relays$
+        this.receiver
+          .sync$({ since: Math.max(0, since - TWO_DAYS), signal: context.signal })
           .pipe(
-            // Replace the live subscription when the selected inbox relays change.
-            switchMap((relays) =>
-              relays.length
-                ? withMessageAuth$(this.options, (auth) =>
-                    this.pool.subscription(
-                      relays,
-                      { ...this.inboxFilter, since: Math.max(0, since - TWO_DAYS) },
-                      {
-                        eventStore: this.eventStore,
-                        reconnect: true,
-                        ...auth,
-                      },
-                    ),
-                  ).pipe(
-                    mapEventsToStore(this.eventStore),
-                    catchError((error) => {
-                      this.report("read", error);
-                      return EMPTY;
-                    }),
-                  )
-                : EMPTY,
-            ),
-          )
-          .subscribe(),
-      );
-
-      // Reconcile history again when relay selection changes, replacing the previous sync.
-      background.add(
-        this.relays$
-          .pipe(
-            switchMap(() =>
-              this.sync$({ since }).pipe(
-                catchError((error) => {
-                  this.report("sync", error);
-                  return EMPTY;
-                }),
-              ),
-            ),
+            map((mailbox) => ({ mailboxes: [mailbox], done: mailbox.done, loaded: mailbox.loaded })),
+            catchError((error) => {
+              this.report("sync", error);
+              return EMPTY;
+            }),
           )
           .subscribe((status) => {
             this.syncState.next(status);
@@ -353,6 +339,7 @@ export class WrappedMessagesClient {
           }),
       );
     } catch (error) {
+      if (context.signal.aborted) return;
       this.stop();
       this.report("read", error);
       throw error;
@@ -366,16 +353,19 @@ export class WrappedMessagesClient {
     this.generation = new AbortController();
     this.background?.unsubscribe();
     this.background = undefined;
+    if (this.ownsReceiver) this.receiver.stop();
 
     if (!this.disposed) this.lifecycle.next("idle");
   }
 
-  /** Permanently releases this client's subscriptions and retained envelopes */
+  /** Releases client subscriptions, conversations, and an internally created receiver */
   dispose(): void {
     if (this.disposed) return;
 
     this.disposed = true;
     this.stop();
+    this.subscriptions.unsubscribe();
+    if (this.ownsReceiver) this.receiver.dispose();
     this.session.close();
     for (const conversation of this.conversationInstances.values()) conversation.dispose();
     this.conversationInstances.clear();
@@ -390,83 +380,20 @@ export class WrappedMessagesClient {
     this.dispose();
   }
 
-  /** Enables or disables signer-backed decryption of arriving envelopes */
+  /**
+   * Sets receiver-wide automatic decryption, including other consumers of an injected receiver
+   * @throws if the client or receiver is disposed
+   */
   setAutoUnlock(enabled: boolean): void {
-    this.autoUnlock.next(enabled);
-  }
-
-  private async hydrate(signal: AbortSignal) {
-    if (!this.options.cacheRequest) return;
-    // CacheRequest may return either a promise or an observable of events.
-    await lastValueFrom(
-      defer(() => {
-        signal.throwIfAborted();
-        const result = this.options.cacheRequest!([this.inboxFilter]);
-        return isObservable(result) ? result : Promise.resolve(result);
-      }).pipe(
-        timeout({ each: this.options.timeout ?? 4000 }),
-        tap((value) => {
-          signal.throwIfAborted();
-          for (const event of Array.isArray(value) ? value : [value]) this.eventStore.add(event);
-        }),
-        takeUntil(fromEvent(signal, "abort")),
-        catchError((error) => {
-          if (!signal.aborted) this.report("restore", error);
-          return EMPTY;
-        }),
-      ),
-      { defaultValue: undefined },
-    );
-  }
-
-  private async restore(event: NostrEvent) {
-    if (this.options.decryptionCache) {
-      await restoreEncryptedContent(event, this.options.decryptionCache).catch((error) => {
-        log("Failed to restore encrypted content for %s", event.id, error);
-      });
-    }
-    const seal = getGiftWrapSeal(event);
-    if (seal && this.options.decryptionCache) {
-      await restoreEncryptedContent(seal, this.options.decryptionCache).catch((error) => {
-        log("Failed to restore encrypted content for %s", seal.id, error);
-      });
-    }
-    if (getGiftWrapRumor(event)) notifyEventUpdate(event);
-
-    // Restored plaintext must also contribute to optional conversation lifetime mirroring.
-    if (this.options.mirrorExpiration && isGiftWrapUnlocked(event)) {
-      await firstValueFrom(this.session.read$(event), { defaultValue: undefined });
-    }
+    this.assertActive();
+    this.receiver.setAutoUnlock(enabled);
   }
 
   /** Decrypts one envelope or all currently loaded pending envelopes */
   async unlock(event?: NostrEvent, options: MessageOperationOptions = {}): Promise<void> {
     const context = this.context(options);
-    const events = event ? [event] : [...this.eventStore.getByFilters(this.inboxFilter)];
-
-    for (const item of events) {
-      context.signal.throwIfAborted();
-      if (!event && (isGiftWrapUnlocked(item) || this.failed.value.has(item.id))) continue;
-      this.pending.next(this.pending.value + 1);
-
-      try {
-        await firstValueFrom(this.session.read$(item).pipe(takeUntil(fromEvent(context.signal, "abort"))), {
-          defaultValue: undefined,
-        });
-        context.signal.throwIfAborted();
-        const failed = new Set(this.failed.value);
-        failed.delete(item.id);
-        this.failed.next(failed);
-      } catch (error) {
-        if (!context.signal.aborted) {
-          this.failed.next(new Set([...this.failed.value, item.id]));
-          this.report("decrypt", error, item.id);
-        }
-        if (event || context.signal.aborted) throw error;
-      } finally {
-        this.pending.next(this.pending.value - 1);
-      }
-    }
+    if (event) await this.receiver.unlock(event, context);
+    else await this.receiver.unlock(undefined, context);
   }
 
   /** Retries a failed envelope explicitly */
@@ -478,29 +405,17 @@ export class WrappedMessagesClient {
   sync$(options: WrappedMessageHistoryOptions = {}): Observable<WrappedMessagesSyncStatus> {
     return defer(() => {
       const context = this.context(options);
-      const sync = createSyncLoader({ pool: this.pool, eventStore: this.eventStore });
-      return defer(async () => {
-        await this.hydrate(context.signal);
-        context.signal.throwIfAborted();
-        return settle(this.relays$.pipe(filter((relays) => relays.length > 0)), [], this.options.timeout ?? 4000);
-      }).pipe(
-        // Resolve cache and relay selection before starting finite network reconciliation.
-        switchMap((relays) => {
-          const filter: Filter = { ...this.inboxFilter, since: Math.max(0, (options.since ?? 0) - TWO_DAYS) };
-          if (options.until !== undefined) filter.until = options.until;
-          return withMessageAuth$(
-            this.options,
-            (auth) =>
-              sync({
-                relays,
-                filter,
-                ...auth,
-              }).status$,
-          );
-        }),
-        map((mailbox) => ({ mailboxes: [mailbox], done: mailbox.done, loaded: mailbox.loaded })),
-        takeUntil(fromEvent(context.signal, "abort")),
-      );
+      return this.receiver
+        .sync$({
+          ...context,
+          since: Math.max(0, (options.since ?? 0) - TWO_DAYS),
+          until: options.until,
+          followRelays: false,
+        })
+        .pipe(
+          map((mailbox) => ({ mailboxes: [mailbox], done: mailbox.done, loaded: mailbox.loaded })),
+          takeUntil(fromEvent(context.signal, "abort")),
+        );
     });
   }
 
@@ -513,9 +428,11 @@ export class WrappedMessagesClient {
   readMessages$(options: MessageOperationOptions & { history?: boolean } = {}): Observable<Rumor> {
     return defer(() => {
       const context = this.context(options);
-      return this.session
-        .messages$({ ...context, history: options.history ?? false })
-        .pipe(takeUntil(fromEvent(context.signal, "abort")), takeUntil(this.destroyed));
+      return readWrappedMessages$(this.receiver, this.messages$, {
+        ...context,
+        history: options.history ?? false,
+        timeout: this.options.timeout ?? 4000,
+      }).pipe(takeUntil(fromEvent(context.signal, "abort")), takeUntil(this.destroyed));
     });
   }
 
@@ -544,6 +461,15 @@ export class WrappedMessagesClient {
     );
     if (signerPubkey !== this.pubkey) throw new Error("Signer does not match the messages client owner");
     context.signal.throwIfAborted();
+    if (this.options.mirrorExpiration) {
+      const rumors = await firstValueFrom(
+        defer(async () => this.receiver.rumorStore.getByFilters({})).pipe(
+          timeout({ first: this.options.timeout ?? 4000 }),
+          takeUntil(fromEvent(context.signal, "abort")),
+        ),
+      );
+      this.session.observeMessages(selectWrappedMessages(rumors, this.pubkey));
+    }
     const prepared = await firstValueFrom(
       this.session.prepareSend$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
     );

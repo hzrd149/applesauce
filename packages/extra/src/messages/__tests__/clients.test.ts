@@ -394,6 +394,7 @@ describe("standalone messaging clients", () => {
       eventStore.add(gift);
       gifts.push(gift);
     }
+    await client.unlock();
 
     const conversation = client.conversation([bob]);
     expect(client.conversation([bob, alice, bob])).toBe(conversation);
@@ -407,6 +408,7 @@ describe("standalone messaging clients", () => {
     const gift = await GiftWrapFactory.create(bobSigner, alice, reply);
     await unlockGiftWrap(gift, aliceSigner);
     eventStore.add(gift);
+    await client.unlock(gift);
     await vi.waitFor(() => expect(conversation.eventStore.getByFilters({})).toHaveLength(2));
     expect(await firstValueFrom(conversation.threads$)).toEqual([root]);
     expect(await firstValueFrom(conversation.replies$(root))).toEqual([reply]);
@@ -415,6 +417,9 @@ describe("standalone messaging clients", () => {
     eventStore.remove(gifts[0]);
     expect(conversation.eventStore.hasEvent(root.id)).toBe(true);
     eventStore.remove(gifts[1]);
+    // Envelope eviction does not remove validated rumors from their independent store.
+    expect(conversation.eventStore.hasEvent(root.id)).toBe(true);
+    await client.receiver.rumorStore.remove(root);
     await vi.waitFor(() => expect(conversation.eventStore.hasEvent(root.id)).toBe(false));
     conversation[Symbol.dispose]();
     expect(conversation.eventStore.getByFilters({})).toEqual([]);
@@ -881,7 +886,7 @@ describe("standalone messaging clients", () => {
       resolve([event]);
       await starting;
       expect(eventStore.getEvent(event.id)).toBeUndefined();
-      expect(pool.subscription).not.toHaveBeenCalled();
+      expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
     },
   );
 
@@ -930,6 +935,7 @@ describe("standalone messaging clients", () => {
       eventStore.add(gift);
     }
     const client = own(new WrappedMessagesClient(options));
+    await client.unlock();
     expect((await firstValueFrom(client.messages$)).map((message) => message.id)).toEqual([rumor.id]);
   });
 

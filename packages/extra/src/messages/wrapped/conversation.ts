@@ -33,7 +33,7 @@ export class WrappedConversation {
   /** The local decrypted rumor store, without network loaders */
   readonly eventStore = new RumorStore();
 
-  /** The conversation's kind-14 timeline */
+  /** The conversation's chat and file message timeline */
   readonly messages$ = this.eventStore.model(ConversationMessagesModel);
 
   /** The root messages that have replies */

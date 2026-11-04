@@ -2,6 +2,7 @@ import type { EventStore } from "applesauce-core";
 import type { AsyncRumorStore, RumorStore } from "applesauce-core/event-store";
 import type { EncryptedContentCache, NostrEvent, Rumor } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
+import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
@@ -32,6 +33,8 @@ export interface GiftWrapReceiverOptions {
   autoUnlock?: boolean;
   /** Whether relay authentication starts automatically, default false */
   autoAuth?: boolean;
+  /** The application callback invoked after an authentication requirement is recorded */
+  onAuthRequired?: SyncAuthHandler;
   /** The maximum simultaneous decryption calls, default 4 */
   decryptionConcurrency?: number;
   /** The maximum background envelope workers, defaulting to decryptionConcurrency */

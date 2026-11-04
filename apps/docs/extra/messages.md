@@ -67,7 +67,7 @@ subscription.unsubscribe();
 wrapped.dispose();
 ```
 
-Wrapped `start()` hydrates cache, starts plaintext restoration, reconciles recent history, and follows live envelopes. Awaiting it does not wait for history reconciliation or decryption to finish.
+By default, the wrapped client creates a [GiftWrapReceiver](./gift-wrap.md). Wrapped `start()` starts that receiver's cache restoration and live processing alongside recent history reconciliation. Awaiting it does not wait for history reconciliation or decryption to finish.
 
 - `status$`: `idle`, `loading`, `ready`, or `disposed`; `ready` means background reconciliation finished, not that all relays succeeded or messages decrypted.
 - `syncStatus$`: latest background reconciliation progress.
@@ -77,6 +77,43 @@ Wrapped `start()` hydrates cache, starts plaintext restoration, reconciles recen
 Encrypted envelopes cannot be filtered by conversation. Start, sync, unlock, and authenticate through `wrapped`; `wrapped.conversation(participants)` creates only a local decrypted view without loading or prompting. Participant order and duplicates resolve to the same conversation instance.
 
 Wrapped conversations expose `messages$`, `threads$`, `replies$(parent)`, and a local `RumorStore` at `eventStore`. Keep profile queries on the application's shared store. Disposing a conversation cancels its sends and releases its local view without stopping the inbox; stopping the client leaves local views available.
+
+### Share an application receiver
+
+Pass `receiver` when the application already owns incoming gift-wrap processing:
+
+```ts
+import { GiftWrapReceiver } from "applesauce-extra/gift-wrap";
+
+const receiver = new GiftWrapReceiver({ pubkey, signer, eventStore, pool });
+const wrapped = new WrappedMessagesClient({
+  pubkey, signer, eventStore, pool, receiver,
+});
+await receiver.start();
+receiver.setAutoUnlock(true);
+```
+
+The receiver must have the same pubkey, event store, and pool. Its signer can be configured independently from the client's sending signer. The app controls background loading: `wrapped.start()` opens no subscriptions or history requests for an injected receiver and marks the client ready without reconciliation. Client `stop()` cancels client operations; `dispose()` releases client views while leaving the receiver and its other consumers usable.
+
+Explicit `unlock`, `readMessages$`, history, and authentication operations still delegate to the receiver. `wrapped.setAutoUnlock()` changes **receiver-wide** policy, including other consumers. Top-level incoming options do not reconfigure an injected receiver.
+
+To customize a client-owned receiver, use `receiverOptions` instead:
+
+```ts
+const wrapped = new WrappedMessagesClient({
+  pubkey, signer, eventStore, pool,
+  receiverOptions: {
+    rumorStore: accountRumors,
+    processingStore: accountCheckpoints,
+    decryptionConcurrency: 2,
+  },
+});
+await wrapped.start();
+```
+
+`receiverOptions` overrides matching top-level incoming defaults, including signer, caches, relays, and retry policy. Its `historySpan` is a raw envelope lookback; the top-level logical `historySpan` adds two days for live receiving. `receiver` and `receiverOptions` are mutually exclusive. Client disposal releases an internally created receiver, but never an application-supplied rumor store.
+
+Wrapped message views now read `wrapped.receiver.rumorStore`. Persisted rumors remain visible without their original envelopes, and envelope eviction no longer removes conversations. Remove rumors from that store to remove them from local views. Previously unlocked envelopes must pass through receiving (`start()`, `receiver.receive$`) or explicit reading before appearing; merely subscribing to a message view does not process envelopes.
 
 ### Explicit history
 
@@ -116,7 +153,7 @@ Legacy `decryptionState$` describes currently loaded messages:
 
 Use `errors.has(event.id)` to detect failure even if the rejection value was `undefined`; read it with `errors.get(event.id)`. Retries retain the previous error until plaintext becomes available. Bulk-unlock eligibility is `locked - errors.size`.
 
-Wrapped state counts envelopes and exposes `total`, `unlocked`, `locked`, `pending`, and `failed` (an array of envelope IDs). Its `locked` count excludes failed envelopes; do not apply the legacy counting formula to it. Read contextual decryption failures from wrapped `errors$`.
+Wrapped state counts envelopes and exposes `total`, `unlocked`, `locked`, `pending`, and `failed` (an array of envelope IDs). Its `locked` count excludes failed envelopes; do not apply the legacy counting formula to it. Read contextual failures from wrapped `errors$`, or inspect structured failure stages and retry policies in `wrapped.receiver.decryptionState$`. Receiver validation rejects invalid cached seals or rumors without automatically prompting the signer to recover them.
 
 Legacy timelines and send results are native kind-4 events: `event.content` stays encrypted. Read plaintext with `getEncryptedContent(event)` from `applesauce-core/helpers` or `EncryptedContentModel`. Wrapped timelines expose validated, deduplicated kind-14 chat and kind-15 file rumors, not gift wraps.
 
@@ -233,7 +270,9 @@ const results = await wrapped.authenticateAll();
 
 `authenticateAll()` processes the current batch sequentially and returns per-relay outcomes. Concurrent attempts for the same relay share work; failed requests remain retryable. Read-only clients cannot authenticate. Legacy conversations share their client's request list.
 
-`onAuthRequired` runs after a request is recorded; use it for application policy, and `authTimeout` to configure approval waits. Successful external authentication clears requests too. Authentication resumes operations still waiting; timed-out operations require explicit retry. Ending an operation removes its requests, and client stop clears them all.
+`onAuthRequired` runs after a request is recorded; use it for application policy, and `authTimeout` to configure approval waits. Successful external authentication clears requests too. Authentication resumes operations still waiting; timed-out operations require explicit retry. Ending an operation removes its requests.
+
+Wrapped clients combine receiving and publication requests by relay. Configure receiving callbacks on an injected receiver itself; the client's callback continues to handle publication. Client stop clears owned requests but leaves an injected receiver's app-owned requests intact. The receiver's authentication uses its signer, independently of the client's sending signer.
 
 ### Storage and errors
 

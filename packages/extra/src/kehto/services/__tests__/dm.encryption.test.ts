@@ -48,7 +48,7 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
     return GiftWrapFactory.create(bobSigner, alice, { ...template, id: getEventHash(template) });
   }
 
-  function reader(event: NostrEvent, cache?: EncryptedContentCache) {
+  function reader(event: NostrEvent, cache?: EncryptedContentCache, timeout = 5) {
     const eventStore = new EventStore();
     // A reload has no symbol caches or internally remembered seals/rumors.
     internalGiftWrapEvents.removeByFilters({});
@@ -62,7 +62,7 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
       } as unknown as RelayPool,
       decryptionCache: cache,
       fallbackRelays: ["wss://dm.test/"],
-      timeout: 5,
+      timeout,
     });
     return {
       eventStore,
@@ -204,7 +204,7 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
           finishLookup = resolve;
         }),
     );
-    const state = reader(await incoming(), cache);
+    const state = reader(await incoming(), cache, 2000);
     const decrypt = vi.spyOn(aliceSigner[protocolId === "nip04" ? "nip04" : "nip44"], "decrypt");
     try {
       const first = state.read();
@@ -263,14 +263,9 @@ describe("NIP-17 partial cache", () => {
     try {
       const session = (await firstValueFrom(protocol.session$))!;
       const messages = await firstValueFrom(session.messages$({ ...context, history: true }).pipe(toArray()));
-      if (invalid === "seal signature") {
-        expect(messages).toEqual([]);
-        expect(decrypt).not.toHaveBeenCalled();
-      } else {
-        // The unlock helper can recover an invalid cached rumor by decrypting the authenticated seal.
-        expect(messages).toEqual([expect.objectContaining({ senderPubkey: bob, content: "private" })]);
-        expect(decrypt).toHaveBeenCalledTimes(1);
-      }
+      // The receiver records invalid cached plaintext without silently requesting signer recovery.
+      expect(messages).toEqual([]);
+      expect(decrypt).not.toHaveBeenCalled();
     } finally {
       protocol.close?.();
     }

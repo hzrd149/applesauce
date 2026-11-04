@@ -2,30 +2,18 @@ import { logger } from "applesauce-core";
 import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
 import { FileMessageFactory, GiftWrapFactory, WrappedMessageFactory } from "applesauce-common/factories";
-import { isWrappedMessage } from "applesauce-common/helpers/wrapped-messages";
+import { getConversationParticipants, getGiftWrapSeal, type Rumor } from "applesauce-common/helpers";
 import {
-  getConversationParticipants,
-  getGiftWrapSeal,
-  unlockGiftWrap,
-  unlockSeal,
-  type Rumor,
-} from "applesauce-common/helpers";
-import {
-  restoreEncryptedContent,
   saveEncryptedContent,
   isEncryptedContentFromCache,
   addSeenRelay,
   getEventHash,
-  isEncryptedContentUnlocked,
   isHexKey,
-  kinds,
-  notifyEventUpdate,
   setEncryptedContentCache,
-  unlockEncryptedContent,
   unixNow,
   type NostrEvent,
 } from "applesauce-core/helpers";
-import { catchError, concatMap, defer, EMPTY, filter, finalize, from, firstValueFrom, timeout } from "rxjs";
+import { defer, finalize, firstValueFrom, timeout } from "rxjs";
 import { withMessageAuth$ } from "../common/authentication.js";
 import { settle } from "../common/helpers.js";
 import { WrappedMessageExpirationTracker } from "./expiration.js";
@@ -68,9 +56,8 @@ function publicationResults(delivery: WrappedDelivery): WrappedMessagePublicatio
 
 /** A fixed-account NIP-17 session with per-participant gift wraps */
 export class WrappedMessageSession {
-  private readonly pendingDecryptions = new Map<string, Promise<Rumor | undefined>>();
   private closed = false;
-  private readonly expiration = new WrappedMessageExpirationTracker();
+  private expiration = new WrappedMessageExpirationTracker();
   private get wait() {
     return this.config.timeout ?? 4000;
   }
@@ -79,7 +66,7 @@ export class WrappedMessageSession {
   constructor(
     private readonly config: WrappedMessagesClientOptions,
     private readonly owner: MessageAccount,
-    private readonly onReadError: (error: unknown, event: NostrEvent) => void,
+    private readonly onSelfPublication: (event: NostrEvent, signal: AbortSignal) => Promise<void>,
   ) {}
 
   private async recipientRelays(pubkey: string): Promise<WrappedMessageRecipientSupport> {
@@ -126,108 +113,10 @@ export class WrappedMessageSession {
     };
   }
 
-  private async decrypt(
-    event: NostrEvent,
-    owner: MessageAccount,
-    expiration: WrappedMessageExpirationTracker,
-  ): Promise<Rumor | undefined> {
-    const { config } = this;
-    if (event.kind !== kinds.GiftWrap) return;
-    if (!event.tags.some((tag) => tag[0] === "p" && tag[1] === owner.pubkey)) return;
-
-    // Restore each encryption layer before asking the signer to decrypt a cache miss.
-    let rumor: Rumor;
-    if (config.decryptionCache) {
-      await restoreEncryptedContent(event, config.decryptionCache).catch((error) => {
-        log("Failed to restore encrypted content for %s", event.id, error);
-      });
-      if (!isEncryptedContentUnlocked(event)) await unlockEncryptedContent(event, event.pubkey, owner.signer);
-
-      const seal = getGiftWrapSeal(event);
-      if (!seal) throw new Error("Failed to read seal in gift wrap");
-
-      await restoreEncryptedContent(seal, config.decryptionCache).catch((error) => {
-        log("Failed to restore encrypted content for %s", seal.id, error);
-      });
-      rumor = await unlockSeal(seal, owner.signer);
-      notifyEventUpdate(event);
-
-      if (!isEncryptedContentFromCache(event)) {
-        await saveEncryptedContent(event, config.decryptionCache).catch((error) => {
-          log("Failed to persist encrypted content for %s", event.id, error);
-        });
-      }
-      if (!isEncryptedContentFromCache(seal)) {
-        await saveEncryptedContent(seal, config.decryptionCache).catch((error) => {
-          log("Failed to persist encrypted content for %s", seal.id, error);
-        });
-      }
-    } else {
-      rumor = await unlockGiftWrap(event, owner.signer);
-    }
-    const participants = getConversationParticipants(rumor);
-    if (!isWrappedMessage(rumor) || !participants.includes(owner.pubkey)) return;
-    if (config.mirrorExpiration) expiration.observe(rumor, participants);
-    return rumor;
-  }
-
-  private readMessage$(event: NostrEvent, owner: MessageAccount, expiration: WrappedMessageExpirationTracker) {
-    const { config } = this;
-    return defer(() => {
-      const pending = this.pendingDecryptions;
-      let decryption = pending.get(event.id);
-      if (!decryption) {
-        decryption = this.decrypt(event, owner, expiration);
-        pending.set(event.id, decryption);
-        // Unresolved signer promises stay shared when an individual reader times out.
-        const release = () => pending.delete(event.id);
-        void decryption.then(release, release);
-      }
-      return decryption;
-    }).pipe(
-      timeout({ first: config.decryptionTimeout ?? 60000 }),
-      filter((message): message is Rumor => !!message),
-    );
-  }
-
-  /** Reads a stored envelope snapshot or watches the store for additions */
-  messages$(context: { signal: AbortSignal; history: boolean }) {
-    const { owner, config, expiration } = this;
-    return defer(() => {
-      context.signal.throwIfAborted();
-      let active = true;
-      const seen = new Set<string>();
-      const mailboxFilter = { kinds: [kinds.GiftWrap], "#p": [owner.pubkey] };
-      const events$ = context.history
-        ? from(config.eventStore.getByFilters(mailboxFilter))
-        : config.eventStore.filters(mailboxFilter);
-
-      return events$.pipe(
-        // Decrypt each stored envelope once per reader.
-        filter((event) => {
-          if (seen.has(event.id)) return false;
-          seen.add(event.id);
-          return true;
-        }),
-        // Decrypt in order and report one envelope failure without ending the mailbox.
-        concatMap((event) =>
-          defer(() => {
-            context.signal.throwIfAborted();
-            if (!active) return EMPTY;
-            return this.readMessage$(event, owner, expiration).pipe(
-              catchError((error) => {
-                this.onReadError(error, event);
-                return EMPTY;
-              }),
-            );
-          }),
-        ),
-        // Prevent queued work after unsubscription; in-flight signer promises remain shared.
-        finalize(() => {
-          active = false;
-        }),
-      );
-    });
+  /** Replaces expiration preferences with the currently available message timeline */
+  observeMessages(messages: Rumor[]): void {
+    this.expiration = new WrappedMessageExpirationTracker();
+    for (const message of messages) this.expiration.observe(message, getConversationParticipants(message));
   }
 
   private publishDelivery$(delivery: WrappedDelivery, context: { signal: AbortSignal }) {
@@ -265,6 +154,10 @@ export class WrappedMessageSession {
 
             publication.accepted = true;
             publication.error = undefined;
+            // Local processing failures must not turn accepted delivery into a network retry.
+            if (publication.recipient === this.owner.pubkey) {
+              await this.onSelfPublication(publication.event, context.signal);
+            }
           } catch (error) {
             publication.error = error;
           }
@@ -326,7 +219,7 @@ export class WrappedMessageSession {
             expiration: request.envelopeExpiration,
           });
           assertCurrent();
-          if (config.decryptionCache && participant === owner.pubkey) {
+          if (participant === owner.pubkey) {
             const seal = getGiftWrapSeal(event)!;
             setEncryptedContentCache(seal, JSON.stringify(rumor));
             if (config.decryptionCache && !isEncryptedContentFromCache(event)) {
@@ -368,11 +261,6 @@ export class WrappedMessageSession {
   /** Discovers every participant's advertised DM relays */
   discover$(request: WrappedMessageSendRequest, context: { signal: AbortSignal }) {
     return defer(() => this.discover(request, this.owner, context));
-  }
-
-  /** Decrypts one envelope while sharing outstanding signer calls */
-  read$(event: NostrEvent) {
-    return this.readMessage$(event, this.owner, this.expiration);
   }
 
   /** Invalidates the session and its outstanding operations */

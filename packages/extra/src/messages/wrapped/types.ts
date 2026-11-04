@@ -8,9 +8,28 @@ import type { Observable } from "rxjs";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import type { MessageFileUploader } from "../common/attachments.js";
 import type { MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
+import type { GiftWrapReceiverOptions } from "../../gift-wrap/types.js";
 
 /** Dependencies and policies for a NIP-17 inbox */
-export interface WrappedMessagesClientOptions {
+export type WrappedMessagesClientOptions = WrappedMessagesClientDependencies &
+  (
+    | {
+        /** The application-managed receiver with matching account, store, and pool */
+        receiver: GiftWrapReceiver;
+        /** Receiver construction options are unavailable for an injected receiver */
+        receiverOptions?: never;
+      }
+    | {
+        /** Omit to create a client-owned receiver */
+        receiver?: undefined;
+        /** Incoming policies overriding client defaults; historySpan is an envelope lookback */
+        receiverOptions?: Omit<GiftWrapReceiverOptions, "pubkey" | "eventStore" | "pool">;
+      }
+  );
+
+/** Shared dependencies and messaging policies for a NIP-17 client */
+export interface WrappedMessagesClientDependencies {
   /** The immutable owner pubkey */
   pubkey: string;
   /** The NIP-44 signer, omitted when restoring cached plaintext only */

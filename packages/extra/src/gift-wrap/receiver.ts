@@ -230,15 +230,16 @@ export class GiftWrapReceiver {
     this.authentication = new MessageAuthentication(this.pool, this.pubkey, options.signer, true);
     this.authOptions = this.authentication.configure({
       authTimeout: options.authTimeout ?? false,
-      onAuthRequired: options.autoAuth
-        ? async ({ url }) => {
-            try {
-              await this.authentication.authenticate(url);
-            } catch (error) {
-              this.report("read", error);
-            }
+      onAuthRequired: async (context) => {
+        await options.onAuthRequired?.(context);
+        if (options.autoAuth) {
+          try {
+            await this.authentication.authenticate(context.url);
+          } catch (error) {
+            this.report("read", error);
           }
-        : undefined,
+        }
+      },
     });
     this.authRequests$ = this.authentication.requests$;
 
