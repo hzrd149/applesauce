@@ -161,8 +161,8 @@ export class GiftWrapReceiver {
   readonly errors$ = this.errors.asObservable();
   private readonly activity = new BehaviorSubject(0);
   private readonly results = new Subject<GiftWrapReadResult>();
-  private readonly failures = new Map<string, GiftWrapFailure>();
-  private readonly attempts = new Map<string, number>();
+  private failures = new Map<string, GiftWrapFailure>();
+  private attempts = new Map<string, number>();
   private readonly retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly processing = new Map<string, Processing>();
   private readonly layers = new Map<
@@ -176,11 +176,14 @@ export class GiftWrapReceiver {
   private readonly authentication;
   private readonly authOptions;
   private readonly decryptionConcurrency: number;
+  private readonly processingConcurrency: number;
+  private readonly inboxSubscriptions = new Subscription();
+  private pendingInbox?: Set<string>;
   private activeDecryptions = 0;
   private readonly decryptionWaiters = new Set<() => void>();
-  private readonly completed = new Map<string, string>();
-  private readonly storedRumors = new Map<string, string>();
-  private readonly retryDue = new Map<string, number>();
+  private completed = new Map<string, string>();
+  private storedRumors = new Map<string, string>();
+  private retryDue = new Map<string, number>();
   private readonly checkpointWrites = new Map<string, Promise<void>>();
   private restoration?: Promise<void>;
   private retryGeneration?: AbortSignal;
@@ -215,9 +218,12 @@ export class GiftWrapReceiver {
     this.pool = options.pool;
     this.rumorStore = options.rumorStore ?? new RumorStore();
 
-    this.decryptionConcurrency = options.decryptionConcurrency ?? 1;
+    this.decryptionConcurrency = options.decryptionConcurrency ?? 4;
     if (!Number.isSafeInteger(this.decryptionConcurrency) || this.decryptionConcurrency < 1)
       throw new Error("Invalid decryption concurrency");
+    this.processingConcurrency = options.processingConcurrency ?? this.decryptionConcurrency;
+    if (!Number.isSafeInteger(this.processingConcurrency) || this.processingConcurrency < 1)
+      throw new Error("Invalid processing concurrency");
     this.autoUnlock.next(options.autoUnlock ?? false);
     this.inboxFilter = { kinds: [kinds.GiftWrap], "#p": [this.pubkey] };
 
@@ -348,10 +354,16 @@ export class GiftWrapReceiver {
   }
 
   private async restore() {
-    const records = (await this.options.processingStore?.list()) ?? [];
+    if (!this.options.processingStore) return;
+    const records = await this.options.processingStore.list();
+    const attempts = new Map<string, number>();
+    const storedRumors = new Map<string, string>();
+    const completed = new Map<string, string>();
+    const failures = new Map<string, GiftWrapFailure>();
+    const retryDue = new Map<string, number>();
 
-    // Validate the entire snapshot before applying any of it to live state.
-    for (const record of records) {
+    // Consume database pages without retaining their records, then publish the validated snapshot atomically.
+    for await (const record of records) {
       if (
         record.version !== 1 ||
         !isHexKey(record.eventId) ||
@@ -384,12 +396,10 @@ export class GiftWrapReceiver {
 
       if (record.status === "completed" && !isHexKey(record.rumorId ?? ""))
         throw new Error("Missing completed rumor ID");
-    }
 
-    for (const record of records) {
-      this.attempts.set(record.eventId, record.attempts);
-      if (record.rumorId) this.storedRumors.set(record.eventId, record.rumorId);
-      if (record.status === "completed") this.completed.set(record.eventId, record.rumorId!);
+      attempts.set(record.eventId, record.attempts);
+      if (record.rumorId && record.status !== "completed") storedRumors.set(record.eventId, record.rumorId);
+      if (record.status === "completed") completed.set(record.eventId, record.rumorId!);
 
       if (record.status === "failed" && record.failure) {
         const { message, ...details } = record.failure;
@@ -397,11 +407,16 @@ export class GiftWrapReceiver {
         if (failure.retry === "automatic" && record.attempts >= (this.options.retryPolicy?.maxAttempts ?? 1))
           failure.retry = "manual";
 
-        this.failures.set(record.eventId, failure);
-        if (record.retryAt !== undefined) this.retryDue.set(record.eventId, record.retryAt);
+        failures.set(record.eventId, failure);
+        if (record.retryAt !== undefined) retryDue.set(record.eventId, record.retryAt);
       }
     }
 
+    this.attempts = attempts;
+    this.storedRumors = storedRumors;
+    this.completed = completed;
+    this.failures = failures;
+    this.retryDue = retryDue;
     this.changed();
   }
 
@@ -443,6 +458,28 @@ export class GiftWrapReceiver {
     const failure = { operation, error, eventId };
     if (!this.disposed) this.errors.next(failure);
     return failure;
+  }
+
+  private inboxEvent(eventId: string): NostrEvent | undefined {
+    const event = this.eventStore.getEvent(eventId);
+    return event?.kind === kinds.GiftWrap && event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey)
+      ? event
+      : undefined;
+  }
+
+  private candidates(): Set<string> {
+    if (this.pendingInbox) return this.pendingInbox;
+
+    // Track only IDs; pulls do not repeatedly scan the completed history or retain evicted events.
+    const candidates = (this.pendingInbox = new Set<string>());
+    const include = (event: NostrEvent) => {
+      if (this.inboxEvent(event.id) && !this.completed.has(event.id) && !this.failures.has(event.id))
+        candidates.add(event.id);
+    };
+    this.inboxSubscriptions.add(this.eventStore.insert$.subscribe(include));
+    this.inboxSubscriptions.add(this.eventStore.remove$.subscribe((event) => candidates.delete(event.id)));
+    for (const event of this.eventStore.getByFilters(this.inboxFilter)) include(event);
+    return candidates;
   }
 
   private validate(event: NostrEvent) {
@@ -487,6 +524,9 @@ export class GiftWrapReceiver {
       defer(() => {
         const controller = new AbortController();
         const visited = new Map<string, readonly (string | undefined)[]>();
+        const candidates = new Set(this.eventStore.getByFilters(this.inboxFilter).map((event) => event.id));
+        const arrivals = new Set<string>();
+        let preferArrival = true;
         const plaintext = (event: NostrEvent) => {
           const seal = getGiftWrapSeal(event);
           return [getEncryptedContent(event), seal ? getEncryptedContent(seal) : undefined];
@@ -497,14 +537,25 @@ export class GiftWrapReceiver {
           this.resumeRetries();
           while (dirty && !controller.signal.aborted) {
             dirty = false;
-            const events = this.eventStore.getByFilters(this.inboxFilter)[Symbol.iterator]();
+            const events = candidates.values();
+            let processed = 0;
             const worker = async () => {
-              for (const event of events) {
+              while (true) {
                 if (controller.signal.aborted) break;
-                if (visited.has(event.id) || this.completed.has(event.id)) continue;
-
-                // Leave the envelope eligible until an occupied processing slot is released.
+                // Alternate a bounded live-arrival lane with the backlog so neither can starve.
+                const eventId = preferArrival && arrivals.size ? arrivals.values().next().value : events.next().value;
+                if (!eventId) break;
+                preferArrival = !preferArrival;
+                const event = this.inboxEvent(eventId);
+                if (!event) {
+                  candidates.delete(eventId);
+                  arrivals.delete(eventId);
+                  continue;
+                }
                 if (!this.processing.has(event.id) && this.processing.size >= (this.options.maxQueued ?? 64)) break;
+                candidates.delete(eventId);
+                arrivals.delete(eventId);
+                if (visited.has(event.id) || this.completed.has(event.id)) continue;
 
                 visited.set(event.id, plaintext(event));
                 const failure = this.failures.get(event.id);
@@ -515,16 +566,20 @@ export class GiftWrapReceiver {
 
                 try {
                   await this.read(event, allowSigner && !failure, controller.signal);
+                  if (this.completed.has(event.id)) visited.delete(event.id);
                 } catch (error) {
                   // Expected envelope failures are already published by process().
                   if (!controller.signal.aborted && !this.failures.has(event.id)) {
                     this.report("decrypt", error, event.id);
                   }
                 }
+
+                // Cached backlogs can otherwise monopolize the microtask queue indefinitely.
+                if (++processed % 64 === 0) await new Promise<void>((resolve) => setTimeout(resolve, 0));
               }
             };
             await Promise.all(
-              Array.from({ length: Math.min(this.decryptionConcurrency, this.options.maxQueued ?? 64) }, worker),
+              Array.from({ length: Math.min(this.processingConcurrency, this.options.maxQueued ?? 64) }, worker),
             );
           }
         };
@@ -532,19 +587,27 @@ export class GiftWrapReceiver {
         const arrivals$ = merge(this.eventStore.insert$, this.eventStore.update$).pipe(
           filter(
             (event) =>
-              event.kind === kinds.GiftWrap && event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey),
+              !this.completed.has(event.id) &&
+              event.kind === kinds.GiftWrap &&
+              event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey),
           ),
           filter((event) => {
             const previous = visited.get(event.id);
             const current = plaintext(event);
             return !previous || !previous.every((value, index) => value === current[index]);
           }),
-          tap((event) => visited.delete(event.id)),
+          tap((event) => {
+            visited.delete(event.id);
+            candidates.add(event.id);
+            if (arrivals.size < (this.options.maxQueued ?? 64)) arrivals.add(event.id);
+          }),
         );
 
         const removals$ = this.eventStore.remove$.pipe(
           tap((event) => {
             visited.delete(event.id);
+            candidates.delete(event.id);
+            arrivals.delete(event.id);
             // Memory eviction does not erase durable processing progress.
             this.clearRetry(event.id);
             this.changed();
@@ -765,6 +828,8 @@ export class GiftWrapReceiver {
     signal.throwIfAborted();
 
     this.completed.set(event.id, rumor.id);
+    this.storedRumors.delete(event.id);
+    this.pendingInbox?.delete(event.id);
     this.failures.delete(event.id);
     this.retryDue.delete(event.id);
     this.clearRetry(event.id);
@@ -878,7 +943,7 @@ export class GiftWrapReceiver {
     await this.processing.get(eventId)?.result.catch(() => undefined);
 
     if (signal.aborted || this.failures.get(eventId) !== failure) return;
-    if (!this.eventStore.getByFilters(this.inboxFilter).some((event) => event.id === eventId)) return;
+    if (!this.inboxEvent(eventId)) return;
     if ((this.retryDue.get(eventId) ?? 0) > Date.now()) {
       this.scheduleRetry(failure);
       return;
@@ -1018,14 +1083,13 @@ export class GiftWrapReceiver {
     const signal = this.context(options);
     await this.ready();
     signal.throwIfAborted();
-    for (const event of this.eventStore.getByFilters(this.inboxFilter)) {
-      if (
-        this.completed.has(event.id) ||
-        this.failures.has(event.id) ||
-        this.reserved.has(event.id) ||
-        this.processing.has(event.id)
-      )
+    for (const eventId of this.candidates()) {
+      const event = this.inboxEvent(eventId);
+      if (!event || this.completed.has(eventId) || this.failures.has(eventId)) {
+        this.pendingInbox!.delete(eventId);
         continue;
+      }
+      if (this.reserved.has(event.id) || this.processing.has(event.id)) continue;
       this.reserved.add(event.id);
       try {
         return await this.readResult(event, signal);
@@ -1067,7 +1131,7 @@ export class GiftWrapReceiver {
     const signal = this.context(options);
     await this.ready();
     signal.throwIfAborted();
-    const event = this.eventStore.getByFilters(this.inboxFilter).find((event) => event.id === eventId);
+    const event = this.inboxEvent(eventId);
     if (!event) throw new Error("Envelope is not loaded");
     this.clearRetry(eventId);
     return this.readResult(event, signal);
@@ -1083,7 +1147,7 @@ export class GiftWrapReceiver {
     const eventIds = [...this.failures.keys()];
     for (const eventId of eventIds) {
       if (!this.failures.has(eventId)) continue;
-      if (!this.eventStore.getByFilters(this.inboxFilter).some((event) => event.id === eventId)) continue;
+      if (!this.inboxEvent(eventId)) continue;
       yield await this.retry(eventId, options);
     }
   }
@@ -1230,6 +1294,8 @@ export class GiftWrapReceiver {
     if (this.disposed) return;
     this.disposed = true;
     this.stop();
+    this.inboxSubscriptions.unsubscribe();
+    this.pendingInbox?.clear();
     if (!this.options.rumorStore) this.rumorStore.dispose();
     this.lifecycle.next("disposed");
     this.lifecycle.complete();

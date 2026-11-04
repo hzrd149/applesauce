@@ -89,7 +89,167 @@ function processingStorage() {
   return { storage, records };
 }
 
+describe("GiftWrapReceiver scaling", () => {
+  it("defaults to four occupied signer calls", async () => {
+    const { receiver } = setup();
+    const envelopes = await Promise.all(Array.from({ length: 5 }, () => envelope()));
+    const gate = deferred<void>();
+    const decrypt = recipient.nip44.decrypt.bind(recipient.nip44);
+    let active = 0;
+    let maximum = 0;
+    const calls = vi.spyOn(recipient.nip44, "decrypt").mockImplementation(async (...args) => {
+      maximum = Math.max(maximum, ++active);
+      await gate.promise;
+      try {
+        return await decrypt(...args);
+      } finally {
+        active--;
+      }
+    });
+    const pending = envelopes.map(({ event }) => receiver.unlock(event));
+    await vi.waitFor(() => expect(calls).toHaveBeenCalledTimes(4));
+    gate.resolve();
+    await Promise.all(pending);
+    expect(maximum).toBe(4);
+  });
+
+  it("checks caches concurrently with a serialized signer configuration", async () => {
+    const gate = deferred<string | null>();
+    const cache = { getItem: vi.fn(() => gate.promise), setItem: vi.fn() };
+    const { receiver } = setup({ decryptionCache: cache, decryptionConcurrency: 1, processingConcurrency: 4 });
+    for (const { event } of await Promise.all(Array.from({ length: 5 }, () => envelope())))
+      await receiver.ingest(event);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const subscription = receiver.receive$.subscribe();
+    await vi.waitFor(() => expect(cache.getItem).toHaveBeenCalledTimes(4));
+    subscription.unsubscribe();
+    gate.resolve(null);
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
+  it("pulls past thousands of completed envelopes without rescanning history", async () => {
+    const { storage, records } = processingStorage();
+    const { receiver, eventStore } = setup({ processingStore: storage });
+    const template = (await envelope()).event;
+    eventStore.verifyEvent = () => true;
+    for (let index = 1; index <= 3000; index++) {
+      const eventId = index.toString(16).padStart(64, "0");
+      records.set(eventId, {
+        version: 1,
+        eventId,
+        status: "completed",
+        attempts: 1,
+        stage: "checkpoint",
+        rumorId: eventId,
+      });
+      eventStore.add({ ...template, id: eventId });
+    }
+    for (const { event } of await Promise.all(Array.from({ length: 12 }, () => envelope())))
+      await receiver.ingest(event);
+    const scans = vi.spyOn(eventStore, "getByFilters");
+    let count = 0;
+    for await (const result of receiver.readInbox()) {
+      expect(result.status).toBe("success");
+      count++;
+    }
+    expect(count).toBe(12);
+    expect(scans).toHaveBeenCalledTimes(1);
+
+    const arrival = await envelope();
+    await receiver.ingest(arrival.event);
+    expect(await receiver.readNext()).toMatchObject({ status: "success", rumor: arrival.rumor });
+    expect(scans).toHaveBeenCalledTimes(1);
+
+    const removed = await envelope();
+    await receiver.ingest(removed.event);
+    eventStore.remove(removed.event);
+    expect(await receiver.readNext()).toBeUndefined();
+    await receiver.ingest(removed.event);
+    expect(await receiver.readNext()).toMatchObject({ status: "success", rumor: removed.rumor });
+    expect(scans).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives live arrivals a turn before finishing the stored backlog", async () => {
+    const { receiver } = setup({ autoUnlock: true, decryptionConcurrency: 1 });
+    for (const { event } of await Promise.all(Array.from({ length: 6 }, () => envelope())))
+      await receiver.ingest(event);
+    const gate = deferred<void>();
+    const decrypt = recipient.nip44.decrypt.bind(recipient.nip44);
+    const calls = vi.spyOn(recipient.nip44, "decrypt").mockImplementationOnce(async (...args) => {
+      await gate.promise;
+      return decrypt(...args);
+    });
+    const received: string[] = [];
+    const subscription = receiver.receive$.subscribe((result) => received.push(result.event.id));
+    await vi.waitFor(() => expect(calls).toHaveBeenCalledTimes(1));
+    const live = await envelope();
+    await receiver.ingest(live.event);
+    gate.resolve();
+    await vi.waitFor(() => expect(received).toHaveLength(7));
+    expect(received.indexOf(live.event.id)).toBeLessThanOrEqual(2);
+    expect(new Set(received).size).toBe(7);
+    subscription.unsubscribe();
+  });
+});
+
 describe("GiftWrapReceiver persistence", () => {
+  it("waits for the final checkpoint page before skipping restored completions", async () => {
+    const { event, rumor } = await envelope();
+    const gate = deferred<void>();
+    const storage: GiftWrapProcessingStore = {
+      async *list() {
+        yield {
+          version: 1,
+          eventId: event.id,
+          status: "completed",
+          attempts: 1,
+          stage: "checkpoint",
+          rumorId: rumor.id,
+        };
+        await gate.promise;
+      },
+      set: vi.fn(),
+    };
+    const { receiver } = setup({ processingStore: storage });
+    await receiver.ingest(event);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    let settled = false;
+    const pull = receiver.readNext().then((result) => {
+      settled = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    gate.resolve();
+    expect(await pull).toBeUndefined();
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
+  it("restores streamed checkpoints without exposing a partially failed snapshot", async () => {
+    const { event, rumor } = await envelope();
+    let broken = true;
+    const storage: GiftWrapProcessingStore = {
+      async *list() {
+        if (broken) {
+          yield {
+            version: 1,
+            eventId: event.id,
+            status: "completed",
+            attempts: 1,
+            stage: "checkpoint",
+            rumorId: rumor.id,
+          };
+          throw new Error("page unavailable");
+        }
+      },
+      set: vi.fn(),
+    };
+    const { receiver } = setup({ processingStore: storage });
+    await receiver.ingest(event);
+    await expect(receiver.ready()).rejects.toThrow("page unavailable");
+    broken = false;
+    expect(await receiver.readNext()).toMatchObject({ status: "success", rumor });
+  });
   it("fails readiness without processing and allows retrying a failed restore", async () => {
     const { storage } = processingStorage();
     const list = vi.spyOn(storage, "list").mockRejectedValueOnce(new Error("database offline"));
@@ -892,7 +1052,7 @@ describe("GiftWrapReceiver", () => {
   });
 
   it("keeps an unresolved signer serialized after reader timeout", async () => {
-    const { receiver } = setup({ decryptionTimeout: 50 });
+    const { receiver } = setup({ decryptionTimeout: 50, decryptionConcurrency: 1 });
     const first = await envelope();
     const second = await envelope();
     const gate = deferred<string>();
@@ -912,7 +1072,7 @@ describe("GiftWrapReceiver", () => {
   });
 
   it("disabling automatic processing abandons the next layer and stored backlog", async () => {
-    const { receiver } = setup({ autoUnlock: true });
+    const { receiver } = setup({ autoUnlock: true, decryptionConcurrency: 1 });
     const first = await envelope();
     const second = await envelope();
     const gate = deferred<string>();

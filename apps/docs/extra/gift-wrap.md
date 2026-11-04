@@ -94,7 +94,8 @@ For strict user-paced prompts, leave `autoUnlock` disabled and avoid another exp
 
 ### Capacity and timeouts
 
-- `decryptionConcurrency` defaults to `1` and bounds simultaneous signer decryption calls across explicit, bulk, and background work. Concurrent readers share processing of the same envelope and encryption layers.
+- `decryptionConcurrency` defaults to `4` and bounds simultaneous signer decryption calls across explicit, bulk, and background work. Concurrent readers share processing of the same envelope and encryption layers.
+- `processingConcurrency` defaults to `decryptionConcurrency` and bounds background envelope workers independently, allowing concurrent cache reads with a serialized signer.
 - `maxQueued` defaults to `64` and bounds distinct active envelope-processing requests, **not** the total stored inbox or a buffered arrival queue. Background processing leaves excess envelopes in the EventStore and scans again when capacity is released; excessive explicit parallel requests can fail with a capacity error.
 - `timeout` defaults to 10 seconds for cache/checkpoint operations and relay-selection waits. `decryptionTimeout` defaults to 60 seconds for a reader's processing wait.
 

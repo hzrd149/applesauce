@@ -32,8 +32,10 @@ export interface GiftWrapReceiverOptions {
   autoUnlock?: boolean;
   /** Whether relay authentication starts automatically, default false */
   autoAuth?: boolean;
-  /** The maximum simultaneous decryption calls, default 1 */
+  /** The maximum simultaneous decryption calls, default 4 */
   decryptionConcurrency?: number;
+  /** The maximum background envelope workers, defaulting to decryptionConcurrency */
+  processingConcurrency?: number;
   /** The cache and relay discovery timeout in milliseconds, default 10000 */
   timeout?: number;
   /** The per-reader processing timeout in milliseconds, default 60000 */
@@ -155,8 +157,11 @@ export interface GiftWrapProcessingRecord {
 
 /** Application-scoped storage with atomic replacement of individual checkpoints */
 export interface GiftWrapProcessingStore {
-  /** Lists all processing checkpoints for this receiver's account */
-  list(): GiftWrapProcessingRecord[] | Promise<GiftWrapProcessingRecord[]>;
+  /** Lists account checkpoints as an array or a paged async iterable */
+  list():
+    | GiftWrapProcessingRecord[]
+    | AsyncIterable<GiftWrapProcessingRecord>
+    | Promise<GiftWrapProcessingRecord[] | AsyncIterable<GiftWrapProcessingRecord>>;
   /**
    * Durably replaces a checkpoint
    * @throws if the checkpoint cannot be persisted
