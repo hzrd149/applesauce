@@ -244,7 +244,11 @@ export default defineConfig({
       {
         text: "Extras",
         collapsed: false,
-        items: [{ text: "Double-ratchet Messaging", link: "/extra/ndr" }],
+        items: [
+          { text: "Messaging Clients", link: "/extra/messages" },
+          { text: "Gift-wrap Receiver", link: "/extra/gift-wrap" },
+          { text: "Double-ratchet Messaging", link: "/extra/ndr" },
+        ],
       },
       {
         text: "Napplets",

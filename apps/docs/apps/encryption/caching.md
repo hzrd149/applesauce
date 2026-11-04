@@ -106,6 +106,8 @@ The operator defaults to eight concurrent lookups and emits each original event 
 
 Use the same storage instance with these helpers and `persistEncryptedContent` to share cached plaintext. Direct helpers operate on one event at a time; pass gift wraps and seals separately when managing their lifecycle yourself. Keep storage scoped to the intended account or session.
 
+The [Gift-wrap Receiver](/extra/gift-wrap) manages restoration and saving of both encryption layers through its `decryptionCache` option. For conversation-level loading and decryption controls, see [Messaging Clients](/extra/messages).
+
 ## Complete Example
 
 Here's a complete example showing how it's used in practice:

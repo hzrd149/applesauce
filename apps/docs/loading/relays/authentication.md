@@ -109,6 +109,8 @@ pool.request(relays, filters, {
 });
 ```
 
+For operation-owned authentication requests and batch approval, see [Messaging Clients](/extra/messages#relay-authentication) and [Gift-wrap Receiver](/extra/gift-wrap#relay-authentication-is-separate).
+
 ## Best Practices
 
 - Prefer `authenticate()` over `auth()` unless you need to build the AUTH event yourself.

@@ -10,7 +10,7 @@ Install the optional peer `nostr-double-ratchet@0.0.183` to use either. Import t
 
 ## Messages client
 
-Give the client the account, the shared `pool` and `eventStore`, explicit NDR relays, and one durable, encrypted `StorageAdapter` for the account:
+Give the client the account, the shared `pool` and `eventStore`, explicit NDR relays, and one durable, account/device-scoped `StorageAdapter`. The application must encrypt this storage at rest; the client does not add encryption:
 
 ```ts
 import { NdrMessagesClient } from "applesauce-extra/messages/ndr";
@@ -22,13 +22,17 @@ client.conversations$.subscribe(renderInbox);
 client.dispose(); // on logout or account change
 ```
 
-`createNdrStorage(store)` wraps a string key/value store with `getItem`, `setItem`, `removeItem`, and `keys`, such as localforage or an encrypted wrapper, as that JSON `StorageAdapter`:
+`createNdrStorage(store)` wraps a string key/value store with `getItem`, `setItem`, `removeItem`, and `keys` as a JSON `StorageAdapter`. It serializes values, but does not encrypt them; use an encrypting store for device secrets, ratchet state, and decrypted content:
 
 ```ts
+import { createNdrStorage } from "applesauce-extra/messages/ndr";
+
 const storage = createNdrStorage(encryptedStore);
 ```
 
-`start()` holds a Web Lock (`ndr:<pubkey>` by default) until disposal, so a second tab reports `lifecycle$` as `locked` instead of writing the same ratchet state. Protocol state lives under the runtime's `v1/` keys, and decrypted history lives under `app/`; restoring relay envelopes alone cannot rebuild either.
+Where Web Locks are available, `start()` holds a lock (`ndr:<pubkey>` by default) until disposal. Lock contention rejects `start()` and reports `lifecycle$` as `locked`; dispose the failed client and create a new instance to retry. Calling `start()` again on that instance returns the same rejected promise. Without Web Locks, or with `lockName: false`, the application must enforce single-writer storage isolation.
+
+Lifecycle `ready` means initialization finished, not that this device is registered or able to send. Observe `state$` for runtime registration and `canSendPrivateMessages`, and the conversation's `canSend$` for peer readiness. Protocol state lives under the runtime's `v1/` keys, and decrypted history under `app/`; relay envelopes alone cannot rebuild either.
 
 ### Conversations
 
@@ -43,16 +47,20 @@ chat.sendTyping(); // throttled
 await chat.setTtl(86400); // disappearing messages for both sides
 ```
 
-`draft$`, `setDraft()`, and `sendDraft()` keep an encrypted draft that survives reloads. Pass `draftFileStorage` to keep staged files in the draft too (see [draft attachments](../features/encrypted-files.md#draft-attachments)). The client sends a delivered receipt when an incoming message is first stored; set `deliveredReceipts: false` to disable it.
+`draft$`, `setDraft()`, and `sendDraft()` use draft records backed by the client's `storage`; their protection depends on that store. Pass `draftFileStorage` to persist staged file bytes too. `sendDraft(attachments)` requires already-uploaded metadata: it does not upload `draft.files`. Calling it without attachments on a text-and-files draft sends only the text, then clears the unchanged draft, including its staged files. See [upload-before-sendDraft](../features/encrypted-files.md#draft-attachments).
+
+The client sends a delivered receipt when an incoming message is first stored; set `deliveredReceipts: false` to disable it.
 
 With an `upload` option on the client, `uploadFile()` encrypts a file and uploads the ciphertext. Attachments go out as `imeta` tags on a kind 14 message, with each URL also in the content so other NDR apps show a link; incoming NIP-17 kind 15 file messages are read too. See [Encrypted Files](../features/encrypted-files.md).
 
 ```ts
 const file = await chat.uploadFile(input.files[0]);
-await chat.send({ content: "", attachments: [file] }); // message.attachments on both sides
+await chat.send({ content: "Here's the photo", attachments: [file] });
 ```
 
 A message's `delivery` is `queued` when it is encrypted and saved locally, `published` once a relay accepts an envelope, and `delivered` or `seen` when peer receipts arrive. Incoming messages are `received`.
+
+Observe `errors$` for background failures (`{ operation, error }`) and `pendingPublications$` for the persistent outbox's envelope count. Call `retryPublications()` after connectivity returns to retry the original signed envelopes, not `send()` again. Startup also starts outbox recovery; see [Messages](./messages.md) for lifecycle and recovery patterns.
 
 ### Devices and linking
 
@@ -61,6 +69,7 @@ A message's `delivery` is `queued` when it is encrypted and saved locally, `publ
 ```ts
 const prepared = await client.prepareRegistration("Laptop");
 await client.publishRegistration(prepared, "Laptop"); // signs the roster, then publishes this device's invite
+await client.republishInvite(); // retry invite publication for an already registered device
 await client.revokeDevice(identityPubkey);
 ```
 
@@ -165,4 +174,4 @@ Both paths independently verify signatures, including cached events with optimis
 - Keep protocol state, persistent outbox, and application history account/device scoped; restoring envelopes cannot reconstruct advanced ratchet state.
 - Use narrow runtime filters and bounded recovery windows; a deadline is not a pagination cursor.
 - Retain the signed outbox envelope after uncertain publication rather than encrypting the same send again.
-- See [napplet messaging](../napplets/messaging.md#ndr-transport) for the separate Kehto adapter wiring and compatibility import.
+- See [napplet messaging](../napplets/messaging.md#ndr-messages-client) for the separate Kehto adapter wiring and compatibility import.

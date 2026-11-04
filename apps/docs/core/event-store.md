@@ -456,7 +456,7 @@ const addedWithRelay = eventStore.add(event, "wss://relay.damus.io");
 
 ### remove
 
-Remove an event from the store by ID or event object:
+Remove an event from the store by ID or event object. Removal matches the event ID, so a copied event object also removes the stored event and its indexes:
 
 ```ts
 // Remove by ID

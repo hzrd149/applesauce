@@ -74,9 +74,9 @@ Each status identifies a source, filter, and current visible window. Its `buffer
 - `covered`: the visible range is covered and no background request is active
 - `prefetching`: the visible range is covered while the buffer loads
 - `incomplete`: a request failed or a timestamp boundary could not be fully paged; `reason` distinguishes `request` failures from `boundary` uncertainty, and `error` explains why
-- `removed`: an outbox source was removed or changed; emitted to `onStatus` and removed from `status$`
+- `removed`: a relay/filter source was removed or changed; emitted to `onStatus` and removed from `status$`
 
-Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the outbox map is still unknown or has no sources. Failures do not stop healthy relays. A failed range is retried after `retryDelay`, doubling for each consecutive failure up to five minutes, and window changes don't retry it sooner. A source that sends nothing for `responseTimeout` counts as failed even when window changes keep cancelling its requests, so a hanging relay is backed off too.
+Completion means requests have settled; inspect status to distinguish successful coverage from failures. Empty status arrays can mean the reactive source configuration is still unresolved or has no active sources. Failures do not stop healthy relays. A failed range is retried after `retryDelay`, doubling for each consecutive failure up to five minutes, and window changes don't retry it sooner. A source that sends nothing for `responseTimeout` counts as failed even when window changes keep cancelling its requests, so a hanging relay is backed off too.
 
 Use `isTimelineWindowCovered(window, statuses)` before extending a history window or displaying completion:
 

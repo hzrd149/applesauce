@@ -154,7 +154,7 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## NDR Messages Client
 
-Use `createNdrMessageProtocol` to wrap or construct an [NDR messages client](../extra/ndr.md), following the [client ownership options](#client-ownership). The client owns encrypted storage, durable history, device registration, the outbox, and the single-writer lock; Kehto supplies routing, normalization, and plaintext send approval.
+Use `createNdrMessageProtocol` to wrap or construct an [NDR messages client](../extra/ndr.md), following the [client ownership options](#client-ownership). The client manages runtime persistence, durable history, device registration, the outbox, and the Web Lock where available; the host supplies account/device-scoped storage and its encryption at rest. `createNdrStorage` is only a JSON wrapper, not an encrypting adapter. Kehto supplies routing, normalization, and plaintext send approval.
 
 ```ts
 import { createNdrMessageProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
@@ -169,7 +169,9 @@ const adapter = createMultiProtocolDmAdapter({
 });
 ```
 
-For an app-owned client, the host calls `client.start()` and `client.dispose()`. With `clientOptions`, the protocol owns those calls. Only clients with a ready lifecycle expose a session. A reactive client stream can emit `undefined` on logout; replacement invalidates pending Kehto operations. Registration remains explicit in either mode.
+For an app-owned client, the host calls `client.start()` and `client.dispose()`. With `clientOptions`, the protocol owns those calls. Only clients with a ready lifecycle expose a session, but lifecycle readiness does not imply registration or send readiness: observe `state$` and conversation `canSend$`. A reactive client stream can emit `undefined` on logout; replacement invalidates pending Kehto operations. Registration remains explicit in either mode.
+
+Use `errors$` for background failures, `pendingPublications$` for the queued-envelope count, and `retryPublications()` to retry durable envelopes rather than issuing another plaintext send. `republishInvite()` republishes an already registered device's invite. See [Messages](../extra/messages.md) for full client lifecycle and recovery guidance.
 
 Discovery waits up to `discoveryTimeout` (default 3000 ms) for peer devices. Missing discovery is unknown support, so automatic routing can fall back while an explicit NDR route can still attempt delivery. Direct conversations merge by participants; existing groups retain their native IDs and require matching recipients and accepted membership. Create groups through the client before sending to them through Kehto.
 
@@ -195,7 +197,7 @@ After changing enabled protocols or device readiness, press **Refresh messages**
 
 **Auto** prefers advertised NDR support before NIP-17/NIP-04; selecting NDR explicitly never silently falls back. The example's new-conversation UI addresses one other recipient; existing client groups can appear in history. **Submitted** means a local handoff, and delivery receipts update the normalized message status.
 
-Turning NDR off cancels its pending approvals and subscriptions without deleting state. A Web Lock prevents two tabs from writing the same account's NDR state; use different browser profiles for independent devices. Retry handles do not survive reloads or toggle cycles.
+Turning NDR off cancels its pending approvals and subscriptions without deleting state. Where available, a Web Lock prevents two tabs from writing the same account's NDR state; contention rejects startup, and retry requires a new client instance. Without Web Locks, or with `lockName: false`, the host must enforce storage isolation. Use different browser profiles for independent devices. Retry handles do not survive reloads or toggle cycles.
 
 The example imports history saved by its previous runtime adapter into the client's history once, keeping the existing account storage and device state.
 

@@ -2,9 +2,11 @@
 
 A collection of stuff that doesn't fit into any applesauce package.
 
-Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`, `applesauce-extra/messages`, `applesauce-extra/kehto`), so importing one doesn't load the others or their optional dependencies.
+Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`, `applesauce-extra/gift-wrap`, `applesauce-extra/messages`, `applesauce-extra/messages/ndr`, `applesauce-extra/kehto`), so importing one doesn't load the others or their optional dependencies.
 
 ## Gift-wrap receiver
+
+See the [Gift-wrap Receiver guide](https://applesauce.build/extra/gift-wrap) for receiving, recovery, and persistence integration.
 
 `GiftWrapReceiver` from `applesauce-extra/gift-wrap` receives account-addressed NIP-59 envelopes containing any rumor kind. It requires an application-owned `EventStore` and `RelayPool`; validated plaintext goes into a separate `RumorStore`, or an application-provided database-backed `AsyncRumorStore`.
 
@@ -84,6 +86,8 @@ Processing checkpoints do not retain relay authentication sessions or history re
 
 ## Messaging clients
 
+See the [Messaging Clients guide](https://applesauce.build/extra/messages) for lifecycle, drafts, decryption, and publication recovery.
+
 `LegacyMessagesClient` (NIP-04) and `WrappedMessagesClient` (NIP-17) combine a shared store, pool and fixed account into ready-to-use messaging clients. Import them from `applesauce-extra/messages`; no Kehto dependencies are required.
 
 Each client owns its options, request types, lifecycle, and protocol orchestration independently in [`messages/legacy`](src/messages/legacy/) and [`messages/wrapped`](src/messages/wrapped/); protocol-neutral helper contracts and small utilities live in [`messages/common`](src/messages/common/).
@@ -125,7 +129,7 @@ await conversation.publish(prepared);
 
 `sending$` stays active through the complete draft handoff, including storage. If draft removal fails after preparation, the handle is still returned and `errors$` reports a contextual `storage` error with its event ID; the draft remains available. Cancellation before preparation succeeds preserves the draft; cancellation after success skips removal if it has not started and still returns the handle. An already-started storage removal may finish after cancellation, but queued newer edits are preserved. With `publicationStorage`, preparation retains the signed event durably before removing the draft; after `stop()` or disposal, recover pending publications through an active conversation.
 
-`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
+`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 chat or kind-15 file rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. It can invoke signer decryption even when auto-unlock is disabled. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
 
 Legacy sends take `{ recipient, content }` and use `LegacyMessagesClientOptions`; wrapped sends take `{ recipients, content }` and use `WrappedMessagesClientOptions`. Kehto's protocol adapters translate native events into normalized messages before the multi-protocol adapter merges them.
 
@@ -140,6 +144,8 @@ await client.authenticate(requests[0].url);
 ```
 
 Authentication uses the client's fixed-account signer and checks the relay verdict. Concurrent attempts for the same relay share one promise, and rejected attempts remain available for retry. Read-only clients expose requests but cannot authenticate.
+
+`authenticateAll()` snapshots pending relays and processes them sequentially, sharing queued work with individual calls. It returns per-relay `authenticated`, `skipped`, or `failed` outcomes; an individual failure does not reject the batch, but stopping or disposing the client can cancel it.
 
 The optional `onAuthRequired` callback still runs after a request is recorded. Successful external authentication also clears requests. Requests belong to active reads, history syncs, or publications; ending an operation removes only its requests, and stopping the client clears all of them. Legacy conversations share their owner's authentication list.
 
@@ -183,7 +189,7 @@ Use `client.start()` separately for account-wide inbox discovery. Stopping a con
 
 ### Consume a wrapped conversation
 
-`WrappedConversation` exposes a local `RumorStore` containing the conversation's decrypted kind-14 messages. Participant order and duplicate pubkeys resolve to the same client-owned instance, including self-conversations.
+`WrappedConversation` exposes a local `RumorStore` containing the conversation's decrypted kind-14 chat and kind-15 file messages. Participant order and duplicate pubkeys resolve to the same client-owned instance, including self-conversations.
 
 ```ts
 const conversation = client.conversation([recipient]);
@@ -219,7 +225,7 @@ try {
 }
 ```
 
-Retries reuse signed events and skip accepted wrapped envelopes. `clientMessageId` provides a bounded, in-memory retry window for repeated `send()` calls; it is scoped by the optional operation `scope`. Relay acceptance is not a recipient delivery receipt.
+Retrying the retained prepared handle reuses signed events and skips accepted wrapped envelopes. Calling `send()` again prepares a new message. The core clients do not accept `clientMessageId` or operation `scope`; those retry controls belong to Kehto adapters. Relay acceptance is not a recipient delivery receipt.
 
 ### Best Practices
 
@@ -227,7 +233,7 @@ Retries reuse signed events and skip accepted wrapped envelopes. `clientMessageI
 - Keep the shared pool and store alive when disposing an individual client.
 - Connect client ownership to observable teardown and consume its state through `use$` in React.
 - Pass an `AbortSignal` to cancellable operations; an already-issued signer or network request cannot be recalled.
-- Keep approval UI in the `approve` callback, which receives plaintext before encryption or signing.
+- Complete application approval before calling core-client preparation or sending methods; the `approve` callback belongs to Kehto adapters.
 
 **Examples:** [`messages/gift-wrap`](../../apps/examples/src/examples/messages/gift-wrap.tsx), [`messages/legacy`](../../apps/examples/src/examples/messages/legacy.tsx), [`messages/personal-notes`](../../apps/examples/src/examples/messages/personal-notes.tsx)
 
