@@ -633,6 +633,44 @@ describe("GiftWrapReceiver", () => {
     expect(calls).toHaveBeenCalledTimes(3);
   });
 
+  it("resumes background envelopes when a manual reader releases processing capacity", async () => {
+    const { receiver } = setup({ autoUnlock: true, maxQueued: 1 });
+    const first = await envelope();
+    const second = await envelope();
+    const gate = deferred<string>();
+    const decrypt = recipient.nip44.decrypt.bind(recipient.nip44);
+    const calls = vi.spyOn(recipient.nip44, "decrypt").mockImplementationOnce(() => gate.promise);
+
+    const manual = receiver.unlock(first.event);
+    await vi.waitFor(() => expect(calls).toHaveBeenCalledTimes(1));
+
+    await receiver.ingest(second.event);
+    const outcomes: unknown[] = [];
+    const subscription = receiver.receive$.subscribe((outcome) => outcomes.push(outcome));
+
+    gate.resolve(await decrypt(first.event.pubkey, first.event.content));
+    await manual;
+
+    await vi.waitFor(() => {
+      expect(outcomes).toContainEqual({ status: "success", event: second.event, rumor: second.rumor });
+    });
+    subscription.unsubscribe();
+  });
+
+  it("does not interpret a signer's human-readable error as a receiver error", async () => {
+    const { receiver } = setup();
+    const { event } = await envelope();
+    const cause = new Error("A NIP-44 signer is required");
+    vi.spyOn(recipient.nip44, "decrypt").mockRejectedValueOnce(cause);
+
+    await receiver.ingest(event);
+
+    await expect(receiver.readNext()).resolves.toMatchObject({
+      status: "failed",
+      failure: { code: "decryption-failed", cause },
+    });
+  });
+
   it("keeps an unresolved signer serialized after reader timeout", async () => {
     const { receiver } = setup({ decryptionTimeout: 50 });
     const first = await envelope();

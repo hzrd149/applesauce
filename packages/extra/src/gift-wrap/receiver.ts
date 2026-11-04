@@ -26,12 +26,15 @@ import {
   Observable,
   Subject,
   Subscription,
+  TimeoutError,
   catchError,
   combineLatest,
   concat,
   defer,
   distinctUntilChanged,
-  firstValueFrom,
+  exhaustMap,
+  filter,
+  finalize,
   fromEvent,
   ignoreElements,
   lastValueFrom,
@@ -43,6 +46,7 @@ import {
   switchMap,
   take,
   takeUntil,
+  tap,
   timeout,
 } from "rxjs";
 import { MessageAuthentication, withMessageAuth$ } from "../messages/common/authentication.js";
@@ -64,6 +68,60 @@ type Processing = {
   controller: AbortController;
   result: Promise<Rumor | undefined>;
 };
+
+class SignerError extends Error {
+  constructor(
+    readonly code: "signer-unavailable" | "signer-mismatch",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const defaultRetry: Record<GiftWrapFailure["code"], GiftWrapFailure["retry"]> = {
+  "invalid-envelope": "never",
+  "invalid-seal": "never",
+  "invalid-rumor": "never",
+  "signer-unavailable": "manual",
+  "signer-mismatch": "manual",
+  "signer-rejected": "manual",
+  "decryption-failed": "manual",
+  timeout: "automatic",
+  "storage-failed": "automatic",
+};
+
+// Bound a caller's wait without cancelling the underlying cache or signer operation.
+function waitForOperation<T>(operation: Promise<T>, milliseconds: number, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    };
+    const abort = () => {
+      cleanup();
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new TimeoutError());
+    }, milliseconds);
+
+    // Keep rejection handling attached even if this reader has already left.
+    operation.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
 
 /** An account-scoped NIP-59 inbox with bounded decryption and independent authentication */
 export class GiftWrapReceiver {
@@ -131,8 +189,10 @@ export class GiftWrapReceiver {
    */
   constructor(private readonly options: GiftWrapReceiverOptions) {
     if (!isHexKey(options.pubkey)) throw new Error("Invalid receiver pubkey");
+
     const capacity = options.maxQueued ?? 64;
     if (!Number.isSafeInteger(capacity) || capacity < 1) throw new Error("Invalid processing capacity");
+
     const retryPolicy = options.retryPolicy;
     if (
       retryPolicy?.maxAttempts !== undefined &&
@@ -142,10 +202,12 @@ export class GiftWrapReceiver {
     for (const delay of [retryPolicy?.delay, retryPolicy?.maxDelay]) {
       if (delay !== undefined && (!Number.isFinite(delay) || delay < 0)) throw new Error("Invalid retry delay");
     }
+
     this.pubkey = options.pubkey;
     this.eventStore = options.eventStore;
     this.pool = options.pool;
     this.rumorStore = options.rumorStore ?? new RumorStore();
+
     this.decryptionConcurrency = options.decryptionConcurrency ?? 1;
     if (!Number.isSafeInteger(this.decryptionConcurrency) || this.decryptionConcurrency < 1)
       throw new Error("Invalid decryption concurrency");
@@ -167,6 +229,7 @@ export class GiftWrapReceiver {
     });
     this.authRequests$ = this.authentication.requests$;
 
+    // Prefer explicitly configured relays, then advertised inboxes, then the fallback.
     const advertised$ = castUser(this.pubkey, this.eventStore).directMessageRelays$.pipe(startWith(undefined));
     this.relays$ = (
       options.relays !== undefined
@@ -179,8 +242,10 @@ export class GiftWrapReceiver {
       distinctUntilChanged((previous, next) => previous.join() === next.join()),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
+
     this.giftWraps$ = this.eventStore.timeline(this.inboxFilter).pipe(watchEventsUpdates(this.eventStore));
     this.rumors$ = this.rumorStore.timeline({});
+
     this.decryptionState$ = combineLatest([this.giftWraps$, this.activity]).pipe(
       map(([events]) => {
         const unlocked = events.filter(isGiftWrapUnlocked).length;
@@ -198,6 +263,7 @@ export class GiftWrapReceiver {
         };
       }),
     );
+    // Sharing keeps one store processor alive for all receiving and watching consumers.
     this.receive$ = defer(() => {
       const signal = this.context();
       return merge(this.results, this.storedProcessing$).pipe(takeUntil(fromEvent(signal, "abort")));
@@ -290,83 +356,93 @@ export class GiftWrapReceiver {
   // Scan stored envelopes on demand instead of buffering every arrival behind a signer prompt.
   private readonly storedProcessing$ = this.autoUnlock.pipe(
     distinctUntilChanged(),
-    switchMap(
-      (allowSigner) =>
-        new Observable<never>((subscriber) => {
-          const controller = new AbortController();
-          const visited = new Map<string, readonly (string | undefined)[]>();
-          const plaintext = (event: NostrEvent) => {
-            const seal = getGiftWrapSeal(event);
-            return [getEncryptedContent(event), seal ? getEncryptedContent(seal) : undefined];
-          };
-          let running = false;
-          let dirty = false;
-          const drain = async () => {
-            dirty = true;
-            if (running) return;
-            running = true;
-            try {
-              while (dirty && !controller.signal.aborted) {
-                dirty = false;
-                const events = this.eventStore.getByFilters(this.inboxFilter)[Symbol.iterator]();
-                const worker = async () => {
-                  for (const event of events) {
-                    if (controller.signal.aborted) break;
-                    if (visited.has(event.id) || this.completed.has(event.id)) continue;
-                    visited.set(event.id, plaintext(event));
-                    const failure = this.failures.get(event.id);
-                    // External decryption can recover signer failures without retrying the signer.
-                    if (
-                      failure &&
-                      !((failure.stage === "wrap" || failure.stage === "seal") && isGiftWrapUnlocked(event))
-                    )
-                      continue;
-                    try {
-                      await this.read(event, allowSigner && !failure, controller.signal);
-                    } catch {
-                      /* Per-envelope failures remain visible in decryptionState$. */
-                    }
+    switchMap((allowSigner) =>
+      defer(() => {
+        const controller = new AbortController();
+        const visited = new Map<string, readonly (string | undefined)[]>();
+        const plaintext = (event: NostrEvent) => {
+          const seal = getGiftWrapSeal(event);
+          return [getEncryptedContent(event), seal ? getEncryptedContent(seal) : undefined];
+        };
+
+        let dirty = false;
+        const drain = async () => {
+          while (dirty && !controller.signal.aborted) {
+            dirty = false;
+            const events = this.eventStore.getByFilters(this.inboxFilter)[Symbol.iterator]();
+            const worker = async () => {
+              for (const event of events) {
+                if (controller.signal.aborted) break;
+                if (visited.has(event.id) || this.completed.has(event.id)) continue;
+
+                // Leave the envelope eligible until an occupied processing slot is released.
+                if (!this.processing.has(event.id) && this.processing.size >= (this.options.maxQueued ?? 64)) break;
+
+                visited.set(event.id, plaintext(event));
+                const failure = this.failures.get(event.id);
+
+                // External decryption can recover signer failures without retrying the signer.
+                if (failure && !((failure.stage === "wrap" || failure.stage === "seal") && isGiftWrapUnlocked(event)))
+                  continue;
+
+                try {
+                  await this.read(event, allowSigner && !failure, controller.signal);
+                } catch (error) {
+                  // Expected envelope failures are already published by process().
+                  if (!controller.signal.aborted && !this.failures.has(event.id)) {
+                    this.report("decrypt", error, event.id);
                   }
-                };
-                await Promise.all(
-                  Array.from({ length: Math.min(this.decryptionConcurrency, this.options.maxQueued ?? 64) }, worker),
-                );
+                }
               }
-            } finally {
-              running = false;
-            }
-          };
-          const subscriptions = new Subscription();
-          subscriptions.add(
-            merge(this.eventStore.insert$, this.eventStore.update$).subscribe((event) => {
-              if (event.kind !== kinds.GiftWrap || !event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey))
-                return;
-              const previous = visited.get(event.id);
-              const current = plaintext(event);
-              if (previous && previous.every((value, index) => value === current[index])) return;
-              visited.delete(event.id);
-              void drain();
-            }),
-          );
-          subscriptions.add(
-            this.eventStore.remove$.subscribe((event) => {
-              visited.delete(event.id);
-              this.failures.delete(event.id);
-              this.completed.delete(event.id);
-              this.attempts.delete(event.id);
-              this.clearRetry(event.id);
-              this.changed();
-            }),
-          );
-          subscriptions.add(() => controller.abort());
-          subscriber.add(subscriptions);
-          void drain();
-        }),
+            };
+            await Promise.all(
+              Array.from({ length: Math.min(this.decryptionConcurrency, this.options.maxQueued ?? 64) }, worker),
+            );
+          }
+        };
+
+        const arrivals$ = merge(this.eventStore.insert$, this.eventStore.update$).pipe(
+          filter(
+            (event) =>
+              event.kind === kinds.GiftWrap && event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey),
+          ),
+          filter((event) => {
+            const previous = visited.get(event.id);
+            const current = plaintext(event);
+            return !previous || !previous.every((value, index) => value === current[index]);
+          }),
+          tap((event) => visited.delete(event.id)),
+        );
+
+        const removals$ = this.eventStore.remove$.pipe(
+          tap((event) => {
+            visited.delete(event.id);
+            this.failures.delete(event.id);
+            this.completed.delete(event.id);
+            this.attempts.delete(event.id);
+            this.clearRetry(event.id);
+            this.changed();
+          }),
+        );
+
+        // Coalesce arrivals while draining; the dirty flag preserves one trailing scan.
+        // Activity also wakes envelopes that were waiting for processing capacity.
+        return merge(arrivals$, removals$, this.activity).pipe(
+          tap(() => {
+            dirty = true;
+          }),
+          exhaustMap(() => drain()),
+          ignoreElements(),
+          finalize(() => controller.abort()),
+        );
+      }),
     ),
   );
 
   private async layer(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<boolean> {
     signal.throwIfAborted();
+
+    // Readers share each layer, including seals referenced by more than one envelope.
     let work = this.layers.get(event.id);
     if (!work) {
       const result = this.processLayer(event, allowSigner, signal);
@@ -377,14 +453,9 @@ export class GiftWrapReceiver {
     }
 
     try {
-      const unlocked = await firstValueFrom(
-        defer(() => work.result).pipe(
-          timeout({ first: this.options.decryptionTimeout ?? 60000 }),
-          takeUntil(fromEvent(signal, "abort")),
-        ),
-        { defaultValue: false },
-      );
+      const unlocked = await waitForOperation(work.result, this.options.decryptionTimeout ?? 60000, signal);
       signal.throwIfAborted();
+
       // A cache-only lookup may precede a reader that explicitly allows the signer.
       if (!unlocked && allowSigner && !work.allowSigner) return this.layer(event, allowSigner, signal);
       return unlocked;
@@ -397,42 +468,48 @@ export class GiftWrapReceiver {
   }
 
   private async processLayer(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<boolean> {
+    // A cache hit can unlock a layer without asking the signer for permission.
     if (!isEncryptedContentUnlocked(event) && this.options.decryptionCache) {
       try {
-        await firstValueFrom(
-          defer(() => restoreEncryptedContent(event, this.options.decryptionCache!)).pipe(
-            timeout({ first: this.options.timeout ?? 10000 }),
-          ),
+        await waitForOperation(
+          restoreEncryptedContent(event, this.options.decryptionCache),
+          this.options.timeout ?? 10000,
         );
       } catch (error) {
         this.report("cache", error, event.id);
       }
     }
+
     signal.throwIfAborted();
     if (isEncryptedContentUnlocked(event)) return true;
     if (!allowSigner) return false;
+
     const signer = this.options.signer;
-    if (!signer?.nip44) throw new Error("A NIP-44 signer is required");
+    if (!signer?.nip44) throw new SignerError("signer-unavailable", "A NIP-44 signer is required");
 
     await this.decrypt(async () => {
       signal.throwIfAborted();
       if (isEncryptedContentUnlocked(event)) return;
-      if ((await signer.getPublicKey()) !== this.pubkey) throw new Error("Signer does not match receiver owner");
+
+      if ((await signer.getPublicKey()) !== this.pubkey)
+        throw new SignerError("signer-mismatch", "Signer does not match receiver owner");
+
       signal.throwIfAborted();
       await unlockEncryptedContent(event, event.pubkey, signer);
     }, signal);
+
     // Persist each completed layer even if the caller abandoned the following layer.
     if (this.options.decryptionCache) {
       try {
-        await firstValueFrom(
-          defer(() => saveEncryptedContent(event, this.options.decryptionCache!)).pipe(
-            timeout({ first: this.options.timeout ?? 10000 }),
-          ),
+        await waitForOperation(
+          saveEncryptedContent(event, this.options.decryptionCache),
+          this.options.timeout ?? 10000,
         );
       } catch (error) {
         this.report("cache", error, event.id);
       }
     }
+
     return true;
   }
 
@@ -445,28 +522,37 @@ export class GiftWrapReceiver {
       if (work) work.stage = next;
     };
     this.attempts.set(event.id, (this.attempts.get(event.id) ?? 0) + 1);
+
     try {
       this.validate(event);
+
+      // Open the outer envelope before inspecting the signed seal inside it.
       setStage("wrap");
       code = "decryption-failed";
       if (!(await this.layer(event, allowSigner, signal))) return;
       signal.throwIfAborted();
+
       setStage("seal");
       code = "invalid-seal";
       const seal = getGiftWrapSeal(event);
       if (!seal) throw new Error("Invalid gift wrap seal");
+
       code = "decryption-failed";
       if (!(await this.layer(seal, allowSigner, signal))) return;
       signal.throwIfAborted();
+
+      // Only validated plaintext reaches the separate rumor store.
       setStage("rumor");
       code = "invalid-rumor";
       const rumor = getGiftWrapRumor(event);
       if (!rumor) throw new Error("Invalid gift wrap rumor");
       notifyEventUpdate(event);
+
       setStage("storage");
       code = "storage-failed";
       await this.rumorStore.add(rumor);
       signal.throwIfAborted();
+
       this.completed.add(event.id);
       this.failures.delete(event.id);
       this.clearRetry(event.id);
@@ -494,11 +580,10 @@ export class GiftWrapReceiver {
     cause: unknown,
   ): GiftWrapFailure {
     const eventId = event.id;
-    let retry: GiftWrapFailure["retry"] = code.startsWith("invalid-") ? "never" : "manual";
-    if (code === "decryption-failed" && cause instanceof Error) {
-      if (cause.message === "A NIP-44 signer is required") code = "signer-unavailable";
-      else if (cause.message === "Signer does not match receiver owner") code = "signer-mismatch";
-    }
+    if (cause instanceof SignerError) code = cause.code;
+    else if (cause instanceof TimeoutError) code = "timeout";
+
+    let retry = defaultRetry[code];
     if (code === "decryption-failed" && this.options.retryPolicy?.classify) {
       try {
         const classification = this.options.retryPolicy.classify(cause);
@@ -508,59 +593,72 @@ export class GiftWrapReceiver {
         // A classifier failure must not terminate inbox processing or hide the original cause.
       }
     }
-    if (code === "timeout" || code === "storage-failed") retry = "automatic";
+
     const attempts = this.attempts.get(eventId) ?? 1;
     if (retry === "automatic" && attempts >= (this.options.retryPolicy?.maxAttempts ?? 1)) retry = "manual";
+
     const failure: GiftWrapFailure = { eventId, stage, code, cause, attempts, retry };
     this.failures.set(eventId, failure);
     this.errors.next({ operation: stage === "storage" ? "storage" : "decrypt", error: cause, eventId, failure });
     this.results.next({ status: "failed", event, failure });
+
     this.clearRetry(eventId);
-    if (retry === "automatic") {
-      const delay = Math.min(
-        (this.options.retryPolicy?.delay ?? 1000) * 2 ** (attempts - 1),
-        this.options.retryPolicy?.maxDelay ?? 30000,
-      );
-      const generation = this.generation.signal;
-      this.retryTimers.set(
-        eventId,
-        setTimeout(() => {
-          this.retryTimers.delete(eventId);
-          const pending = this.processing.get(eventId)?.result;
-          // A timed-out signer must settle before another attempt can begin.
-          void Promise.resolve(pending)
-            .catch(() => undefined)
-            .then(async () => {
-              if (generation.aborted || this.failures.get(eventId) !== failure) return;
-              if (!this.eventStore.getByFilters(this.inboxFilter).some((event) => event.id === eventId)) return;
-              await this.retry(eventId);
-            })
-            .catch(() => {});
-        }, delay),
-      );
-    }
+    if (retry === "automatic") this.scheduleRetry(failure);
+
     return failure;
+  }
+
+  private scheduleRetry(failure: GiftWrapFailure): void {
+    const { eventId, attempts } = failure;
+    const delay = Math.min(
+      (this.options.retryPolicy?.delay ?? 1000) * 2 ** (attempts - 1),
+      this.options.retryPolicy?.maxDelay ?? 30000,
+    );
+    const generation = this.generation.signal;
+    this.retryTimers.set(
+      eventId,
+      setTimeout(() => {
+        this.retryTimers.delete(eventId);
+        void this.runRetry(failure, generation).catch((error) => {
+          if (!generation.aborted) this.report("decrypt", error, eventId);
+        });
+      }, delay),
+    );
+  }
+
+  private async runRetry(failure: GiftWrapFailure, signal: AbortSignal): Promise<void> {
+    const { eventId } = failure;
+
+    // Wait for the previous attempt to settle; its failure has already been reported.
+    await this.processing.get(eventId)?.result.catch(() => undefined);
+
+    if (signal.aborted || this.failures.get(eventId) !== failure) return;
+    if (!this.eventStore.getByFilters(this.inboxFilter).some((event) => event.id === eventId)) return;
+
+    await this.retry(eventId, { signal });
   }
 
   private async read(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<Rumor | undefined> {
     signal.throwIfAborted();
     if (this.completed.has(event.id)) return getGiftWrapRumor(event);
+
     let work = this.processing.get(event.id);
+
     // A new reader must wait for an abandoned uncancellable call before starting fresh work.
     if (work && (work.controller.signal.aborted || (allowSigner && !work.allowSigner))) {
       const abandoned = work.result;
-      await firstValueFrom(
-        defer(() => abandoned.catch(() => undefined)).pipe(
-          timeout({ first: this.options.decryptionTimeout ?? 60000 }),
-          takeUntil(fromEvent(signal, "abort")),
-        ),
-        { defaultValue: undefined },
+      await waitForOperation(
+        abandoned.catch(() => undefined),
+        this.options.decryptionTimeout ?? 60000,
+        signal,
       );
       signal.throwIfAborted();
       return this.read(event, allowSigner, signal);
     }
+
     if (!work) {
       if (this.processing.size >= (this.options.maxQueued ?? 64)) throw new Error("Processing capacity exceeded");
+
       const controller = new AbortController();
       work = { readers: 0, stage: "envelope", allowSigner, controller, result: Promise.resolve(undefined) };
       this.processing.set(event.id, work);
@@ -571,8 +669,10 @@ export class GiftWrapReceiver {
       };
       void work.result.then(release, release);
     }
+
     work.readers++;
     this.changed();
+
     let released = false;
     const release = () => {
       if (released) return;
@@ -581,26 +681,16 @@ export class GiftWrapReceiver {
       if (!work.readers) work.controller.abort();
       if (!this.disposed) this.changed();
     };
+
     // Release demand synchronously so a replacement cache-only watcher cannot retain signer permission.
     signal.addEventListener("abort", release, { once: true });
+
     try {
-      const rumor = await firstValueFrom(
-        defer(() => work.result).pipe(
-          timeout({ first: this.options.decryptionTimeout ?? 60000 }),
-          takeUntil(fromEvent(signal, "abort")),
-        ),
-        { defaultValue: undefined },
-      );
+      const rumor = await waitForOperation(work.result, this.options.decryptionTimeout ?? 60000, signal);
       signal.throwIfAborted();
       return rumor;
     } catch (error) {
-      if (
-        !signal.aborted &&
-        !this.disposed &&
-        error instanceof Error &&
-        error.name === "TimeoutError" &&
-        work.readers === 1
-      ) {
+      if (!signal.aborted && !this.disposed && error instanceof TimeoutError && work.readers === 1) {
         this.recordFailure(event, work.stage, "timeout", error);
       }
       throw error;
@@ -611,11 +701,19 @@ export class GiftWrapReceiver {
   }
 
   /**
-   * Decrypts and stores one envelope, or all loaded envelopes without prior failures
+   * Decrypts and stores one envelope and returns its validated rumor
    * @throws if disposed, cancelled, or processing the explicitly supplied envelope fails
    */
   async unlock(event: NostrEvent, options?: GiftWrapOperationOptions): Promise<Rumor>;
+  /**
+   * Decrypts and stores all loaded envelopes without prior failures
+   * @throws if disposed or cancelled
+   */
   async unlock(event?: undefined, options?: GiftWrapOperationOptions): Promise<void>;
+  /**
+   * Decrypts and stores the supplied envelope or all eligible loaded envelopes
+   * @throws if disposed, cancelled, or processing the supplied envelope fails
+   */
   async unlock(event?: NostrEvent, options: GiftWrapOperationOptions = {}): Promise<Rumor | void> {
     const signal = this.context(options);
     if (event) {
@@ -691,7 +789,7 @@ export class GiftWrapReceiver {
           : ({
               eventId: event.id,
               stage: work?.stage ?? "envelope",
-              code: cause instanceof Error && cause.name === "TimeoutError" ? "timeout" : "decryption-failed",
+              code: cause instanceof TimeoutError ? "timeout" : "decryption-failed",
               cause,
               attempts: this.attempts.get(event.id) ?? 1,
               retry: "manual",
@@ -748,6 +846,8 @@ export class GiftWrapReceiver {
     }
     signal.throwIfAborted();
     this.activeDecryptions++;
+
+    // Cancellation releases the reader, but only settlement releases the signer slot.
     try {
       await operation();
     } finally {
@@ -778,7 +878,7 @@ export class GiftWrapReceiver {
   }
 
   /**
-   * Retains a subscription to the shared live stream without reconciling history
+   * Starts shared live loading and envelope processing until stopped
    * @throws if the receiver is disposed
    */
   async start(): Promise<void> {
@@ -807,7 +907,7 @@ export class GiftWrapReceiver {
     if (!this.disposed) this.lifecycle.next("idle");
   }
 
-  /** Reconciles an envelope timestamp range with operation-local progress */
+  /** Loads missing envelopes in a timestamp range and streams reconciliation progress */
   sync$(options: GiftWrapHistoryOptions = {}): Observable<SyncLoaderStatus> {
     return defer(() => {
       const signal = this.context(options);
