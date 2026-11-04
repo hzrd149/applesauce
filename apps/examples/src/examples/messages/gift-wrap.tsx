@@ -113,7 +113,7 @@ function createBlossomUploader(signer: ISigner, user: User): MessageFileUploader
   };
 }
 
-// The stream owns the client; switching accounts or leaving the page disposes it
+// The stream owns the client and outlives the page, since this module is only loaded once; switching accounts disposes it
 const client$ = combineLatest([signer$, user$, storage$]).pipe(
   switchMap(([signer, user, storage]) => {
     if (!signer || !user || !storage) return of(undefined);
@@ -159,7 +159,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
       );
     });
   }),
-  shareReplay({ bufferSize: 1, refCount: true }),
+  shareReplay({ bufferSize: 1, refCount: false }),
 );
 
 /** Creates an object URL for a blob that is revoked when the subscription ends */

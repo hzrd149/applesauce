@@ -80,7 +80,7 @@ const cacheRequest = async (filters: Parameters<typeof getEventsForFilters>[1]) 
 persistEventsToCache(eventStore, (events) => addEvents(db, events));
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, cacheRequest });
 
-// The stream owns the client; a signer is optional so another user's mailbox can be browsed read-only
+// The stream owns the client and outlives the page, since this module is only loaded once; a signer is optional so another user's mailbox can be browsed read-only
 const client$ = combineLatest([signer$, user$, storage$]).pipe(
   switchMap(([signer, user, storage]) => {
     if (!user || (signer && !storage)) return of(undefined);
@@ -111,7 +111,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
       );
     });
   }),
-  shareReplay({ bufferSize: 1, refCount: true }),
+  shareReplay({ bufferSize: 1, refCount: false }),
 );
 
 /** Returns the start of a preset history range */
