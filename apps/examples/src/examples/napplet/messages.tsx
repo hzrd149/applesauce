@@ -1,5 +1,5 @@
 /**
- * Plugs multiple messaging protocol adapters into a built-in napplet through NAP-DM
+ * Plugs multiple messaging protocol adapters into a built-in or pasted napplet through NAP-DM
  * @tags nip-5d, napplet, kehto, nip-17, nip-04, nip-44, nip-59, nip-77, messages, dm, ndr
  * @related messages/gift-wrap, messages/legacy, napplet/identity
  */
@@ -16,14 +16,16 @@ import {
 } from "applesauce-actions/actions";
 import { ProxySigner } from "applesauce-accounts";
 import { castUser, User } from "applesauce-common/casts";
-import { isGiftWrapUnlocked, persistEncryptedContent } from "applesauce-common/helpers";
+import { isGiftWrapUnlocked, isValidNapplet, persistEncryptedContent } from "applesauce-common/helpers";
 import { defined, EventStore, mapEventsToStore } from "applesauce-core";
 import {
+  decodeAddressPointer,
   ensureWebSocketURL,
   finalizeEvent,
   generateSecretKey,
   getDisplayName,
   getProfilePicture,
+  isAddressableKind,
   isEncryptedContentUnlocked,
   isFromCache,
   isSameURL,
@@ -32,6 +34,7 @@ import {
   mergeRelaySets,
   persistEventsToCache,
   unixNow,
+  type AddressPointer,
   type EventTemplate,
   type Filter,
   type NostrEvent,
@@ -67,7 +70,9 @@ import {
   catchError,
   combineLatest,
   defer,
+  distinctUntilChanged,
   EMPTY,
+  filter,
   ignoreElements,
   map,
   merge,
@@ -89,6 +94,7 @@ import { lookupRelays$ } from "../../settings";
 import NAPPLET_HTML from "../../napplets/messages/index.html?napplet";
 
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
+const FALLBACK_BLOSSOM = ["https://blossom.primal.net/"];
 const MAX_LOG = 100;
 const DAY = 24 * 60 * 60;
 // NIP-59 randomizes gift wrap timestamps up to two days into the past
@@ -300,6 +306,7 @@ const kehtoContext: KehtoContext = {
     setItem: (key, content) => storage$.value!.setItem(`napplet:${key}`, content),
   },
   fallbackRelays: FALLBACK_RELAYS,
+  fallbackBlossomServers: FALLBACK_BLOSSOM,
   // The DM protocols ask before signing, with the plaintext message as the template
   approve: ({ template }) => approve(template),
 };
@@ -486,12 +493,12 @@ const nappletManifest = finalizeEvent(
 );
 
 /** Resolves a fresh napplet instance on subscribe and destroys it on unsubscribe */
-function nappletInstance$() {
+function resolveInstance$(resolve: () => Promise<KehtoNappletInstance>) {
   return new Observable<KehtoNappletInstance>((subscriber) => {
     let closed = false;
     let instance: KehtoNappletInstance | undefined;
 
-    host.resolve(nappletManifest, { fetchBlob: async () => nappletBytes }).then(
+    resolve().then(
       (resolved) => {
         if (closed) return resolved.destroy();
         instance = resolved;
@@ -505,6 +512,41 @@ function nappletInstance$() {
       instance?.destroy();
     };
   });
+}
+
+/** Streams a napplet manifest from the pointer hints and the author's outboxes as they are discovered */
+function nappletManifest$(pointer: AddressPointer) {
+  const manifestFilter: Filter = { kinds: [pointer.kind], authors: [pointer.pubkey] };
+  if (isAddressableKind(pointer.kind)) manifestFilter["#d"] = [pointer.identifier];
+
+  // Start with the hints, then widen the set when the author's relay list arrives
+  const relays$ = castUser(pointer.pubkey, eventStore).outboxes$.pipe(
+    startWith(undefined),
+    map((outboxes) => mergeRelaySets(pointer.relays, outboxes)),
+    map((relays) => (relays.length ? relays : FALLBACK_RELAYS)),
+    distinctUntilChanged((a, b) => a.join() === b.join()),
+  );
+
+  // Every relay streams into the store, which keeps only the newest manifest revision
+  const live$ = relays$.pipe(
+    switchMap((relays) => pool.subscription(relays, manifestFilter).pipe(mapEventsToStore(eventStore))),
+    ignoreElements(),
+  );
+
+  return merge(live$, eventStore.addressable(pointer)).pipe(
+    filter(isValidNapplet),
+    distinctUntilChanged((a, b) => a.id === b.id),
+  );
+}
+
+/** Runs the napplet at a pasted address, or the built-in demo when no address is given */
+function nappletInstance$(pointer?: AddressPointer) {
+  if (!pointer) return resolveInstance$(() => host.resolve(nappletManifest, { fetchBlob: async () => nappletBytes }));
+
+  return nappletManifest$(pointer).pipe(
+    // A new manifest revision restarts the napplet with the new artifact
+    switchMap((manifest) => resolveInstance$(() => host.resolve(manifest))),
+  );
 }
 
 // ---- UI
@@ -521,7 +563,61 @@ function Avatar({ pubkey }: { pubkey: string }) {
   );
 }
 
-function Toolbar({ onLogin }: { onLogin: () => void }) {
+/** Swaps the built-in napplet for any DM napplet pasted as an naddr */
+function NappletSource({
+  pointer,
+  onChange,
+}: {
+  pointer?: AddressPointer;
+  onChange: (pointer?: AddressPointer) => void;
+}) {
+  const [input, setInput] = useState("");
+  const decoded = decodeAddressPointer(input.trim().replace(/^nostr:/, ""));
+  const invalid = input.trim() !== "" && !decoded;
+
+  const load = () => {
+    if (!decoded) return;
+
+    onChange(decoded);
+    setInput("");
+  };
+
+  return (
+    <form
+      className="flex flex-1 items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        load();
+      }}
+    >
+      <input
+        className={`input input-sm flex-1 max-w-md ${invalid ? "input-error" : ""}`}
+        placeholder="naddr1… of a DM napplet"
+        title={invalid ? "Not a valid naddr" : undefined}
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+      />
+      <button type="submit" className="btn btn-sm" disabled={!decoded}>
+        Load
+      </button>
+      {pointer && (
+        <span className="badge gap-1" title={`${pointer.kind}:${pointer.pubkey}:${pointer.identifier}`}>
+          {pointer.identifier || "Root napplet"}
+          <button
+            type="button"
+            aria-label="Use built-in napplet"
+            title="Use built-in napplet"
+            onClick={() => onChange(undefined)}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </span>
+      )}
+    </form>
+  );
+}
+
+function Toolbar({ onLogin, children }: { onLogin: () => void; children?: ReactNode }) {
   const user = use$(user$);
   const profile = use$(() => user?.profile$, [user]);
 
@@ -536,7 +632,7 @@ function Toolbar({ onLogin }: { onLogin: () => void }) {
 
   return (
     <div className="flex items-center gap-2 p-2 border-b border-base-300">
-      <span className="flex-1" />
+      {children}
       {user ? (
         <>
           <Avatar pubkey={user.pubkey} />
@@ -999,8 +1095,14 @@ function SendPrompt({ prompt }: { prompt: Prompt }) {
   );
 }
 
-function NappletFrame() {
-  const instance = use$(() => nappletInstance$(), []);
+function NappletFrame({ pointer }: { pointer?: AddressPointer }) {
+  const instance = use$(
+    () =>
+      nappletInstance$(pointer).pipe(
+        catchError((error) => of(error instanceof Error ? error : new Error(String(error)))),
+      ),
+    [pointer],
+  );
   const prompts = use$(prompts$);
 
   return (
@@ -1008,15 +1110,20 @@ function NappletFrame() {
       {prompts.map((prompt, index) => (
         <SendPrompt key={index} prompt={prompt} />
       ))}
-      {instance ? (
+      {instance instanceof Error ? (
+        <div className="flex-1 flex items-center justify-center gap-2 text-error">
+          <AlertTriangle className="w-4 h-4" /> {instance.message}
+        </div>
+      ) : instance ? (
         <iframe
           key={instance.windowId}
           ref={(iframe) => {
-            if (iframe) instance.mount(iframe);
+            // The previous napplet stays rendered until the next one resolves, after it was destroyed
+            if (iframe && !instance.destroyed) instance.mount(iframe);
           }}
           sandbox="allow-scripts"
           className="flex-1"
-          title="Messages demo napplet"
+          title="Messages napplet"
         />
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -1314,6 +1421,7 @@ function Sidebar() {
 export default function NappletMessages() {
   const storage = use$(storage$);
   const login = useRef<HTMLDialogElement>(null);
+  const [napplet, setNapplet] = useState<AddressPointer>();
 
   // Unlock the encrypted storage first so decrypted messages restore before any are loaded
   if (!storage)
@@ -1333,9 +1441,11 @@ export default function NappletMessages() {
 
   return (
     <div className="flex flex-col min-h-0 grow">
-      <Toolbar onLogin={() => login.current?.showModal()} />
+      <Toolbar onLogin={() => login.current?.showModal()}>
+        <NappletSource pointer={napplet} onChange={setNapplet} />
+      </Toolbar>
       <div className="flex min-h-0 flex-1">
-        <NappletFrame />
+        <NappletFrame pointer={napplet} />
         <Sidebar />
       </div>
 
