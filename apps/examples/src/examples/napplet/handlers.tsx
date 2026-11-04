@@ -38,11 +38,12 @@ import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } fr
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { ArrowUp, Eraser, Lock, LockOpen, LogIn, LogOut, Plus, RefreshCw, Trash2, Unlock } from "lucide-react";
+import { Eraser, Lock, LockOpen, LogIn, LogOut, Plus, RefreshCw, Trash2, Unlock } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import {
   BehaviorSubject,
   catchError,
+  combineLatest,
   defer,
   EMPTY,
   endWith,
@@ -65,7 +66,7 @@ import { lookupRelays$ } from "../../settings";
 const DEFAULT_STORE_RELAY = "wss://relay.ditto.pub/";
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 
-// Root and named napplets; snapshots are only reachable through the napplet they derive from
+// Discover current manifests; pinned snapshots are loaded directly from preference references
 const NAPPLETS_FILTER: Filter = { kinds: [NAPPLET_ROOT_KIND, NAPPLET_KIND] };
 
 // Login state
@@ -91,7 +92,7 @@ const actions = new ActionRunner(eventStore, signer, async (event, relays) => {
 type LoadStatus = { loading: boolean; error?: string };
 
 /** Requests events into the store and reports when the request finishes */
-function requestIntoStore(relays: string[], filter: Filter): Observable<LoadStatus> {
+function requestIntoStore$(relays: string[], filter: Filter): Observable<LoadStatus> {
   return pool.request(relays, filter).pipe(
     mapEventsToStore(eventStore),
     ignoreElements(),
@@ -102,13 +103,13 @@ function requestIntoStore(relays: string[], filter: Filter): Observable<LoadStat
 }
 
 /** Loads every handler preference of the user from their outboxes, so actions modify the latest version */
-function loadPreferences(user: User): Observable<LoadStatus> {
+function loadPreferences$(user: User): Observable<LoadStatus> {
   return user.outboxes$.pipe(
     defined(),
     timeout({ first: 5_000, with: () => of([]) }),
     take(1),
     switchMap((outboxes) =>
-      requestIntoStore(mergeRelaySets(outboxes, FALLBACK_RELAYS), {
+      requestIntoStore$(mergeRelaySets(outboxes, FALLBACK_RELAYS), {
         kinds: [NAPPLET_HANDLERS_KIND],
         authors: [user.pubkey],
       }),
@@ -154,7 +155,7 @@ const catalog$ = eventStore
 /** A handler entry with the group it is stored in */
 type Entry = { ref: NappletHandlerRef; hidden: boolean };
 
-/** Lists the archetype-wide or intent-specific entries in resolution order, private first, each napplet once */
+/** Lists alternative handlers with their visibility, preserving order within each list */
 function listEntries(
   publicEntries: NappletHandlerEntries | undefined,
   hiddenEntries: NappletHandlerEntries | undefined,
@@ -163,19 +164,36 @@ function listEntries(
   const pick = (entries?: NappletHandlerEntries) =>
     (identity ? entries?.intents.get(identity) : entries?.handlers) ?? [];
 
-  const entries = [
-    ...pick(hiddenEntries).map((ref) => ({ ref, hidden: true })),
+  return [
     ...pick(publicEntries).map((ref) => ({ ref, hidden: false })),
+    ...pick(hiddenEntries).map((ref) => ({ ref, hidden: true })),
   ];
+}
 
-  const seen = new Set<string>();
-  return entries.filter((entry) => {
-    const key = getNappletHandlerRefKey(entry.ref);
-    if (seen.has(key)) return false;
+function hasEntries(entries?: NappletHandlerEntries): boolean {
+  return !!entries && (entries.handlers.length > 0 || entries.intents.size > 0);
+}
 
-    seen.add(key);
-    return true;
-  });
+/** Watches saved archetypes, including locked private preferences until they can be inspected */
+function preferredArchetypes$(user: User): Observable<string[]> {
+  return user.nappletHandlers$.pipe(
+    switchMap((preferences) =>
+      preferences.length === 0
+        ? of([])
+        : combineLatest(
+            preferences.map((handlers) =>
+              handlers.hiddenEntries$.pipe(
+                map((hidden) =>
+                  hasEntries(handlers.publicEntries) || hasEntries(hidden) || (handlers.hasHidden && !hidden)
+                    ? handlers.archetype
+                    : undefined,
+                ),
+              ),
+            ),
+          ),
+    ),
+    map((archetypes) => archetypes.filter((archetype): archetype is string => archetype !== undefined).sort()),
+  );
 }
 
 /** Subscribes to the napplet a handler reference points to; a pin only resolves to its snapshot */
@@ -318,47 +336,40 @@ function useOperation() {
   return { busy, error, run };
 }
 
-// ---------- Handler chains ----------
+// ---------- Handler options ----------
 
-/** The archetype and optional convention identity a chain of handlers is for */
-type ChainTarget = { archetype: string; identity?: string };
+/** The archetype and optional convention identity a handler preference applies to */
+type HandlerTarget = { archetype: string; identity?: string };
 
-/** Makes a handler the preferred one in the chain, in the public or private group */
-function setHandler({ archetype, identity }: ChainTarget, ref: NappletHandlerRef, hidden: boolean) {
+/** Moves a handler to the public or private group */
+function setHandlerVisibility({ archetype, identity }: HandlerTarget, ref: NappletHandlerRef, hidden: boolean) {
   return identity
     ? actions.run(SetNappletIntentHandler, identity, ref.pointer, hidden)
     : actions.run(SetNappletHandler, archetype, ref.pointer, hidden);
 }
 
-/** Adds a handler as the last fallback of the chain */
-function addHandler({ archetype, identity }: ChainTarget, pointer: AddressPointer, hidden: boolean) {
+/** Adds an alternative preferred handler */
+function addHandler({ archetype, identity }: HandlerTarget, pointer: AddressPointer, hidden: boolean) {
   return identity
     ? actions.run(AddNappletIntentHandler, identity, pointer, hidden)
     : actions.run(AddNappletHandler, archetype, pointer, hidden);
 }
 
-/** Removes a handler from both groups of the chain */
-function removeHandler({ archetype, identity }: ChainTarget, ref: NappletHandlerRef) {
+/** Removes a handler from both visibility groups */
+function removeHandler({ archetype, identity }: HandlerTarget, ref: NappletHandlerRef) {
   return identity
     ? actions.run(RemoveNappletIntentHandler, identity, ref.pointer)
     : actions.run(RemoveNappletHandler, archetype, ref.pointer);
 }
 
-function HandlerRow(props: {
-  target: ChainTarget;
-  entry: Entry;
-  rank: number;
-  recommenders?: string[];
-  canWrite: boolean;
-}) {
-  const { target, entry, rank, recommenders, canWrite } = props;
-  const napplet = use$(() => handlerNapplet$(entry.ref), [getNappletHandlerRefKey(entry.ref)]);
+function HandlerRow(props: { target: HandlerTarget; entry: Entry; recommenders?: string[]; canWrite: boolean }) {
+  const { target, entry, recommenders, canWrite } = props;
+  const napplet = use$(() => handlerNapplet$(entry.ref), [entry.ref]);
   const { busy, error, run } = useOperation();
   const disabled = !canWrite || busy;
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 border-b border-base-300 last:border-b-0">
-      <span className={`badge ${rank === 0 ? "badge-primary" : "badge-ghost"}`}>{rank + 1}</span>
       {napplet ? (
         <>
           <NappletIconImage napplet={napplet} />
@@ -388,21 +399,13 @@ function HandlerRow(props: {
         className={`btn btn-sm btn-square ${entry.hidden ? "btn-warning" : "btn-ghost"}`}
         title={entry.hidden ? "Private, make public" : "Public, make private"}
         disabled={disabled}
-        onClick={() => run(() => setHandler(target, entry.ref, !entry.hidden))}
+        onClick={() => run(() => setHandlerVisibility(target, entry.ref, !entry.hidden))}
       >
         {entry.hidden ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}
       </button>
       <button
         className="btn btn-sm btn-ghost btn-square"
-        title="Make preferred"
-        disabled={disabled || rank === 0}
-        onClick={() => run(() => setHandler(target, entry.ref, entry.hidden))}
-      >
-        <ArrowUp className="w-4 h-4" />
-      </button>
-      <button
-        className="btn btn-sm btn-ghost btn-square"
-        title="Remove"
+        title="Remove from public and private preferences"
         disabled={disabled}
         onClick={() => run(() => removeHandler(target, entry.ref))}
       >
@@ -412,9 +415,9 @@ function HandlerRow(props: {
   );
 }
 
-/** Picks a napplet to append to the chain, contact recommendations first */
+/** Picks an alternative handler, listing contact recommendations first */
 function AddHandler(props: {
-  target: ChainTarget;
+  target: HandlerTarget;
   options: Napplet[];
   storeRelay: string;
   recommenders: Recommenders;
@@ -477,9 +480,9 @@ function AddHandler(props: {
   );
 }
 
-/** An ordered chain of handlers for the archetype, or for one intent when an identity is given */
-function HandlerChain(props: {
-  target: ChainTarget;
+/** Alternative preferred handlers for an archetype or an exact convention identity */
+function HandlerOptions(props: {
+  target: HandlerTarget;
   label: string;
   options: Napplet[];
   handlers?: NappletHandlers;
@@ -494,7 +497,7 @@ function HandlerChain(props: {
       () => recommenders$(target.archetype, contacts, target.identity),
       [target.archetype, target.identity, contacts],
     ) ?? new Map();
-  const { busy, run } = useOperation();
+  const { busy, error, run } = useOperation();
 
   const entries = listEntries(handlers?.publicEntries, hiddenEntries, target.identity);
   const chosen = new Set(entries.map((entry) => getNappletHandlerRefKey(entry.ref)));
@@ -507,11 +510,20 @@ function HandlerChain(props: {
         <span className="badge badge-outline" title="Napplets that support this">
           {options.length}
         </span>
-        {target.identity && entries.length === 0 && <span className="badge badge-ghost">default</span>}
+        {error && (
+          <span className="badge badge-error" title={error}>
+            failed
+          </span>
+        )}
+        {target.identity && entries.length === 0 && !handlers?.hasHidden && (
+          <span className="badge badge-ghost" title="Use usable archetype-wide handlers, then normal shell resolution">
+            archetype handlers
+          </span>
+        )}
         {target.identity && entries.length > 0 && (
           <button
             className="btn btn-sm btn-ghost btn-square"
-            title="Reset to the default handler"
+            title="Remove intent-specific preferences"
             disabled={!canWrite || busy}
             onClick={() => run(() => actions.run(RemoveNappletIntentHandler, target.identity!))}
           >
@@ -519,12 +531,11 @@ function HandlerChain(props: {
           </button>
         )}
       </header>
-      {entries.map((entry, rank) => (
+      {entries.map((entry) => (
         <HandlerRow
-          key={getNappletHandlerRefKey(entry.ref)}
+          key={`${entry.hidden}:${getNappletHandlerRefKey(entry.ref)}`}
           target={target}
           entry={entry}
-          rank={rank}
           recommenders={recommenders.get(getNappletHandlerRefKey(entry.ref))}
           canWrite={canWrite}
         />
@@ -565,15 +576,24 @@ function ArchetypeSettings(props: {
   use$(
     () =>
       contacts.length > 0
-        ? requestIntoStore(mergeRelaySets([storeRelay], FALLBACK_RELAYS), getNappletHandlersFilter(archetype, contacts))
+        ? requestIntoStore$(
+            mergeRelaySets([storeRelay], FALLBACK_RELAYS),
+            getNappletHandlersFilter(archetype, contacts),
+          )
         : EMPTY,
     [archetype, contacts, storeRelay],
   );
 
   // Writes wait for the user's existing preferences so actions never publish over an unloaded event
-  const canWrite = !!user && preferences?.loading === false && !busy;
+  const canWrite = !!user && preferences?.loading === false && !preferences.error && !busy;
   const locked = !!handlers?.hasHidden && !hiddenEntries;
-  const intents = [...catalog.intents.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const intents = [
+    ...new Set([
+      ...catalog.intents.keys(),
+      ...(handlers?.publicEntries.intents.keys() ?? []),
+      ...(hiddenEntries?.intents.keys() ?? []),
+    ]),
+  ].sort();
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -606,9 +626,9 @@ function ArchetypeSettings(props: {
         )}
       </div>
 
-      <HandlerChain
+      <HandlerOptions
         target={{ archetype }}
-        label="Default"
+        label="Archetype handlers"
         options={catalog.napplets}
         handlers={handlers}
         hiddenEntries={hiddenEntries}
@@ -617,12 +637,12 @@ function ArchetypeSettings(props: {
         canWrite={canWrite}
       />
 
-      {intents.map(([identity, napplets]) => (
-        <HandlerChain
+      {intents.map((identity) => (
+        <HandlerOptions
           key={identity}
           target={{ archetype, identity }}
           label={parseNappletConvention(identity)?.intent ?? identity}
-          options={napplets}
+          options={catalog.intents.get(identity) ?? []}
           handlers={handlers}
           hiddenEntries={hiddenEntries}
           contacts={contacts}
@@ -686,24 +706,47 @@ function Account({ user, onLogin }: { user?: User; onLogin: () => void }) {
   );
 }
 
-export default function NappletHandlerSettings() {
+function HandlerSettingsPage({ user }: { user?: User }) {
   const [storeRelay, setStoreRelay] = useState(DEFAULT_STORE_RELAY);
   const [syncRun, setSyncRun] = useState(0);
   const [selected, setSelected] = useState<string>();
   const login = useRef<HTMLDialogElement>(null);
 
-  const user = use$(user$);
   const catalog = use$(catalog$);
   // Restarting the sync is cheap when negentropy only transfers the napplets missing from the store
   const sync = use$(() => syncLoader({ relays: [storeRelay], filter: NAPPLETS_FILTER }).status$, [storeRelay, syncRun]);
-  const preferences = use$(() => (user ? loadPreferences(user) : EMPTY), [user]);
+  const preferences = use$(() => (user ? loadPreferences$(user) : undefined), [user, syncRun]);
+  const preferred = use$(() => (user ? preferredArchetypes$(user) : undefined), [user]) ?? [];
 
   const archetypes = useMemo(
     () => [...(catalog?.entries() ?? [])].sort(([, a], [, b]) => b.napplets.length - a.napplets.length),
     [catalog],
   );
-  const archetype = selected ?? archetypes[0]?.[0];
-  const archetypeCatalog = archetype ? catalog?.get(archetype) : undefined;
+  const discovered = archetypes.filter(([name]) => !preferred.includes(name));
+  const archetype = selected ?? preferred[0];
+  const archetypeCatalog = (archetype ? catalog?.get(archetype) : undefined) ?? { napplets: [], intents: new Map() };
+
+  const archetypeButton = (name: string) => {
+    const entry = catalog?.get(name);
+
+    return (
+      <button
+        key={name}
+        className={`flex w-full items-center gap-2 px-3 py-2 border-b border-base-300 text-left hover:bg-base-200 ${
+          name === archetype ? "bg-base-200 font-semibold" : ""
+        }`}
+        aria-pressed={name === archetype}
+        onClick={() => setSelected(name)}
+      >
+        <span className="flex-1 truncate">{name}</span>
+        {!preferred.includes(name) && (
+          <span className="badge badge-outline" title="Discovered napplets">
+            {entry?.napplets.length ?? 0}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   const handleLogin = (newSigner: ISigner, pubkey: string) => {
     signer$.next(newSigner);
@@ -715,44 +758,53 @@ export default function NappletHandlerSettings() {
     <div className="flex flex-col min-h-0 grow">
       <div className="flex items-center gap-2 p-2 border-b border-base-300">
         <RelayPicker className="w-72" value={storeRelay} onChange={setStoreRelay} />
-        <button className="btn btn-sm" title="Sync the store" onClick={() => setSyncRun(syncRun + 1)}>
+        <button className="btn btn-sm" title="Reload store and preferences" onClick={() => setSyncRun(syncRun + 1)}>
           <RefreshCw className="w-4 h-4" />
         </button>
         <SyncBadge relay={storeRelay} status={sync} />
-        <span className="flex-1" />
-        <Account user={user} onLogin={() => login.current?.showModal()} />
+        {preferences?.error && (
+          <span className="badge badge-error" title={preferences.error}>
+            Preferences failed to load
+          </span>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="w-64 shrink-0 border-r border-base-300 overflow-y-auto">
-          {archetypes.length === 0 && (
-            <div className="p-4 flex justify-center text-base-content/60">
-              {sync?.done ? "No napplets" : <span className="loading loading-spinner" />}
+        <aside className="flex flex-col min-h-0 w-72 shrink-0 border-e border-base-300">
+          <nav className="min-h-0 flex-1 overflow-y-auto" aria-label="Archetypes">
+            <div className="flex items-center gap-2 p-3 font-semibold">
+              <span className="flex-1">Your preferences</span>
+              {preferences?.loading && <span className="loading loading-spinner loading-sm" />}
             </div>
-          )}
-          {archetypes.map(([name, entry]) => (
-            <button
-              key={name}
-              className={`flex w-full items-center gap-2 px-3 py-2 border-b border-base-300 text-left hover:bg-base-200 ${
-                name === archetype ? "bg-base-200 font-semibold" : ""
-              }`}
-              onClick={() => setSelected(name)}
-            >
-              <span className="flex-1 truncate">{name}</span>
-              <span className="badge badge-outline" title="Napplets">
-                {entry.napplets.length}
-              </span>
-              {entry.intents.size > 0 && (
-                <span className="badge badge-ghost" title="Intents">
-                  {entry.intents.size}
-                </span>
+            {preferred.map(archetypeButton)}
+            {preferred.length === 0 && !preferences?.loading && (
+              <div className="p-3 text-base-content/60">
+                {!user
+                  ? "Log in to load preferences"
+                  : preferences?.error
+                    ? "Preferences unavailable"
+                    : "No preferences"}
+              </div>
+            )}
+            <details className="border-b border-base-300">
+              <summary className="cursor-pointer p-3 font-semibold">
+                Explore archetypes <span className="badge badge-outline ml-2">{discovered.length}</span>
+              </summary>
+              {discovered.map(([name]) => archetypeButton(name))}
+              {discovered.length === 0 && (
+                <div className="p-3 text-base-content/60">
+                  {sync?.done ? "No other archetypes" : "Discovering archetypes…"}
+                </div>
               )}
-            </button>
-          ))}
-        </nav>
+            </details>
+          </nav>
+          <div className="p-3 border-t border-base-300">
+            <Account user={user} onLogin={() => login.current?.showModal()} />
+          </div>
+        </aside>
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          {archetype && archetypeCatalog && (
+        <main className="min-w-0 min-h-0 flex-1 overflow-y-auto">
+          {archetype ? (
             <ArchetypeSettings
               key={archetype}
               archetype={archetype}
@@ -761,6 +813,10 @@ export default function NappletHandlerSettings() {
               storeRelay={storeRelay}
               preferences={preferences}
             />
+          ) : (
+            <div className="p-4 text-base-content/60">
+              {preferences?.loading ? "Loading preferences…" : "Select an archetype to explore"}
+            </div>
           )}
         </main>
       </div>
@@ -775,4 +831,10 @@ export default function NappletHandlerSettings() {
       </dialog>
     </div>
   );
+}
+
+export default function NappletHandlerSettings() {
+  const user = use$(user$);
+
+  return <HandlerSettingsPage key={user?.pubkey ?? "anonymous"} user={user} />;
 }
