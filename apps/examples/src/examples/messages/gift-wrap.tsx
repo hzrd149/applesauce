@@ -7,8 +7,7 @@ import { castUser, User } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
   getMessageAttachments,
-  getRumorGiftWraps,
-  getRumorSeals,
+  getWrappedMessageParent,
   isEncryptedFile,
   type FileMetadataFields,
   type Rumor,
@@ -60,7 +59,6 @@ import {
   timeout,
 } from "rxjs";
 
-import JsonBlock from "../../components/json-block";
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import NoteContent from "../../components/note-content";
 import PubkeyPicker from "../../components/pubkey-picker";
@@ -401,35 +399,13 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
   );
 }
 
-/** Shows the rumor, seals and gift wraps behind a message */
-function MessageDetails({
-  conversation,
-  id,
-  onClose,
-}: {
-  conversation: WrappedConversation;
-  id: string;
-  onClose: () => void;
-}) {
+/** Shows a one-line preview of a message in the conversation */
+function MessagePreview({ conversation, id }: { conversation: WrappedConversation; id: string }) {
   const message = use$(() => conversation.eventStore.event(id), [conversation, id]);
 
-  return (
-    <div className="flex flex-col gap-2 border-b border-base-300 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm opacity-60">Message</span>
-        <button className="btn btn-sm btn-square btn-ghost" title="Close message details" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      {message ? (
-        <div className="text-sm">
-          <JsonBlock value={{ rumor: message, seals: getRumorSeals(message), wraps: getRumorGiftWraps(message) }} />
-        </div>
-      ) : (
-        <p className="text-sm opacity-60">Message unavailable</p>
-      )}
-    </div>
-  );
+  if (!message) return <span className="opacity-60">Message unavailable</span>;
+  if (message.kind === kinds.FileMessage) return <>Attachment</>;
+  return <>{message.content}</>;
 }
 
 function ConversationRow({
@@ -598,6 +574,7 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
 
     const content = getValues("content");
     const staged = getValues("files");
+    const replyTo = draft?.replyTo;
     const deliveries: PreparedWrappedMessage[] = [];
     try {
       await saveDraft();
@@ -614,6 +591,7 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
           await conversation.prepareSend({
             content: "",
             file: uploaded,
+            replyTo,
             expiration: expires,
             envelopeExpiration: expires,
           }),
@@ -621,7 +599,9 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
       }
 
       if (content.trim()) {
-        deliveries.push(await conversation.prepareSend({ content, expiration: expires, envelopeExpiration: expires }));
+        deliveries.push(
+          await conversation.prepareSend({ content, replyTo, expiration: expires, envelopeExpiration: expires }),
+        );
       }
 
       // Once prepared, the messages are tracked by publication state, so the saved draft is no longer needed
@@ -638,8 +618,29 @@ function Composer({ conversation, expiration }: { conversation: WrappedConversat
     for (const delivery of deliveries) await publish(delivery);
   };
 
+  // Keep the unsaved text and staged files when dropping the reply target
+  const cancelReply = () => {
+    const next = { ...draft, content: getValues("content"), files: getValues("files"), replyTo: undefined };
+    conversation.setDraft(next).catch((error) => setError(String(error)));
+  };
+
   return (
     <div className="flex flex-col gap-2 border-t border-base-300 p-3">
+      {draft?.replyTo && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="min-w-0 flex-1 truncate border-s-2 border-base-300 ps-2 opacity-60">
+            <MessagePreview conversation={conversation} id={draft.replyTo} />
+          </span>
+          <button
+            className="btn btn-ghost btn-sm btn-square"
+            title="Cancel reply"
+            disabled={busy}
+            onClick={cancelReply}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {failed.map((delivery) => (
         <FailedPublication
           key={delivery.message.id}
@@ -718,19 +719,20 @@ function Attachment({ file }: { file: FileMetadataFields }) {
 }
 
 function MessageBubble({
+  conversation,
   message,
-  self,
   status,
-  onInspect,
+  onReply,
 }: {
+  conversation: WrappedConversation;
   message: Rumor;
-  self: string;
   status?: string;
-  onInspect: () => void;
+  onReply: () => void;
 }) {
   const author = castUser(message.pubkey, eventStore);
-  const isOwn = message.pubkey === self;
+  const isOwn = message.pubkey === conversation.client.pubkey;
   const attachments = getMessageAttachments(message);
+  const parent = getWrappedMessageParent(message);
 
   return (
     <div className={`chat ${isOwn ? "chat-end" : "chat-start"}`}>
@@ -741,7 +743,13 @@ function MessageBubble({
         <Name user={author} />
         <time className="opacity-60">{formatShortTime(message.created_at)}</time>
       </div>
-      <div className={`chat-bubble flex flex-col gap-2 ${isOwn ? "chat-bubble-primary" : ""}`}>
+      <div className={`chat-bubble flex min-w-0 flex-col gap-2 ${isOwn ? "chat-bubble-primary" : ""}`}>
+        {/* The quote lives inside the bubble because the chat grid only places its named parts */}
+        {parent && (
+          <div className="max-w-xs truncate border-s-2 border-current ps-2 text-sm opacity-60">
+            <MessagePreview conversation={conversation} id={parent} />
+          </div>
+        )}
         {/* A file message's content is only the encrypted file URL */}
         {message.kind !== kinds.FileMessage && <NoteContent event={message} />}
         {attachments.map((file) => (
@@ -750,24 +758,25 @@ function MessageBubble({
       </div>
       <div className="chat-footer gap-2 text-sm">
         {status && <span className="opacity-60">{status}</span>}
-        <button className="link opacity-60" onClick={onInspect}>
-          Details
+        <button className="link opacity-60" onClick={onReply}>
+          Reply
         </button>
       </div>
     </div>
   );
 }
 
-function Conversation({
-  conversation,
-  onInspect,
-}: {
-  conversation: WrappedConversation;
-  onInspect: (id: string) => void;
-}) {
+function Conversation({ conversation }: { conversation: WrappedConversation }) {
   const messages = use$(conversation.messages$);
   const publications = use$(conversation.client.publications$);
   const [expiration, setExpiration] = useState(0);
+  const [error, setError] = useState<string>();
+
+  // Read the saved draft at click time so text and files the composer just saved are not overwritten
+  const setReply = async (replyTo: string) => {
+    const latest = await firstValueFrom(conversation.draft$);
+    await conversation.setDraft({ ...latest, content: latest?.content ?? "", replyTo });
+  };
 
   const others = conversation.participants
     .filter((pubkey) => pubkey !== conversation.client.pubkey)
@@ -803,6 +812,7 @@ function Conversation({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4">
+        {error && <p className="text-sm text-error">{error}</p>}
         {messages === undefined ? (
           <span className="loading loading-dots mx-auto" />
         ) : messages.length === 0 ? (
@@ -811,10 +821,10 @@ function Conversation({
           messages.map((message) => (
             <MessageBubble
               key={message.id}
+              conversation={conversation}
               message={message}
-              self={conversation.client.pubkey}
               status={publications?.[message.id]}
-              onInspect={() => onInspect(message.id)}
+              onReply={() => setReply(message.id).catch((error) => setError(String(error)))}
             />
           ))
         )}
@@ -828,24 +838,12 @@ function Conversation({
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
   const groups = use$(client.conversations$);
   const [selected, setSelected] = useState(client.pubkey);
-  const [inspecting, setInspecting] = useState<string>();
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const conversation = client.conversation(selected);
 
-  // Message details belong to the open conversation, so close them when switching
-  const selectConversation = (id: string) => {
-    setSelected(id);
-    setInspecting(undefined);
-  };
-
   const startConversation = (pubkey: string) => {
-    if (pubkey) selectConversation(createConversationIdentifier(client.pubkey, [pubkey]));
-  };
-
-  const inspectMessage = (id: string) => {
-    setInspecting(id);
-    setDrawerOpen(true);
+    if (pubkey) setSelected(createConversationIdentifier(client.pubkey, [pubkey]));
   };
 
   // Keep notes to self pinned at the top even before it has any messages
@@ -893,12 +891,12 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
                 group={selfGroup}
                 self={user}
                 active={selected === selfGroup.id}
-                onSelect={() => selectConversation(selfGroup.id)}
+                onSelect={() => setSelected(selfGroup.id)}
               />
             ) : (
               <button
                 className={`flex w-full items-center gap-3 border-b border-base-300 p-3 text-left ${selected === client.pubkey ? "bg-base-200" : ""}`}
-                onClick={() => selectConversation(client.pubkey)}
+                onClick={() => setSelected(client.pubkey)}
               >
                 <Avatar user={user} size="h-10 w-10" />
                 <span className="font-medium">Notes to self</span>
@@ -918,7 +916,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
                   group={group}
                   self={user}
                   active={selected === group.id}
-                  onSelect={() => selectConversation(group.id)}
+                  onSelect={() => setSelected(group.id)}
                 />
               ))
             )}
@@ -926,7 +924,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
           <Account user={user} />
         </aside>
 
-        <Conversation key={conversation.id} conversation={conversation} onInspect={inspectMessage} />
+        <Conversation key={conversation.id} conversation={conversation} />
 
         <aside
           id="inbox-drawer"
@@ -934,14 +932,6 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
           hidden={!drawerOpen}
           className="w-80 shrink-0 overflow-x-hidden overflow-y-auto border-s border-base-300 bg-base-100"
         >
-          {inspecting && (
-            <MessageDetails
-              key={inspecting}
-              conversation={conversation}
-              id={inspecting}
-              onClose={() => setInspecting(undefined)}
-            />
-          )}
           <InboxStatus client={client} />
         </aside>
       </div>
