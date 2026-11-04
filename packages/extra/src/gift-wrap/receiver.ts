@@ -59,6 +59,7 @@ import type {
   GiftWrapOperationOptions,
   GiftWrapReceiverError,
   GiftWrapReceiverOptions,
+  GiftWrapProcessingRecord,
 } from "./types.js";
 
 type Processing = {
@@ -88,9 +89,10 @@ const defaultRetry: Record<GiftWrapFailure["code"], GiftWrapFailure["retry"]> = 
   "decryption-failed": "manual",
   timeout: "automatic",
   "storage-failed": "automatic",
+  "persistence-failed": "automatic",
 };
 
-// Bound a caller's wait without cancelling the underlying cache or signer operation.
+// Bound a caller's wait without cancelling the underlying storage or signer operation.
 function waitForOperation<T>(operation: Promise<T>, milliseconds: number, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const cleanup = () => {
@@ -176,7 +178,12 @@ export class GiftWrapReceiver {
   private readonly decryptionConcurrency: number;
   private activeDecryptions = 0;
   private readonly decryptionWaiters = new Set<() => void>();
-  private readonly completed = new Set<string>();
+  private readonly completed = new Map<string, string>();
+  private readonly storedRumors = new Map<string, string>();
+  private readonly retryDue = new Map<string, number>();
+  private readonly checkpointWrites = new Map<string, Promise<void>>();
+  private restoration?: Promise<void>;
+  private retryGeneration?: AbortSignal;
   private readonly reserved = new Set<string>();
   private readonly inboxFilter: Filter;
   private generation = new AbortController();
@@ -266,7 +273,14 @@ export class GiftWrapReceiver {
     // Sharing keeps one store processor alive for all receiving and watching consumers.
     this.receive$ = defer(() => {
       const signal = this.context();
-      return merge(this.results, this.storedProcessing$).pipe(takeUntil(fromEvent(signal, "abort")));
+      const receiving$ = merge(this.results, this.storedProcessing$);
+      if (!this.options.processingStore) return receiving$.pipe(takeUntil(fromEvent(signal, "abort")));
+
+      // Restore once before attaching the shared processor, including existing store entries.
+      return defer(() => this.ready()).pipe(
+        switchMap(() => receiving$),
+        takeUntil(fromEvent(signal, "abort")),
+      );
     }).pipe(share());
 
     this.watch$ = defer(() => {
@@ -306,6 +320,119 @@ export class GiftWrapReceiver {
     const signal = options.signal ? AbortSignal.any([options.signal, this.generation.signal]) : this.generation.signal;
     signal.throwIfAborted();
     return signal;
+  }
+
+  /**
+   * Restores processing checkpoints before receiving or explicitly processing envelopes
+   * @throws if disposed, stopped, restoration times out, or checkpoint storage cannot be read or validated
+   */
+  async ready(): Promise<void> {
+    const signal = this.context();
+
+    // Share restoration across concurrent callers, but allow a failed read to be retried.
+    if (!this.restoration) {
+      this.restoration = this.restore().catch((error) => {
+        this.restoration = undefined;
+        this.report("persistence", error);
+        throw error;
+      });
+    }
+
+    await waitForOperation(this.restoration, this.options.timeout ?? 10000, signal);
+    signal.throwIfAborted();
+
+    if (this.retryGeneration !== this.generation.signal) {
+      this.retryGeneration = this.generation.signal;
+      this.resumeRetries();
+    }
+  }
+
+  private async restore() {
+    const records = (await this.options.processingStore?.list()) ?? [];
+
+    // Validate the entire snapshot before applying any of it to live state.
+    for (const record of records) {
+      if (
+        record.version !== 1 ||
+        !isHexKey(record.eventId) ||
+        !Number.isSafeInteger(record.attempts) ||
+        record.attempts < 0
+      )
+        throw new Error("Invalid gift wrap processing checkpoint");
+
+      if (
+        !["processing", "failed", "completed"].includes(record.status) ||
+        !["envelope", "wrap", "seal", "rumor", "storage", "checkpoint"].includes(record.stage)
+      )
+        throw new Error("Invalid gift wrap processing state");
+
+      if (record.retryAt !== undefined && (!Number.isFinite(record.retryAt) || record.retryAt < 0))
+        throw new Error("Invalid gift wrap retry time");
+
+      const failure = record.failure;
+      if (
+        record.status === "failed" &&
+        (!failure ||
+          failure.eventId !== record.eventId ||
+          !Object.hasOwn(defaultRetry, failure.code) ||
+          failure.attempts !== record.attempts ||
+          failure.stage !== record.stage ||
+          typeof failure.message !== "string" ||
+          !["never", "manual", "automatic"].includes(failure.retry))
+      )
+        throw new Error("Invalid gift wrap failure checkpoint");
+
+      if (record.status === "completed" && !isHexKey(record.rumorId ?? ""))
+        throw new Error("Missing completed rumor ID");
+    }
+
+    for (const record of records) {
+      this.attempts.set(record.eventId, record.attempts);
+      if (record.rumorId) this.storedRumors.set(record.eventId, record.rumorId);
+      if (record.status === "completed") this.completed.set(record.eventId, record.rumorId!);
+
+      if (record.status === "failed" && record.failure) {
+        const { message, ...details } = record.failure;
+        const failure = { ...details, cause: new Error(message) };
+        if (failure.retry === "automatic" && record.attempts >= (this.options.retryPolicy?.maxAttempts ?? 1))
+          failure.retry = "manual";
+
+        this.failures.set(record.eventId, failure);
+        if (record.retryAt !== undefined) this.retryDue.set(record.eventId, record.retryAt);
+      }
+    }
+
+    this.changed();
+  }
+
+  private async checkpoint(record: GiftWrapProcessingRecord): Promise<void> {
+    const processingStore = this.options.processingStore;
+    if (!processingStore) return;
+
+    const previousWrite = this.checkpointWrites.get(record.eventId) ?? Promise.resolve();
+    const pendingWrite = previousWrite
+      .catch(() => {
+        // The previous caller reports its failure; it must not block a newer checkpoint.
+      })
+      .then(() => processingStore.set(record));
+    this.checkpointWrites.set(record.eventId, pendingWrite);
+
+    const releaseWrite = () => {
+      if (this.checkpointWrites.get(record.eventId) === pendingWrite) this.checkpointWrites.delete(record.eventId);
+    };
+
+    // A caller timeout does not release ordering until the underlying write settles.
+    void pendingWrite.then(releaseWrite, releaseWrite);
+    await waitForOperation(pendingWrite, this.options.timeout ?? 10000);
+  }
+
+  private resumeRetries() {
+    for (const failure of this.failures.values()) {
+      if (failure.retry !== "automatic" || this.retryTimers.has(failure.eventId)) continue;
+      if (this.processing.has(failure.eventId) || this.reserved.has(failure.eventId)) continue;
+      if (!this.eventStore.getEvent(failure.eventId)) continue;
+      this.scheduleRetry(failure);
+    }
   }
 
   private changed() {
@@ -367,6 +494,7 @@ export class GiftWrapReceiver {
 
         let dirty = false;
         const drain = async () => {
+          this.resumeRetries();
           while (dirty && !controller.signal.aborted) {
             dirty = false;
             const events = this.eventStore.getByFilters(this.inboxFilter)[Symbol.iterator]();
@@ -417,9 +545,7 @@ export class GiftWrapReceiver {
         const removals$ = this.eventStore.remove$.pipe(
           tap((event) => {
             visited.delete(event.id);
-            this.failures.delete(event.id);
-            this.completed.delete(event.id);
-            this.attempts.delete(event.id);
+            // Memory eviction does not erase durable processing progress.
             this.clearRetry(event.id);
             this.changed();
           }),
@@ -521,9 +647,59 @@ export class GiftWrapReceiver {
       const work = this.processing.get(event.id);
       if (work) work.stage = next;
     };
-    this.attempts.set(event.id, (this.attempts.get(event.id) ?? 0) + 1);
+    let attemptStarted = false;
+
+    // Cache-only misses do not spend an attempt or write a processing checkpoint.
+    const beginAttempt = async () => {
+      if (attemptStarted) return;
+      attemptStarted = true;
+
+      const attempts = (this.attempts.get(event.id) ?? 0) + 1;
+      this.attempts.set(event.id, attempts);
+
+      await this.checkpoint({
+        version: 1,
+        eventId: event.id,
+        status: "processing",
+        stage: "wrap",
+        attempts,
+        rumorId: this.storedRumors.get(event.id),
+      });
+    };
+    const saveProgress = async (nextStage: GiftWrapFailure["stage"]) => {
+      if (!attemptStarted) return;
+
+      setStage("checkpoint");
+      code = "persistence-failed";
+
+      await this.checkpoint({
+        version: 1,
+        eventId: event.id,
+        status: "processing",
+        stage: nextStage,
+        attempts: this.attempts.get(event.id)!,
+        rumorId: this.storedRumors.get(event.id),
+      });
+      signal.throwIfAborted();
+    };
 
     try {
+      setStage("checkpoint");
+      code = "persistence-failed";
+      if (allowSigner) await beginAttempt();
+      signal.throwIfAborted();
+
+      // A previous attempt may have stored the rumor but failed to save completion.
+      const storedRumorId = this.storedRumors.get(event.id);
+      const storedRumor = storedRumorId ? await this.rumorStore.getEvent(storedRumorId) : undefined;
+      if (storedRumor) {
+        await beginAttempt();
+        await this.complete(event, storedRumor, signal);
+        return storedRumor;
+      }
+
+      setStage("envelope");
+      code = "invalid-envelope";
       this.validate(event);
 
       // Open the outer envelope before inspecting the signed seal inside it.
@@ -532,6 +708,7 @@ export class GiftWrapReceiver {
       if (!(await this.layer(event, allowSigner, signal))) return;
       signal.throwIfAborted();
 
+      await saveProgress("seal");
       setStage("seal");
       code = "invalid-seal";
       const seal = getGiftWrapSeal(event);
@@ -548,19 +725,26 @@ export class GiftWrapReceiver {
       if (!rumor) throw new Error("Invalid gift wrap rumor");
       notifyEventUpdate(event);
 
+      setStage("checkpoint");
+      code = "persistence-failed";
+      await beginAttempt();
+      signal.throwIfAborted();
+      await saveProgress("storage");
+
       setStage("storage");
       code = "storage-failed";
       await this.rumorStore.add(rumor);
+      this.storedRumors.set(event.id, rumor.id);
       signal.throwIfAborted();
 
-      this.completed.add(event.id);
-      this.failures.delete(event.id);
-      this.clearRetry(event.id);
-      this.results.next({ status: "success", event, rumor });
+      setStage("checkpoint");
+      code = "persistence-failed";
+      await this.complete(event, rumor, signal);
       return rumor;
     } catch (error) {
       if (!signal.aborted && !this.disposed) {
-        this.recordFailure(event, stage, code, error);
+        if (!attemptStarted) this.attempts.set(event.id, (this.attempts.get(event.id) ?? 0) + 1);
+        await this.recordFailure(event, stage, code, error);
       }
       throw error;
     } finally {
@@ -568,20 +752,40 @@ export class GiftWrapReceiver {
     }
   }
 
+  private async complete(event: NostrEvent, rumor: Rumor, signal: AbortSignal) {
+    // Success is observable only after both rumor storage and its checkpoint have settled.
+    await this.checkpoint({
+      version: 1,
+      eventId: event.id,
+      status: "completed",
+      stage: "checkpoint",
+      attempts: this.attempts.get(event.id) ?? 0,
+      rumorId: rumor.id,
+    });
+    signal.throwIfAborted();
+
+    this.completed.set(event.id, rumor.id);
+    this.failures.delete(event.id);
+    this.retryDue.delete(event.id);
+    this.clearRetry(event.id);
+    this.results.next({ status: "success", event, rumor });
+  }
+
   private clearRetry(eventId: string) {
     clearTimeout(this.retryTimers.get(eventId));
     this.retryTimers.delete(eventId);
   }
 
-  private recordFailure(
+  private async recordFailure(
     event: NostrEvent,
     stage: GiftWrapFailure["stage"],
     code: GiftWrapFailure["code"],
     cause: unknown,
-  ): GiftWrapFailure {
+  ): Promise<GiftWrapFailure> {
+    const generation = this.generation.signal;
     const eventId = event.id;
     if (cause instanceof SignerError) code = cause.code;
-    else if (cause instanceof TimeoutError) code = "timeout";
+    else if (cause instanceof TimeoutError && code !== "persistence-failed") code = "timeout";
 
     let retry = defaultRetry[code];
     if (code === "decryption-failed" && this.options.retryPolicy?.classify) {
@@ -599,7 +803,40 @@ export class GiftWrapReceiver {
 
     const failure: GiftWrapFailure = { eventId, stage, code, cause, attempts, retry };
     this.failures.set(eventId, failure);
-    this.errors.next({ operation: stage === "storage" ? "storage" : "decrypt", error: cause, eventId, failure });
+
+    const retryAt = retry === "automatic" ? Date.now() + this.retryDelay(attempts) : undefined;
+    if (retryAt !== undefined) this.retryDue.set(eventId, retryAt);
+    else this.retryDue.delete(eventId);
+
+    try {
+      const { cause: _, ...details } = failure;
+      await this.checkpoint({
+        version: 1,
+        eventId,
+        status: "failed",
+        stage,
+        attempts,
+        retryAt,
+        rumorId: this.storedRumors.get(eventId),
+        failure: { ...details, message: cause instanceof Error ? cause.message : String(cause) },
+      });
+    } catch (error) {
+      this.report("persistence", error, eventId);
+    }
+
+    // A newer attempt or stop may have superseded this failure while its write was pending.
+    if (this.disposed || generation.aborted || this.failures.get(eventId) !== failure) return failure;
+
+    let operation: GiftWrapReceiverError["operation"] = "decrypt";
+    if (stage === "checkpoint") operation = "persistence";
+    else if (stage === "storage") operation = "storage";
+
+    this.errors.next({
+      operation,
+      error: cause,
+      eventId,
+      failure,
+    });
     this.results.next({ status: "failed", event, failure });
 
     this.clearRetry(eventId);
@@ -608,12 +845,20 @@ export class GiftWrapReceiver {
     return failure;
   }
 
-  private scheduleRetry(failure: GiftWrapFailure): void {
-    const { eventId, attempts } = failure;
-    const delay = Math.min(
+  private retryDelay(attempts: number) {
+    return Math.min(
       (this.options.retryPolicy?.delay ?? 1000) * 2 ** (attempts - 1),
       this.options.retryPolicy?.maxDelay ?? 30000,
     );
+  }
+
+  private scheduleRetry(failure: GiftWrapFailure): void {
+    const { eventId, attempts } = failure;
+    const retryAt = this.retryDue.get(eventId) ?? Date.now() + this.retryDelay(attempts);
+    this.retryDue.set(eventId, retryAt);
+
+    // Long backoffs are rechecked when the largest supported timer interval expires.
+    const delay = Math.min(2_147_483_647, Math.max(0, retryAt - Date.now()));
     const generation = this.generation.signal;
     this.retryTimers.set(
       eventId,
@@ -634,13 +879,24 @@ export class GiftWrapReceiver {
 
     if (signal.aborted || this.failures.get(eventId) !== failure) return;
     if (!this.eventStore.getByFilters(this.inboxFilter).some((event) => event.id === eventId)) return;
+    if ((this.retryDue.get(eventId) ?? 0) > Date.now()) {
+      this.scheduleRetry(failure);
+      return;
+    }
 
     await this.retry(eventId, { signal });
   }
 
   private async read(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<Rumor | undefined> {
     signal.throwIfAborted();
-    if (this.completed.has(event.id)) return getGiftWrapRumor(event);
+    const rumorId = this.completed.get(event.id);
+    if (rumorId) {
+      const rumor = await this.rumorStore.getEvent(rumorId);
+      if (rumor) return rumor;
+      // An application may prune its rumor store; explicitly unlocking repairs the record.
+      this.completed.delete(event.id);
+      this.storedRumors.delete(event.id);
+    }
 
     let work = this.processing.get(event.id);
 
@@ -691,7 +947,8 @@ export class GiftWrapReceiver {
       return rumor;
     } catch (error) {
       if (!signal.aborted && !this.disposed && error instanceof TimeoutError && work.readers === 1) {
-        this.recordFailure(event, work.stage, "timeout", error);
+        release();
+        await this.recordFailure(event, work.stage, "timeout", error);
       }
       throw error;
     } finally {
@@ -716,12 +973,14 @@ export class GiftWrapReceiver {
    */
   async unlock(event?: NostrEvent, options: GiftWrapOperationOptions = {}): Promise<Rumor | void> {
     const signal = this.context(options);
+    await this.ready();
+    signal.throwIfAborted();
     if (event) {
       try {
         this.validate(event);
       } catch (cause) {
         this.attempts.set(event.id, (this.attempts.get(event.id) ?? 0) + 1);
-        this.recordFailure(event, "envelope", "invalid-envelope", cause);
+        await this.recordFailure(event, "envelope", "invalid-envelope", cause);
         this.changed();
         throw cause;
       }
@@ -757,6 +1016,8 @@ export class GiftWrapReceiver {
    */
   async readNext(options: GiftWrapOperationOptions = {}): Promise<GiftWrapReadResult | undefined> {
     const signal = this.context(options);
+    await this.ready();
+    signal.throwIfAborted();
     for (const event of this.eventStore.getByFilters(this.inboxFilter)) {
       if (
         this.completed.has(event.id) ||
@@ -804,6 +1065,8 @@ export class GiftWrapReceiver {
    */
   async retry(eventId: string, options: GiftWrapOperationOptions = {}): Promise<GiftWrapReadResult> {
     const signal = this.context(options);
+    await this.ready();
+    signal.throwIfAborted();
     const event = this.eventStore.getByFilters(this.inboxFilter).find((event) => event.id === eventId);
     if (!event) throw new Error("Envelope is not loaded");
     this.clearRetry(eventId);
@@ -816,6 +1079,7 @@ export class GiftWrapReceiver {
    */
   async *retryFailed(options: GiftWrapOperationOptions = {}): AsyncGenerator<GiftWrapReadResult, void, void> {
     this.context(options);
+    await this.ready();
     const eventIds = [...this.failures.keys()];
     for (const eventId of eventIds) {
       if (!this.failures.has(eventId)) continue;

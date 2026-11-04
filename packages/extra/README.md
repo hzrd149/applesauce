@@ -26,11 +26,12 @@ Both streams emit `GiftWrapReadResult` successes after rumor storage and per-env
 
 Use `ingest(event)` for externally loaded envelopes, `unlock(event)` to decrypt or retry one envelope, and `unlock()` to process loaded envelopes without prior failures. `autoUnlock$` reflects `setAutoUnlock()`; automatic decryption defaults to off. `decryptionConcurrency` limits simultaneous decryption calls across automatic and explicit processing (default `1`). Cancelled or timed-out calls retain their capacity until the underlying promise settles. `maxQueued` bounds concurrent envelope processing requests; background processing walks stored envelopes rather than buffering arrivals.
 
-Use `readNext()` to process one eligible loaded envelope, or `readInbox()` to pull rumors without prefetching. Each pull decrypts both layers as needed and awaits rumor storage. Completed, failed, and currently processing envelopes are skipped; a selected envelope's failure rejects the pull. The iterator ends when no eligible loaded envelopes remain, rather than waiting for future arrivals. Keep `autoUnlock` off for application-controlled pacing.
+Use `readNext()` to process one eligible loaded envelope, or `readInbox()` to pull outcomes without prefetching. Each pull decrypts both layers as needed and awaits rumor storage. Completed, failed, and currently processing envelopes are skipped; a selected envelope's failure yields a failed outcome and the next pull continues. The iterator ends when no eligible loaded envelopes remain, rather than waiting for future arrivals. Keep `autoUnlock` off and automatic retries disabled for application-controlled pacing.
 
 ```ts
-for await (const rumor of receiver.readInbox({ signal })) {
-  await handleRumor(rumor); // The next envelope starts after this finishes.
+for await (const result of receiver.readInbox({ signal })) {
+  if (result.status === "success") await handleRumor(result.rumor);
+  else showFailure(result.failure);
 }
 ```
 
@@ -42,12 +43,44 @@ Encrypted-event persistence belongs to the supplied `eventStore` and the applica
 
 Marmot consumers can select kind-444 rumors and retain their own invite/read state; messaging consumers select kind 14/15 and derive conversations. The receiver validates transport integrity without imposing those application protocols.
 
+### Resuming after reload
+
+Supply an application-scoped `processingStore` implementing `GiftWrapProcessingStore` to retain processing checkpoints. `list()` returns its records and `set(record)` atomically replaces the record keyed by `eventId`, resolving only after the write is durable. Records are versioned JSON values; the receiver adds no account namespace. Use one active receiver per supplied processing store.
+
+```ts
+const receiver = new GiftWrapReceiver({
+  pubkey,
+  signer,
+  eventStore,
+  pool,
+  rumorStore,
+  decryptionCache,
+  cacheRequest,
+  processingStore: {
+    list: () => database.listProcessingRecords(),
+    set: (record) => database.putProcessingRecord(record.eventId, record),
+  },
+});
+await receiver.ready();
+const subscription = receiver.receive$.subscribe(handleOutcome);
+```
+
+`ready()` shares restoration across callers; receive/watch subscriptions and explicit processing wait for it automatically. Initialization failures are reported on `errors$` and reject readiness; retry readiness or resubscribe after fixing storage. Loading envelopes remains independent. The app restores encrypted envelopes through its cache integration and supplies a persistent rumor store; the default rumor store is memory-only.
+
+Completion is saved after `rumorStore.add()` resolves and before a success is emitted or returned. Completed envelopes are skipped without replaying old successes. Explicit `unlock(event)` retrieves a completed rumor by ID from the supplied store; if that rumor was pruned, it reprocesses the envelope. Memory eviction does not erase checkpoints. Consume existing rumors from the rumor store, and keep application acknowledgments there or in your own application state.
+
+Failed records preserve their code, stage, error message, attempts, and absolute retry time. `retry(eventId)` retries one loaded envelope; `retryFailed()` retries a snapshot one pull at a time. Automatic retries require an explicit `retryPolicy.maxAttempts` greater than one, retain their budget across reloads, and can run independently of pulls. Restored retries wait until the envelope is loaded and receiving is active, or can start through `ready()` when the envelope is already loaded. `stop()` cancels current timers without deleting durable retry information.
+
+Interrupted attempts resume using the existing layer cache; passive cache misses consume no attempt budget. A `persistence-failed` outcome identifies checkpoint writes, separately from rumor-storage failures. Checkpoint writes are serialized per envelope; a failed completion checkpoint can be retried using the already stored rumor. A crash between rumor storage and its checkpoint may repeat `add()`, so the application's rumor store must tolerate duplicate writes. Layer-cache persistence remains best-effort and reports failures on `errors$`.
+
+Processing checkpoints do not retain relay authentication sessions or history reconciliation ranges; the application still selects its catch-up range with `sync$()` or `loadHistory()`.
+
 ### Best Practices
 
 - Share one receiver per account across consumers to share signer work.
 - Inspect per-relay sync results: completion does not mean every relay succeeded or decryption finished.
 - Read per-envelope failures from `decryptionState$.errors`; background cache, loading and rumor-storage errors also appear on `errors$`.
-- Persist encrypted events and plaintext caches separately; failure records and envelope-processing bookkeeping currently remain in memory.
+- Supply account-scoped envelope, plaintext, rumor, and processing storage to resume across reloads.
 
 ## Messaging clients
 

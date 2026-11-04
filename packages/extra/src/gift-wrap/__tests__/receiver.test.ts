@@ -17,7 +17,7 @@ import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { ISigner } from "applesauce-signers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GiftWrapReceiver } from "../receiver.js";
-import type { GiftWrapReceiverOptions } from "../types.js";
+import type { GiftWrapProcessingRecord, GiftWrapProcessingStore, GiftWrapReceiverOptions } from "../types.js";
 
 const sender = new PrivateKeySigner(new Uint8Array(32).fill(21));
 const recipient = new PrivateKeySigner(new Uint8Array(32).fill(22));
@@ -77,6 +77,226 @@ function setup(overrides: Partial<GiftWrapReceiverOptions> = {}) {
   disposables.push(receiver, eventStore);
   return { receiver, eventStore, pool, arrivals, closed };
 }
+
+function processingStorage() {
+  const records = new Map<string, GiftWrapProcessingRecord>();
+  const storage: GiftWrapProcessingStore = {
+    list: vi.fn(() => structuredClone([...records.values()])),
+    set: vi.fn((record) => {
+      records.set(record.eventId, structuredClone(record));
+    }),
+  };
+  return { storage, records };
+}
+
+describe("GiftWrapReceiver persistence", () => {
+  it("fails readiness without processing and allows retrying a failed restore", async () => {
+    const { storage } = processingStorage();
+    const list = vi.spyOn(storage, "list").mockRejectedValueOnce(new Error("database offline"));
+    const { receiver } = setup({ processingStore: storage });
+    await receiver.ingest((await envelope()).event);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const errors = vi.fn();
+    receiver.errors$.subscribe(errors);
+    await expect(receiver.readNext()).rejects.toThrow("database offline");
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledWith(expect.objectContaining({ operation: "persistence" }));
+    expect(await receiver.readNext()).toMatchObject({ status: "success" });
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a restored signer failure through external plaintext updates", async () => {
+    const { storage, records } = processingStorage();
+    const { event } = await envelope();
+    records.set(event.id, {
+      version: 1,
+      eventId: event.id,
+      status: "failed",
+      stage: "wrap",
+      attempts: 1,
+      failure: {
+        eventId: event.id,
+        stage: "wrap",
+        code: "signer-rejected",
+        attempts: 1,
+        retry: "manual",
+        message: "denied",
+      },
+    });
+    const { receiver } = setup({ processingStore: storage, signer: undefined });
+    const stored = await receiver.ingest(event);
+    const results = vi.fn();
+    const subscription = receiver.receive$.subscribe(results);
+    await receiver.ready();
+    await unlockGiftWrap(stored, recipient);
+    notifyEventUpdate(stored);
+    await vi.waitFor(() => expect(results).toHaveBeenCalledWith(expect.objectContaining({ status: "success" })));
+    expect(records.get(event.id)).toMatchObject({ status: "completed" });
+    subscription.unsubscribe();
+  });
+
+  it("restores completion without plaintext and looks up explicit unlocks in the rumor store", async () => {
+    const { storage, records } = processingStorage();
+    const rumorStore = new RumorStore();
+    disposables.push(rumorStore);
+    const { event, rumor } = await envelope();
+    const first = setup({ processingStore: storage, rumorStore }).receiver;
+    await first.unlock(event);
+    expect(records.get(event.id)).toMatchObject({ status: "completed", rumorId: rumor.id, attempts: 1 });
+    first.dispose();
+
+    const second = setup({ processingStore: storage, rumorStore }).receiver;
+    const fresh = JSON.parse(JSON.stringify(event));
+    await second.ingest(fresh);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    expect(await second.readNext()).toBeUndefined();
+    expect(await second.unlock(fresh)).toEqual(rumor);
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
+  it("gates reactive and explicit processing behind the same restoration", async () => {
+    const gate = deferred<GiftWrapProcessingRecord[]>();
+    const storage = { list: vi.fn(() => gate.promise), set: vi.fn() };
+    const { receiver } = setup({ processingStore: storage, autoUnlock: true });
+    await receiver.ingest((await envelope()).event);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const subscription = receiver.receive$.subscribe();
+    const pull = receiver.readNext();
+    await Promise.resolve();
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(storage.list).toHaveBeenCalledTimes(1);
+    gate.resolve([]);
+    await pull;
+    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(2));
+    subscription.unsubscribe();
+  });
+
+  it("waits for durable completion before publishing or returning success", async () => {
+    const { storage } = processingStorage();
+    const gate = deferred<void>();
+    const write = storage.set;
+    storage.set = vi.fn(async (record) => {
+      if (record.status === "completed") await gate.promise;
+      await write(record);
+    });
+    const { receiver } = setup({ processingStore: storage });
+    await receiver.ready();
+    const results = vi.fn();
+    const subscription = receiver.receive$.subscribe(results);
+    const done = vi.fn();
+    const unlock = receiver.unlock((await envelope()).event).then(done);
+    await vi.waitFor(() => expect(storage.set).toHaveBeenCalledWith(expect.objectContaining({ status: "completed" })));
+    expect(done).not.toHaveBeenCalled();
+    expect(results).not.toHaveBeenCalled();
+    gate.resolve();
+    await unlock;
+    expect(results).toHaveBeenCalledTimes(1);
+    subscription.unsubscribe();
+  });
+
+  it("recovers a failed completion checkpoint after reload without decrypting or storing again", async () => {
+    const { storage, records } = processingStorage();
+    const write = storage.set;
+    storage.set = vi.fn((record) => {
+      if (record.status === "completed") throw new Error("checkpoint offline");
+      return write(record);
+    });
+    const rumorStore = new RumorStore();
+    disposables.push(rumorStore);
+    const { event, rumor } = await envelope();
+    const first = setup({ processingStore: storage, rumorStore }).receiver;
+    await first.ingest(event);
+    expect(await first.readNext()).toMatchObject({ status: "failed", failure: { code: "persistence-failed" } });
+    expect(records.get(event.id)).toMatchObject({ status: "failed", rumorId: rumor.id });
+    first.dispose();
+    storage.set = write;
+
+    const second = setup({ processingStore: storage, rumorStore }).receiver;
+    await second.ingest(JSON.parse(JSON.stringify(event)));
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const add = vi.spyOn(rumorStore, "add");
+    expect(await second.retry(event.id)).toMatchObject({ status: "success", rumor });
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+  });
+
+  it("keeps failures and attempt budgets across reloads", async () => {
+    const { storage, records } = processingStorage();
+    const { event } = await envelope();
+    const first = setup({ processingStore: storage }).receiver;
+    await first.ingest(event);
+    vi.spyOn(recipient.nip44, "decrypt").mockRejectedValue(new Error("signer offline"));
+    await first.readNext();
+    first.dispose();
+    const second = setup({ processingStore: storage }).receiver;
+    await second.ingest(JSON.parse(JSON.stringify(event)));
+    expect(await second.readNext()).toBeUndefined();
+    expect((await firstValueFrom(second.decryptionState$)).errors.get(event.id)).toMatchObject({ attempts: 1 });
+    await second.retry(event.id);
+    expect(records.get(event.id)).toMatchObject({ status: "failed", attempts: 2 });
+  });
+
+  it("does not consume attempts on passive cache misses", async () => {
+    const { storage, records } = processingStorage();
+    const cache = { getItem: vi.fn(() => null), setItem: vi.fn() };
+    const { event } = await envelope();
+    const { receiver } = setup({ processingStore: storage, decryptionCache: cache });
+    await receiver.ingest(event);
+    const subscription = receiver.receive$.subscribe();
+    await vi.waitFor(() => expect(cache.getItem).toHaveBeenCalled());
+    expect(records.size).toBe(0);
+    subscription.unsubscribe();
+    await receiver.unlock(event);
+    expect(records.get(event.id)?.attempts).toBe(1);
+  });
+
+  it("resumes an interrupted attempt and preserves completion through memory eviction", async () => {
+    const { storage, records } = processingStorage();
+    const { event } = await envelope();
+    records.set(event.id, { version: 1, eventId: event.id, status: "processing", stage: "seal", attempts: 1 });
+    const { receiver, eventStore } = setup({ processingStore: storage });
+    await receiver.unlock(event);
+    expect(records.get(event.id)).toMatchObject({ status: "completed", attempts: 2 });
+    const subscription = receiver.receive$.subscribe();
+    await receiver.ready();
+    eventStore.remove(event);
+    await receiver.ingest(JSON.parse(JSON.stringify(event)));
+    expect(await receiver.readNext()).toBeUndefined();
+    expect(records.get(event.id)?.status).toBe("completed");
+    subscription.unsubscribe();
+  });
+
+  it("restores the remaining backoff rather than resetting it on reload", async () => {
+    const { storage, records } = processingStorage();
+    const { event } = await envelope();
+    records.set(event.id, {
+      version: 1,
+      eventId: event.id,
+      status: "failed",
+      stage: "wrap",
+      attempts: 1,
+      retryAt: Date.now() + 1000,
+      failure: {
+        eventId: event.id,
+        stage: "wrap",
+        code: "timeout",
+        attempts: 1,
+        retry: "automatic",
+        message: "timeout",
+      },
+    });
+    const { receiver } = setup({ processingStore: storage, retryPolicy: { maxAttempts: 2 } });
+    await receiver.ingest(event);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    vi.useFakeTimers();
+    await receiver.ready();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(decrypt).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(decrypt).toHaveBeenCalledTimes(2);
+    expect(records.get(event.id)).toMatchObject({ status: "completed", attempts: 2 });
+  });
+});
 
 describe("GiftWrapReceiver", () => {
   it("receives existing and externally inserted wraps without opening relays", async () => {
