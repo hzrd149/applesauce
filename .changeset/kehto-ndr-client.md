@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add `createNdrMessageProtocol` to expose a host-owned NDR messages client to Kehto
+Add `createNdrMessageProtocol` for app-owned or protocol-owned NDR messaging clients in Kehto

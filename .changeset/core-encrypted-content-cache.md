@@ -1,6 +1,6 @@
 ---
 "applesauce-core": minor
-"applesauce-common": patch
+"applesauce-common": minor
 ---
 
-Move the direct encrypted content cache helpers into applesauce-core while preserving their applesauce-common exports.
+Add direct encrypted content cache helpers in `applesauce-core` with re-exports from `applesauce-common`

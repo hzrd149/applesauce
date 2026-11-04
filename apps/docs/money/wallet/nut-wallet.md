@@ -80,7 +80,7 @@ By default any mint with enough balance is used. The spent tokens are removed an
 
 `NutWallet` also bridges to Lightning. `deposit()` adds sats by creating an invoice and waiting for it to be paid, and `withdraw()` pays a Lightning invoice from a mint's balance. Both take a payment `method` so new methods (bolt12, on-chain) slot in as cashu adds support; `payInvoice()` is a bolt11 alias for `withdraw()`.
 
-Deposits require a consumer-provided `recovery` store and a mint supporting [NUT-09 signature restoration](https://github.com/cashubtc/nuts/blob/main/09.md). Constructing, starting, and reading a wallet do not require recovery storage. There is no nonrecoverable fallback for `deposit()`, `createMintQuote()`, or `redeemMintQuote()`.
+Supply a consumer-provided `recovery` store to enable durable deposits with a mint supporting [NUT-09 signature restoration](https://github.com/cashubtc/nuts/blob/main/09.md). Without `recovery`, `deposit()`, `createMintQuote()`, and `redeemMintQuote()` retain their existing flow without a persistent deposit journal.
 
 ```typescript
 const recovery = localforage.createInstance({
@@ -163,7 +163,7 @@ Import `MintRecovery` from `applesauce-wallet/helpers`. Use `getPending()` after
 
 ### Migrating existing consumers
 
-Consumers upgrading to this API must configure `recovery` before creating or redeeming invoices. Existing `Couch` implementations remain supported. `KeyValueCouch` takes an already-scoped string store, without a namespace or storage-key argument:
+Configure `recovery` to use `getPendingDeposits()`, `resumeDeposit()`, and `importLegacyDeposit()`. Existing deposit calls and `Couch` implementations remain supported without it. `KeyValueCouch` takes an already-scoped string store, without a namespace or storage-key argument:
 
 ```typescript
 const proofStorage = encryptedStorage.createInstance({

@@ -1,5 +1,5 @@
 ---
-"applesauce-wallet": major
+"applesauce-wallet": minor
 ---
 
-Require consumer-provided recovery storage for NutWallet deposits and quote redemption, preserving mint outputs and signed events for explicit resumption after interruption.
+Add optional durable recovery storage for `NutWallet` deposits and quote redemption

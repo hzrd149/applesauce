@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add local wrapped conversations with scoped rumor stores, message models, and recipient-bound sending helpers.
+Add wrapped conversations with scoped rumor stores, recipient-bound sending, and shared gift-wrap receiving

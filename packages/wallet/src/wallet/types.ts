@@ -21,7 +21,7 @@ export interface NutWalletOptions {
   eventStore: EventStore;
   /** A couch used to keep tokens safe during multi-step operations */
   couch: Couch;
-  /** App-scoped durable recovery storage, required before starting or redeeming deposits */
+  /** Optional app-scoped storage enabling durable deposit recovery */
   recovery?: RecoveryStorage;
   /**
    * Override the relay set used for loading and publishing.

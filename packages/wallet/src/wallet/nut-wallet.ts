@@ -60,6 +60,7 @@ import {
   CleanupDeletedTokens,
   ConsolidateTokens,
   CreateWallet,
+  MintTokens,
   ReceiveToken,
   ReceiveNutzaps,
   RecoverFromCouch,
@@ -609,12 +610,17 @@ export class NutWallet {
    * Creates a bolt11 mint quote (lightning invoice) to deposit `amount` sats into a mint.
    * Pay the returned `request` invoice, then wait for it with {@link waitForMintQuote} and redeem it
    * with {@link redeemMintQuote} (or use {@link deposit} to do all three in one call).
-   * @throws if recovery storage is missing or the quote cannot be persisted safely
+   * @throws if quote creation fails or configured recovery storage cannot persist it
    */
   async createMintQuote(mint: string, amount: number, description?: string): Promise<MintQuoteBolt11Response> {
     return this.track("mintQuote", async () => {
       this.log("Creating mint quote for %d sats at %s", amount, mint);
-      const pending = await this.requireMintRecovery().prepare({ mint, amount, description });
+      if (!this.mintRecovery) {
+        const cashuWallet = await this.getCashuWallet(mint);
+        return cashuWallet.createMintQuoteBolt11(amount, description);
+      }
+
+      const pending = await this.mintRecovery.prepare({ mint, amount, description });
       return pending.quote;
     });
   }
@@ -641,13 +647,24 @@ export class NutWallet {
   }
 
   /**
-   * Redeems an already-paid bolt11 mint quote using durable recovery
-   * @throws if recovery storage is missing or the quote cannot be redeemed safely
+   * Redeems an already-paid bolt11 mint quote with durable recovery when configured
+   * @throws if minting, publication, or configured recovery storage fails
    */
   async redeemMintQuote(mint: string, amount: number, quote: string | MintQuoteBolt11Response): Promise<void> {
     await this.track("mint", async () => {
       this.log("Redeeming mint quote for %d sats at %s", amount, mint);
-      const recovery = this.requireMintRecovery();
+      const recovery = this.mintRecovery;
+      if (!recovery) {
+        const wallet = await this.getCashuWallet(mint);
+        await this.actions.run(MintTokens, mint, amount, quote, {
+          couch: this.couch,
+          wallet,
+          getCashuWallet: this.getCashuWallet,
+        });
+        await this.refreshCouch();
+        return;
+      }
+
       const quoteId = typeof quote === "string" ? quote : quote.quote;
       let pending = (await recovery.getPending()).find(
         (record) => record.mint === mint && record.quote.quote === quoteId && !record.nutzap,
@@ -669,14 +686,23 @@ export class NutWallet {
    *
    * For bolt11 it creates a mint quote, surfaces the invoice via `onQuote`, waits for it to be paid,
    * and redeems the proofs.
-   * @throws if recovery storage is missing or the deposit cannot complete safely
+   * @throws if the deposit fails, is cancelled, or times out
    */
   async deposit(options: DepositOptions): Promise<void> {
-    const recovery = this.requireMintRecovery();
+    const recovery = this.mintRecovery;
     const method = options.method ?? "bolt11";
     switch (method) {
       case "bolt11": {
         options.signal?.throwIfAborted();
+        if (!recovery) {
+          const { mint, amount, description, onQuote, signal, timeoutMs } = options;
+          const quote = await this.createMintQuote(mint, amount, description);
+          await onQuote?.(quote);
+          await this.waitForMintQuote(mint, quote.quote, { signal, timeoutMs });
+          await this.redeemMintQuote(mint, amount, quote);
+          return;
+        }
+
         const pending = await this.track("mintQuote", () => recovery.prepare(options));
         await this.resumeDeposit(pending.id, options);
         return;

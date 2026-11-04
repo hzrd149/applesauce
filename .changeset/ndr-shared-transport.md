@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add a disposable NDR transport with shared Applesauce relay connections, verified event caching, and account-bound signer hooks.
+Add standalone NDR transport hooks with shared relay connections, verified event caching, and optional owner signing

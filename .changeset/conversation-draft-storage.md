@@ -1,4 +1,4 @@
 ---
 "applesauce-extra": minor
 ---
-Add optional key/value storage and observable draft management to legacy and wrapped conversations.
+Add persistent conversation drafts with staged file storage and revision-safe handoff to message publication

@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add independently loadable legacy conversations with scoped cache reads, history synchronization, live subscriptions, and decryption.
+Add legacy conversations with explicit history loading, live watching, cached previews, and prepared message publication

@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add a ContextVM service with isolated per-window transports over the shared Applesauce relay pool.
+Add composable Kehto ContextVM services with isolated per-window transports over a shared relay pool

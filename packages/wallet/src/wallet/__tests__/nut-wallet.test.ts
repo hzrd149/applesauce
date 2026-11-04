@@ -166,6 +166,14 @@ describe("deposit recovery", () => {
       getMintInfo: () => ({ isSupported: () => ({ supported: true }) }),
       createMintQuoteBolt11: vi.fn(async () => quote),
       checkMintQuoteBolt11: vi.fn(async () => quote),
+      mintProofsBolt11: vi.fn(async () =>
+        outputs.map((output) => ({
+          id: "keyset",
+          amount: output.blindedMessage.amount,
+          secret: output.secret,
+          C: "signature",
+        })),
+      ),
       ops: {
         mintBolt11: () => ({
           prepare: async () => ({
@@ -189,27 +197,55 @@ describe("deposit recovery", () => {
     };
     class TestWallet extends NutWallet {
       protected getCashuWallet = async () => cashu as unknown as CashuWallet;
+      protected mintSupports = async () => false;
     }
-    const create = () =>
+    const create = (withRecovery = true) =>
       new TestWallet({
         pubkey: signer.pubkey,
         signer,
         pool,
         eventStore,
         couch,
-        recovery,
+        recovery: withRecovery ? recovery : undefined,
         relays: ["wss://relay.example.com"],
       });
     return { records, cashu, create };
   }
 
-  it("allows reading without storage but rejects deposit and quote creation before mint access", async () => {
+  it("requires storage only for recovery-specific methods", async () => {
     const wallet = new NutWallet({ pubkey: signer.pubkey, signer, pool, eventStore, couch });
     expect(await firstValueFrom(wallet.status$)).toBe(WalletStatus.Idle);
-    await expect(wallet.deposit({ mint: "https://mint.example", amount: 3 })).rejects.toThrow("recovery storage");
-    await expect(wallet.createMintQuote("https://mint.example", 3)).rejects.toThrow("recovery storage");
-    await expect(wallet.redeemMintQuote("https://mint.example", 3, "quote")).rejects.toThrow("recovery storage");
+    await expect(wallet.getPendingDeposits()).rejects.toThrow("recovery storage");
+    await expect(wallet.resumeDeposit("deposit")).rejects.toThrow("recovery storage");
+    await expect(wallet.importLegacyDeposit("deposit")).rejects.toThrow("recovery storage");
     expect(pool.publish).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("supports deposits without recovery storage (manual: %s)", async (manual) => {
+    const { create, cashu, records } = fixture();
+    const mint = "https://mint.example";
+    eventStore.add(await WalletFactory.create([mint], undefined, ["wss://relay.example.com"]).sign(signer));
+    const wallet = create(false);
+    const onQuote = vi.fn(async () => {
+      await Promise.resolve();
+      expect(cashu.mintProofsBolt11).not.toHaveBeenCalled();
+    });
+
+    if (manual) {
+      const quote = await wallet.createMintQuote(mint, 3);
+      await wallet.redeemMintQuote(mint, 3, quote.quote);
+    } else {
+      await wallet.deposit({ mint, amount: 3, onQuote });
+      expect(onQuote).toHaveBeenCalledTimes(1);
+    }
+
+    expect(cashu.createMintQuoteBolt11).toHaveBeenCalledTimes(1);
+    expect(cashu.mintProofsBolt11).toHaveBeenCalledTimes(1);
+    expect(cashu.completeMint).not.toHaveBeenCalled();
+    expect(pool.publish).toHaveBeenCalledTimes(2);
+    expect(await couch.getAll()).toEqual([]);
+    expect(records.size).toBe(0);
+    wallet.stop();
   });
 
   it("round-trips real Cashu output data and keeps rejected events for a restarted wallet", async () => {
