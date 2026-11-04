@@ -1,7 +1,7 @@
 /**
  * Sync every NIP-59 gift wrap a set of relays will serve, authenticating with NIP-42 where required, and rank the recipients
  * @tags gift-wrap, nip-59, nip-42, nip-77, sync, negentropy, loader, dashboard, auth
- * @related gift-wrap/generator, gift-wrap/timeline, messages/gift-wrap, moderation/reports
+ * @related gift-wrap/generator, gift-wrap/receiver, messages/gift-wrap, moderation/reports
  */
 import { castUser, type User } from "applesauce-common/casts";
 import { EventStore } from "applesauce-core";

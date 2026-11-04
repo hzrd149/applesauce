@@ -1,7 +1,7 @@
 /**
  * Stress-test a recipient's NIP-59 inbox with valid messages and faults at every encryption layer
  * @tags gift-wrap, generator, encryption, nip-59, nip-17, stress-test
- * @related gift-wrap/dashboard, messages/gift-wrap
+ * @related gift-wrap/dashboard, gift-wrap/receiver, messages/gift-wrap
  */
 import { randomBytes } from "@noble/hashes/utils.js";
 import { castUser } from "applesauce-common/casts";

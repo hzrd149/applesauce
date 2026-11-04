@@ -555,18 +555,21 @@ export class GiftWrapReceiver {
                 if (!this.processing.has(event.id) && this.processing.size >= (this.options.maxQueued ?? 64)) break;
                 candidates.delete(eventId);
                 arrivals.delete(eventId);
-                if (visited.has(event.id) || this.completed.has(event.id)) continue;
+                if (visited.has(event.id)) continue;
 
                 visited.set(event.id, plaintext(event));
-                const failure = this.failures.get(event.id);
-
-                // External decryption can recover signer failures without retrying the signer.
-                if (failure && !((failure.stage === "wrap" || failure.stage === "seal") && isGiftWrapUnlocked(event)))
-                  continue;
 
                 try {
-                  await this.read(event, allowSigner && !failure, controller.signal);
-                  if (this.completed.has(event.id)) visited.delete(event.id);
+                  const checkedLayers = await this.restoreCachedPlaintext(event, controller.signal);
+
+                  const failure = this.failures.get(event.id);
+                  // Cached or external plaintext can recover signer failures without retrying the signer.
+                  const recovered =
+                    failure && (failure.stage === "wrap" || failure.stage === "seal") && isGiftWrapUnlocked(event);
+                  if (!this.completed.has(event.id) && (!failure || recovered))
+                    await this.read(event, allowSigner && !failure, controller.signal, checkedLayers);
+
+                  if (this.completed.has(event.id) && isGiftWrapUnlocked(event)) visited.delete(event.id);
                 } catch (error) {
                   // Expected envelope failures are already published by process().
                   if (!controller.signal.aborted && !this.failures.has(event.id)) {
@@ -587,7 +590,7 @@ export class GiftWrapReceiver {
         const arrivals$ = merge(this.eventStore.insert$, this.eventStore.update$).pipe(
           filter(
             (event) =>
-              !this.completed.has(event.id) &&
+              (!this.completed.has(event.id) || !isGiftWrapUnlocked(event)) &&
               event.kind === kinds.GiftWrap &&
               event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey),
           ),
@@ -628,13 +631,36 @@ export class GiftWrapReceiver {
     ),
   );
 
-  private async layer(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<boolean> {
+  private async restoreCachedPlaintext(event: NostrEvent, signal: AbortSignal): Promise<Set<string>> {
+    const checkedLayers = new Set<string>();
+    if (isGiftWrapUnlocked(event)) return checkedLayers;
+
+    // Plaintext availability is independent of durable processing progress.
+    // Remember misses too, so subsequent processing does not repeat these cache reads.
+    checkedLayers.add(event.id);
+    if (!(await this.layer(event, false, signal))) return checkedLayers;
+    const seal = getGiftWrapSeal(event);
+    if (!seal) return checkedLayers;
+    checkedLayers.add(seal.id);
+    if (!(await this.layer(seal, false, signal))) return checkedLayers;
+
+    // Seal updates do not notify subscribers to the outer envelope.
+    if (getGiftWrapRumor(event)) notifyEventUpdate(event);
+    return checkedLayers;
+  }
+
+  private async layer(
+    event: NostrEvent,
+    allowSigner: boolean,
+    signal: AbortSignal,
+    restoreCache = true,
+  ): Promise<boolean> {
     signal.throwIfAborted();
 
     // Readers share each layer, including seals referenced by more than one envelope.
     let work = this.layers.get(event.id);
     if (!work) {
-      const result = this.processLayer(event, allowSigner, signal);
+      const result = this.processLayer(event, allowSigner, signal, restoreCache);
       work = { signal, allowSigner, result };
       this.layers.set(event.id, work);
       const release = () => this.layers.delete(event.id);
@@ -646,19 +672,24 @@ export class GiftWrapReceiver {
       signal.throwIfAborted();
 
       // A cache-only lookup may precede a reader that explicitly allows the signer.
-      if (!unlocked && allowSigner && !work.allowSigner) return this.layer(event, allowSigner, signal);
+      if (!unlocked && allowSigner && !work.allowSigner) return this.layer(event, allowSigner, signal, restoreCache);
       return unlocked;
     } catch (error) {
       signal.throwIfAborted();
       // Another envelope may still need a seal whose original reader was cancelled.
-      if (work.signal.aborted) return this.layer(event, allowSigner, signal);
+      if (work.signal.aborted) return this.layer(event, allowSigner, signal, restoreCache);
       throw error;
     }
   }
 
-  private async processLayer(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<boolean> {
+  private async processLayer(
+    event: NostrEvent,
+    allowSigner: boolean,
+    signal: AbortSignal,
+    restoreCache: boolean,
+  ): Promise<boolean> {
     // A cache hit can unlock a layer without asking the signer for permission.
-    if (!isEncryptedContentUnlocked(event) && this.options.decryptionCache) {
+    if (restoreCache && !isEncryptedContentUnlocked(event) && this.options.decryptionCache) {
       try {
         await waitForOperation(
           restoreEncryptedContent(event, this.options.decryptionCache),
@@ -702,7 +733,12 @@ export class GiftWrapReceiver {
     return true;
   }
 
-  private async process(event: NostrEvent, allowSigner: boolean, signal: AbortSignal) {
+  private async process(
+    event: NostrEvent,
+    allowSigner: boolean,
+    signal: AbortSignal,
+    checkedLayers?: ReadonlySet<string>,
+  ) {
     let stage: GiftWrapFailure["stage"] = "envelope";
     let code: GiftWrapFailure["code"] = "invalid-envelope";
     const setStage = (next: GiftWrapFailure["stage"]) => {
@@ -768,7 +804,7 @@ export class GiftWrapReceiver {
       // Open the outer envelope before inspecting the signed seal inside it.
       setStage("wrap");
       code = "decryption-failed";
-      if (!(await this.layer(event, allowSigner, signal))) return;
+      if (!(await this.layer(event, allowSigner, signal, !checkedLayers?.has(event.id)))) return;
       signal.throwIfAborted();
 
       await saveProgress("seal");
@@ -778,7 +814,7 @@ export class GiftWrapReceiver {
       if (!seal) throw new Error("Invalid gift wrap seal");
 
       code = "decryption-failed";
-      if (!(await this.layer(seal, allowSigner, signal))) return;
+      if (!(await this.layer(seal, allowSigner, signal, !checkedLayers?.has(seal.id)))) return;
       signal.throwIfAborted();
 
       // Only validated plaintext reaches the separate rumor store.
@@ -952,12 +988,20 @@ export class GiftWrapReceiver {
     await this.retry(eventId, { signal });
   }
 
-  private async read(event: NostrEvent, allowSigner: boolean, signal: AbortSignal): Promise<Rumor | undefined> {
+  private async read(
+    event: NostrEvent,
+    allowSigner: boolean,
+    signal: AbortSignal,
+    checkedLayers?: ReadonlySet<string>,
+  ): Promise<Rumor | undefined> {
     signal.throwIfAborted();
     const rumorId = this.completed.get(event.id);
     if (rumorId) {
       const rumor = await this.rumorStore.getEvent(rumorId);
-      if (rumor) return rumor;
+      if (rumor) {
+        await this.restoreCachedPlaintext(event, signal);
+        return rumor;
+      }
       // An application may prune its rumor store; explicitly unlocking repairs the record.
       this.completed.delete(event.id);
       this.storedRumors.delete(event.id);
@@ -974,7 +1018,7 @@ export class GiftWrapReceiver {
         signal,
       );
       signal.throwIfAborted();
-      return this.read(event, allowSigner, signal);
+      return this.read(event, allowSigner, signal, checkedLayers);
     }
 
     if (!work) {
@@ -983,7 +1027,7 @@ export class GiftWrapReceiver {
       const controller = new AbortController();
       work = { readers: 0, stage: "envelope", allowSigner, controller, result: Promise.resolve(undefined) };
       this.processing.set(event.id, work);
-      work.result = Promise.resolve().then(() => this.process(event, allowSigner, controller.signal));
+      work.result = Promise.resolve().then(() => this.process(event, allowSigner, controller.signal, checkedLayers));
       const release = () => {
         this.processing.delete(event.id);
         if (!this.disposed) this.changed();
