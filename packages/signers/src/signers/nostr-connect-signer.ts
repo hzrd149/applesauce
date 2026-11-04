@@ -36,6 +36,32 @@ async function defaultHandleAuth(url: string) {
   window.open(url, "auth", "width=400,height=600,resizable=no,status=no,location=no,toolbar=no,menubar=no");
 }
 
+/**
+ * Lifecycle methods whose params and results are safe to log verbatim (public keys, relay
+ * lists, status acks). Everything else fails closed: params and results log as "[redacted]",
+ * so newly added NIP-46 methods can never leak secrets into an enabled debug namespace.
+ */
+// undefined (a response with no matching request) is not in the set: redacted, fail-closed
+const SAFE_LOG_METHODS = new Set<NostrConnectMethod | undefined>([
+  NostrConnectMethod.GetPublicKey,
+  NostrConnectMethod.Ping,
+  NostrConnectMethod.SwitchRelays,
+  NostrConnectMethod.Logout,
+]);
+
+/**
+ * Strips the query and fragment from an auth URL before logging — bunker auth challenges carry
+ * bearer capabilities (approval tokens, OAuth state) in exactly those parts.
+ */
+function redactAuthUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    return url.origin + url.pathname + (url.search ? "?[redacted]" : "") + (url.hash ? "#[redacted]" : "");
+  } catch {
+    return "[invalid-auth-url]";
+  }
+}
+
 export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
   /** The relays to communicate over */
   relays: string[];
@@ -239,6 +265,8 @@ export class NostrConnectSigner implements ISigner {
   }
 
   protected requests = new Map<string, Deferred<any>>();
+  /** Kept separately so the protected `requests` map keeps its published type (patch-semver) */
+  private requestMethods = new Map<string, NostrConnectMethod>();
   protected auths = new Set<string>();
   /** Timeout timers for pending requests */
   protected timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -288,11 +316,14 @@ export class NostrConnectSigner implements ISigner {
       }
 
       if (response.id) {
-        const p = this.requests.get(response.id);
-        if (!p) return;
+        const defer = this.requests.get(response.id);
+        if (!defer) return;
+        const method = this.requestMethods.get(response.id);
         if (response.error) {
-          this.log("Got Error", response.id, response.result, response.error);
           if (response.result === "auth_url") {
+            // the error field carries the auth URL; its query and fragment hold bearer
+            // capabilities, so log the URL with those parts stripped
+            this.log("Got auth_url", response.id, redactAuthUrl(response.error));
             if (!this.auths.has(response.id)) {
               this.auths.add(response.id);
               // Give the user time to authenticate before timing out
@@ -301,14 +332,22 @@ export class NostrConnectSigner implements ISigner {
                 try {
                   await this.onAuth(response.error);
                 } catch (e) {
-                  p.reject(e);
+                  defer.reject(e);
                 }
               }
             }
-          } else p.reject(new Error(response.error));
+          } else {
+            // error strings from sensitive methods can echo rejected secrets or drafts
+            this.log(
+              "Got Error",
+              response.id,
+              SAFE_LOG_METHODS.has(method) ? response.error : `[${method}] [error redacted]`,
+            );
+            defer.reject(new Error(response.error));
+          }
         } else if (response.result !== undefined) {
-          this.log("Got Response", response.id, response.result);
-          p.resolve(response.result);
+          this.log("Got Response", response.id, SAFE_LOG_METHODS.has(method) ? response.result : "[redacted]");
+          defer.resolve(response.result);
         }
       }
     } catch (e) {}
@@ -348,14 +387,19 @@ export class NostrConnectSigner implements ISigner {
     const request: NostrConnectRequest<T> = { id, method, params };
     const encrypted = await this.signer.nip44.encrypt(this.remote, JSON.stringify(request));
     const event = await this.createRequestEvent(encrypted, this.remote, kind);
-    this.log(`Sending ${id} (${method}) ${JSON.stringify(params)}`);
+    this.log(
+      `Sending ${id} (${method})`,
+      SAFE_LOG_METHODS.has(method) ? JSON.stringify(params) : "[redacted]",
+    );
 
     const p = createDefer<ConnectResponseResults[T]>();
     this.requests.set(id, p);
+    this.requestMethods.set(id, method);
 
     // Cleanup when the request is resolved, rejected, or timed out
     const cleanup = () => {
       this.requests.delete(id);
+      this.requestMethods.delete(id);
       this.auths.delete(id);
       clearTimeout(this.timers.get(id));
       this.timers.delete(id);
