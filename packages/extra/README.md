@@ -4,6 +4,51 @@ A collection of stuff that doesn't fit into any applesauce package.
 
 Each module has its own entry point (`applesauce-extra/nspam`, `applesauce-extra/vertex`, `applesauce-extra/primal`, `applesauce-extra/open-ranking`, `applesauce-extra/remote-monitor-relay-liveness`, `applesauce-extra/messages`, `applesauce-extra/kehto`), so importing one doesn't load the others or their optional dependencies.
 
+## Gift-wrap receiver
+
+`GiftWrapReceiver` from `applesauce-extra/gift-wrap` receives account-addressed NIP-59 envelopes containing any rumor kind. It requires an application-owned `EventStore` and `RelayPool`; validated plaintext goes into a separate `RumorStore`, or an application-provided database-backed `AsyncRumorStore`.
+
+```ts
+const receiver = new GiftWrapReceiver({ pubkey, signer, eventStore, pool, rumorStore });
+const watch = receiver.watch$.subscribe();
+receiver.setAutoUnlock(true);
+const history = await receiver.loadHistory({ since });
+// Consume receiver.rumors$ or query receiver.rumorStore by kind.
+watch.unsubscribe();
+receiver.dispose();
+```
+
+`receive$` processes existing envelopes and follows the event store's `insert$` and `update$` feeds, including envelopes loaded or decrypted by other application components. It checks in-memory plaintext and `decryptionCache` before optionally using the signer for each layer. Subscribing opens no relay requests; `watch$` adds live loading and encrypted-cache hydration to the same shared processor.
+
+Both streams emit `GiftWrapReadResult` successes after rumor storage and per-envelope failures without terminating. Active subscribers also receive outcomes from explicit unlocks and retries. Cache misses with auto-unlock disabled emit nothing; completed envelopes are not emitted again, and late subscribers receive no replay. Use `rumors$` and `decryptionState$` for current state.
+
+`start()` retains its own watch; `stop()` cancels current receive/watch subscriptions and operations, and later subscriptions can restart. Observing `giftWraps$`, `rumors$`, or `decryptionState$` does not prompt the signer. `sync$(options)` returns operation-local progress; `loadHistory()` uses a finite relay snapshot. Both take inclusive **envelope** timestamps without implicit message-timestamp overlap and load without starting processing; subscribe to `receive$` or `watch$` to process their arrivals automatically.
+
+Use `ingest(event)` for externally loaded envelopes, `unlock(event)` to decrypt or retry one envelope, and `unlock()` to process loaded envelopes without prior failures. `autoUnlock$` reflects `setAutoUnlock()`; automatic decryption defaults to off. `decryptionConcurrency` limits simultaneous decryption calls across automatic and explicit processing (default `1`). Cancelled or timed-out calls retain their capacity until the underlying promise settles. `maxQueued` bounds concurrent envelope processing requests; background processing walks stored envelopes rather than buffering arrivals.
+
+Use `readNext()` to process one eligible loaded envelope, or `readInbox()` to pull rumors without prefetching. Each pull decrypts both layers as needed and awaits rumor storage. Completed, failed, and currently processing envelopes are skipped; a selected envelope's failure rejects the pull. The iterator ends when no eligible loaded envelopes remain, rather than waiting for future arrivals. Keep `autoUnlock` off for application-controlled pacing.
+
+```ts
+for await (const rumor of receiver.readInbox({ signal })) {
+  await handleRumor(rumor); // The next envelope starts after this finishes.
+}
+```
+
+### Integration
+
+The receiver discovers kind-10050 relays unless `relays` supplies an explicit array or observable; `fallbackRelays` applies when none are advertised. `authRequests$` exposes operation-owned authentication requests; call `authenticate(url)` for one relay or `authenticateAll()` to start all pending relays concurrently. Set `autoAuth: true` to authenticate as requirements arrive. Authentication runs independently of decryption and shares simultaneous attempts for the same relay. Manual authentication defaults to waiting without an approval timeout; set `authTimeout` to bound that wait. Live and history operations share the same authentication coordinator.
+
+Encrypted-event persistence belongs to the supplied `eventStore` and the application's cache integration (`cacheRequest`). Optional `decryptionCache` restores and saves both encryption layers. `rumorStore` persists decrypted rumors, not envelopes, and should be account-scoped. An asynchronous rumor write is awaited; a failed write appears as a `storage` failure and can be retried without another signer call. Disposal releases only the default, receiver-owned rumor store.
+
+Marmot consumers can select kind-444 rumors and retain their own invite/read state; messaging consumers select kind 14/15 and derive conversations. The receiver validates transport integrity without imposing those application protocols.
+
+### Best Practices
+
+- Share one receiver per account across consumers to share signer work.
+- Inspect per-relay sync results: completion does not mean every relay succeeded or decryption finished.
+- Read per-envelope failures from `decryptionState$.errors`; background cache, loading and rumor-storage errors also appear on `errors$`.
+- Persist encrypted events and plaintext caches separately; failure records and envelope-processing bookkeeping currently remain in memory.
+
 ## Messaging clients
 
 `LegacyMessagesClient` (NIP-04) and `WrappedMessagesClient` (NIP-17) combine a shared store, pool and fixed account into ready-to-use messaging clients. Import them from `applesauce-extra/messages`; no Kehto dependencies are required.

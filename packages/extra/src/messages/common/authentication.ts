@@ -66,6 +66,7 @@ export class MessageAuthentication {
     private readonly pool: RelayPool,
     private readonly pubkey: string,
     private readonly signer?: ISigner,
+    private readonly concurrent = false,
   ) {}
 
   /** Registers a callback that scoped operations can associate with this tracker */
@@ -152,7 +153,7 @@ export class MessageAuthentication {
   }
 
   /**
-   * Authenticates a snapshot of pending relays sequentially, retaining per-relay failures
+   * Authenticates a snapshot of pending relays using the configured concurrency, retaining per-relay failures
    * @throws if clear cancels the batch, including when its client stops or is disposed
    */
   authenticateAll(): Promise<MessageAuthenticationResult[]> {
@@ -188,46 +189,48 @@ export class MessageAuthentication {
         this.requests.value.map((request) => (request.url === url ? { ...request, state, error } : request)),
       );
     };
-    const work = this.queue.then(async (): Promise<MessageAuthenticationResult> => {
-      // Relay cancellation can settle before an extension's non-cancellable signing prompt.
-      const signing: Promise<unknown>[] = [];
-      try {
-        generation.throwIfAborted();
-        if (!isCurrent() || signal.aborted) return { url, status: "skipped" };
-        const relay = this.pool.relay(url);
-        if ((await firstValueFrom(relay.authenticatedPubkeys$)).includes(this.pubkey))
-          return { url, status: "skipped" };
-        signal.throwIfAborted();
-        if (!this.signer) throw new Error("A signer is required");
-        if ((await this.signer.getPublicKey()) !== this.pubkey)
-          throw new Error("Signer does not match message client owner");
-        signal.throwIfAborted();
-        if (!isCurrent()) return { url, status: "skipped" };
-        const response = await relay.authenticate(
-          {
-            signEvent: (event) => {
-              signal.throwIfAborted();
-              const signed = this.signer!.signEvent(event);
-              signing.push(signed);
-              return signed;
+    const work = (this.concurrent ? Promise.resolve() : this.queue).then(
+      async (): Promise<MessageAuthenticationResult> => {
+        // Relay cancellation can settle before an extension's non-cancellable signing prompt.
+        const signing: Promise<unknown>[] = [];
+        try {
+          generation.throwIfAborted();
+          if (!isCurrent() || signal.aborted) return { url, status: "skipped" };
+          const relay = this.pool.relay(url);
+          if ((await firstValueFrom(relay.authenticatedPubkeys$)).includes(this.pubkey))
+            return { url, status: "skipped" };
+          signal.throwIfAborted();
+          if (!this.signer) throw new Error("A signer is required");
+          const pubkey = await this.signer.getPublicKey();
+          if (pubkey !== this.pubkey) throw new Error("Signer does not match message client owner");
+          signal.throwIfAborted();
+          if (!isCurrent()) return { url, status: "skipped" };
+          const response = await relay.authenticate(
+            {
+              signEvent: (event) => {
+                signal.throwIfAborted();
+                const signed = this.signer!.signEvent(event);
+                signing.push(signed);
+                return signed;
+              },
             },
-          },
-          { signal },
-        );
-        signal.throwIfAborted();
-        if (!response.ok) throw new Error(response.message ?? "Relay rejected authentication");
-        return { url, status: "authenticated" };
-      } catch (error) {
-        generation.throwIfAborted();
-        if (signal.aborted || !isCurrent()) return { url, status: "skipped" };
-        update("failed", error);
-        return { url, status: "failed", error };
-      } finally {
-        await Promise.allSettled(signing);
-      }
-    });
-    // Never release the queue until underlying signer work has settled, even after clear().
-    this.queue = work.catch(() => {});
+            { signal },
+          );
+          signal.throwIfAborted();
+          if (!response.ok) throw new Error(response.message ?? "Relay rejected authentication");
+          return { url, status: "authenticated" };
+        } catch (error) {
+          generation.throwIfAborted();
+          if (signal.aborted || !isCurrent()) return { url, status: "skipped" };
+          update("failed", error);
+          return { url, status: "failed", error };
+        } finally {
+          await Promise.allSettled(signing);
+        }
+      },
+    );
+    // Sequential clients retain their queue until underlying signer work settles, even after clear().
+    if (!this.concurrent) this.queue = work.catch(() => {});
     const attempt: AuthenticationAttempt = {
       controller,
       result: this.untilAborted(work, generation),

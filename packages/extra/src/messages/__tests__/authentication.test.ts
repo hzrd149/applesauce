@@ -50,7 +50,7 @@ function setup(accountSigner = signer) {
   return { tracker, relay, context, callback, open, options };
 }
 
-function batchSetup(accountSigner = signer) {
+function batchSetup(accountSigner = signer, concurrent = false) {
   const entries = Array.from({ length: 3 }, (_, index) => {
     const entry = setup();
     entry.relay.url = `wss://auth-${index}.test/`;
@@ -60,7 +60,7 @@ function batchSetup(accountSigner = signer) {
   const pool = {
     relay: (url: string) => entries.find((entry) => entry.relay.url === url)!.relay,
   } as unknown as RelayPool;
-  const tracker = new MessageAuthentication(pool, pubkey, accountSigner);
+  const tracker = new MessageAuthentication(pool, pubkey, accountSigner, concurrent);
   cleanup.push(() => tracker.clear());
   const track = (index: number) => tracker.track(entries[index].context, false);
   return { tracker, entries, track };
@@ -77,6 +77,23 @@ function deferred<T>() {
 }
 
 describe("message authentication batches", () => {
+  it("starts every relay concurrently when configured and shares individual attempts", async () => {
+    const { tracker, entries, track } = batchSetup(signer, true);
+    const gate = deferred<void>();
+    entries.forEach(({ relay }, index) => {
+      track(index);
+      relay.authenticate.mockImplementation(async () => {
+        await gate.promise;
+        return { ok: true, message: "accepted" };
+      });
+    });
+    const batch = tracker.authenticateAll();
+    const individual = tracker.authenticate(entries[0].relay.url);
+    await vi.waitFor(() => entries.forEach(({ relay }) => expect(relay.authenticate).toHaveBeenCalledTimes(1)));
+    gate.resolve();
+    expect((await batch).every((result) => result.status === "authenticated")).toBe(true);
+    await individual;
+  });
   it("returns an empty snapshot without signing", async () => {
     const { tracker } = batchSetup();
     expect(await tracker.authenticateAll()).toEqual([]);
