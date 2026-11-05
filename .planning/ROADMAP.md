@@ -73,6 +73,22 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 
 </details>
 
+### Next (unassigned milestone)
+
+- [ ] Phase 27: Correctly Handle Delete Event `e` Tags for Replaceable Event Versions
+
+### Phase 27: Correctly Handle Delete Event `e` Tags for Replaceable Event Versions
+
+**Goal:** Correctly apply delete-event `e` tags when they reference versions of replaceable events.
+**Source:** [ngit issue](https://gitworkshop.dev/hzrd149.com/applesauce/issues/nevent1qqs0a76lfxteytscg4yrdul6a748vvjynmakdaaw69unt9gf3xdfzuq5erla7?unread=fefb5f4997922e1&gitworkshop-reload=2c022d8#fefb5f4997922e1)
+**Depends on:** Nothing (first phase after v7.0.0)
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (plan with /gsd-plan-phase 27)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -94,33 +110,14 @@ Genericized the applesauce event layer over `E extends StoreEvent = NostrEvent` 
 | 13. Operation-Scoped NIP-42 Auth Hooks | v1.2 | 14/14 | Complete    | 2026-08-06 |
 | 14. Auth Lifecycle Debug Logging | v1.2 | 9/9 | Complete    | 2026-08-11 |
 | 16–26. relay-method-layering | v7.0.0 | all | Complete | 2026-09-28 |
+| 27. Delete `e` Tags for Replaceable Versions | — | 0/0 | Not started | — |
 
 
 **Totals:** 20 phases across three shipped milestones; 135 plans shipped (98 across v1.0/v1.1, 37 across v1.2). v7.0.0 contains 16 phases (Phases 16–26, including 25.1–25.5); release coordination remains last.
 
 ## Backlog
 
-### Phase 999.1: Correctly Handle Delete Event `e` Tags for Replaceable Event Versions (BACKLOG)
-
-**Goal:** Correctly apply delete-event `e` tags when they reference versions of replaceable events.
-**Source:** [ngit issue](https://gitworkshop.dev/hzrd149.com/applesauce/issues/nevent1qqs0a76lfxteytscg4yrdul6a748vvjynmakdaaw69unt9gf3xdfzuq5erla7?unread=fefb5f4997922e1&gitworkshop-reload=2c022d8#fefb5f4997922e1)
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with $gsd-review-backlog when ready)
-
-### Phase 999.2: Adaptive Relay Signature Verification (BACKLOG)
-
-**Goal:** Investigate and build a flexible, responsive event signature verification system for selected relays that tracks counts of verified good and bad signatures over a configurable time period, gradually reduces Schnorr signature verification as each relay earns trust through valid events, and continues infrequent checks even when a relay is fully trusted; any invalid signature immediately resets that relay's trust to zero and records a permanent or long-standing strike against it.
-**Requirements:** TBD
-**Open questions:** Trust growth and verification backoff policy, time-window accounting, minimum sampling frequency, and strike persistence and expiry.
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with $gsd-review-backlog when ready)
+_No backlog items._
 
 ## v7 release coordination
 
