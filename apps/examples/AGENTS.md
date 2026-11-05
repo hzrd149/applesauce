@@ -57,15 +57,20 @@ const [slice, setSlice] = useState(firstSlice);
 const coverage = use$(() => merge(loader.status$, loader(slice).pipe(ignoreElements())), [loader, slice]);
 const covered = isTimelineWindowCovered(slice, coverage ?? []);
 
-const watchEdge = useCallback((edge: HTMLDivElement | null) => {
-  if (!edge || !covered) return;
-  const observer = new IntersectionObserver(([e]) => e.isIntersecting && setSlice(older(slice)));
-  observer.observe(edge);
-  return () => observer.disconnect();
-}, [covered, slice]);
+const watchEdge = useCallback(
+  (edge: HTMLDivElement | null) => {
+    if (!edge || !covered) return;
+    const observer = new IntersectionObserver(([e]) => e.isIntersecting && setSlice(older(slice)));
+    observer.observe(edge);
+    return () => observer.disconnect();
+  },
+  [covered, slice],
+);
 
 // ❌ An inline Observable and a BehaviorSubject driven from tap
-const nearEdge$ = new Observable((s) => { /* IntersectionObserver */ });
+const nearEdge$ = new Observable((s) => {
+  /* IntersectionObserver */
+});
 combineLatest({ nearEdge: nearEdge$, window: windows$ }).pipe(tap(() => windows$.next(older())));
 ```
 

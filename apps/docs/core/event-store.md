@@ -240,13 +240,13 @@ const sub = eventStore.addressable({ kind: 30023, pubkey: "...", identifier: "my
 
 The event store has shortcut methods for common subscriptions. Each one accepts a pubkey, pointer, or event and returns an observable:
 
-| Method                 | Returns                              | Feature page                                           |
-| ---------------------- | ------------------------------------ | ------------------------------------------------------ |
+| Method                 | Returns                              | Feature page                                                  |
+| ---------------------- | ------------------------------------ | ------------------------------------------------------------- |
 | `profile(user)`        | `ProfileContent \| undefined`        | [Profiles](/features/social/profiles)                         |
 | `contacts(user)`       | `ProfilePointer[]`                   | [Follows](/features/social/follows)                           |
 | `mailboxes(user)`      | `{ inboxes, outboxes } \| undefined` | [Mailboxes & Outbox](/features/relays/outbox)                 |
-| `mutes(user)`          | `MutedThings \| undefined`           | [Mutes & Reports](/features/moderation/mutes-and-reports)                |
-| `blossomServers(user)` | `URL[] \| undefined`                 | [Blossom Servers](/features/files/blossom-servers)           |
+| `mutes(user)`          | `MutedThings \| undefined`           | [Mutes & Reports](/features/moderation/mutes-and-reports)     |
+| `blossomServers(user)` | `URL[] \| undefined`                 | [Blossom Servers](/features/files/blossom-servers)            |
 | `reactions(event)`     | `NostrEvent[]`                       | [Reactions & Reposts](/features/social/reactions-and-reposts) |
 | `thread(root)`         | `Thread`                             | [Notes & Threads](/features/social/notes-and-threads)         |
 | `comments(event)`      | `NostrEvent[]`                       | [Comments](/features/social/comments)                         |

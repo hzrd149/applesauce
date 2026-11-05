@@ -1,7 +1,7 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { bufferTime, EMPTY, Subject } from "rxjs";
-import { describe, expect, it, Mock, vi } from "vitest";
+import { afterEach, describe, expect, it, Mock, vi } from "vitest";
 
 import { batchLoader } from "../../helpers/loaders.js";
 import { AddressPointersLoader } from "../address-loader.js";
@@ -10,6 +10,8 @@ import { FakeUser } from "../../__tests__/fake-user.js";
 const user = new FakeUser();
 
 describe("batchLoader", () => {
+  afterEach(() => vi.useRealTimers());
+
   it("should batch requests", async () => {
     vi.useFakeTimers();
     const upstream: Mock<AddressPointersLoader> = vi.fn().mockReturnValue(EMPTY);

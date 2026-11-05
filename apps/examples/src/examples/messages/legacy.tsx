@@ -611,12 +611,7 @@ function Composer({ conversation }: { conversation: LegacyConversation }) {
         </div>
       )}
       {pending?.map((delivery) => (
-        <PendingPublication
-          key={delivery.message.id}
-          conversation={conversation}
-          delivery={delivery}
-          sending={busy}
-        />
+        <PendingPublication key={delivery.message.id} conversation={conversation} delivery={delivery} sending={busy} />
       ))}
       <form className="flex gap-2" onSubmit={handleSubmit(() => publish())}>
         <input

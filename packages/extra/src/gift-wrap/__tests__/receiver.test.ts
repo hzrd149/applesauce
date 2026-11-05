@@ -331,59 +331,64 @@ describe("GiftWrapReceiver persistence", () => {
     errorSubscription.unsubscribe();
   });
 
-  it.each(["stored", "arrival", "explicit"])("restores completed %s envelopes from cache without repeating processing", async (mode) => {
-    const { storage, records } = processingStorage();
-    const rumorStore = new RumorStore();
-    disposables.push(rumorStore);
-    const cached = new Map<string, string>();
-    const decryptionCache = {
-      getItem: vi.fn(async (key: string) => cached.get(key) ?? null),
-      setItem: vi.fn(async (key: string, value: string) => { cached.set(key, value); }),
-    };
-    const { event, rumor } = await envelope();
-    const first = setup({ processingStore: storage, rumorStore, decryptionCache }).receiver;
-    const invalid = finalizeEvent(
-      { kind: 1059, created_at: unixNow(), tags: [["p", pubkey]], content: "broken" },
-      new Uint8Array(32).fill(23),
-    );
-    await first.ingest(invalid);
-    await first.readNext();
-    await first.unlock(event);
-    first.dispose();
+  it.each(["stored", "arrival", "explicit"])(
+    "restores completed %s envelopes from cache without repeating processing",
+    async (mode) => {
+      const { storage, records } = processingStorage();
+      const rumorStore = new RumorStore();
+      disposables.push(rumorStore);
+      const cached = new Map<string, string>();
+      const decryptionCache = {
+        getItem: vi.fn(async (key: string) => cached.get(key) ?? null),
+        setItem: vi.fn(async (key: string, value: string) => {
+          cached.set(key, value);
+        }),
+      };
+      const { event, rumor } = await envelope();
+      const first = setup({ processingStore: storage, rumorStore, decryptionCache }).receiver;
+      const invalid = finalizeEvent(
+        { kind: 1059, created_at: unixNow(), tags: [["p", pubkey]], content: "broken" },
+        new Uint8Array(32).fill(23),
+      );
+      await first.ingest(invalid);
+      await first.readNext();
+      await first.unlock(event);
+      first.dispose();
 
-    const second = setup({ processingStore: storage, rumorStore, decryptionCache }).receiver;
-    const fresh = JSON.parse(JSON.stringify(event));
-    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
-    const add = vi.spyOn(rumorStore, "add");
-    const checkpoint = vi.spyOn(storage, "set");
-    checkpoint.mockClear();
-    const outcomes = vi.fn();
-    const states: number[] = [];
-    const stateSubscription = second.decryptionState$.subscribe((state) => states.push(state.unlocked));
-    await second.ingest(JSON.parse(JSON.stringify(invalid)));
-    if (mode !== "arrival") await second.ingest(fresh);
-    const subscription = mode === "explicit" ? undefined : second.receive$.subscribe(outcomes);
-    await second.ready();
-    if (mode === "arrival") await second.ingest(fresh);
-    if (mode === "explicit") expect(await second.unlock(fresh)).toEqual(rumor);
+      const second = setup({ processingStore: storage, rumorStore, decryptionCache }).receiver;
+      const fresh = JSON.parse(JSON.stringify(event));
+      const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+      const add = vi.spyOn(rumorStore, "add");
+      const checkpoint = vi.spyOn(storage, "set");
+      checkpoint.mockClear();
+      const outcomes = vi.fn();
+      const states: number[] = [];
+      const stateSubscription = second.decryptionState$.subscribe((state) => states.push(state.unlocked));
+      await second.ingest(JSON.parse(JSON.stringify(invalid)));
+      if (mode !== "arrival") await second.ingest(fresh);
+      const subscription = mode === "explicit" ? undefined : second.receive$.subscribe(outcomes);
+      await second.ready();
+      if (mode === "arrival") await second.ingest(fresh);
+      if (mode === "explicit") expect(await second.unlock(fresh)).toEqual(rumor);
 
-    await vi.waitFor(() => expect(isGiftWrapUnlocked(fresh)).toBe(true));
-    expect(getGiftWrapRumor(fresh)).toEqual(rumor);
-    await vi.waitFor(() => expect(states).toContain(1));
-    expect(await second.readNext()).toBeUndefined();
-    expect(outcomes).not.toHaveBeenCalled();
-    expect(decrypt).not.toHaveBeenCalled();
-    expect(add).not.toHaveBeenCalled();
-    expect(checkpoint).not.toHaveBeenCalled();
-    expect(records.get(event.id)).toMatchObject({ status: "completed", attempts: 1 });
-    expect((await firstValueFrom(second.decryptionState$)).errors.size).toBe(1);
+      await vi.waitFor(() => expect(isGiftWrapUnlocked(fresh)).toBe(true));
+      expect(getGiftWrapRumor(fresh)).toEqual(rumor);
+      await vi.waitFor(() => expect(states).toContain(1));
+      expect(await second.readNext()).toBeUndefined();
+      expect(outcomes).not.toHaveBeenCalled();
+      expect(decrypt).not.toHaveBeenCalled();
+      expect(add).not.toHaveBeenCalled();
+      expect(checkpoint).not.toHaveBeenCalled();
+      expect(records.get(event.id)).toMatchObject({ status: "completed", attempts: 1 });
+      expect((await firstValueFrom(second.decryptionState$)).errors.size).toBe(1);
 
-    subscription?.unsubscribe();
-    const next = await envelope();
-    await second.ingest(next.event);
-    expect(await second.readNext()).toMatchObject({ status: "success", rumor: next.rumor });
-    stateSubscription.unsubscribe();
-  });
+      subscription?.unsubscribe();
+      const next = await envelope();
+      await second.ingest(next.event);
+      expect(await second.readNext()).toMatchObject({ status: "success", rumor: next.rumor });
+      stateSubscription.unsubscribe();
+    },
+  );
 
   it.each(["no-store", "none", "processing", "failed-wrap", "failed-seal", "failed-storage", "completed"] as const)(
     "restores both cached layers with a %s checkpoint",
@@ -392,7 +397,10 @@ describe("GiftWrapReceiver persistence", () => {
       const sealPlaintext = await recipient.nip44.decrypt(event.pubkey, event.content);
       const seal = JSON.parse(sealPlaintext);
       const rumorPlaintext = await recipient.nip44.decrypt(seal.pubkey, seal.content);
-      const cached = new Map([[event.id, sealPlaintext], [seal.id, rumorPlaintext]]);
+      const cached = new Map([
+        [event.id, sealPlaintext],
+        [seal.id, rumorPlaintext],
+      ]);
       const decryptionCache = {
         getItem: vi.fn(async (key: string) => cached.get(key) ?? null),
         setItem: vi.fn(),
