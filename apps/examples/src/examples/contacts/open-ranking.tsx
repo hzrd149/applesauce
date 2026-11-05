@@ -144,6 +144,11 @@ function ContactScores({ user }: { user: User }) {
   const selected = algorithms?.find((value) => value.id === requestedAlgorithm) ?? algorithms?.[0];
   const algorithm = selected?.id ?? "";
   const requiresPov = selected?.pov ?? false;
+  // Retain the NWT cache across contact updates and algorithm changes with the same authentication needs.
+  const scoringClient = useMemo(
+    () => new OpenRanking(provider, { signer: requiresPov ? (signer ?? undefined) : undefined }),
+    [provider, requiresPov, signer],
+  );
   const statsMap =
     use$(() => {
       if (!selected || !contacts?.length || (selected.pov && (!pubkey || !signer || !authorized)))
@@ -154,12 +159,11 @@ function ContactScores({ user }: { user: User }) {
       >;
       return defer(() => {
         // A personalized request is authorized by the explicit Load Scores button.
-        openRanking.setSigner(selected.pov ? (signer ?? undefined) : undefined);
         return from(contacts).pipe(
           mergeMap(
             (contact) =>
               defer(() =>
-                openRanking.stats(contact.pubkey, {
+                scoringClient.stats(contact.pubkey, {
                   algorithm: selected.id,
                   pov: selected.pov ? (pubkey ?? undefined) : undefined,
                 }),
@@ -175,7 +179,7 @@ function ContactScores({ user }: { user: User }) {
           startWith(initial),
         );
       });
-    }, [contacts, selected, openRanking, pubkey, signer, authorized]) ?? {};
+    }, [contacts, selected, scoringClient, pubkey, signer, authorized]) ?? {};
 
   // Sort by the selected stats field, always sinking contacts without a value to the bottom
   const sorted = useMemo(() => {

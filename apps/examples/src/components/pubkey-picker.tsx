@@ -17,7 +17,7 @@ import { createEventLoaderForStore, DnsIdentityLoader } from "applesauce-loaders
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { ExtensionSigner } from "applesauce-signers";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   BehaviorSubject,
@@ -112,10 +112,14 @@ function ProfileSearchModal({
   const openRankingProvider = state.provider;
   const extensionAvailable = typeof window !== "undefined" && !!window.nostr;
 
+  const openRanking = useMemo(() => new OpenRanking(openRankingProvider), [openRankingProvider]);
+  // Retain each account/provider client so searches reuse its cached NWT, including an in-flight signature.
+  const authenticatedRankingClients = useRef(new Map<string, OpenRanking>());
+
   const discovery = use$(
     () =>
       searchMethod === "open-ranking"
-        ? defer(() => new OpenRanking(openRankingProvider).discover()).pipe(
+        ? defer(() => openRanking.discover()).pipe(
             map((capabilities) => ({ algorithms: capabilities["/search/pubkeys"] ?? [], loading: false, error: "" })),
             catchError((error) =>
               of({ algorithms: [] as OpenRankingAlgorithm[], loading: false, error: String(error) }),
@@ -123,7 +127,7 @@ function ProfileSearchModal({
             startWith({ algorithms: [] as OpenRankingAlgorithm[], loading: true, error: "" }),
           )
         : of({ algorithms: [] as OpenRankingAlgorithm[], loading: false, error: "" }),
-    [searchMethod, openRankingProvider],
+    [searchMethod, openRanking],
   );
   const openRankingAlgorithms = discovery?.algorithms ?? [];
   const openRankingAlgorithm = openRankingAlgorithms.some((algorithm) => algorithm.id === state.algorithm)
@@ -165,10 +169,19 @@ function ProfileSearchModal({
                     // Authentication is requested only by this intentional Search command, never by discovery/render.
                     const signer = window.nostr ? new ExtensionSigner() : undefined;
                     if (algorithm?.pov && !signer) throw new Error("Nostr extension required for personalized search");
-                    const pov = algorithm?.pov ? await signer!.getPublicKey() : undefined;
-                    return new OpenRanking(input.provider, { signer }).userSearch(query, 20, {
+                    const pubkey = signer ? await signer.getPublicKey() : undefined;
+                    let client = openRanking;
+
+                    if (signer && pubkey) {
+                      const key = JSON.stringify([input.provider, pubkey]);
+                      const cached = authenticatedRankingClients.current.get(key);
+                      client = cached ?? new OpenRanking(input.provider, { signer });
+                      if (!cached) authenticatedRankingClients.current.set(key, client);
+                    }
+
+                    return client.userSearch(query, 20, {
                       algorithm: input.algorithm || undefined,
-                      pov,
+                      pov: algorithm?.pov ? pubkey : undefined,
                     });
                   });
             return pointers$.pipe(
@@ -186,7 +199,7 @@ function ProfileSearchModal({
           finalize(() => primal.close()),
         );
       }),
-    [search$, searchMethod, selectedRelay, openRankingProvider, openRankingAlgorithm],
+    [search$, searchMethod, selectedRelay, openRanking, openRankingAlgorithm],
   );
   const searchResults = results?.profiles ?? [];
   const isSearching = results?.loading ?? false;
