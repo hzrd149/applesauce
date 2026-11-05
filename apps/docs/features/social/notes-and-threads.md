@@ -46,7 +46,7 @@ function render(item: ThreadItem) {
 
 ## Listing direct replies
 
-`RepliesModel` returns only the direct replies to an event. For a note it includes both kind 1 replies and kind 1111 [comments](/features/comments), and for other kinds only comments.
+`RepliesModel` returns only the direct replies to an event. For a note it includes both kind 1 replies and kind 1111 [comments](/features/social/comments), and for other kinds only comments.
 
 ```ts
 const replies = use$(() => store.model(RepliesModel, event), [event.id]);
@@ -64,7 +64,7 @@ const note = await NoteFactory.create("hello #nostr").sign(signer);
 const reply = await NoteFactory.reply(parent, "nice!").mention(pubkey).sign(signer);
 ```
 
-`reply()` throws when the parent is not a kind 1 note. Reply to other kinds with [`CommentFactory`](/features/comments).
+`reply()` throws when the parent is not a kind 1 note. Reply to other kinds with [`CommentFactory`](/features/social/comments).
 
 The builder also has `.subject()`, `.addHashtag()`, `.hashtags()`, and `.zapSplit()`. See [common factories](/creating/factory/common-factories) for signing and publishing.
 

@@ -21,7 +21,7 @@ hero:
       link: /introduction/agents
     - theme: alt
       text: Migrations
-      link: /migration
+      link: /migration/
 
 features:
   - title: Reactive

@@ -37,7 +37,7 @@ stream.recording; // URL after the stream ends
 stream.viewers; // current participant count
 ```
 
-`stream.zaps$` and `stream.shares$` return the stream's [zaps](/features/zaps) and [reposts](/features/reactions-and-reposts). `stream.goal$` loads its [zap goal](/features/zaps#zap-goals) when `goalPointer` is set.
+`stream.zaps$` and `stream.shares$` return the stream's [zaps](/features/social/zaps) and [reposts](/features/social/reactions-and-reposts). `stream.goal$` loads its [zap goal](/features/social/zaps#zap-goals) when `goalPointer` is set.
 
 ## Live chat
 

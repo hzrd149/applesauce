@@ -170,7 +170,7 @@ pool.subscriptionMap(filterMap).subscribe({
 
 ### Outbox Subscription Method
 
-The `outboxSubscription` method subscribes to each user's events on their own outbox relays; see [Outbox](/features/outbox).
+The `outboxSubscription` method subscribes to each user's events on their own outbox relays; see [Outbox](/features/relays/outbox).
 
 ### Counting and Sync
 

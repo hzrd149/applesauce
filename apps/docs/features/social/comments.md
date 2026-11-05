@@ -29,7 +29,7 @@ const parent = use$(comment.parent$);
 const replies = use$(comment.replies$); // nested Comment casts
 ```
 
-`comment.reactions$` and `comment.zaps$` return the comment's [reactions](/features/reactions-and-reposts) and [zaps](/features/zaps).
+`comment.reactions$` and `comment.zaps$` return the comment's [reactions](/features/social/reactions-and-reposts) and [zaps](/features/social/zaps).
 
 ## Posting a comment
 
@@ -58,6 +58,6 @@ Pass the full comment event when replying to a comment, since a pointer can't ca
 
 ## Best Practices
 
-- Use comments to reply to anything except kind 1 notes, which use [`NoteFactory.reply()`](/features/notes-and-threads)
+- Use comments to reply to anything except kind 1 notes, which use [`NoteFactory.reply()`](/features/social/notes-and-threads)
 - Prefer `CreateComment` over the factory so the parent's author sees the reply
 - Load comments from relays with a `#e`, `#a`, or `#i` filter before reading them, since the model only reads the store

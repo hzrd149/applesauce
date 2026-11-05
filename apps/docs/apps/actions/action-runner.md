@@ -286,7 +286,7 @@ export const actions = new ActionRunner(eventStore, signer, publish);
 
 ### Relay Selection Strategy
 
-Let actions pick relays from the users' mailboxes (see [Mailboxes & Outbox](/features/outbox)):
+Let actions pick relays from the users' mailboxes (see [Mailboxes & Outbox](/features/relays/outbox)):
 
 ```ts
 await actions.run(SendLegacyMessage, recipientPubkey, "Hello"); // Uses recipient's inboxes

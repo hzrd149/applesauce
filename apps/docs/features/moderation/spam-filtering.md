@@ -51,7 +51,7 @@ The classifier keeps bundles for the most recent `maxAuthors` authors (default 1
 
 ## Integration
 
-Combine the score with the viewer's own signals instead of hard-blocking on it. Skip classification for people the user follows and still apply [mutes](/features/moderation):
+Combine the score with the viewer's own signals instead of hard-blocking on it. Skip classification for people the user follows and still apply [mutes](/features/moderation/mutes-and-reports):
 
 ```ts
 const replies$ = combineLatest([eventStore.timeline(filter), user.contacts$]).pipe(

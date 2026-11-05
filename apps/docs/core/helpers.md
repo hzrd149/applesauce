@@ -76,7 +76,7 @@ Hidden tags are used in [NIP-51](https://github.com/nostr-protocol/nips/blob/mas
 
 ## Feature helpers
 
-Helpers for specific event kinds live in [`applesauce-common`](https://applesauce.build/typedoc/modules/applesauce-common.Helpers.html) (and a few in `applesauce-core`) and are documented on the feature pages that use them, such as [Profiles](/features/profiles), [Mailboxes & Outbox](/features/outbox), [Comments](/features/comments), and [Zaps](/features/zaps). Emoji helpers are covered in [Content](/apps/content/).
+Helpers for specific event kinds live in [`applesauce-common`](https://applesauce.build/typedoc/modules/applesauce-common.Helpers.html) (and a few in `applesauce-core`) and are documented on the feature pages that use them, such as [Profiles](/features/social/profiles), [Mailboxes & Outbox](/features/relays/outbox), [Comments](/features/social/comments), and [Zaps](/features/social/zaps). Emoji helpers are covered in [Content](/apps/content/).
 
 ## Factory Helpers
 

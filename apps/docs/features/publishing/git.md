@@ -97,7 +97,7 @@ Only the applied factory has `acceptedRevision()`, `appliedPatches()`, `appliedC
 
 ## Sending events to the repository
 
-Publish to the relays the repository advertises, with the author's [outboxes](/features/outbox) as extra targets. Reply to any thread with `CommentFactory.create(thread, text)`, which adds the NIP-22 threading tags.
+Publish to the relays the repository advertises, with the author's [outboxes](/features/relays/outbox) as extra targets. Reply to any thread with `CommentFactory.create(thread, text)`, which adds the NIP-22 threading tags.
 
 ```ts
 const relays = relaySet(getGitRepositoryRelays(announcement), outboxes);

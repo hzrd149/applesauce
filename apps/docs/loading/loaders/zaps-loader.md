@@ -29,7 +29,7 @@ It accepts the [Tag Value Loader options](./tag-value-loader.md#configuration-op
 
 Pass the application's EventStore to update its models and casts. An optional `cacheRequest` runs in parallel with relay requests and does not prevent network loading.
 
-Use the [zap helpers](/features/zaps) to parse and validate receipts before displaying payment details. The loader requests kind 9735 events; it does not itself validate invoices or prove payment authenticity.
+Use the [zap helpers](/features/social/zaps) to parse and validate receipts before displaying payment details. The loader requests kind 9735 events; it does not itself validate invoices or prove payment authenticity.
 
 Use an abort signal to stop both internal loaders:
 

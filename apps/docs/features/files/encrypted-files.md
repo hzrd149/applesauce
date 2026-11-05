@@ -59,7 +59,7 @@ const envelope = await GiftWrapFactory.create(signer, recipient, template);
 await pool.publish(recipientDmRelays, envelope);
 ```
 
-The relay list above is application-resolved. Use [WrappedMessagesClient](../extra/messages.md) for participant relay discovery, the sender's backup copy, and retained publication retries. See [Gift-wrap Receiver](../extra/gift-wrap.md) for receiving and decrypting envelopes.
+The relay list above is application-resolved. Use [WrappedMessagesClient](../../extra/messages.md) for participant relay discovery, the sender's backup copy, and retained publication retries. See [Gift-wrap Receiver](../../extra/gift-wrap.md) for receiving and decrypting envelopes.
 
 For a chat message, `createImetaTagForAttachment(file)` from `applesauce-common/helpers/file-metadata` writes the decryption fields into an `imeta` tag.
 
@@ -100,7 +100,7 @@ try {
 const retry = () => prepared.publish();
 ```
 
-`prepared.publish()` skips envelopes already accepted. Calling `send({ content: "", file })` again creates new envelopes; reusing uploaded metadata avoids only another upload, not another message. See [Messages](../extra/messages.md) for client lifecycle and recovery.
+`prepared.publish()` skips envelopes already accepted. Calling `send({ content: "", file })` again creates new envelopes; reusing uploaded metadata avoids only another upload, not another message. See [Messages](../../extra/messages.md) for client lifecycle and recovery.
 
 ### Draft attachments
 

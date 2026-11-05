@@ -55,17 +55,17 @@ const stream$ = user.addressable(30311, "my-stream", relays);
 
 | Observables                                                                                      | Feature                                                               |
 | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
-| `profile$`                                                                                       | [Profiles](/features/profiles)                                        |
-| `contacts$`                                                                                      | [Follows](/features/follows)                                          |
-| `mutes$`                                                                                         | [Mutes & Reports](/features/moderation)                               |
-| `mailboxes$`, `outboxes$`, `inboxes$`                                                            | [Mailboxes & Outbox](/features/outbox)                                |
-| `bookmarks$`                                                                                     | [Bookmarks](/features/bookmarks)                                      |
-| `favoriteRelays$`, `searchRelays$`, `blockedRelays$`, `lookupRelayList$`, `directMessageRelays$` | [Relay Lists](/features/relay-lists)                                  |
-| `groups$`                                                                                        | [Groups](/features/groups)                                            |
-| `blossomServers$`                                                                                | [Blossom Servers](/features/blossom-servers)                          |
-| `gitRepositories$`, `gitAuthors$`, `favoriteGitRepos$`, `graspServers$`                          | [Git](/features/git)                                                  |
-| `nsites$`, `nsite$`, `nsiteSnapshots$`, `napplets$`, `napplet$`                                  | [Nostr Sites](/features/nostr-sites), [Napplets](/napplets/manifests) |
-| `appHandlers$`, `appRecommendations$`                                                            | [App Handlers](/features/app-handlers)                                |
+| `profile$`                                                                                       | [Profiles](/features/social/profiles)                                        |
+| `contacts$`                                                                                      | [Follows](/features/social/follows)                                          |
+| `mutes$`                                                                                         | [Mutes & Reports](/features/moderation/mutes-and-reports)                               |
+| `mailboxes$`, `outboxes$`, `inboxes$`                                                            | [Mailboxes & Outbox](/features/relays/outbox)                                |
+| `bookmarks$`                                                                                     | [Bookmarks](/features/social/bookmarks)                                      |
+| `favoriteRelays$`, `searchRelays$`, `blockedRelays$`, `lookupRelayList$`, `directMessageRelays$` | [Relay Lists](/features/relays/relay-lists)                                  |
+| `groups$`                                                                                        | [Groups](/features/social/groups)                                            |
+| `blossomServers$`                                                                                | [Blossom Servers](/features/files/blossom-servers)                          |
+| `gitRepositories$`, `gitAuthors$`, `favoriteGitRepos$`, `graspServers$`                          | [Git](/features/publishing/git)                                                  |
+| `nsites$`, `nsite$`, `nsiteSnapshots$`, `napplets$`, `napplet$`                                  | [Nostr Sites](/features/files/nostr-sites), [Napplets](/napplets/manifests) |
+| `appHandlers$`, `appRecommendations$`                                                            | [App Handlers](/features/publishing/app-handlers)                                |
 
 ## User Cache
 

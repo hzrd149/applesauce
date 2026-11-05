@@ -29,7 +29,7 @@ It accepts the [Tag Value Loader options](./tag-value-loader.md#configuration-op
 
 Pass the application's EventStore to update its models and casts. An optional `cacheRequest` runs in parallel with relay requests and does not prevent network loading.
 
-Use [reaction helpers](/features/reactions-and-reposts) to interpret reaction content and target semantics. A generic tag reference alone is not a complete semantic validation.
+Use [reaction helpers](/features/social/reactions-and-reposts) to interpret reaction content and target semantics. A generic tag reference alone is not a complete semantic validation.
 
 Use an abort signal to stop both internal loaders:
 

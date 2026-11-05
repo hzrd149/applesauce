@@ -4,7 +4,7 @@ description: Read and edit a user's favorite, search, blocked, lookup, and DM re
 
 # Relay Lists
 
-Besides their inbox and outbox relays, users publish lists of relays for specific jobs: favorites to browse, relays to search, relays to avoid, relays for profile lookups, and relays for receiving direct messages. Relay sets are named, addressable groups of relays. For inbox and outbox relays, see [Outbox](/features/outbox).
+Besides their inbox and outbox relays, users publish lists of relays for specific jobs: favorites to browse, relays to search, relays to avoid, relays for profile lookups, and relays for receiving direct messages. Relay sets are named, addressable groups of relays. For inbox and outbox relays, see [Outbox](/features/relays/outbox).
 
 | List            | Kind  | User observable             | Cast              |
 | --------------- | ----- | --------------------------- | ----------------- |

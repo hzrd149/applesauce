@@ -237,7 +237,7 @@ const notes$ = eventStore.timeline([{ kinds: [1] }]).pipe(castTimelineStream(Not
 
 ## Available Cast Classes
 
-`applesauce-common` ships cast classes for most common event kinds (`Note`, `Profile`, `Article`, `Zap`, `Reaction`, `Comment`, lists, streams, and more). See [Casting Events](/apps/casting/events) for the full reference, or the feature pages such as [Notes & Threads](/features/notes-and-threads), [Articles](/features/articles), and [Zaps](/features/zaps) for how each one is used.
+`applesauce-common` ships cast classes for most common event kinds (`Note`, `Profile`, `Article`, `Zap`, `Reaction`, `Comment`, lists, streams, and more). See [Casting Events](/apps/casting/events) for the full reference, or the feature pages such as [Notes & Threads](/features/social/notes-and-threads), [Articles](/features/publishing/articles), and [Zaps](/features/social/zaps) for how each one is used.
 
 ## User Class
 
@@ -254,7 +254,7 @@ user.nprofile; // string - NIP-19 encoded nprofile
 user.profile$; // Observable<Profile | undefined>
 ```
 
-See [Casting Users](/apps/casting/users) for every observable, and [Profiles](/features/profiles), [Follows](/features/follows), and [Mailboxes & Outbox](/features/outbox) for how they are used.
+See [Casting Users](/apps/casting/users) for every observable, and [Profiles](/features/social/profiles), [Follows](/features/social/follows), and [Mailboxes & Outbox](/features/relays/outbox) for how they are used.
 
 ## Example: Async Code
 

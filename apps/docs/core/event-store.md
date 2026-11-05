@@ -242,14 +242,14 @@ The event store has shortcut methods for common subscriptions. Each one accepts 
 
 | Method                 | Returns                              | Feature page                                           |
 | ---------------------- | ------------------------------------ | ------------------------------------------------------ |
-| `profile(user)`        | `ProfileContent \| undefined`        | [Profiles](/features/profiles)                         |
-| `contacts(user)`       | `ProfilePointer[]`                   | [Follows](/features/follows)                           |
-| `mailboxes(user)`      | `{ inboxes, outboxes } \| undefined` | [Mailboxes & Outbox](/features/outbox)                 |
-| `mutes(user)`          | `MutedThings \| undefined`           | [Mutes & Reports](/features/moderation)                |
-| `blossomServers(user)` | `URL[] \| undefined`                 | [Blossom Servers](/features/blossom-servers)           |
-| `reactions(event)`     | `NostrEvent[]`                       | [Reactions & Reposts](/features/reactions-and-reposts) |
-| `thread(root)`         | `Thread`                             | [Notes & Threads](/features/notes-and-threads)         |
-| `comments(event)`      | `NostrEvent[]`                       | [Comments](/features/comments)                         |
+| `profile(user)`        | `ProfileContent \| undefined`        | [Profiles](/features/social/profiles)                         |
+| `contacts(user)`       | `ProfilePointer[]`                   | [Follows](/features/social/follows)                           |
+| `mailboxes(user)`      | `{ inboxes, outboxes } \| undefined` | [Mailboxes & Outbox](/features/relays/outbox)                 |
+| `mutes(user)`          | `MutedThings \| undefined`           | [Mutes & Reports](/features/moderation/mutes-and-reports)                |
+| `blossomServers(user)` | `URL[] \| undefined`                 | [Blossom Servers](/features/files/blossom-servers)           |
+| `reactions(event)`     | `NostrEvent[]`                       | [Reactions & Reposts](/features/social/reactions-and-reposts) |
+| `thread(root)`         | `Thread`                             | [Notes & Threads](/features/social/notes-and-threads)         |
+| `comments(event)`      | `NostrEvent[]`                       | [Comments](/features/social/comments)                         |
 
 The `mutes`, `blossomServers`, `reactions`, `thread`, and `comments` methods are registered on the event store when you import `applesauce-common`.
 

@@ -156,7 +156,7 @@ const outboxMap$ = contacts$.pipe(
 const loader = createOutboxTimelineLoader(pool, outboxMap$, { kinds: [1] }, { eventStore, liveness });
 ```
 
-Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it. See [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users) for relay selection.
+Unchanged relay filters keep their requests and coverage. Removed or changed filters cancel their work. New relays receive the latest window even if the map arrives after it. See [Mailboxes & Outbox](/features/relays/outbox#selecting-relays-for-many-users) for relay selection.
 
 ### Observable operators
 

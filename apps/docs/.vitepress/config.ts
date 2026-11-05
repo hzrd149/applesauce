@@ -60,12 +60,14 @@ export default defineConfig({
         items: [
           {
             text: "Relays",
+            collapsed: true,
             link: "/loading/relays/package",
             items: [
               { text: "Relays", link: "/loading/relays/relays" },
               { text: "Relay Pool", link: "/loading/relays/pool" },
               {
                 text: "Liveness",
+                collapsed: true,
                 link: "/loading/relays/liveness",
                 items: [
                   { text: "Client-side Tracking", link: "/loading/relays/local-liveness" },
@@ -81,6 +83,7 @@ export default defineConfig({
           },
           {
             text: "Loaders",
+            collapsed: true,
             link: "/loading/loaders/package",
             items: [
               { text: "Upstream Pool", link: "/loading/loaders/upstream-pool" },
@@ -102,7 +105,8 @@ export default defineConfig({
         items: [
           {
             text: "Signers",
-            link: "/creating/signers",
+            collapsed: true,
+            link: "/creating/signers/",
             items: [
               { text: "Signers", link: "/creating/signers/signers" },
               {
@@ -117,7 +121,8 @@ export default defineConfig({
           },
           {
             text: "Factory",
-            link: "/creating/factory",
+            collapsed: true,
+            link: "/creating/factory/",
             items: [
               {
                 text: "Event Factory",
@@ -143,7 +148,8 @@ export default defineConfig({
         items: [
           {
             text: "Accounts",
-            link: "/apps/accounts",
+            collapsed: true,
+            link: "/apps/accounts/",
             items: [
               { text: "Manager", link: "/apps/accounts/manager" },
               { text: "Accounts", link: "/apps/accounts/accounts" },
@@ -151,7 +157,8 @@ export default defineConfig({
           },
           {
             text: "Actions",
-            link: "/apps/actions",
+            collapsed: true,
+            link: "/apps/actions/",
             items: [
               { text: "Action Runner", link: "/apps/actions/action-runner" },
               { text: "Actions", link: "/apps/actions/actions" },
@@ -159,15 +166,18 @@ export default defineConfig({
           },
           {
             text: "Authentication",
+            collapsed: false,
             items: [{ text: "Nostr Web Tokens", link: "/apps/auth/nostr-web-tokens" }],
           },
           {
             text: "React",
-            link: "/apps/react",
+            collapsed: false,
+            link: "/apps/react/",
             items: [{ text: "use$", link: "/apps/react/use-observable" }],
           },
           {
             text: "Casting",
+            collapsed: true,
             items: [
               { text: "Events", link: "/apps/casting/events" },
               { text: "Users", link: "/apps/casting/users" },
@@ -175,7 +185,8 @@ export default defineConfig({
           },
           {
             text: "Content",
-            link: "/apps/content",
+            collapsed: true,
+            link: "/apps/content/",
             items: [
               { text: "Text", link: "/apps/content/text" },
               { text: "Markdown", link: "/apps/content/markdown" },
@@ -184,6 +195,7 @@ export default defineConfig({
           },
           {
             text: "Encryption",
+            collapsed: false,
             items: [{ text: "Caching", link: "/apps/encryption/caching" }],
           },
         ],
@@ -194,6 +206,7 @@ export default defineConfig({
         items: [
           {
             text: "Wallet Connect",
+            collapsed: true,
             link: "/money/wallet-connect/package",
             items: [
               { text: "Connect", link: "/money/wallet-connect/wallet-connect" },
@@ -202,6 +215,7 @@ export default defineConfig({
           },
           {
             text: "Wallet",
+            collapsed: true,
             link: "/money/wallet/package",
             items: [
               { text: "NutWallet", link: "/money/wallet/nut-wallet" },
@@ -216,38 +230,73 @@ export default defineConfig({
         text: "Features",
         collapsed: false,
         items: [
-          { text: "App Handlers", link: "/features/app-handlers" },
-          { text: "Articles", link: "/features/articles" },
-          { text: "Blossom Servers", link: "/features/blossom-servers" },
-          { text: "Bookmarks", link: "/features/bookmarks" },
-          { text: "Code Snippets", link: "/features/code-snippets" },
-          { text: "Comments", link: "/features/comments" },
-          { text: "Encrypted Files", link: "/features/encrypted-files" },
-          { text: "Follows", link: "/features/follows" },
-          { text: "Git", link: "/features/git" },
-          { text: "Groups", link: "/features/groups" },
-          { text: "Live Streams", link: "/features/live-streams" },
-          { text: "Mailboxes & Outbox", link: "/features/outbox" },
-          { text: "Mutes & Reports", link: "/features/moderation" },
-          { text: "Notes & Threads", link: "/features/notes-and-threads" },
-          { text: "Profiles", link: "/features/profiles" },
-          { text: "Reactions & Reposts", link: "/features/reactions-and-reposts" },
-          { text: "Relay Lists", link: "/features/relay-lists" },
-          { text: "Relay Monitoring", link: "/features/relay-monitoring" },
-          { text: "Nostr Sites", link: "/features/nostr-sites" },
-          { text: "Spam Filtering", link: "/features/spam-filtering" },
-          { text: "Torrents", link: "/features/torrents" },
-          { text: "User Statuses", link: "/features/user-statuses" },
-          { text: "Zaps", link: "/features/zaps" },
+          {
+            text: "Social",
+            collapsed: true,
+            items: [
+              { text: "Profiles", link: "/features/social/profiles" },
+              { text: "Follows", link: "/features/social/follows" },
+              { text: "Notes & Threads", link: "/features/social/notes-and-threads" },
+              { text: "Comments", link: "/features/social/comments" },
+              { text: "Reactions & Reposts", link: "/features/social/reactions-and-reposts" },
+              { text: "Zaps", link: "/features/social/zaps" },
+              { text: "Bookmarks", link: "/features/social/bookmarks" },
+              { text: "User Statuses", link: "/features/social/user-statuses" },
+              { text: "Groups", link: "/features/social/groups" },
+            ],
+          },
+          {
+            text: "Publishing",
+            collapsed: true,
+            items: [
+              { text: "Articles", link: "/features/publishing/articles" },
+              { text: "Code Snippets", link: "/features/publishing/code-snippets" },
+              { text: "Git", link: "/features/publishing/git" },
+              { text: "Live Streams", link: "/features/publishing/live-streams" },
+              { text: "App Handlers", link: "/features/publishing/app-handlers" },
+            ],
+          },
+          {
+            text: "Files",
+            collapsed: true,
+            items: [
+              { text: "Blossom Servers", link: "/features/files/blossom-servers" },
+              { text: "Encrypted Files", link: "/features/files/encrypted-files" },
+              { text: "Nostr Sites", link: "/features/files/nostr-sites" },
+              { text: "Torrents", link: "/features/files/torrents" },
+            ],
+          },
+          {
+            text: "Relays",
+            collapsed: true,
+            items: [
+              { text: "Mailboxes & Outbox", link: "/features/relays/outbox" },
+              { text: "Relay Lists", link: "/features/relays/relay-lists" },
+              { text: "Relay Monitoring", link: "/features/relays/relay-monitoring" },
+            ],
+          },
+          {
+            text: "Moderation",
+            collapsed: true,
+            items: [
+              { text: "Mutes & Reports", link: "/features/moderation/mutes-and-reports" },
+              { text: "Spam Filtering", link: "/features/moderation/spam-filtering" },
+            ],
+          },
         ],
       },
       {
         text: "Extras",
         collapsed: false,
+        link: "/extra/",
         items: [
+          { text: "Overview", link: "/extra/" },
           { text: "Messaging Clients", link: "/extra/messages" },
           { text: "Gift-wrap Receiver", link: "/extra/gift-wrap" },
           { text: "Double-ratchet Messaging", link: "/extra/ndr" },
+          { text: "Primal Cache", link: "/extra/primal" },
+          { text: "Vertex", link: "/extra/vertex" },
+          { text: "Open Ranking", link: "/extra/open-ranking" },
         ],
       },
       {
@@ -266,11 +315,12 @@ export default defineConfig({
       {
         text: "Storing events",
         collapsed: false,
-        link: "/storage",
+        link: "/storage/",
         items: [
           {
             text: "Caching",
-            link: "/storage/caching",
+            collapsed: true,
+            link: "/storage/caching/",
             items: [
               { text: "nostr-idb", link: "/storage/caching/nostr-idb" },
               {
@@ -281,7 +331,8 @@ export default defineConfig({
           },
           {
             text: "Databases",
-            link: "/storage/databases",
+            collapsed: true,
+            link: "/storage/databases/",
             items: [
               {
                 text: "Better SQLite3",

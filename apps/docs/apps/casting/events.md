@@ -65,23 +65,23 @@ Each feature page shows how to read its casts alongside the loaders, factories, 
 
 | Casts                                                                | Feature                                                               |
 | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `Note`                                                               | [Notes & Threads](/features/notes-and-threads)                        |
-| `Article`                                                            | [Articles](/features/articles)                                        |
-| `Comment`                                                            | [Comments](/features/comments)                                        |
-| `Profile`                                                            | [Profiles](/features/profiles)                                        |
-| `Reaction`, `Share`                                                  | [Reactions & Reposts](/features/reactions-and-reposts)                |
-| `Zap`, `ZapGoal`                                                     | [Zaps](/features/zaps)                                                |
-| `Mutes`, `Report`                                                    | [Mutes & Reports](/features/moderation)                               |
-| `BookmarksList`, `BookmarksSet`                                      | [Bookmarks](/features/bookmarks)                                      |
-| `FavoriteRelays`, `SearchRelays`, `BlockedRelays`, `LookupRelayList` | [Relay Lists](/features/relay-lists)                                  |
-| `GroupsList`                                                         | [Groups](/features/groups)                                            |
-| `Stream`, `StreamChatMessage`                                        | [Live Streams](/features/live-streams)                                |
-| `GitRepository`, `GitIssue`, `GitPullRequest`, `GitPatch`            | [Git](/features/git)                                                  |
-| `CodeSnippet`                                                        | [Code Snippets](/features/code-snippets)                              |
-| `Torrent`                                                            | [Torrents](/features/torrents)                                        |
-| `RelayMonitor`, `RelayDiscovery`                                     | [Relay Monitoring](/features/relay-monitoring)                        |
-| `Nsite`, `Napplet`                                                   | [Nostr Sites](/features/nostr-sites), [Napplets](/napplets/manifests) |
-| `AppHandler`, `AppRecommendation`                                    | [App Handlers](/features/app-handlers)                                |
+| `Note`                                                               | [Notes & Threads](/features/social/notes-and-threads)                        |
+| `Article`                                                            | [Articles](/features/publishing/articles)                                        |
+| `Comment`                                                            | [Comments](/features/social/comments)                                        |
+| `Profile`                                                            | [Profiles](/features/social/profiles)                                        |
+| `Reaction`, `Share`                                                  | [Reactions & Reposts](/features/social/reactions-and-reposts)                |
+| `Zap`, `ZapGoal`                                                     | [Zaps](/features/social/zaps)                                                |
+| `Mutes`, `Report`                                                    | [Mutes & Reports](/features/moderation/mutes-and-reports)                               |
+| `BookmarksList`, `BookmarksSet`                                      | [Bookmarks](/features/social/bookmarks)                                      |
+| `FavoriteRelays`, `SearchRelays`, `BlockedRelays`, `LookupRelayList` | [Relay Lists](/features/relays/relay-lists)                                  |
+| `GroupsList`                                                         | [Groups](/features/social/groups)                                            |
+| `Stream`, `StreamChatMessage`                                        | [Live Streams](/features/publishing/live-streams)                                |
+| `GitRepository`, `GitIssue`, `GitPullRequest`, `GitPatch`            | [Git](/features/publishing/git)                                                  |
+| `CodeSnippet`                                                        | [Code Snippets](/features/publishing/code-snippets)                              |
+| `Torrent`                                                            | [Torrents](/features/files/torrents)                                        |
+| `RelayMonitor`, `RelayDiscovery`                                     | [Relay Monitoring](/features/relays/relay-monitoring)                        |
+| `Nsite`, `Napplet`                                                   | [Nostr Sites](/features/files/nostr-sites), [Napplets](/napplets/manifests) |
+| `AppHandler`, `AppRecommendation`                                    | [App Handlers](/features/publishing/app-handlers)                                |
 
 The full list of casts is in the [reference](https://applesauce.build/typedoc/modules/applesauce-common.Casts.html).
 

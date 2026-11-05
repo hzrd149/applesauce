@@ -4,7 +4,7 @@ description: Index and discover BitTorrent content with magnet links and categor
 
 # Torrents
 
-Torrent events are kind 2003 events that index a BitTorrent info hash with its files, trackers, and categories (NIP-35). The content is a free-form description, and discussion happens in kind 1111 [comments](/features/comments).
+Torrent events are kind 2003 events that index a BitTorrent info hash with its files, trackers, and categories (NIP-35). The content is a free-form description, and discussion happens in kind 1111 [comments](/features/social/comments).
 
 ## Reading a torrent
 

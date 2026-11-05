@@ -77,7 +77,7 @@ import { ignoreUnhealthyRelaysOnPointers } from "applesauce-relay/operators";
 const eligibleUsers$ = usersWithRelayHints$.pipe(ignoreUnhealthyRelaysOnPointers(liveness));
 ```
 
-For the complete selection and subscription pipeline, see [Mailboxes & Outbox](/features/outbox#selecting-relays-for-many-users). `ignoreUnhealthyMailboxes(liveness)` filters the `inboxes` and `outboxes` of an individual mailbox object. These operators change relay hints without discarding the users or pointers that contain them.
+For the complete selection and subscription pipeline, see [Mailboxes & Outbox](/features/relays/outbox#selecting-relays-for-many-users). `ignoreUnhealthyMailboxes(liveness)` filters the `inboxes` and `outboxes` of an individual mailbox object. These operators change relay hints without discarding the users or pointers that contain them.
 
 ### Lifecycle and UI
 

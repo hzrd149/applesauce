@@ -34,7 +34,7 @@ const naddr = use$(article.address$);
 
 ## Reactions and comments
 
-`article.reactions$` returns the article's [reactions](/features/reactions-and-reposts) as `Reaction` casts. Articles are discussed with kind 1111 [comments](/features/comments), which `CommentsModel` reads and `CreateComment` publishes.
+`article.reactions$` returns the article's [reactions](/features/social/reactions-and-reposts) as `Reaction` casts. Articles are discussed with kind 1111 [comments](/features/social/comments), which `CommentsModel` reads and `CreateComment` publishes.
 
 ```ts
 const comments = use$(

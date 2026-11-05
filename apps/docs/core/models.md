@@ -51,15 +51,15 @@ console.log(first === second); // true
 `applesauce-core` includes a few common models:
 
 - [`TimelineModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.TimelineModel.html) subscribes to a sorted array of matching events with batched live updates
-- [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a user's profile, see [Profiles](/features/profiles)
-- [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list, see [Follows](/features/follows)
-- [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox and outbox relays, see [Mailboxes & Outbox](/features/outbox)
+- [`ProfileModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ProfileModel.html) subscribes to a user's profile, see [Profiles](/features/social/profiles)
+- [`ContactsModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.ContactsModel.html) subscribes to a user's contact list, see [Follows](/features/social/follows)
+- [`MailboxesModel`](https://applesauce.build/typedoc/functions/applesauce-core.Models.MailboxesModel.html) subscribes to a user's inbox and outbox relays, see [Mailboxes & Outbox](/features/relays/outbox)
 
 `applesauce-common/models` adds models for specific features, for example:
 
-- [`RepliesModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.RepliesModel.html) subscribes to direct replies and comments on an event, see [Notes & Threads](/features/notes-and-threads)
-- [`ReactionsModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.ReactionsModel.html) subscribes to reactions for an event, see [Reactions & Reposts](/features/reactions-and-reposts)
-- Git repository, thread, and patch models, see [Git](/features/git)
+- [`RepliesModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.RepliesModel.html) subscribes to direct replies and comments on an event, see [Notes & Threads](/features/social/notes-and-threads)
+- [`ReactionsModel`](https://applesauce.build/typedoc/functions/applesauce-common.Models.ReactionsModel.html) subscribes to reactions for an event, see [Reactions & Reposts](/features/social/reactions-and-reposts)
+- Git repository, thread, and patch models, see [Git](/features/publishing/git)
 
 See the full list in [the API docs](https://applesauce.build/typedoc/modules/applesauce-core.Models.html) and [applesauce-common models](https://applesauce.build/typedoc/modules/applesauce-common.Models.html).
 

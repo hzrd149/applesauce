@@ -4,7 +4,7 @@ description: Find, serve, and publish static websites stored as Nostr manifests
 
 # Nostr Sites
 
-An **nsite** is a static website whose manifest event maps each path to the sha256 of a file stored on Blossom servers (NIP-5A). Sites come in three forms: a root site per user, named sites, and immutable snapshots. Sandboxed applications have their own [Napplets documentation](../napplets/index.md).
+An **nsite** is a static website whose manifest event maps each path to the sha256 of a file stored on Blossom servers (NIP-5A). Sites come in three forms: a root site per user, named sites, and immutable snapshots. Sandboxed applications have their own [Napplets documentation](../../napplets/index.md).
 
 ## Finding a user's sites
 
