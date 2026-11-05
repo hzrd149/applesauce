@@ -323,6 +323,7 @@ export default defineConfig({
             link: "/storage/caching/",
             items: [
               { text: "nostr-idb", link: "/storage/caching/nostr-idb" },
+              { text: "Worker Relay", link: "/storage/caching/worker-relay" },
               {
                 text: "window.nostrdb.js",
                 link: "/storage/caching/window.nostrdb",

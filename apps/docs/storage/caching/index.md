@@ -176,6 +176,22 @@ const cacheRequest = (filters) => nostrIDB.filters(filters);
 
 See the [nostr-idb documentation](./nostr-idb.md) for more details.
 
+### Worker Relay (SQLite in a Web Worker)
+
+A SQLite relay running off the main thread, persisted to OPFS:
+
+```ts
+import { WorkerRelayInterface } from "@snort/worker-relay";
+
+const workerRelay = new WorkerRelayInterface(worker);
+await workerRelay.init({ databasePath: "cache-relay.db" });
+
+let reqId = 0;
+const cacheRequest = (filters) => workerRelay.query(["REQ", `cache-${reqId++}`, ...filters]);
+```
+
+See the [Worker Relay documentation](./worker-relay.md) for more details.
+
 ### Custom Cache Implementation
 
 You can create a custom cache by implementing a `cacheRequest` function:
