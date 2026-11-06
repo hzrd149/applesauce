@@ -59,7 +59,6 @@ import {
   NEVER,
   type Observable,
   of,
-  scan,
   shareReplay,
   switchMap,
   timeout,
@@ -202,38 +201,6 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: false }),
 );
-
-/** Merges conversations by id, keeping the newest activity, and sorts them newest first */
-function mergeConversations(list: WrappedConversationSummary[], incoming: WrappedConversationSummary[]) {
-  const merged = new Map(list.map((summary) => [summary.id, summary]));
-
-  for (const summary of incoming) {
-    const existing = merged.get(summary.id);
-    if (!existing || existing.lastActivity <= summary.lastActivity) merged.set(summary.id, summary);
-  }
-
-  return [...merged.values()].sort((a, b) => b.lastActivity - a.lastActivity);
-}
-
-/** Reads the newest conversations from the index and moves updated conversations to the top */
-function conversationList$(client: WrappedMessagesClient, limit: number) {
-  const firstPage = defer(async () => {
-    const page: WrappedConversationSummary[] = [];
-
-    for await (const summary of client.conversations()) {
-      page.push(summary);
-      if (page.length === limit) break;
-    }
-
-    return page;
-  });
-
-  // Updates are merged in while the page loads, so a message arriving meanwhile is not lost
-  const updates = client.conversationUpdates$.pipe(map((update) => [update]));
-
-  // No initial value, so use$ keeps showing the current list while a longer page loads
-  return merge(firstPage, updates).pipe(scan(mergeConversations, []));
-}
 
 /** Creates an object URL for a blob that is revoked when the subscription ends */
 function objectUrl$(blob: Blob): Observable<string> {
@@ -997,25 +964,84 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
   );
 }
 
-function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
-  // Saved conversations render immediately after unlocking storage, before any relay or signer work
-  const [limit, setLimit] = useState(CONVERSATION_PAGE_SIZE);
-  const groups = use$(() => conversationList$(client, limit), [client, limit]);
-  const hasMore = (groups?.length ?? 0) >= limit;
+/** Moves a new or updated conversation to the top of a list, replacing its previous entry */
+function moveToTop(list: WrappedConversationSummary[], summary: WrappedConversationSummary) {
+  return [summary, ...list.filter((conversation) => conversation.id !== summary.id)];
+}
+
+/** Pages through the conversation index as the list scrolls, and moves inserted or updated conversations to the top */
+function useConversations(client: WrappedMessagesClient) {
+  // One iterator per client, so each page continues where the last one stopped
+  const pages = useMemo(() => client.conversations(), [client]);
+  const [conversations, setConversations] = useState<WrappedConversationSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<unknown>();
+
+  const loadPage = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const page: WrappedConversationSummary[] = [];
+      while (page.length < CONVERSATION_PAGE_SIZE) {
+        const next = await pages.next();
+        if (next.done) {
+          setDone(true);
+          break;
+        }
+
+        page.push(next.value);
+      }
+
+      // Conversations already moved to the top by an insert or update keep their newer entry
+      setConversations((list) => [
+        ...list,
+        ...page.filter((summary) => !list.some((loaded) => loaded.id === summary.id)),
+      ]);
+    } catch (pageError) {
+      setError(pageError);
+    } finally {
+      setLoading(false);
+    }
+  }, [pages]);
+
+  // Listen for index changes while the list is mounted
+  const watchChanges = useCallback(
+    (container: HTMLDivElement | null) => {
+      if (!container) return;
+
+      const add = (summary: WrappedConversationSummary) => setConversations((list) => moveToTop(list, summary));
+      const inserts = client.conversationInserts$.subscribe(add);
+      const updates = client.conversationUpdates$.subscribe(add);
+
+      return () => {
+        inserts.unsubscribe();
+        updates.unsubscribe();
+      };
+    },
+    [client],
+  );
 
   // Load the next page when the end of the list scrolls into view
   const watchEnd = useCallback(
     (end: HTMLDivElement | null) => {
-      if (!end || !hasMore) return;
+      if (!end || loading || done || error) return;
 
       const observer = new IntersectionObserver(([entry]) => {
-        if (entry.isIntersecting) setLimit(limit + CONVERSATION_PAGE_SIZE);
+        if (entry.isIntersecting) loadPage();
       });
       observer.observe(end);
       return () => observer.disconnect();
     },
-    [hasMore, limit],
+    [loadPage, loading, done, error],
   );
+
+  return { conversations, done, error, watchChanges, watchEnd };
+}
+
+function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
+  // Saved conversations render immediately after unlocking storage, before any relay or signer work
+  const { conversations, done, error, watchChanges, watchEnd } = useConversations(client);
   const [selected, setSelected] = useState(client.pubkey);
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -1026,8 +1052,8 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
   };
 
   // Keep notes to self pinned at the top even before it has any messages
-  const selfGroup = groups?.find((group) => group.id === client.pubkey);
-  const otherGroups = groups?.filter((group) => group.id !== client.pubkey) ?? [];
+  const selfGroup = conversations.find((group) => group.id === client.pubkey);
+  const otherGroups = conversations.filter((group) => group.id !== client.pubkey);
 
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col overflow-x-hidden">
@@ -1060,7 +1086,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
           hidden={!conversationsOpen}
           className="flex w-72 shrink-0 flex-col border-e border-base-300"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={watchChanges} className="min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-base-300 p-3">
               <PubkeyPicker value="" placeholder="Start a conversation" onChange={startConversation} />
             </div>
@@ -1082,24 +1108,20 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
               </button>
             )}
 
-            {groups === undefined ? (
-              <div className="flex justify-center p-6">
-                <span className="loading loading-dots" />
-              </div>
-            ) : otherGroups.length === 0 ? (
-              <p className="p-6 text-center opacity-60">No conversations</p>
+            {otherGroups.map((group) => (
+              <ConversationRow
+                key={group.id}
+                group={group}
+                self={user}
+                active={selected === group.id}
+                onSelect={() => setSelected(group.id)}
+              />
+            ))}
+            {error !== undefined ? (
+              <p className="p-6 text-center text-error">Conversations: {String(error)}</p>
+            ) : done ? (
+              otherGroups.length === 0 && <p className="p-6 text-center opacity-60">No conversations</p>
             ) : (
-              otherGroups.map((group) => (
-                <ConversationRow
-                  key={group.id}
-                  group={group}
-                  self={user}
-                  active={selected === group.id}
-                  onSelect={() => setSelected(group.id)}
-                />
-              ))
-            )}
-            {hasMore && (
               <div ref={watchEnd} className="flex justify-center p-3">
                 <span className="loading loading-dots" />
               </div>

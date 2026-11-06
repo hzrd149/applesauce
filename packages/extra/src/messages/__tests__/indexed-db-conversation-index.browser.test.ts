@@ -48,13 +48,12 @@ describe("IndexedDBConversationIndexStore", () => {
     expect(listed.map((item) => item.lastActivity)).toEqual(entries.map((item) => item.lastActivity));
   });
 
-  it("includes every entry at the until timestamp", async () => {
-    await database.set(entry(1, 30));
-    await database.set(entry(2, 20));
-    await database.set(entry(3, 20));
-    await database.set(entry(4, 10));
+  it("lists ties with the higher id first, matching the memory store", async () => {
+    const ids = ["0a", "0B", "0b", "1a"].map((prefix) => prefix.padEnd(64, "0"));
+    for (const id of ids) await database.set({ id, lastMessageId: "f".repeat(64), lastActivity: 10 });
+    await database.set({ id: "2".repeat(64), lastMessageId: "f".repeat(64), lastActivity: 20 });
 
-    const listed = await collect(database.list({ until: 20 }));
-    expect(listed.map((item) => item.lastActivity)).toEqual([20, 20, 10]);
+    const listed = await collect(database.list());
+    expect(listed.map((item) => item.id.slice(0, 2))).toEqual(["22", "1a", "0b", "0a", "0B"]);
   });
 });

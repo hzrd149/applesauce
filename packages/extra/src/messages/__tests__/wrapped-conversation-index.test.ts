@@ -78,31 +78,37 @@ describe("wrapped conversation index", () => {
     });
   });
 
-  it("pages from a timestamp and leaves lastMessage undefined when the rumor is not stored", async () => {
+  it("lists newest first and leaves lastMessage undefined when the rumor is not stored", async () => {
     const index = new MemoryConversationIndexStore();
     index.set({ id: withAlice, lastMessageId: "a".repeat(64), lastActivity: 50 });
     index.set({ id: withAliceAndBob, lastMessageId: "b".repeat(64), lastActivity: 20 });
     const client = createClient(new RumorStore(), index);
 
-    expect(await collect(client.conversations({ until: 49 }))).toEqual([
+    expect(await collect(client.conversations())).toEqual([
+      { id: withAlice, participants: [owner, alice].sort(), lastMessage: undefined, lastActivity: 50 },
       { id: withAliceAndBob, participants: [owner, alice, bob].sort(), lastMessage: undefined, lastActivity: 20 },
     ]);
   });
 
-  it("emits an update only when a conversation's newest message changes", async () => {
+  it("emits an insert for a new conversation and an update only when its newest message changes", async () => {
     const rumorStore = new RumorStore();
     const client = createClient(rumorStore);
+    const inserts: WrappedConversationSummary[] = [];
     const updates: WrappedConversationSummary[] = [];
-    const subscription = client.conversationUpdates$.subscribe((update) => updates.push(update));
+    const insertSubscription = client.conversationInserts$.subscribe((insert) => inserts.push(insert));
+    const updateSubscription = client.conversationUpdates$.subscribe((update) => updates.push(update));
 
-    rumorStore.add(message(alice, [owner], 10));
+    const first = message(alice, [owner], 10);
+    rumorStore.add(first);
     rumorStore.add(message(alice, [owner], 5));
     const newest = message(owner, [alice], 15);
     rumorStore.add(newest);
 
-    await vi.waitFor(() => expect(updates).toHaveLength(2));
-    expect(updates[1].lastMessage).toEqual(newest);
-    subscription.unsubscribe();
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(inserts.map((insert) => insert.lastMessage)).toEqual([first]);
+    expect(updates[0].lastMessage).toEqual(newest);
+    insertSubscription.unsubscribe();
+    updateSubscription.unsubscribe();
   });
 
   it("indexes stored rumors across pages, including rumors sharing a timestamp", async () => {

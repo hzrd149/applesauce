@@ -61,12 +61,6 @@ export interface ConversationIndexEntry {
   lastActivity: number;
 }
 
-/** Options for listing conversation index entries */
-export interface ConversationIndexListOptions {
-  /** Only list entries whose newest activity is at or before this timestamp */
-  until?: number;
-}
-
 /** Application-scoped storage for a conversation index, with one record per conversation */
 export interface ConversationIndexStore {
   /** Returns one conversation entry */
@@ -76,14 +70,9 @@ export interface ConversationIndexStore {
    * @throws if the entry cannot be persisted
    */
   set(entry: ConversationIndexEntry): void | Promise<void>;
-  /** Iterates entries newest activity first */
-  list(
-    options?: ConversationIndexListOptions,
-  ): Iterable<ConversationIndexEntry> | AsyncIterable<ConversationIndexEntry>;
+  /** Iterates entries newest activity first, with the higher id first on timestamp ties */
+  list(): Iterable<ConversationIndexEntry> | AsyncIterable<ConversationIndexEntry>;
 }
-
-/** Options for paging through conversations */
-export type ConversationListOptions = ConversationIndexListOptions & MessageOperationOptions;
 
 /** Options for indexing messages that arrived before the conversation index existed */
 export interface ConversationIndexingOptions extends MessageOperationOptions {

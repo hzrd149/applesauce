@@ -39,7 +39,6 @@ import type {
   ConversationIndexEntry,
   ConversationIndexingOptions,
   ConversationIndexStore,
-  ConversationListOptions,
   MessageOperationOptions,
 } from "../common/types.js";
 import { LegacyConversation } from "./conversation.js";
@@ -107,9 +106,13 @@ export class LegacyMessagesClient {
   readonly conversationIndexError$ = this.conversationIndexError.asObservable();
 
   private readonly conversationIndex: ConversationIndexStore;
+  private readonly conversationInserts = new Subject<LegacyConversationSummary>();
   private readonly conversationUpdates = new Subject<LegacyConversationSummary>();
 
-  /** The conversations whose newest message changed, for updating pages loaded with conversations() */
+  /** The conversations added to the index, for adding to pages loaded with conversations() */
+  readonly conversationInserts$ = this.conversationInserts.asObservable();
+
+  /** The indexed conversations whose newest message changed, for replacing them in pages loaded with conversations() */
   readonly conversationUpdates$ = this.conversationUpdates.asObservable();
 
   // Serializes index writes so live arrivals and indexConversations() never overwrite each other
@@ -223,11 +226,13 @@ export class LegacyMessagesClient {
 
     const write = this.conversationWrites.then(async () => {
       const id = createConversationIdentifier(this.pubkey, [correspondent]);
-      const entry = await recordConversationMessage(this.conversationIndex, id, event);
+      const recorded = await recordConversationMessage(this.conversationIndex, id, event);
       this.conversationIndexError.next(undefined);
-      if (!entry) return;
+      if (!recorded) return;
 
-      this.conversationUpdates.next(this.summarizeConversation(entry, event));
+      const summary = this.summarizeConversation(recorded.entry, event);
+      if (recorded.inserted) this.conversationInserts.next(summary);
+      else this.conversationUpdates.next(summary);
     });
     this.conversationWrites = write.catch(() => undefined);
 
@@ -253,11 +258,11 @@ export class LegacyMessagesClient {
    * Pages through the conversation index newest activity first, reading each newest message from the event store
    * @throws if the client is disposed, the signal aborts, or the index store fails
    */
-  async *conversations(options: ConversationListOptions = {}): AsyncGenerator<LegacyConversationSummary> {
+  async *conversations(options: MessageOperationOptions = {}): AsyncGenerator<LegacyConversationSummary> {
     this.assertActive();
     options.signal?.throwIfAborted();
 
-    for await (const entry of this.conversationIndex.list({ until: options.until })) {
+    for await (const entry of this.conversationIndex.list()) {
       this.assertActive();
       options.signal?.throwIfAborted();
       yield this.summarizeConversation(entry);
@@ -405,6 +410,8 @@ export class LegacyMessagesClient {
     for (const conversation of this.conversationInstances.value) conversation.dispose();
     this.conversationInstances.next([]);
     this.lifetime.unsubscribe();
+    this.conversationInserts.complete();
+    this.conversationUpdates.complete();
     if (this.ownsReceiver) this.receiver.dispose();
     this.destroyed.next();
     this.destroyed.complete();

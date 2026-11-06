@@ -36,7 +36,6 @@ import type {
   ConversationIndexEntry,
   ConversationIndexingOptions,
   ConversationIndexStore,
-  ConversationListOptions,
   MessageClientError,
   MessageOperationOptions,
   MessagesRelayStatus,
@@ -87,9 +86,13 @@ export class WrappedMessagesClient {
   readonly messageFilters: Filter[];
 
   private readonly conversationIndex: ConversationIndexStore;
+  private readonly conversationInserts = new Subject<WrappedConversationSummary>();
   private readonly conversationUpdates = new Subject<WrappedConversationSummary>();
 
-  /** The conversations whose newest message changed, for updating pages loaded with conversations() */
+  /** The conversations added to the index, for adding to pages loaded with conversations() */
+  readonly conversationInserts$ = this.conversationInserts.asObservable();
+
+  /** The indexed conversations whose newest message changed, for replacing them in pages loaded with conversations() */
   readonly conversationUpdates$ = this.conversationUpdates.asObservable();
 
   // Serializes index writes so live arrivals and indexConversations() never overwrite each other
@@ -269,10 +272,12 @@ export class WrappedMessagesClient {
 
     const write = this.conversationWrites.then(async () => {
       const id = getConversationIdentifierFromMessage(rumor);
-      const entry = await recordConversationMessage(this.conversationIndex, id, rumor);
-      if (!entry) return;
+      const recorded = await recordConversationMessage(this.conversationIndex, id, rumor);
+      if (!recorded) return;
 
-      this.conversationUpdates.next(await this.summarizeConversation(entry, rumor));
+      const summary = await this.summarizeConversation(recorded.entry, rumor);
+      if (recorded.inserted) this.conversationInserts.next(summary);
+      else this.conversationUpdates.next(summary);
     });
     this.conversationWrites = write.catch(() => undefined);
 
@@ -423,6 +428,7 @@ export class WrappedMessagesClient {
     this.disposed = true;
     this.stop();
     this.subscriptions.unsubscribe();
+    this.conversationInserts.complete();
     this.conversationUpdates.complete();
     if (this.ownsReceiver) this.receiver.dispose();
     this.session.close();
@@ -487,11 +493,11 @@ export class WrappedMessagesClient {
    * Pages through the conversation index newest activity first, reading each newest message from the rumor store
    * @throws if the client is disposed, the signal aborts, or the index store fails
    */
-  async *conversations(options: ConversationListOptions = {}): AsyncGenerator<WrappedConversationSummary> {
+  async *conversations(options: MessageOperationOptions = {}): AsyncGenerator<WrappedConversationSummary> {
     this.assertActive();
     options.signal?.throwIfAborted();
 
-    for await (const entry of this.conversationIndex.list({ until: options.until })) {
+    for await (const entry of this.conversationIndex.list()) {
       const summary = await this.summarizeConversation(entry);
       this.assertActive();
       options.signal?.throwIfAborted();

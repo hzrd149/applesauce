@@ -1,4 +1,4 @@
-import type { ConversationIndexEntry, ConversationIndexListOptions, ConversationIndexStore } from "./types.js";
+import type { ConversationIndexEntry, ConversationIndexStore } from "./types.js";
 
 const STORE_NAME = "conversations";
 const ACTIVITY_INDEX = "activity";
@@ -65,9 +65,8 @@ export class IndexedDBConversationIndexStore implements ConversationIndexStore {
   }
 
   /** Iterates entries newest activity first, reading in batches so callers can await other work between entries */
-  async *list(options: ConversationIndexListOptions = {}): AsyncGenerator<ConversationIndexEntry> {
-    // Arrays sort after strings, so [until, []] includes every id at the until timestamp
-    let range = options.until === undefined ? undefined : IDBKeyRange.upperBound([options.until, []]);
+  async *list(): AsyncGenerator<ConversationIndexEntry> {
+    let range: IDBKeyRange | undefined;
 
     while (true) {
       const batch = await this.readBatch(range);

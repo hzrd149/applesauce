@@ -54,6 +54,18 @@ async function collect(conversations: AsyncIterable<LegacyConversationSummary>) 
   return summaries;
 }
 
+describe("MemoryConversationIndexStore", () => {
+  it("lists ties with the higher id first, matching the IndexedDB store", () => {
+    const store = new MemoryConversationIndexStore();
+    const ids = ["0a", "0B", "0b", "1a"].map((prefix) => prefix.padEnd(64, "0"));
+    for (const id of ids) store.set({ id, lastMessageId: "f".repeat(64), lastActivity: 10 });
+    store.set({ id: "2".repeat(64), lastMessageId: "f".repeat(64), lastActivity: 20 });
+
+    // Uppercase sorts below lowercase by code unit, where locale comparison would place 0B next to 0b
+    expect(store.list().map((entry) => entry.id.slice(0, 2))).toEqual(["22", "1a", "0b", "0a", "0B"]);
+  });
+});
+
 describe("legacy conversation index", () => {
   it("records the newest message of each correspondent as events reach the store", async () => {
     const eventStore = new EventStore();
@@ -92,7 +104,14 @@ describe("legacy conversation index", () => {
     conversationIndex.set({ id: withBob, lastMessageId: "b".repeat(64), lastActivity: 20 });
     const client = createClient({ conversationIndex });
 
-    expect(await collect(client.conversations({ until: 49 }))).toEqual([
+    expect(await collect(client.conversations())).toEqual([
+      {
+        id: withAlice,
+        correspondent: alice,
+        participants: getConversationParticipants(withAlice),
+        lastMessage: undefined,
+        lastActivity: 50,
+      },
       {
         id: withBob,
         correspondent: bob,
@@ -103,20 +122,25 @@ describe("legacy conversation index", () => {
     ]);
   });
 
-  it("emits an update only when a conversation's newest message changes", async () => {
+  it("emits an insert for a new conversation and an update only when its newest message changes", async () => {
     const eventStore = new EventStore();
     const client = createClient({ eventStore });
+    const inserts: LegacyConversationSummary[] = [];
     const updates: LegacyConversationSummary[] = [];
-    const subscription = client.conversationUpdates$.subscribe((update) => updates.push(update));
+    const insertSubscription = client.conversationInserts$.subscribe((insert) => inserts.push(insert));
+    const updateSubscription = client.conversationUpdates$.subscribe((update) => updates.push(update));
 
-    eventStore.add(message(aliceKey, owner, 10));
+    const first = message(aliceKey, owner, 10);
+    eventStore.add(first);
     eventStore.add(message(aliceKey, owner, 5));
     const newest = message(ownerKey, alice, 15);
     eventStore.add(newest);
 
-    await vi.waitFor(() => expect(updates).toHaveLength(2));
-    expect(updates[1]).toMatchObject({ correspondent: alice, lastMessage: newest });
-    subscription.unsubscribe();
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(inserts).toEqual([expect.objectContaining({ correspondent: alice, lastMessage: first })]);
+    expect(updates[0]).toMatchObject({ correspondent: alice, lastMessage: newest });
+    insertSubscription.unsubscribe();
+    updateSubscription.unsubscribe();
   });
 
   it("reports index write failures and clears them after the next successful write", async () => {

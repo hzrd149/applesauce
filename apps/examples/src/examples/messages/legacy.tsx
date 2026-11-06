@@ -45,7 +45,6 @@ import {
   merge,
   NEVER,
   of,
-  scan,
   shareReplay,
   switchMap,
   timeout,
@@ -125,38 +124,6 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: false }),
 );
-
-/** Merges conversations by id, keeping the newest activity, and sorts them newest first */
-function mergeConversations(list: LegacyConversationSummary[], incoming: LegacyConversationSummary[]) {
-  const merged = new Map(list.map((summary) => [summary.id, summary]));
-
-  for (const summary of incoming) {
-    const existing = merged.get(summary.id);
-    if (!existing || existing.lastActivity <= summary.lastActivity) merged.set(summary.id, summary);
-  }
-
-  return [...merged.values()].sort((a, b) => b.lastActivity - a.lastActivity);
-}
-
-/** Reads the newest conversations from the index and moves updated conversations to the top */
-function conversationList$(client: LegacyMessagesClient, limit: number) {
-  const firstPage = defer(async () => {
-    const page: LegacyConversationSummary[] = [];
-
-    for await (const summary of client.conversations()) {
-      page.push(summary);
-      if (page.length === limit) break;
-    }
-
-    return page;
-  });
-
-  // Updates are merged in while the page loads, so a message arriving meanwhile is not lost
-  const updates = client.conversationUpdates$.pipe(map((update) => [update]));
-
-  // No initial value, so use$ keeps showing the current list while a longer page loads
-  return merge(firstPage, updates).pipe(scan(mergeConversations, []));
-}
 
 /** Returns the start of a preset history range */
 function getHistorySince(range: HistoryRange) {
@@ -879,24 +846,83 @@ function Conversation({
   );
 }
 
-function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
-  const [limit, setLimit] = useState(CONVERSATION_PAGE_SIZE);
-  const groups = use$(() => conversationList$(client, limit), [client, limit]);
-  const hasMore = (groups?.length ?? 0) >= limit;
+/** Moves a new or updated conversation to the top of a list, replacing its previous entry */
+function moveToTop(list: LegacyConversationSummary[], summary: LegacyConversationSummary) {
+  return [summary, ...list.filter((conversation) => conversation.id !== summary.id)];
+}
+
+/** Pages through the conversation index as the list scrolls, and moves inserted or updated conversations to the top */
+function useConversations(client: LegacyMessagesClient) {
+  // One iterator per client, so each page continues where the last one stopped
+  const pages = useMemo(() => client.conversations(), [client]);
+  const [conversations, setConversations] = useState<LegacyConversationSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<unknown>();
+
+  const loadPage = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const page: LegacyConversationSummary[] = [];
+      while (page.length < CONVERSATION_PAGE_SIZE) {
+        const next = await pages.next();
+        if (next.done) {
+          setDone(true);
+          break;
+        }
+
+        page.push(next.value);
+      }
+
+      // Conversations already moved to the top by an insert or update keep their newer entry
+      setConversations((list) => [
+        ...list,
+        ...page.filter((summary) => !list.some((loaded) => loaded.id === summary.id)),
+      ]);
+    } catch (pageError) {
+      setError(pageError);
+    } finally {
+      setLoading(false);
+    }
+  }, [pages]);
+
+  // Listen for index changes while the list is mounted
+  const watchChanges = useCallback(
+    (container: HTMLDivElement | null) => {
+      if (!container) return;
+
+      const add = (summary: LegacyConversationSummary) => setConversations((list) => moveToTop(list, summary));
+      const inserts = client.conversationInserts$.subscribe(add);
+      const updates = client.conversationUpdates$.subscribe(add);
+
+      return () => {
+        inserts.unsubscribe();
+        updates.unsubscribe();
+      };
+    },
+    [client],
+  );
 
   // Load the next page when the end of the list scrolls into view
   const watchEnd = useCallback(
     (end: HTMLDivElement | null) => {
-      if (!end || !hasMore) return;
+      if (!end || loading || done || error) return;
 
       const observer = new IntersectionObserver(([entry]) => {
-        if (entry.isIntersecting) setLimit(limit + CONVERSATION_PAGE_SIZE);
+        if (entry.isIntersecting) loadPage();
       });
       observer.observe(end);
       return () => observer.disconnect();
     },
-    [hasMore, limit],
+    [loadPage, loading, done, error],
   );
+
+  return { conversations, done, error, watchChanges, watchEnd };
+}
+
+function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
+  const { conversations, done, error, watchChanges, watchEnd } = useConversations(client);
   const [other, setOther] = useState<string>();
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [conversationsOpen, setConversationsOpen] = useState(true);
@@ -933,7 +959,7 @@ function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
           hidden={!conversationsOpen}
           className="flex w-72 shrink-0 flex-col border-e border-base-300"
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={watchChanges} className="min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-base-300 p-3">
               <PubkeyPicker
                 value={other ?? ""}
@@ -942,24 +968,20 @@ function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
               />
             </div>
 
-            {groups === undefined ? (
-              <div className="flex justify-center p-6">
-                <span className="loading loading-dots" />
-              </div>
-            ) : groups.length === 0 ? (
-              <p className="p-6 text-center opacity-60">No conversations</p>
+            {conversations.map((summary) => (
+              <ConversationRow
+                key={summary.id}
+                peer={castUser(summary.correspondent, eventStore)}
+                conversation={client.conversation(summary.correspondent)}
+                active={other === summary.correspondent}
+                onSelect={() => setOther(summary.correspondent)}
+              />
+            ))}
+            {error !== undefined ? (
+              <p className="p-6 text-center text-error">Conversations: {String(error)}</p>
+            ) : done ? (
+              conversations.length === 0 && <p className="p-6 text-center opacity-60">No conversations</p>
             ) : (
-              groups.map((group) => (
-                <ConversationRow
-                  key={group.id}
-                  peer={castUser(group.correspondent, eventStore)}
-                  conversation={client.conversation(group.correspondent)}
-                  active={other === group.correspondent}
-                  onSelect={() => setOther(group.correspondent)}
-                />
-              ))
-            )}
-            {hasMore && (
               <div ref={watchEnd} className="flex justify-center p-3">
                 <span className="loading loading-dots" />
               </div>

@@ -63,20 +63,21 @@ A `limit` applies to candidate events **before** exact participant matching, so 
 
 ### List conversations
 
-Both clients keep a conversation index with one entry per conversation: its `id`, `lastMessageId`, and `lastActivity`. Messages are recorded as they arrive, from the event store for legacy and the rumor store for wrapped. Page through it newest first with `conversations()`, and watch `conversationUpdates$` for conversations whose newest message changed:
+Both clients keep a conversation index with one entry per conversation: its `id`, `lastMessageId`, and `lastActivity`. Messages are recorded as they arrive, from the event store for legacy and the rumor store for wrapped. Page through it newest first by pulling from one `conversations()` iterator as the list scrolls. `conversationInserts$` emits conversations added to the index and `conversationUpdates$` emits conversations whose newest message changed, so a list can move both to the top:
 
 ```ts
-for await (const summary of wrapped.conversations({ until })) {
-  renderRow(summary); // { id, participants, lastActivity, lastMessage? }
-  if (++count === 30) break;
-}
+const pages = wrapped.conversations();
+const next = await pages.next(); // { id, participants, lastActivity, lastMessage? }
 
+wrapped.conversationInserts$.subscribe((summary) => moveToTop(summary));
 wrapped.conversationUpdates$.subscribe((summary) => moveToTop(summary));
 ```
 
+A conversation moved to the top can still arrive in a later page from the same iterator, so skip ids that are already listed when appending a page.
+
 Legacy summaries also include the `correspondent`, so a row can open `legacy.conversation(summary.correspondent)`.
 
-The index defaults to memory. Pass a `conversationIndex` store to persist it, so the list renders before any message is loaded or decrypted again. A store implements `get(id)`, `set(entry)`, and `list({ until })`, which returns entries newest first as an array or an async iterable. In the browser, `IndexedDBConversationIndexStore` stores the index in IndexedDB. Give each account and protocol its own database:
+The index defaults to memory. Pass a `conversationIndex` store to persist it, so the list renders before any message is loaded or decrypted again. A store implements `get(id)`, `set(entry)`, and `list()`, which returns entries newest first as an array or an async iterable. In the browser, `IndexedDBConversationIndexStore` stores the index in IndexedDB. Give each account and protocol its own database:
 
 ```ts
 const conversationIndex = await IndexedDBConversationIndexStore.open(`legacy-conversations:${pubkey}`);

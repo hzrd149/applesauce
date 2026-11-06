@@ -45,9 +45,7 @@ export type {
   MessageClientError,
   MessagesRelayStatus,
   ConversationIndexEntry,
-  ConversationIndexListOptions,
   ConversationIndexStore,
-  ConversationListOptions,
   ConversationIndexingOptions,
 } from "./common/types.js";
 export type { MessageAuthRequest, MessageAuthenticationResult } from "./common/authentication.js";
