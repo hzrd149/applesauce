@@ -3,14 +3,15 @@ import { isNIP04Encrypted } from "applesauce-core/helpers/encryption";
 import { castUser } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
+  getConversationParticipants,
   getLegacyMessageCorrespondent,
   isValidLegacyMessage,
   unlockLegacyMessage,
 } from "applesauce-common/helpers";
-import { LegacyMessagesGroups } from "applesauce-common/models";
 import { makeCacheRequest } from "applesauce-loaders/helpers";
 import { createSyncLoader } from "applesauce-loaders/loaders";
-import { configured$, withFallback$ } from "../common/helpers.js";
+import { MemoryConversationIndexStore, recordConversationMessage } from "../common/conversation-index.js";
+import { configured$, pageTimeline, withFallback$, type TimelineWindow } from "../common/helpers.js";
 import {
   isHexKey,
   mergeRelaySets,
@@ -55,11 +56,20 @@ import {
   Subject,
   takeUntil,
   tap,
+  toArray,
 } from "rxjs";
 import { MessageAuthentication, type MessageAuthenticationResult, withMessageAuth$ } from "../common/authentication.js";
-import type { MessageClientError, MessageOperationOptions } from "../common/types.js";
+import type {
+  ConversationIndexEntry,
+  ConversationIndexingOptions,
+  ConversationIndexStore,
+  ConversationListOptions,
+  MessageClientError,
+  MessageOperationOptions,
+} from "../common/types.js";
 import { LegacyConversation } from "./conversation.js";
 import type {
+  LegacyConversationSummary,
   LegacyDecryptionState,
   LegacyMessageAvailability,
   LegacyMessageHistoryOptions,
@@ -73,6 +83,9 @@ import type {
 const log = logger.extend("LegacyMessages");
 type DecryptionActivity = { readers: number; failed: boolean; error?: unknown };
 type Mailbox = { name: "incoming" | "outgoing"; filter: Filter; relays$: Observable<string[]> };
+
+/** The number of events read from the event cache per filter while indexing conversations */
+const INDEXING_PAGE_SIZE = 500;
 
 function validateRecipient(request: LegacyMessageSendRequest) {
   if (!isHexKey(request.recipient)) throw new Error("Invalid recipient");
@@ -95,9 +108,6 @@ export class LegacyMessagesClient {
   /** The native encrypted kind-4 events, including sent messages */
   readonly messages$: Observable<NostrEvent[]>;
 
-  /** The known conversations, including saved correspondents whose messages are not loaded */
-  readonly conversations$: Observable<{ id: string; participants: string[]; lastMessage?: NostrEvent }[]>;
-
   /** The combined mailbox relay set */
   readonly relays$: Observable<string[]>;
 
@@ -119,23 +129,30 @@ export class LegacyMessagesClient {
   /** The latest event-cache hydration error, cleared by successful hydration */
   readonly cacheError$ = this.cacheError.asObservable();
 
-  private readonly conversationStorageError = new BehaviorSubject<unknown | undefined>(undefined);
+  private readonly conversationIndexError = new BehaviorSubject<unknown | undefined>(undefined);
 
-  /** The latest conversation-index read or write error, cleared by a successful storage operation */
-  readonly conversationStorageError$ = this.conversationStorageError.asObservable();
+  /** The latest conversation index read or write error, cleared by the next successful write */
+  readonly conversationIndexError$ = this.conversationIndexError.asObservable();
+
+  private readonly conversationIndex: ConversationIndexStore;
+  private readonly conversationUpdates = new Subject<LegacyConversationSummary>();
+
+  /** The conversations whose newest message changed, for updating pages loaded with conversations() */
+  readonly conversationUpdates$ = this.conversationUpdates.asObservable();
+
+  // Serializes index writes so live arrivals and indexConversations() never overwrite each other
+  private conversationWrites: Promise<unknown> = Promise.resolve();
 
   private readonly autoUnlock = new BehaviorSubject(false);
 
   /** Whether stored messages are automatically unlocked, disabled by default */
   readonly autoUnlock$ = this.autoUnlock.asObservable();
 
-  private readonly conversations = new BehaviorSubject<readonly LegacyConversation[]>([]);
+  private readonly conversationInstances = new BehaviorSubject<readonly LegacyConversation[]>([]);
 
   private readonly decryptionActivity = new BehaviorSubject<ReadonlyMap<string, DecryptionActivity>>(new Map());
   private readonly pendingDecryptions = new Map<string, Promise<NostrEvent | undefined>>();
   private signerDecryptionQueue: Promise<void> = Promise.resolve();
-  private readonly knownCorrespondents = new BehaviorSubject<readonly string[]>([]);
-  private conversationRestoration?: Promise<void>;
 
   private readonly authentication: MessageAuthentication;
 
@@ -180,32 +197,17 @@ export class LegacyMessagesClient {
     this.messages$ = this.eventStore.timeline(this.filters).pipe(watchEventsUpdates(this.eventStore));
 
     this.decryptionState$ = this.observeDecryption$(this.messages$);
-    this.conversations$ = combineLatest([
-      defer(() => this.restoreConversationIndex()).pipe(
-        catchError(() => of(undefined)),
-        switchMap(() => this.knownCorrespondents),
-      ),
-      this.eventStore.model(LegacyMessagesGroups, this.pubkey),
-    ]).pipe(
-      map(([known, loaded]) => {
-        const conversations = new Map<string, { id: string; participants: string[]; lastMessage?: NostrEvent }>();
-        for (const correspondent of known) {
-          const id = createConversationIdentifier(this.pubkey, [correspondent]);
-          conversations.set(id, { id, participants: [...new Set([this.pubkey, correspondent])] });
-        }
-        for (const conversation of loaded) conversations.set(conversation.id, conversation);
-        return [...conversations.values()];
-      }),
-    );
+    this.conversationIndex = options.conversationIndex ?? new MemoryConversationIndexStore();
 
+    // Index failures are reported without stopping the subscription, so the next message is still recorded.
     this.lifetime.add(
       this.eventStore
         .filters(this.filters)
         .pipe(
           concatMap((event) =>
-            defer(() => this.rememberCorrespondent(event)).pipe(
+            defer(() => this.recordConversation(event)).pipe(
               catchError((error) => {
-                this.conversationStorageError.next(error);
+                this.conversationIndexError.next(error);
                 return EMPTY;
               }),
             ),
@@ -219,39 +221,80 @@ export class LegacyMessagesClient {
     return this.mailboxes.map((mailbox) => mailbox.filter);
   }
 
-  private restoreConversationIndex(): Promise<void> {
-    return (this.conversationRestoration ??= Promise.resolve()
-      .then(async () => {
-        const serialized = await this.options.conversationStorage?.getItem(`conversations:${this.pubkey}`);
-        if (serialized != null) {
-          const record = JSON.parse(serialized);
-          if (record?.version !== 1 || !Array.isArray(record.correspondents) || !record.correspondents.every(isHexKey))
-            throw new Error("Invalid legacy conversation index");
-          this.knownCorrespondents.next([...new Set<string>(record.correspondents)]);
-        }
-        this.conversationStorageError.next(undefined);
-      })
-      .catch((error) => {
-        this.conversationRestoration = undefined;
-        this.conversationStorageError.next(error);
-        throw error;
-      }));
+  /** Records a message as its conversation's newest activity when it is newer than the indexed message */
+  private recordConversation(event: NostrEvent): Promise<void> {
+    if (!isValidLegacyMessage(event)) return Promise.resolve();
+
+    const correspondent = getLegacyMessageCorrespondent(event, this.pubkey);
+    if (!correspondent || !isHexKey(correspondent)) return Promise.resolve();
+
+    const write = this.conversationWrites.then(async () => {
+      const id = createConversationIdentifier(this.pubkey, [correspondent]);
+      const entry = await recordConversationMessage(this.conversationIndex, id, event);
+      this.conversationIndexError.next(undefined);
+      if (!entry) return;
+
+      this.conversationUpdates.next(this.summarizeConversation(entry, event));
+    });
+    this.conversationWrites = write.catch(() => undefined);
+
+    return write;
   }
 
-  private async rememberCorrespondent(event: NostrEvent) {
-    if (!isValidLegacyMessage(event)) return;
-    const correspondent = getLegacyMessageCorrespondent(event, this.pubkey);
-    if (!correspondent || !isHexKey(correspondent)) return;
-    await this.restoreConversationIndex();
-    if (this.knownCorrespondents.value.includes(correspondent)) return;
+  private summarizeConversation(entry: ConversationIndexEntry, lastMessage?: NostrEvent): LegacyConversationSummary {
+    const participants = getConversationParticipants(entry.id);
 
-    const next = [...this.knownCorrespondents.value, correspondent];
-    await this.options.conversationStorage?.setItem(
-      `conversations:${this.pubkey}`,
-      JSON.stringify({ version: 1, correspondents: next }),
-    );
-    this.knownCorrespondents.next(next);
-    this.conversationStorageError.next(undefined);
+    // A conversation with yourself has only the owner as a participant
+    const correspondent = participants.find((pubkey) => pubkey !== this.pubkey) ?? this.pubkey;
+
+    return {
+      id: entry.id,
+      correspondent,
+      participants,
+      lastMessage: lastMessage ?? this.eventStore.getEvent(entry.lastMessageId) ?? undefined,
+      lastActivity: entry.lastActivity,
+    };
+  }
+
+  /**
+   * Pages through the conversation index newest activity first, reading each newest message from the event store
+   * @throws if the client is disposed, the signal aborts, or the index store fails
+   */
+  async *conversations(options: ConversationListOptions = {}): AsyncGenerator<LegacyConversationSummary> {
+    this.assertActive();
+    options.signal?.throwIfAborted();
+
+    for await (const entry of this.conversationIndex.list({ until: options.until })) {
+      this.assertActive();
+      options.signal?.throwIfAborted();
+      yield this.summarizeConversation(entry);
+    }
+  }
+
+  /**
+   * Indexes messages in the event cache, such as messages cached before the index existed
+   * @returns the number of cached messages scanned, or zero without a cacheRequest
+   * @throws if the client is disposed or stopped, the signal aborts, or the event cache or index store fails
+   */
+  async indexConversations(options: ConversationIndexingOptions = {}): Promise<number> {
+    const context = this.context(options);
+    const cacheRequest = this.options.cacheRequest;
+    if (!cacheRequest) return 0;
+
+    const read = (window: TimelineWindow) => {
+      const filters = this.filters.map((filter) => ({ ...filter, ...window }));
+      return lastValueFrom(makeCacheRequest(cacheRequest, filters).pipe(toArray()));
+    };
+    let scanned = 0;
+
+    for await (const event of pageTimeline(read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
+      context.signal.throwIfAborted();
+      await this.recordConversation(event);
+      scanned++;
+    }
+
+    context.signal.throwIfAborted();
+    return scanned;
   }
 
   private assertActive() {
@@ -293,13 +336,18 @@ export class LegacyMessagesClient {
   conversation(correspondent: string): LegacyConversation {
     this.assertActive();
     if (!isHexKey(correspondent)) throw new Error("Invalid correspondent");
-    let conversation = this.conversations.value.find((conversation) => conversation.correspondent === correspondent);
+    let conversation = this.conversationInstances.value.find(
+      (conversation) => conversation.correspondent === correspondent,
+    );
     if (!conversation || conversation.isDisposed) {
       conversation = new LegacyConversation(this, correspondent, {
         ...this.options,
         autoUnlock: this.autoUnlock.value,
       });
-      this.conversations.next([...this.conversations.value.filter((item) => !item.isDisposed), conversation]);
+      this.conversationInstances.next([
+        ...this.conversationInstances.value.filter((item) => !item.isDisposed),
+        conversation,
+      ]);
       this.observeConversation(conversation);
     }
 
@@ -310,7 +358,7 @@ export class LegacyMessagesClient {
     const disposed$ = conversation.lifecycle$.pipe(filter((lifecycle) => lifecycle === "disposed"));
     this.lifetime.add(
       disposed$.pipe(take(1)).subscribe(() => {
-        this.conversations.next(this.conversations.value.filter((item) => item !== conversation));
+        this.conversationInstances.next(this.conversationInstances.value.filter((item) => item !== conversation));
       }),
     );
   }
@@ -341,7 +389,7 @@ export class LegacyMessagesClient {
   /** Stops background work and invalidates outstanding operations without disposing shared dependencies */
   stop(): void {
     this.authentication.clear();
-    for (const conversation of this.conversations.value) conversation.stop();
+    for (const conversation of this.conversationInstances.value) conversation.stop();
     this.generation.abort();
     this.generation = new AbortController();
     this.background?.unsubscribe();
@@ -357,8 +405,8 @@ export class LegacyMessagesClient {
     this.disposed = true;
     this.stop();
 
-    for (const conversation of this.conversations.value) conversation.dispose();
-    this.conversations.next([]);
+    for (const conversation of this.conversationInstances.value) conversation.dispose();
+    this.conversationInstances.next([]);
     this.lifetime.unsubscribe();
     this.lifecycle.next("disposed");
     this.mailboxErrors.complete();
@@ -372,7 +420,7 @@ export class LegacyMessagesClient {
   /** Enables or disables signer-backed decryption of arriving messages */
   setAutoUnlock(enabled: boolean): void {
     this.autoUnlock.next(enabled);
-    for (const conversation of this.conversations.value) conversation.setAutoUnlock(enabled);
+    for (const conversation of this.conversationInstances.value) conversation.setAutoUnlock(enabled);
   }
 
   private updateDecryption(event: NostrEvent, change: (previous: DecryptionActivity) => DecryptionActivity) {

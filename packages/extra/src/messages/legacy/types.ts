@@ -5,7 +5,7 @@ import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loade
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
-import type { MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { ConversationIndexStore, MessageStorage, MessageOperationOptions } from "../common/types.js";
 
 /** The current decryption snapshot for loaded legacy messages */
 export interface LegacyDecryptionState {
@@ -39,8 +39,8 @@ export interface LegacyMessagesClientOptions {
   draftStorage?: MessageStorage;
   /** The optional unpublished event storage, separated by account and protocol by the application */
   publicationStorage?: MessageStorage;
-  /** The optional index of known correspondents, keyed by the owner pubkey */
-  conversationStorage?: MessageStorage;
+  /** The conversation index store, separated by account by the application; defaults to an in-memory store */
+  conversationIndex?: ConversationIndexStore;
   /** Whether to decrypt arriving events with the signer (default false) */
   autoUnlock?: boolean;
   /** The fallback relays for reading and delivery */
@@ -59,6 +59,20 @@ export interface LegacyMessagesClientOptions {
   authTimeout?: number | false;
   /** Whether to mirror the newest loaded conversation message lifetime on sends */
   mirrorExpiration?: boolean;
+}
+
+/** A known legacy conversation and its newest activity */
+export interface LegacyConversationSummary {
+  /** The canonical conversation identifier */
+  id: string;
+  /** The other participant, or the owner for notes to self */
+  correspondent: string;
+  /** The canonical participant set including the client owner */
+  participants: string[];
+  /** The newest message, or undefined when it is not in the event store */
+  lastMessage?: NostrEvent;
+  /** The newest message timestamp */
+  lastActivity: number;
 }
 
 /** A plaintext NIP-04 message to one correspondent */

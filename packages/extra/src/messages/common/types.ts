@@ -50,3 +50,45 @@ export interface MessageDraft {
   /** Files staged for sending, persisted only when the client has draft file storage */
   files?: readonly File[];
 }
+
+/** A saved conversation and a reference to its newest message */
+export interface ConversationIndexEntry {
+  /** The canonical conversation identifier */
+  id: string;
+  /** The id of the newest message */
+  lastMessageId: string;
+  /** The newest message timestamp */
+  lastActivity: number;
+}
+
+/** Options for listing conversation index entries */
+export interface ConversationIndexListOptions {
+  /** Only list entries whose newest activity is at or before this timestamp */
+  until?: number;
+}
+
+/** Application-scoped storage for a conversation index, with one record per conversation */
+export interface ConversationIndexStore {
+  /** Returns one conversation entry */
+  get(id: string): ConversationIndexEntry | undefined | Promise<ConversationIndexEntry | undefined>;
+  /**
+   * Replaces one conversation entry
+   * @throws if the entry cannot be persisted
+   */
+  set(entry: ConversationIndexEntry): void | Promise<void>;
+  /** Iterates entries newest activity first */
+  list(
+    options?: ConversationIndexListOptions,
+  ): Iterable<ConversationIndexEntry> | AsyncIterable<ConversationIndexEntry>;
+}
+
+/** Options for paging through conversations */
+export type ConversationListOptions = ConversationIndexListOptions & MessageOperationOptions;
+
+/** Options for indexing messages that arrived before the conversation index existed */
+export interface ConversationIndexingOptions extends MessageOperationOptions {
+  /** Only index messages at or after this timestamp */
+  since?: number;
+  /** Only index messages at or before this timestamp */
+  until?: number;
+}

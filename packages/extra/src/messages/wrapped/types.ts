@@ -8,7 +8,12 @@ import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import type { MessageFileUploader } from "../common/attachments.js";
-import type { MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type {
+  ConversationIndexStore,
+  MessageFileStorage,
+  MessageStorage,
+  MessageOperationOptions,
+} from "../common/types.js";
 import type { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 import type { GiftWrapReceiverOptions } from "../../gift-wrap/types.js";
 
@@ -50,7 +55,7 @@ export interface WrappedMessagesClientDependencies {
   /** The optional storage for files staged in drafts, which receives them unencrypted */
   draftFileStorage?: MessageFileStorage;
   /** The conversation index store, separated by account by the application; defaults to an in-memory store */
-  conversationIndex?: WrappedConversationIndexStore;
+  conversationIndex?: ConversationIndexStore;
   /** Whether to decrypt arriving envelopes with the signer (default false) */
   autoUnlock?: boolean;
   /** The fallback read relays, never publication targets */
@@ -69,48 +74,6 @@ export interface WrappedMessagesClientDependencies {
   authTimeout?: number | false;
   /** The uploader for encrypted file attachments, such as a Blossom client */
   upload?: MessageFileUploader;
-}
-
-/** A saved conversation and a reference to its newest message */
-export interface WrappedConversationIndexEntry {
-  /** The canonical conversation identifier */
-  id: string;
-  /** The id of the newest message */
-  lastMessageId: string;
-  /** The newest message timestamp */
-  lastActivity: number;
-}
-
-/** Options for listing conversation index entries */
-export interface WrappedConversationIndexListOptions {
-  /** Only list entries whose newest activity is at or before this timestamp */
-  until?: number;
-}
-
-/** Application-scoped storage for the wrapped conversation index, with one record per conversation */
-export interface WrappedConversationIndexStore {
-  /** Returns one conversation entry */
-  get(id: string): WrappedConversationIndexEntry | undefined | Promise<WrappedConversationIndexEntry | undefined>;
-  /**
-   * Replaces one conversation entry
-   * @throws if the entry cannot be persisted
-   */
-  set(entry: WrappedConversationIndexEntry): void | Promise<void>;
-  /** Iterates entries newest activity first */
-  list(
-    options?: WrappedConversationIndexListOptions,
-  ): Iterable<WrappedConversationIndexEntry> | AsyncIterable<WrappedConversationIndexEntry>;
-}
-
-/** Options for paging through conversations */
-export type WrappedConversationListOptions = WrappedConversationIndexListOptions & MessageOperationOptions;
-
-/** Options for indexing rumors already in the rumor store */
-export interface WrappedConversationIndexingOptions extends MessageOperationOptions {
-  /** Only index rumors at or after this timestamp */
-  since?: number;
-  /** Only index rumors at or before this timestamp */
-  until?: number;
 }
 
 /** A known conversation and its newest activity */

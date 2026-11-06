@@ -28,7 +28,15 @@ import {
 } from "rxjs";
 import { MessageAuthentication, type MessageAuthenticationResult } from "../common/authentication.js";
 import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
-import type { MessageClientError, MessageOperationOptions, MessagesRelayStatus } from "../common/types.js";
+import type {
+  ConversationIndexEntry,
+  ConversationIndexingOptions,
+  ConversationIndexStore,
+  ConversationListOptions,
+  MessageClientError,
+  MessageOperationOptions,
+  MessagesRelayStatus,
+} from "../common/types.js";
 import type {
   WrappedMessageAvailability,
   WrappedMessageHistoryOptions,
@@ -37,14 +45,11 @@ import type {
   WrappedMessagesSyncStatus,
   PreparedWrappedMessage,
   WrappedConversationSummary,
-  WrappedConversationListOptions,
-  WrappedConversationIndexingOptions,
-  WrappedConversationIndexEntry,
-  WrappedConversationIndexStore,
 } from "./types.js";
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
-import { MemoryWrappedConversationIndexStore } from "./conversation-index.js";
+import { MemoryConversationIndexStore, recordConversationMessage } from "../common/conversation-index.js";
+import { pageTimeline, type TimelineWindow } from "../common/helpers.js";
 import { ConversationDraftState } from "../common/drafts.js";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 
@@ -52,14 +57,6 @@ const TWO_DAYS = 2 * 24 * 60 * 60;
 
 /** The number of rumors read from the rumor store per filter while indexing conversations */
 const INDEXING_PAGE_SIZE = 500;
-
-/** Checks whether a rumor is newer than a conversation's indexed message, breaking timestamp ties by the lower id */
-function isNewerThan(rumor: Rumor, entry: WrappedConversationIndexEntry | undefined): boolean {
-  if (!entry) return true;
-  if (rumor.created_at !== entry.lastActivity) return rumor.created_at > entry.lastActivity;
-
-  return rumor.id < entry.lastMessageId;
-}
 
 /** An account-scoped NIP-17 inbox with per-recipient gift wraps and resumable publication */
 export class WrappedMessagesClient {
@@ -85,7 +82,7 @@ export class WrappedMessagesClient {
   /** NIP-01 filters for this account's chat and file rumors in the shared rumor store */
   readonly messageFilters: Filter[];
 
-  private readonly conversationIndex: WrappedConversationIndexStore;
+  private readonly conversationIndex: ConversationIndexStore;
   private readonly conversationUpdates = new Subject<WrappedConversationSummary>();
 
   /** The conversations whose newest message changed, for updating pages loaded with conversations() */
@@ -231,7 +228,7 @@ export class WrappedMessagesClient {
       }),
     );
 
-    this.conversationIndex = options.conversationIndex ?? new MemoryWrappedConversationIndexStore();
+    this.conversationIndex = options.conversationIndex ?? new MemoryConversationIndexStore();
 
     // Index failures are reported without stopping the subscription, so the next message is still recorded.
     this.subscriptions.add(
@@ -268,11 +265,9 @@ export class WrappedMessagesClient {
 
     const write = this.conversationWrites.then(async () => {
       const id = getConversationIdentifierFromMessage(rumor);
-      const existing = await this.conversationIndex.get(id);
-      if (!isNewerThan(rumor, existing)) return;
+      const entry = await recordConversationMessage(this.conversationIndex, id, rumor);
+      if (!entry) return;
 
-      const entry = { id, lastMessageId: rumor.id, lastActivity: rumor.created_at };
-      await this.conversationIndex.set(entry);
       this.conversationUpdates.next(await this.summarizeConversation(entry, rumor));
     });
     this.conversationWrites = write.catch(() => undefined);
@@ -281,7 +276,7 @@ export class WrappedMessagesClient {
   }
 
   private async summarizeConversation(
-    entry: WrappedConversationIndexEntry,
+    entry: ConversationIndexEntry,
     lastMessage?: Rumor,
   ): Promise<WrappedConversationSummary> {
     const message = lastMessage ?? (await this.rumorStore.getEvent(entry.lastMessageId));
@@ -509,7 +504,7 @@ export class WrappedMessagesClient {
    * Pages through the conversation index newest activity first, reading each newest message from the rumor store
    * @throws if the client is disposed, the signal aborts, or the index store fails
    */
-  async *conversations(options: WrappedConversationListOptions = {}): AsyncGenerator<WrappedConversationSummary> {
+  async *conversations(options: ConversationListOptions = {}): AsyncGenerator<WrappedConversationSummary> {
     this.assertActive();
     options.signal?.throwIfAborted();
 
@@ -526,42 +521,23 @@ export class WrappedMessagesClient {
    * @returns the number of rumors scanned
    * @throws if the client is disposed or stopped, the signal aborts, or the rumor store or index store fails
    */
-  async indexConversations(options: WrappedConversationIndexingOptions = {}): Promise<number> {
+  async indexConversations(options: ConversationIndexingOptions = {}): Promise<number> {
     const context = this.context(options);
-    const { since } = options;
-    let until = options.until;
+    const read = (window: TimelineWindow) => this.rumorStore.getTimeline(this.indexingFilters(window));
     let scanned = 0;
 
-    while (until === undefined || since === undefined || until >= since) {
-      const page = await this.rumorStore.getTimeline(this.indexingFilters({ since, until, limit: INDEXING_PAGE_SIZE }));
+    for await (const rumor of pageTimeline(read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
       context.signal.throwIfAborted();
-      if (page.length === 0) break;
-
-      // The page may end partway through its oldest second, so read that whole second separately
-      const oldest = Math.min(...page.map((rumor) => rumor.created_at));
-      const newer = page.filter((rumor) => rumor.created_at > oldest);
-      const oldestSecond = await this.rumorStore.getTimeline(this.indexingFilters({ since: oldest, until: oldest }));
-      context.signal.throwIfAborted();
-
-      for (const rumor of [...newer, ...oldestSecond]) {
-        await this.recordConversation(rumor);
-        context.signal.throwIfAborted();
-      }
-
-      scanned += newer.length + oldestSecond.length;
-      until = oldest - 1;
+      await this.recordConversation(rumor);
+      scanned++;
     }
 
+    context.signal.throwIfAborted();
     return scanned;
   }
 
-  private indexingFilters(window: { since?: number; until?: number; limit?: number }): Filter[] {
-    const bounds: Filter = {};
-    if (window.since !== undefined) bounds.since = window.since;
-    if (window.until !== undefined) bounds.until = window.until;
-    if (window.limit !== undefined) bounds.limit = window.limit;
-
-    return this.messageFilters.map((filter) => ({ ...filter, ...bounds }));
+  private indexingFilters(window: TimelineWindow): Filter[] {
+    return this.messageFilters.map((filter) => ({ ...filter, ...window }));
   }
 
   /** Discovers kind-10050 relays for every participant, including the owner */

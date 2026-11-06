@@ -3,8 +3,10 @@ export { LegacyConversation } from "./legacy/conversation.js";
 export { WrappedMessagesClient } from "./wrapped/client.js";
 export { WrappedConversation, type WrappedConversationSendRequest } from "./wrapped/conversation.js";
 export { WrappedMessagePublicationError } from "./wrapped/session.js";
-export { MemoryWrappedConversationIndexStore } from "./wrapped/conversation-index.js";
+export { MemoryConversationIndexStore } from "./common/conversation-index.js";
+export { IndexedDBConversationIndexStore } from "./common/indexed-db-conversation-index.js";
 export type {
+  LegacyConversationSummary,
   LegacyDecryptionState,
   LegacyPublicationState,
   LegacyPublicationReference,
@@ -26,11 +28,6 @@ export type {
   WrappedMessagesSyncStatus,
   WrappedMessagePublicationResult,
   WrappedConversationSummary,
-  WrappedConversationIndexEntry,
-  WrappedConversationIndexListOptions,
-  WrappedConversationIndexStore,
-  WrappedConversationListOptions,
-  WrappedConversationIndexingOptions,
 } from "./wrapped/types.js";
 export type {
   MessageStorage,
@@ -39,6 +36,11 @@ export type {
   MessageOperationOptions,
   MessageClientError,
   MessagesRelayStatus,
+  ConversationIndexEntry,
+  ConversationIndexListOptions,
+  ConversationIndexStore,
+  ConversationListOptions,
+  ConversationIndexingOptions,
 } from "./common/types.js";
 export type { MessageAuthRequest, MessageAuthenticationResult } from "./common/authentication.js";
 export {

@@ -25,6 +25,7 @@ import {
 } from "applesauce-core/helpers";
 import type { GiftWrapProcessingStore } from "applesauce-extra/gift-wrap";
 import {
+  IndexedDBConversationIndexStore,
   loadAttachment,
   WrappedMessagesClient,
   type MessageAuthRequest,
@@ -69,7 +70,6 @@ import NoteContent from "../../components/note-content";
 import PubkeyPicker from "../../components/pubkey-picker";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
-import { ConversationIndexDatabase } from "../../extra/conversation-index-database";
 import { RumorDatabase } from "../../extra/rumor-database";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
@@ -139,7 +139,7 @@ function createClient(
   user: User,
   storage: SecureStorage,
   database: RumorDatabase,
-  conversationIndex: ConversationIndexDatabase,
+  conversationIndex: IndexedDBConversationIndexStore,
 ) {
   const scoped = (name: string) => storage.createInstance({ name: `gift-wrap-${name}:${user.pubkey}` });
   const drafts = storage.createInstance({ name: `gift-wrap:${user.pubkey}`, storeName: "drafts" });
@@ -175,7 +175,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
     // Rumors are indexed in IndexedDB by their metadata and encrypted with the storage PIN
     const databases = Promise.all([
       RumorDatabase.open(`gift-wrap-messages:${user.pubkey}`, storage),
-      ConversationIndexDatabase.open(`gift-wrap-conversations:${user.pubkey}`),
+      IndexedDBConversationIndexStore.open(`gift-wrap-conversations:${user.pubkey}`),
     ]);
 
     return from(databases).pipe(

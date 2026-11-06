@@ -6,11 +6,11 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  MemoryWrappedConversationIndexStore,
+  MemoryConversationIndexStore,
   WrappedMessagesClient,
   type MessageClientError,
-  type WrappedConversationIndexEntry,
-  type WrappedConversationIndexStore,
+  type ConversationIndexEntry,
+  type ConversationIndexStore,
   type WrappedConversationSummary,
 } from "../index.js";
 
@@ -37,7 +37,7 @@ function message(author: string, recipients: string[], created_at: number, kind:
   return { ...template, id: getEventHash(template) } satisfies Rumor;
 }
 
-function createClient(rumorStore = new RumorStore(), conversationIndex?: WrappedConversationIndexStore) {
+function createClient(rumorStore = new RumorStore(), conversationIndex?: ConversationIndexStore) {
   const client = new WrappedMessagesClient({
     pubkey: owner,
     eventStore: new EventStore(),
@@ -58,7 +58,7 @@ async function collect(conversations: AsyncIterable<WrappedConversationSummary>)
 describe("wrapped conversation index", () => {
   it("records the newest message of each participant set as rumors arrive", async () => {
     const rumorStore = new RumorStore();
-    const index = new MemoryWrappedConversationIndexStore();
+    const index = new MemoryConversationIndexStore();
     const client = createClient(rumorStore, index);
 
     const newest = message(alice, [owner], 30);
@@ -79,7 +79,7 @@ describe("wrapped conversation index", () => {
   });
 
   it("pages from a timestamp and leaves lastMessage undefined when the rumor is not stored", async () => {
-    const index = new MemoryWrappedConversationIndexStore();
+    const index = new MemoryConversationIndexStore();
     index.set({ id: withAlice, lastMessageId: "a".repeat(64), lastActivity: 50 });
     index.set({ id: withAliceAndBob, lastMessageId: "b".repeat(64), lastActivity: 20 });
     const client = createClient(new RumorStore(), index);
@@ -111,7 +111,7 @@ describe("wrapped conversation index", () => {
     const peers = Array.from({ length: 600 }, (_, i) => (i + 1).toString(16).padStart(64, "0"));
     for (const peer of peers) rumorStore.add(message(peer, [owner], 100));
     rumorStore.add(message(alice, [owner], 50));
-    const index = new MemoryWrappedConversationIndexStore();
+    const index = new MemoryConversationIndexStore();
     const client = createClient(rumorStore, index);
 
     expect(await client.indexConversations()).toBe(601);
@@ -131,14 +131,14 @@ describe("wrapped conversation index", () => {
 
   it("reports index write failures and records the next message", async () => {
     const failure = new Error("write failed");
-    const entries = new Map<string, WrappedConversationIndexEntry>();
+    const entries = new Map<string, ConversationIndexEntry>();
     const set = vi
-      .fn((entry: WrappedConversationIndexEntry) => void entries.set(entry.id, entry))
+      .fn((entry: ConversationIndexEntry) => void entries.set(entry.id, entry))
       .mockImplementationOnce(() => {
         throw failure;
       });
     // An async iterable store exercises the paged listing path
-    const store: WrappedConversationIndexStore = {
+    const store: ConversationIndexStore = {
       get: async (id) => entries.get(id),
       set,
       async *list() {

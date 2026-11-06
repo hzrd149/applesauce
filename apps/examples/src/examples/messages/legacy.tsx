@@ -15,8 +15,10 @@ import {
 } from "applesauce-core/helpers";
 import { EncryptedContentModel } from "applesauce-core/models";
 import {
+  IndexedDBConversationIndexStore,
   LegacyMessagesClient,
   type LegacyConversation,
+  type LegacyConversationSummary,
   type LegacyDecryptionState,
   type MessageAuthRequest,
   type PreparedLegacyMessage,
@@ -37,11 +39,13 @@ import {
   defer,
   finalize,
   firstValueFrom,
+  from,
   ignoreElements,
   map,
   merge,
   NEVER,
   of,
+  scan,
   shareReplay,
   switchMap,
   timeout,
@@ -60,6 +64,7 @@ type HistoryRange = "recent" | "year" | "all";
 const FALLBACK_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/"];
 const MONTH = 30 * 86400;
 const YEAR = 365 * 86400;
+const CONVERSATION_PAGE_SIZE = 30;
 const HISTORY_RANGES: { value: HistoryRange; label: string }[] = [
   { value: "recent", label: "Recent" },
   { value: "year", label: "Year" },
@@ -86,34 +91,72 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   switchMap(([signer, user, storage]) => {
     if (!user || (signer && !storage)) return of(undefined);
 
-    return defer(() => {
-      const client = new LegacyMessagesClient({
-        pubkey: user.pubkey,
-        signer,
-        eventStore,
-        pool,
-        cacheRequest,
-        // Keep decrypted text encrypted at rest, isolated from other accounts and protocols.
-        decryptionCache: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:decryption:`),
-        // Restore unsent text and reply targets when a conversation is reopened.
-        draftStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:drafts:`),
-        // Retain signed events across reloads so failed sends can retry without signing again.
-        publicationStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:publications:`),
-        // Restore the correspondent list even before cached or relay messages arrive.
-        conversationStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:conversations:`),
-        fallbackRelays: FALLBACK_RELAYS,
-        authTimeout: false,
-      });
+    // The conversation index holds only ids and timestamps, so it is stored unencrypted in IndexedDB
+    const conversationIndex = IndexedDBConversationIndexStore.open(`legacy-conversations:${user.pubkey}`);
 
-      return concat(of(client), NEVER).pipe(
-        finalize(() => {
-          client.dispose();
-        }),
-      );
-    });
+    return from(conversationIndex).pipe(
+      switchMap((conversationIndex) => {
+        const client = new LegacyMessagesClient({
+          pubkey: user.pubkey,
+          signer,
+          eventStore,
+          pool,
+          cacheRequest,
+          // Keep decrypted text encrypted at rest, isolated from other accounts and protocols.
+          decryptionCache: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:decryption:`),
+          // Restore unsent text and reply targets when a conversation is reopened.
+          draftStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:drafts:`),
+          // Retain signed events across reloads so failed sends can retry without signing again.
+          publicationStorage: storage && createPrefixedStorage(storage, `legacy:${user.pubkey}:publications:`),
+          // Restore the conversation list even before cached or relay messages arrive.
+          conversationIndex,
+          fallbackRelays: FALLBACK_RELAYS,
+          authTimeout: false,
+        });
+
+        return concat(of(client), NEVER).pipe(
+          finalize(() => {
+            client.dispose();
+            conversationIndex.close();
+          }),
+        );
+      }),
+    );
   }),
   shareReplay({ bufferSize: 1, refCount: false }),
 );
+
+/** Merges conversations by id, keeping the newest activity, and sorts them newest first */
+function mergeConversations(list: LegacyConversationSummary[], incoming: LegacyConversationSummary[]) {
+  const merged = new Map(list.map((summary) => [summary.id, summary]));
+
+  for (const summary of incoming) {
+    const existing = merged.get(summary.id);
+    if (!existing || existing.lastActivity <= summary.lastActivity) merged.set(summary.id, summary);
+  }
+
+  return [...merged.values()].sort((a, b) => b.lastActivity - a.lastActivity);
+}
+
+/** Reads the newest conversations from the index and moves updated conversations to the top */
+function conversationList$(client: LegacyMessagesClient, limit: number) {
+  const firstPage = defer(async () => {
+    const page: LegacyConversationSummary[] = [];
+
+    for await (const summary of client.conversations()) {
+      page.push(summary);
+      if (page.length === limit) break;
+    }
+
+    return page;
+  });
+
+  // Updates are merged in while the page loads, so a message arriving meanwhile is not lost
+  const updates = client.conversationUpdates$.pipe(map((update) => [update]));
+
+  // No initial value, so use$ keeps showing the current list while a longer page loads
+  return merge(firstPage, updates).pipe(scan(mergeConversations, []));
+}
 
 /** Returns the start of a preset history range */
 function getHistorySince(range: HistoryRange) {
@@ -207,7 +250,7 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
   const auth = use$(client.authRequests$) ?? [];
   const lifecycle = use$(client.lifecycle$);
   const cacheError = use$(client.cacheError$);
-  const conversationStorageError = use$(client.conversationStorageError$);
+  const conversationIndexError = use$(client.conversationIndexError$);
   const mailboxFailure = use$(client.mailboxErrors$);
 
   const autoUnlock = use$(client.autoUnlock$) ?? false;
@@ -215,6 +258,22 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
   const [error, setError] = useState<string>();
 
   const [decrypting, setDecrypting] = useState(false);
+  const [indexing, setIndexing] = useState(false);
+  const [indexed, setIndexed] = useState<number>();
+
+  // Messages cached before the conversation index existed only appear after indexing them once
+  const indexCachedMessages = async () => {
+    setIndexing(true);
+    setError(undefined);
+
+    try {
+      setIndexed(await client.indexConversations());
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setIndexing(false);
+    }
+  };
 
   const decryptLoadedMessages = async () => {
     setDecrypting(true);
@@ -322,6 +381,18 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
             </span>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-sm"
+            title="Add messages from the local event cache to the conversation list"
+            disabled={indexing}
+            onClick={indexCachedMessages}
+          >
+            {indexing && <span className="loading loading-spinner loading-sm" />}
+            Index cached messages
+          </button>
+          {indexed !== undefined && <span className="badge badge-ghost">{indexed} indexed</span>}
+        </div>
       </Section>
 
       {pendingAuth.length > 0 && (
@@ -360,8 +431,8 @@ function InboxStatus({ client }: { client: LegacyMessagesClient }) {
         <p className="p-3 text-sm text-error [overflow-wrap:anywhere]">{error ?? progress?.error}</p>
       )}
       {cacheError !== undefined && <p className="p-3 text-sm text-error">Cache: {String(cacheError)}</p>}
-      {conversationStorageError !== undefined && (
-        <p className="p-3 text-sm text-error">Conversations: {String(conversationStorageError)}</p>
+      {conversationIndexError !== undefined && (
+        <p className="p-3 text-sm text-error">Conversations: {String(conversationIndexError)}</p>
       )}
       {mailboxFailure && (
         <p className="p-3 text-sm text-error" title={mailboxFailure.relays.join("\n")}>
@@ -809,7 +880,23 @@ function Conversation({
 }
 
 function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
-  const groups = use$(client.conversations$);
+  const [limit, setLimit] = useState(CONVERSATION_PAGE_SIZE);
+  const groups = use$(() => conversationList$(client, limit), [client, limit]);
+  const hasMore = (groups?.length ?? 0) >= limit;
+
+  // Load the next page when the end of the list scrolls into view
+  const watchEnd = useCallback(
+    (end: HTMLDivElement | null) => {
+      if (!end || !hasMore) return;
+
+      const observer = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) setLimit(limit + CONVERSATION_PAGE_SIZE);
+      });
+      observer.observe(end);
+      return () => observer.disconnect();
+    },
+    [hasMore, limit],
+  );
   const [other, setOther] = useState<string>();
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [conversationsOpen, setConversationsOpen] = useState(true);
@@ -862,18 +949,20 @@ function Inbox({ client, user }: { client: LegacyMessagesClient; user: User }) {
             ) : groups.length === 0 ? (
               <p className="p-6 text-center opacity-60">No conversations</p>
             ) : (
-              groups.map((group) => {
-                const peer = group.participants.find((pubkey) => pubkey !== client.pubkey) ?? client.pubkey;
-                return (
-                  <ConversationRow
-                    key={group.id}
-                    peer={castUser(peer, eventStore)}
-                    conversation={client.conversation(peer)}
-                    active={other === peer}
-                    onSelect={() => setOther(peer)}
-                  />
-                );
-              })
+              groups.map((group) => (
+                <ConversationRow
+                  key={group.id}
+                  peer={castUser(group.correspondent, eventStore)}
+                  conversation={client.conversation(group.correspondent)}
+                  active={other === group.correspondent}
+                  onSelect={() => setOther(group.correspondent)}
+                />
+              ))
+            )}
+            {hasMore && (
+              <div ref={watchEnd} className="flex justify-center p-3">
+                <span className="loading loading-dots" />
+              </div>
             )}
           </div>
           <Account user={user} readOnly={!client.signer} />

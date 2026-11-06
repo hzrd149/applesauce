@@ -100,6 +100,8 @@ describe("standalone messaging clients", () => {
       "relayStatus$",
       "cacheState$",
       "conversationStorageState$",
+      "conversationStorageError$",
+      "conversations$",
     ])
       expect(client).not.toHaveProperty(removed);
 
@@ -1134,7 +1136,10 @@ describe("standalone messaging clients", () => {
     await prepared.publish();
     expect(pool.publish).toHaveBeenCalledTimes(2);
     expect(pool.publish.mock.calls[0][1]).toBe(pool.publish.mock.calls[1][1]);
-    expect((await firstValueFrom(client.conversations$))[0].participants.sort()).toEqual([alice, bob].sort());
+    await vi.waitFor(async () => {
+      const { value: conversation } = await client.conversations().next();
+      expect(conversation?.participants.sort()).toEqual([alice, bob].sort());
+    });
   });
 
   it.each([LegacyMessagesClient, WrappedMessagesClient])(

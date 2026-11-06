@@ -63,7 +63,7 @@ A `limit` applies to candidate events **before** exact participant matching, so 
 
 ### List conversations
 
-The wrapped client keeps a conversation index with one entry per conversation: its `id`, `lastMessageId`, and `lastActivity`. New rumors are recorded as they reach the rumor store. Page through it newest first with `conversations()`, and watch `conversationUpdates$` for conversations whose newest message changed:
+Both clients keep a conversation index with one entry per conversation: its `id`, `lastMessageId`, and `lastActivity`. Messages are recorded as they arrive, from the event store for legacy and the rumor store for wrapped. Page through it newest first with `conversations()`, and watch `conversationUpdates$` for conversations whose newest message changed:
 
 ```ts
 for await (const summary of wrapped.conversations({ until })) {
@@ -74,13 +74,16 @@ for await (const summary of wrapped.conversations({ until })) {
 wrapped.conversationUpdates$.subscribe((summary) => moveToTop(summary));
 ```
 
-The index defaults to memory. Pass a `conversationIndex` store to persist it, so the list renders before any envelope is decrypted again. A store implements `get(id)`, `set(entry)`, and `list({ until })`, which returns entries newest first as an array or an async iterable:
+Legacy summaries also include the `correspondent`, so a row can open `legacy.conversation(summary.correspondent)`.
+
+The index defaults to memory. Pass a `conversationIndex` store to persist it, so the list renders before any message is loaded or decrypted again. A store implements `get(id)`, `set(entry)`, and `list({ until })`, which returns entries newest first as an array or an async iterable. In the browser, `IndexedDBConversationIndexStore` stores the index in IndexedDB. Give each account and protocol its own database:
 
 ```ts
-const wrapped = new WrappedMessagesClient({ pubkey, signer, eventStore, pool, conversationIndex });
+const conversationIndex = await IndexedDBConversationIndexStore.open(`legacy-conversations:${pubkey}`);
+const legacy = new LegacyMessagesClient({ pubkey, signer, eventStore, pool, conversationIndex });
 ```
 
-Rumors that were already in the rumor store before the index existed are not indexed automatically. Call `indexConversations({ since, until })` once to scan them in pages. `lastMessage` is `undefined` when its rumor isn't in the rumor store, and failed index writes are reported on `errors$` as `storage` errors.
+Messages stored before the index existed are not indexed automatically. Call `indexConversations({ since, until })` once to scan them in pages: legacy scans its `cacheRequest` event cache and wrapped scans its rumor store. `lastMessage` is `undefined` when the message isn't loaded. Failed index writes appear on legacy's `conversationIndexError$` and as `storage` errors on wrapped's `errors$`.
 
 ### Loading history
 
@@ -184,16 +187,15 @@ Use `onAuthRequired` to apply an app-wide policy instead of asking each time.
 
 The app decides what's stored and how it's protected. All of these are optional:
 
-| Option                | Stores                                                       |
-| --------------------- | ------------------------------------------------------------ |
-| `cacheRequest`        | Encrypted messages loaded from a local event cache           |
-| `decryptionCache`     | Decrypted plaintext, so the signer isn't asked again         |
-| `rumorStore`          | Validated wrapped rumors, queried through normal store APIs  |
-| `draftStorage`        | Drafts                                                       |
-| `publicationStorage`  | Legacy messages waiting to be published                      |
-| `conversationStorage` | Legacy correspondents the user has talked to                 |
-| `draftFileStorage`    | Wrapped draft attachments, **unencrypted**                   |
-| `conversationIndex`   | Wrapped conversation ids, newest message ids, and timestamps |
+| Option               | Stores                                                      |
+| -------------------- | ----------------------------------------------------------- |
+| `cacheRequest`       | Encrypted messages loaded from a local event cache          |
+| `decryptionCache`    | Decrypted plaintext, so the signer isn't asked again        |
+| `rumorStore`         | Validated wrapped rumors, queried through normal store APIs |
+| `draftStorage`       | Drafts                                                      |
+| `publicationStorage` | Legacy messages waiting to be published                     |
+| `draftFileStorage`   | Wrapped draft attachments, **unencrypted**                  |
+| `conversationIndex`  | Conversation ids, newest message ids, and timestamps        |
 
 Storage keys aren't namespaced by account or protocol, so give each client its own adapter. Plaintext caches and drafts are private data; encrypt them at rest.
 

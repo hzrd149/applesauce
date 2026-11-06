@@ -1,13 +1,13 @@
-import type { WrappedConversationIndexEntry } from "applesauce-extra/messages";
+import type { ConversationIndexEntry } from "../common/types.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ConversationIndexDatabase } from "../conversation-index-database";
+import { IndexedDBConversationIndexStore } from "../common/indexed-db-conversation-index.js";
 
-function entry(index: number, lastActivity: number): WrappedConversationIndexEntry {
+function entry(index: number, lastActivity: number): ConversationIndexEntry {
   return { id: index.toString(16).padStart(64, "0"), lastMessageId: "f".repeat(64), lastActivity };
 }
 
-async function collect(entries: AsyncIterable<WrappedConversationIndexEntry>, between?: () => Promise<unknown>) {
-  const listed: WrappedConversationIndexEntry[] = [];
+async function collect(entries: AsyncIterable<ConversationIndexEntry>, between?: () => Promise<unknown>) {
+  const listed: ConversationIndexEntry[] = [];
   for await (const item of entries) {
     listed.push(item);
     await between?.();
@@ -16,11 +16,11 @@ async function collect(entries: AsyncIterable<WrappedConversationIndexEntry>, be
 }
 
 let name: string;
-let database: ConversationIndexDatabase;
+let database: IndexedDBConversationIndexStore;
 
 beforeEach(async () => {
   name = `conversation-index-test-${crypto.randomUUID()}`;
-  database = await ConversationIndexDatabase.open(name);
+  database = await IndexedDBConversationIndexStore.open(name);
 });
 
 afterEach(() => {
@@ -28,7 +28,7 @@ afterEach(() => {
   indexedDB.deleteDatabase(name);
 });
 
-describe("ConversationIndexDatabase", () => {
+describe("IndexedDBConversationIndexStore", () => {
   it("replaces entries by conversation id", async () => {
     await database.set(entry(1, 10));
     await database.set(entry(1, 20));
