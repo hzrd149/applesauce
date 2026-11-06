@@ -2,4 +2,4 @@
 "applesauce-extra": minor
 ---
 
-Add wrapped conversations with scoped rumor stores, recipient-bound sending, and shared gift-wrap receiving
+Add wrapped conversations with caller-owned filtered queries over a shared rumor store and recipient-bound sending with explicit expiration
