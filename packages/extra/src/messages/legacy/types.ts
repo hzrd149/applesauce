@@ -6,6 +6,8 @@ import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { Observable } from "rxjs";
 import type { ConversationIndexStore, MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { LegacyMessageDecryptor } from "./decryptor.js";
+import type { LegacyInboxReceiver } from "./inbox-receiver.js";
 
 /** The current decryption snapshot for loaded legacy messages */
 export interface LegacyDecryptionState {
@@ -59,6 +61,89 @@ export interface LegacyMessagesClientOptions {
   authTimeout?: number | false;
   /** Whether to mirror the newest loaded conversation message lifetime on sends */
   mirrorExpiration?: boolean;
+  /** An application-managed inbox receiver sharing this client's account, store and pool */
+  receiver?: LegacyInboxReceiver;
+  /** Overrides for the internally created inbox receiver */
+  receiverOptions?: Partial<Omit<LegacyInboxReceiverOptions, "pubkey" | "eventStore" | "pool">>;
+}
+
+/** Dependencies and policies for an account-wide NIP-04 inbox receiver */
+export interface LegacyInboxReceiverOptions {
+  /** The immutable owner pubkey */
+  pubkey: string;
+  /** The shared store with profile and relay-list loaders configured */
+  eventStore: EventStore;
+  /** The shared relay pool */
+  pool: RelayPool;
+  /** The NIP-04 signer, omitted for cache-only processing */
+  signer?: ISigner;
+  /** The shared decryptor, created by the receiver when omitted */
+  decryptor?: LegacyMessageDecryptor;
+  /** The encrypted kind-4 event cache */
+  cacheRequest?: CacheRequest;
+  /** The plaintext cache keyed by kind-4 event ID */
+  decryptionCache?: EncryptedContentCache;
+  /** The fallback relays used when no mailbox relays are advertised */
+  fallbackRelays?: string[] | Observable<string[]>;
+  /** Whether background processing may invoke the signer, default false */
+  autoUnlock?: boolean;
+  /** Whether relay authentication starts automatically, default false */
+  autoAuth?: boolean;
+  /** The application callback invoked after an authentication requirement is recorded */
+  onAuthRequired?: SyncAuthHandler;
+  /** The maximum wait for an authentication phase, or false */
+  authTimeout?: number | false;
+  /** The relay discovery and cache timeout in milliseconds (default 4000) */
+  timeout?: number;
+  /** The timeout for one decryption including its signer queue wait, in milliseconds (default 60000) */
+  decryptionTimeout?: number;
+  /** The live subscription lookback in seconds (default 30 days) */
+  historySpan?: number;
+}
+
+/** The stable NIP-04 decryption failure codes */
+export type LegacyMessageFailureCode = "invalid-message" | "signer-unavailable" | "decryption-failed" | "timeout";
+
+/** A classified NIP-04 decryption failure */
+export interface LegacyMessageFailure {
+  /** The affected kind-4 event ID */
+  eventId: string;
+  /** The stable failure category */
+  code: LegacyMessageFailureCode;
+  /** The original failure */
+  cause: unknown;
+  /** The number of decryption attempts */
+  attempts: number;
+  /** The permitted retry behavior */
+  retry: "never" | "manual";
+}
+
+/** The outcome of decrypting one kind-4 event */
+export type LegacyReadResult =
+  | {
+      /** The successful outcome */ status: "success";
+      /** The kind-4 event with plaintext */ event: NostrEvent;
+    }
+  | {
+      /** The unsuccessful outcome */ status: "failed";
+      /** The kind-4 event */ event: NostrEvent;
+      /** The decryption failure */ failure: LegacyMessageFailure;
+    };
+
+/** A contextual NIP-04 receiving failure */
+export interface LegacyReceiverError {
+  /** The failed receiving stage */
+  operation: "read" | "cache" | "decrypt";
+  /** The original failure */
+  error: unknown;
+  /** The affected kind-4 event, when applicable */
+  eventId?: string;
+  /** The mailbox direction of a live subscription failure */
+  mailbox?: "incoming" | "outgoing";
+  /** The relays requested by a failed live subscription */
+  relays?: readonly string[];
+  /** The structured decryption failure, when applicable */
+  failure?: LegacyMessageFailure;
 }
 
 /** A known legacy conversation and its newest activity */

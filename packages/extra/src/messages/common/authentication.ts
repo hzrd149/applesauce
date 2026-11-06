@@ -77,6 +77,16 @@ export class MessageAuthentication {
     return { onAuthRequired: handler, authTimeout: options.authTimeout, waitForAuth: this.pubkey };
   }
 
+  /** The outstanding requests at this moment */
+  get currentRequests(): readonly MessageAuthRequest[] {
+    return this.requests.value;
+  }
+
+  /** Checks whether a relay has an outstanding request */
+  hasRequest(url: string): boolean {
+    return this.requests.value.some((request) => request.url === url);
+  }
+
   /** Tracks one operation's requirement until it is satisfied or released */
   track(context: SyncAuthContext, timeout: number | false = 30000, onSettled?: () => void): () => void {
     const key = Symbol();
@@ -254,6 +264,39 @@ export class MessageAuthentication {
     this.pending.clear();
     this.requests.next([]);
   }
+}
+
+/**
+ * Authenticates relays one at a time, skipping relays whose request was satisfied or released meanwhile
+ * @throws if the signal aborts
+ */
+export async function authenticateSequentially(
+  urls: readonly string[],
+  isPending: (url: string) => boolean,
+  authenticate: (url: string) => Promise<void>,
+  signal: AbortSignal,
+): Promise<MessageAuthenticationResult[]> {
+  const results: MessageAuthenticationResult[] = [];
+
+  for (const url of urls) {
+    signal.throwIfAborted();
+
+    if (!isPending(url)) {
+      results.push({ url, status: "skipped" });
+      continue;
+    }
+
+    try {
+      await authenticate(url);
+      results.push({ url, status: "authenticated" });
+    } catch (error) {
+      signal.throwIfAborted();
+      results.push({ url, status: "failed", error });
+    }
+  }
+
+  signal.throwIfAborted();
+  return results;
 }
 
 /** Scopes authentication requests to a subscribed operation's lifetime */

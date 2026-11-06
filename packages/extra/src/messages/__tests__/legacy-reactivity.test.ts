@@ -61,11 +61,11 @@ describe("legacy reactive ownership", () => {
   it("shares live processing and releases it only when the last watcher leaves", () => {
     const { client, pool } = setup();
     const conversation = client.conversation(peer);
-    const watching$ = conversation.watch$();
+    const watching$ = conversation.watch$;
     expect(pool.subscription).not.toHaveBeenCalled();
 
     const first = watching$.subscribe();
-    const second = conversation.watch$().subscribe();
+    const second = conversation.watch$.subscribe();
     expect(pool.subscription).toHaveBeenCalledTimes(2);
     first.unsubscribe();
     expect(pool.subscription.mock.results.every(({ value }) => value.observed)).toBe(true);
@@ -81,7 +81,7 @@ describe("legacy reactive ownership", () => {
   it("does not release explicit start ownership when a viewport unsubscribes", async () => {
     const { client, pool } = setup();
     const conversation = client.conversation(peer);
-    const viewport = conversation.watch$().subscribe();
+    const viewport = conversation.watch$.subscribe();
     await conversation.start();
     viewport.unsubscribe();
     expect(pool.subscription).toHaveBeenCalledTimes(2);
@@ -90,7 +90,7 @@ describe("legacy reactive ownership", () => {
 
     conversation.stop();
     expect(pool.subscription.mock.results.every(({ value }) => !value.observed)).toBe(true);
-    const resumed = conversation.watch$().subscribe();
+    const resumed = conversation.watch$.subscribe();
     expect(pool.subscription).toHaveBeenCalledTimes(4);
     conversation.stop();
     expect(resumed.closed).toBe(true);
@@ -99,7 +99,7 @@ describe("legacy reactive ownership", () => {
   it("completes watchers on disposal and rejects later subscriptions", () => {
     const { client, pool } = setup();
     const conversation = client.conversation(peer);
-    const watching$ = conversation.watch$();
+    const watching$ = conversation.watch$;
     const watcher = subscribeSpyTo(watching$);
     conversation.dispose();
     expect(watcher.receivedComplete()).toBe(true);
@@ -131,7 +131,7 @@ describe("legacy reactive ownership", () => {
           finish = () => resolve([{ from: "wss://dm.test/", ok: true }]);
         }),
     );
-    const viewport = conversation.watch$().subscribe();
+    const viewport = conversation.watch$.subscribe();
     const discovery = conversation.discover$().subscribe();
     const sending = prepared.publish();
     await vi.waitFor(() => expect(pool.publish).toHaveBeenCalledTimes(1));
@@ -154,7 +154,7 @@ describe("legacy reactive ownership", () => {
     eventStore.add(cached);
     const conversation = client.conversation(peer);
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
-    const viewport = conversation.watch$().subscribe();
+    const viewport = conversation.watch$.subscribe();
     await vi.waitFor(() => expect(getEncryptedContent(cached)).toBe("cached viewport"));
     expect(decrypt).not.toHaveBeenCalled();
 
@@ -348,7 +348,7 @@ describe("legacy reactive ownership", () => {
     else if (source === "bulk") await conversation.unlock();
     else {
       conversation.setAutoUnlock(true);
-      const watcher = conversation.watch$().subscribe();
+      const watcher = conversation.watch$.subscribe();
       await vi.waitFor(async () =>
         expect((await firstValueFrom(conversation.decryptionState$)).errors.has(event.id)).toBe(true),
       );
@@ -372,7 +372,7 @@ describe("legacy reactive ownership", () => {
     if (source === "bulk") await client.unlock();
     else {
       conversation.setAutoUnlock(true);
-      const watcher = conversation.watch$().subscribe();
+      const watcher = conversation.watch$.subscribe();
       await vi.waitFor(() => expect(initialState.getLastValue()?.errors.get(event.id)).toBe(failure));
       watcher.unsubscribe();
     }
@@ -791,7 +791,7 @@ describe("legacy reactive ownership", () => {
     conversation.setAutoUnlock(true);
     const decrypt = vi.spyOn(ownerSigner.nip04, "decrypt");
 
-    const watcher = conversation.watch$().subscribe();
+    const watcher = conversation.watch$.subscribe();
     expect(getItem).toHaveBeenCalledTimes(1);
     if (ending === "stop") conversation.stop();
     else watcher.unsubscribe();

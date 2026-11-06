@@ -41,7 +41,7 @@ await chat.send({ content: "Hello" });
 
 The two protocols load conversations differently:
 
-- **Legacy** messages can be filtered by correspondent, so a conversation can load on its own without starting the whole inbox. Subscribe to `conversation.watch$()` to load while a view is open.
+- **Legacy** messages can be filtered by correspondent, so a conversation can load on its own without starting the whole inbox. Subscribe to `conversation.watch$` to load while a view is open.
 - **Wrapped** messages only reveal their participants after decryption. The receiver loads envelopes for the account; conversation handles query the shared rumor store without creating local copies or loading relays.
 
 Legacy messages are kind 4 events with encrypted content; read the plaintext with `getEncryptedContent()` or `EncryptedContentModel`. Wrapped conversations return the decrypted kind 14 and 15 rumors directly.
@@ -108,6 +108,21 @@ wrapped.setAutoUnlock(true); // keep decrypting new messages
 
 For explicit wrapped processing, use `wrapped.receiver.unlock(envelope)` or iterate `wrapped.receiver.readInbox({ signal })`. Observe receiver outcomes through `receive$` and stored messages through the rumor store. Legacy `readMessages$()` retains its active-decryption behavior.
 
+### Legacy receiving modes
+
+NIP-04 messages are received in two ways, each with its own receiver:
+
+- `legacy.receiver` is a `LegacyInboxReceiver`. It reads the whole account from the owner's own inbox, DM and outbox relays.
+- `conversation.receiver` is a `LegacyConversationReceiver`. It reads one conversation from both participants' relays, so messages the peer only sent to their own outboxes are still found.
+
+Both receivers share one `LegacyMessageDecryptor`, so an event loaded by both is decrypted once, with one signer prompt at a time. They have the same explicit processing methods as the gift-wrap receiver:
+
+```ts
+for await (const result of legacy.receiver.readInbox({ signal })) {
+  if (result.status === "failed") showFailure(result.failure);
+}
+```
+
 ## Sending and drafts
 
 Check `discover(...)` before offering to send so the UI can explain when a participant has no inbox relays. Wrapped messages need kind 10050 inbox relays for every participant, including the sender.
@@ -152,6 +167,13 @@ await receiver.start();
 ```
 
 The app then owns loading and decryption: `wrapped.start()` won't open subscriptions, and `wrapped.setAutoUnlock()` changes the setting for everyone using the receiver. Use `receiverOptions` for receiver-specific construction policies such as processing concurrency.
+
+The legacy client works the same way with a `LegacyInboxReceiver`. Its conversations reuse the injected receiver's decryptor and relay authentication:
+
+```ts
+const receiver = new LegacyInboxReceiver({ pubkey, signer, eventStore, pool });
+const legacy = new LegacyMessagesClient({ pubkey, signer, eventStore, pool, receiver });
+```
 
 ### Share a rumor store
 

@@ -26,7 +26,11 @@ import {
   takeUntil,
   timeout,
 } from "rxjs";
-import { MessageAuthentication, type MessageAuthenticationResult } from "../common/authentication.js";
+import {
+  authenticateSequentially,
+  MessageAuthentication,
+  type MessageAuthenticationResult,
+} from "../common/authentication.js";
 import { uploadEncryptedFile, type UploadEncryptedFileOptions } from "../common/attachments.js";
 import type {
   ConversationIndexEntry,
@@ -294,19 +298,14 @@ export class WrappedMessagesClient {
   }
 
   /**
-   * Authenticates a pending relay through its receiving or publication owner
+   * Authenticates a pending relay through its receiving or publishing owner
    * @throws if the client is disposed, no matching signer or request exists, or authentication fails
    */
   authenticate(url: string): Promise<void> {
-    const context = this.context();
-    return firstValueFrom(
-      defer(async () => {
-        const receiving = await firstValueFrom(this.receiver.authRequests$);
-        context.signal.throwIfAborted();
-        const owner = receiving.some((request) => request.url === url) ? this.receiver : this.authentication;
-        await owner.authenticate(url);
-      }).pipe(takeUntil(fromEvent(context.signal, "abort"))),
-    );
+    this.context();
+
+    const owner = this.receiver.hasAuthRequest(url) ? this.receiver : this.authentication;
+    return owner.authenticate(url);
   }
 
   /**
@@ -315,28 +314,12 @@ export class WrappedMessagesClient {
    */
   authenticateAll(): Promise<MessageAuthenticationResult[]> {
     const context = this.context();
-    return firstValueFrom(
-      defer(async () => {
-        const requests = await firstValueFrom(this.authRequests$);
-        const results: MessageAuthenticationResult[] = [];
-        for (const { url } of requests) {
-          context.signal.throwIfAborted();
-          const pending = await firstValueFrom(this.authRequests$);
-          if (!pending.some((request) => request.url === url)) {
-            results.push({ url, status: "skipped" });
-            continue;
-          }
-          try {
-            await this.authenticate(url);
-            results.push({ url, status: "authenticated" });
-          } catch (error) {
-            context.signal.throwIfAborted();
-            results.push({ url, status: "failed", error });
-          }
-        }
-        return results;
-      }).pipe(takeUntil(fromEvent(context.signal, "abort"))),
-    );
+
+    const requests = [...this.authentication.currentRequests, ...this.receiver.currentAuthRequests];
+    const urls = [...new Set(requests.map((request) => request.url))];
+    const isPending = (url: string) => this.authentication.hasRequest(url) || this.receiver.hasAuthRequest(url);
+
+    return authenticateSequentially(urls, isPending, (url) => this.authenticate(url), context.signal);
   }
 
   private context(options: MessageOperationOptions = {}) {
@@ -535,7 +518,6 @@ export class WrappedMessagesClient {
     context.signal.throwIfAborted();
     return scanned;
   }
-
   private indexingFilters(window: TimelineWindow): Filter[] {
     return this.messageFilters.map((filter) => ({ ...filter, ...window }));
   }

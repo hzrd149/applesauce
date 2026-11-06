@@ -49,7 +49,7 @@ import {
   tap,
   timeout,
 } from "rxjs";
-import { MessageAuthentication, withMessageAuth$ } from "../messages/common/authentication.js";
+import { MessageAuthentication, type MessageAuthRequest, withMessageAuth$ } from "../messages/common/authentication.js";
 import { configured$, withFallback$ } from "../messages/common/helpers.js";
 import type {
   GiftWrapDecryptionState,
@@ -1314,6 +1314,16 @@ export class GiftWrapReceiver {
    */
   loadHistory(options: GiftWrapHistoryOptions = {}): Promise<SyncLoaderStatus> {
     return lastValueFrom(this.sync$({ ...options, followRelays: false }));
+  }
+
+  /** The outstanding receiving authentication requests at this moment */
+  get currentAuthRequests(): readonly MessageAuthRequest[] {
+    return this.authentication.currentRequests;
+  }
+
+  /** Checks whether a receiving relay is waiting for authentication */
+  hasAuthRequest(url: string): boolean {
+    return this.authentication.hasRequest(url);
   }
 
   /**

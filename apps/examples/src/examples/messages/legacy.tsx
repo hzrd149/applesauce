@@ -762,7 +762,7 @@ function Conversation({
   // The conversation supplies its mailbox routes, EventStore and nostr-idb cacheRequest.
   const loader = useMemo(() => conversation.createTimelineLoader({ limit: 50, prefetch: 0 }), [conversation]);
 
-  use$(() => conversation.watch$(), [conversation]);
+  use$(() => conversation.watch$, [conversation]);
   const messages = use$(conversation.messages$);
   // The timeline is newest first, so group oldest first and flip the groups back for the reversed scroll area
   const groups = useMemo(() => (messages ? groupMessageEvents([...messages].reverse()).reverse() : []), [messages]);

@@ -1,5 +1,8 @@
 export { LegacyMessagesClient } from "./legacy/client.js";
 export { LegacyConversation } from "./legacy/conversation.js";
+export { LegacyMessageDecryptor, type LegacyMessageDecryptorOptions } from "./legacy/decryptor.js";
+export { LegacyInboxReceiver } from "./legacy/inbox-receiver.js";
+export { LegacyConversationReceiver, type LegacyConversationReceiverOptions } from "./legacy/conversation-receiver.js";
 export { WrappedMessagesClient } from "./wrapped/client.js";
 export { WrappedConversation, type WrappedConversationSendRequest } from "./wrapped/conversation.js";
 export { WrappedMessagePublicationError } from "./wrapped/session.js";
@@ -17,6 +20,11 @@ export type {
   LegacyMessageHistoryOptions,
   LegacyMessagesSyncStatus,
   LegacyMailboxError,
+  LegacyInboxReceiverOptions,
+  LegacyMessageFailure,
+  LegacyMessageFailureCode,
+  LegacyReadResult,
+  LegacyReceiverError,
 } from "./legacy/types.js";
 export type {
   WrappedMessagesClientOptions,
