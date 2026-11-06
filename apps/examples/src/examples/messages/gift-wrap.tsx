@@ -189,11 +189,9 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   shareReplay({ bufferSize: 1, refCount: false }),
 );
 
-/** Groups the saved messages since a timestamp into conversations, newest first */
-function conversations$(client: WrappedMessagesClient, since: number) {
-  const filters = client.messageFilters.map((filter) => ({ ...filter, since }));
-
-  return client.rumorStore.timeline(filters).pipe(
+/** Groups all saved messages into conversations, newest first */
+function conversations$(client: WrappedMessagesClient) {
+  return client.rumorStore.timeline(client.messageFilters).pipe(
     map((messages) => {
       const groups = new Map<string, ConversationGroup>();
 
@@ -869,10 +867,7 @@ function MessageGroup({
 }
 
 function Conversation({ conversation }: { conversation: WrappedConversation }) {
-  const [openedAt] = useState(unixNow);
-  const [until, setUntil] = useState<number>();
-  const since = (until ?? openedAt) - 7 * 86400;
-  const messages = use$(() => conversation.timeline$({ since, until }), [conversation, since, until]);
+  const messages = use$(() => conversation.timeline$({}), [conversation]);
   // The timeline is newest first, so group oldest first and flip the groups back for the reversed scroll area
   const groups = useMemo(() => (messages ? groupMessageEvents([...messages].reverse()).reverse() : []), [messages]);
   const publications = use$(conversation.client.publications$);
@@ -904,18 +899,9 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
             <Names users={others} />
           </>
         )}
-        <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
-        <button className="btn btn-sm" onClick={() => setUntil(since - 1)}>
-          Earlier week
-        </button>
-        {until !== undefined && (
-          <button className="btn btn-sm" onClick={() => setUntil(undefined)}>
-            Latest
-          </button>
-        )}
         <select
           aria-label="Message expiration"
-          className="select select-sm w-36"
+          className="select select-sm ms-auto w-36"
           value={expiration}
           onChange={(event) => setExpiration(Number(event.target.value))}
         >
@@ -951,9 +937,8 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 }
 
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
-  const [since] = useState(() => unixNow() - 30 * 86400);
   // Saved rumors render immediately after unlocking storage, before any relay or signer work
-  const groups = use$(() => conversations$(client, since), [client, since]);
+  const groups = use$(() => conversations$(client), [client]);
   const [selected, setSelected] = useState(client.pubkey);
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);
