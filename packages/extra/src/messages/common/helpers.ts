@@ -1,29 +1,5 @@
-import {
-  catchError,
-  defaultIfEmpty,
-  filter,
-  firstValueFrom,
-  isObservable,
-  Observable,
-  of,
-  startWith,
-  switchMap,
-  timer,
-  map,
-  timeout,
-} from "rxjs";
-
-/** Waits for a defined value with a bounded fallback */
-export function settle<T>(value$: Observable<T | undefined>, fallback: T, ms: number): Promise<T> {
-  return firstValueFrom(
-    value$.pipe(
-      filter((value): value is T => value !== undefined),
-      timeout({ first: ms }),
-      catchError(() => of(fallback)),
-      defaultIfEmpty(fallback),
-    ),
-  );
-}
+import type { Filter } from "applesauce-core/helpers";
+import { catchError, defaultIfEmpty, isObservable, map, Observable, of, startWith, switchMap, timer } from "rxjs";
 
 /** Observes a configured value or its default */
 export function configured$<T>(input: T | Observable<T> | undefined, fallback: T): Observable<T> {
@@ -40,45 +16,37 @@ export function withFallback$<T>(source$: Observable<T | undefined>, fallback: T
   );
 }
 
-/** A timestamp window read by pageTimeline, with only the defined bounds present */
-export interface TimelineWindow {
-  /** The inclusive oldest timestamp */
-  since?: number;
-  /** The inclusive newest timestamp */
-  until?: number;
-  /** The maximum number of newest items to read */
-  limit?: number;
-}
+/** Narrows filters to a timestamp window, adding only the defined bounds */
+function windowFilters(filters: Filter[], since?: number, until?: number, limit?: number): Filter[] {
+  const bounds: Filter = {
+    ...(since !== undefined ? { since } : {}),
+    ...(until !== undefined ? { until } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  };
 
-/** Creates a timeline window without undefined bounds, so it can be spread into filters */
-function timelineWindow(since?: number, until?: number, limit?: number): TimelineWindow {
-  const window: TimelineWindow = {};
-  if (since !== undefined) window.since = since;
-  if (until !== undefined) window.until = until;
-  if (limit !== undefined) window.limit = limit;
-
-  return window;
+  return filters.map((filter) => ({ ...filter, ...bounds }));
 }
 
 /**
- * Reads a timeline newest first in pages, yielding every item in the window exactly once
+ * Reads a timeline newest first in pages, yielding every item matching the filters exactly once
  * @throws if a read fails
  */
 export async function* pageTimeline<T extends { created_at: number }>(
-  read: (window: TimelineWindow) => T[] | Promise<T[]>,
+  filters: Filter[],
+  read: (filters: Filter[]) => T[] | Promise<T[]>,
   options: { since?: number; until?: number; pageSize: number },
 ): AsyncGenerator<T> {
   const { since, pageSize } = options;
   let until = options.until;
 
   while (until === undefined || since === undefined || until >= since) {
-    const page = await read(timelineWindow(since, until, pageSize));
+    const page = await read(windowFilters(filters, since, until, pageSize));
     if (page.length === 0) return;
 
     // The page may end partway through its oldest second, so read that whole second separately
     const oldest = Math.min(...page.map((item) => item.created_at));
     const newer = page.filter((item) => item.created_at > oldest);
-    const oldestSecond = await read(timelineWindow(oldest, oldest));
+    const oldestSecond = await read(windowFilters(filters, oldest, oldest));
 
     yield* newer;
     yield* oldestSecond;

@@ -52,7 +52,7 @@ import type {
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
 import { MemoryConversationIndexStore, recordConversationMessage } from "../common/conversation-index.js";
-import { pageTimeline, type TimelineWindow } from "../common/helpers.js";
+import { pageTimeline } from "../common/helpers.js";
 import { ConversationDraftState } from "../common/drafts.js";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 
@@ -512,10 +512,10 @@ export class WrappedMessagesClient {
    */
   async indexConversations(options: ConversationIndexingOptions = {}): Promise<number> {
     const context = this.context(options);
-    const read = (window: TimelineWindow) => this.rumorStore.getTimeline(this.indexingFilters(window));
+    const read = (filters: Filter[]) => this.rumorStore.getTimeline(filters);
     let scanned = 0;
 
-    for await (const rumor of pageTimeline(read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
+    for await (const rumor of pageTimeline(this.messageFilters, read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
       context.signal.throwIfAborted();
       await this.recordConversation(rumor);
       scanned++;
@@ -523,9 +523,6 @@ export class WrappedMessagesClient {
 
     context.signal.throwIfAborted();
     return scanned;
-  }
-  private indexingFilters(window: TimelineWindow): Filter[] {
-    return this.messageFilters.map((filter) => ({ ...filter, ...window }));
   }
 
   /** Discovers kind-10050 relays for every participant, including the owner */

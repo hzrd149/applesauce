@@ -6,8 +6,8 @@ import {
 } from "applesauce-common/helpers";
 import { makeCacheRequest } from "applesauce-loaders/helpers";
 import { MemoryConversationIndexStore, recordConversationMessage } from "../common/conversation-index.js";
-import { pageTimeline, type TimelineWindow } from "../common/helpers.js";
-import { isHexKey, type NostrEvent } from "applesauce-core/helpers";
+import { pageTimeline } from "../common/helpers.js";
+import { isHexKey, type Filter, type NostrEvent } from "applesauce-core/helpers";
 import {
   BehaviorSubject,
   catchError,
@@ -279,13 +279,10 @@ export class LegacyMessagesClient {
     const cacheRequest = this.options.cacheRequest;
     if (!cacheRequest) return 0;
 
-    const read = (window: TimelineWindow) => {
-      const filters = this.filters.map((filter) => ({ ...filter, ...window }));
-      return lastValueFrom(makeCacheRequest(cacheRequest, filters).pipe(toArray()));
-    };
+    const read = (filters: Filter[]) => lastValueFrom(makeCacheRequest(cacheRequest, filters).pipe(toArray()));
     let scanned = 0;
 
-    for await (const event of pageTimeline(read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
+    for await (const event of pageTimeline(this.filters, read, { ...options, pageSize: INDEXING_PAGE_SIZE })) {
       context.signal.throwIfAborted();
       await this.recordConversation(event);
       scanned++;

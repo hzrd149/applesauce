@@ -15,7 +15,7 @@ import {
 } from "applesauce-core/helpers";
 import { defer, finalize, firstValueFrom, timeout } from "rxjs";
 import { withMessageAuth$ } from "../common/authentication.js";
-import { settle } from "../common/helpers.js";
+import { withFallback$ } from "../common/helpers.js";
 import type {
   WrappedMessageSendRequest,
   WrappedMessagePreparation,
@@ -84,7 +84,7 @@ export class WrappedMessageSession {
   private async recipientRelays(pubkey: string): Promise<WrappedMessageRecipientSupport> {
     const { config, wait } = this;
     const user = castUser(pubkey, config.eventStore);
-    const relays = await settle(user.directMessageRelays$, undefined, wait);
+    const relays = await firstValueFrom(withFallback$(user.directMessageRelays$, undefined, wait));
     return {
       recipient: pubkey,
       support: relays === undefined ? "unknown" : relays.length ? "supported" : "unsupported",
@@ -95,7 +95,7 @@ export class WrappedMessageSession {
   private async deliveryRelays(pubkey: string) {
     const { config, wait } = this;
     const user = castUser(pubkey, config.eventStore);
-    const advertised = await settle(user.directMessageRelays$, undefined, wait);
+    const advertised = await firstValueFrom(withFallback$(user.directMessageRelays$, undefined, wait));
     return advertised ?? [];
   }
 
