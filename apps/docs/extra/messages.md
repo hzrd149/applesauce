@@ -67,13 +67,18 @@ Both clients keep a conversation index with one entry per conversation: its `id`
 
 ```ts
 const pages = wrapped.conversations();
-const next = await pages.next(); // { id, participants, lastActivity, lastMessage? }
+const page = [];
+for (let count = 0; count < 20; count++) {
+  const { value, done } = await pages.next();
+  if (done) break;
+  page.push(value); // One conversation summary per iterator step
+}
 
 wrapped.conversationInserts$.subscribe((summary) => moveToTop(summary));
 wrapped.conversationUpdates$.subscribe((summary) => moveToTop(summary));
 ```
 
-A conversation moved to the top can still arrive in a later page from the same iterator, so skip ids that are already listed when appending a page.
+The application chooses its page size and retains the iterator for the next page. A conversation moved to the top can still arrive in a later page, so skip ids that are already listed when appending. Unsubscribe from insert/update notifications when the list view closes.
 
 Legacy summaries also include the `correspondent`, so a row can open `legacy.conversation(summary.correspondent)`.
 
@@ -84,7 +89,11 @@ const conversationIndex = await IndexedDBConversationIndexStore.open(`legacy-con
 const legacy = new LegacyMessagesClient({ pubkey, signer, eventStore, pool, conversationIndex });
 ```
 
-Messages stored before the index existed are not indexed automatically. Call `indexConversations({ since, until })` once to scan them in pages: legacy scans its `cacheRequest` event cache and wrapped scans its rumor store. `lastMessage` is `undefined` when the message isn't loaded. Failed index writes appear on legacy's `conversationIndexError$` and as `storage` errors on wrapped's `errors$`.
+The application owns the index connection: dispose clients using it before calling `conversationIndex.close()` when that account's storage owner ends.
+
+Legacy clients index matching events already in the in-memory event store as well as new arrivals. To backfill older persisted events, call `legacy.indexConversations({ since, until })`; it scans `cacheRequest` in pages and returns zero when no cache is configured. Wrapped clients automatically index only new rumor arrivals; call `wrapped.indexConversations({ since, until })` to scan rumors already in the shared rumor store.
+
+`lastMessage` is `undefined` when the message isn't loaded. Failed index writes appear on legacy's `conversationIndexError$` and as `storage` errors on wrapped's `errors$`.
 
 ### Loading history
 
@@ -123,6 +132,37 @@ for await (const result of legacy.receiver.readInbox({ signal })) {
   if (result.status === "failed") showFailure(result.failure);
 }
 ```
+
+Use standalone receivers when your application owns receiving without needing client drafts or sending. Share a decryptor and the inbox's authentication options across receivers:
+
+```ts
+import { LegacyMessageDecryptor, LegacyInboxReceiver, LegacyConversationReceiver } from "applesauce-extra/messages";
+
+const decryptor = new LegacyMessageDecryptor({ pubkey, signer, decryptionCache });
+const inbox = new LegacyInboxReceiver({ pubkey, signer, eventStore, pool, decryptor });
+const receiver = new LegacyConversationReceiver({
+  pubkey,
+  correspondent,
+  eventStore,
+  pool,
+  decryptor,
+  authOptions: inbox.authOptions,
+});
+const subscription = receiver.watch$.subscribe(showOutcome);
+
+// From an Unlock button:
+await receiver.unlock();
+```
+
+Release subscriptions and receivers when their owner ends:
+
+```ts
+subscription.unsubscribe();
+receiver.dispose();
+inbox.dispose();
+```
+
+`watch$` owns loading while subscribed; `start()` keeps it running until `stop()`. For an inbox view, subscribe to `inbox.watch$` too. Neither receiver closes the shared pool or event store. Legacy client conversation handles also have `stop()` and `dispose()`; wrapped handles have no disposal lifecycle, so release their query subscriptions instead.
 
 ## Sending and drafts
 

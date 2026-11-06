@@ -94,7 +94,7 @@ For a pool-side variant, use `mapEventsToStore(eventStore)` from `applesauce-cor
 | Manage user accounts and active session                              | `packages/accounts.md`                                                                                                                      |
 | Load events on demand                                                | `packages/loaders.md`                                                                                                                       |
 | Mutate lists / sets / profile (follow, mute, bookmark, pin, profile) | `packages/actions.md`                                                                                                                       |
-| Send NIP-04 / NIP-17 / NIP-59 messages                               | `packages/actions.md` (`SendLegacyMessage`, `SendWrappedMessage`)                                                                           |
+| Build NIP-04 / NIP-17 messaging                                      | `encryption.md` and [Messaging Clients](https://applesauce.build/extra/messages); use actions for lower-level sends                         |
 | Publish a note / article / reaction / share                          | `packages/common.md` (factory blueprints) + `packages/signers.md` + `packages/relay.md` (`pool.publish`) — there is **no** action for these |
 | Build typed event drafts                                             | `packages/core.md` (`EventFactory`) + `packages/common.md` (NIP blueprints)                                                                 |
 | Render note content (text, mentions, embeds, hashtags, media)        | `packages/content.md`                                                                                                                       |
@@ -103,9 +103,10 @@ For a pool-side variant, use `mapEventsToStore(eventStore)` from `applesauce-cor
 | Use from React                                                       | `packages/react.md`                                                                                                                         |
 | NIP-60 wallet                                                        | `packages/wallet.md`                                                                                                                        |
 | NIP-47 wallet-connect (client or service)                            | `packages/wallet-connect.md`                                                                                                                |
+| Messaging clients, gift-wrap receiving, or Kehto hosting             | `packages/extra.md` and `encryption.md`; follow the workflow links in `SKILL.md`                                                            |
 | Primal cache search or Vertex reputation                             | `packages/extra.md`                                                                                                                         |
 
 ## Two non-negotiable rules
 
-1. **One `EventStore` per app.** Models cache per-store and the store's `insert$`/`update$`/`remove$` streams are instance-scoped. A second store will silently fail to receive writes from the first.
-2. **Every event must go through `eventStore.add(...)`.** Bypass it and no model, cast, or hook will see the update.
+1. **Share one store per data scope.** Related models must query the store receiving their events. Wrapped messaging deliberately separates the shared signed-event `EventStore` from an account-scoped `RumorStore` or `AsyncRumorStore` containing validated plaintext.
+2. **Insert data into its owning store.** Signed relay events go through `eventStore.add(...)`; `GiftWrapReceiver` validates and writes inner rumors to its rumor store. Clients reuse that receiver/store instead of making per-conversation copies. The application disposes injected stores when their owner ends.

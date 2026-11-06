@@ -76,7 +76,17 @@ Each file mirrors that package's `README.md`. Use the descriptions below to find
 - `references/packages/wallet-connect.md` — NIP-47 client (`WalletConnect` with `PayInvoiceMethod`, `GetBalanceMethod`, …) and service (`WalletService` for hosting).
 - `references/packages/sqlite.md` — persistent event database. Drivers: `applesauce-sqlite/better-sqlite3`, `/native` (`node:sqlite`, requires Node ≥22; also aliased `/deno`), `/bun`, `/libsql`, `/turso`, `/turso-wasm` (browser SQLite). Use with `AsyncEventStore`. Also ships a built-in relay (`./relay`).
 - `references/packages/react.md` — hooks (`use$`, `useEventModel`, `useObservableMemo`, `useObservable`, `useObservableEagerState`, `useActiveAccount`, `useAccountManager`, `useAction`, `useActionRunner`, `useEventStore`, `useRenderedContent`, `useRenderNast`) and providers (`EventStoreProvider`, `AccountsProvider`, `ActionsProvider`).
-- `references/packages/extra.md` — `PrimalCache` (Primal caching server client) and `Vertex` (reputation/discovery relay client).
+- `references/packages/extra.md` — messaging clients, gift-wrap receiving, Kehto napplet hosting, and service integrations such as Primal and Vertex. For private-message storage and ownership, read `references/encryption.md` first.
+
+### Practical workflow routing
+
+- **Direct messaging:** start with [messaging clients](https://applesauce.build/extra/messages) for legacy/wrapped conversations, indexed inbox pagination, drafts and retryable publication. Use [GiftWrapReceiver](https://applesauce.build/extra/gift-wrap) for application-owned receiving across gift-wrapped protocols.
+- **Forward-secret messaging:** use the [NDR client guide](https://applesauce.build/extra/ndr) for durable device/session storage, registration and send recovery.
+- **Private attachments:** follow [encrypted files](https://applesauce.build/features/files/encrypted-files) for staged drafts, ciphertext uploads and retained publication retries.
+- **Napplet integration:** start with [hosting](https://applesauce.build/napplets/hosting), or [services](https://applesauce.build/napplets/services) when the app already owns a shell. Follow [napplet messaging](https://applesauce.build/napplets/messaging) for client ownership and protocol routing.
+- **Wallets:** use [NutWallet](https://applesauce.build/money/wallet/nut-wallet) for application workflows, durable deposit recovery and KeyValueCouch migration.
+
+Use the linked guides for lifecycle and integration decisions, then consult the bundled examples for complete UI wiring; avoid reconstructing these workflows from low-level helpers alone.
 
 ### Examples
 
@@ -86,8 +96,8 @@ The example app uses React + Tailwind/daisyUI for UI; the shared `LoginView`, `R
 
 ## Hard rules
 
-- **One `EventStore` per app.** Models cache per store; a second store has its own model cache and its own internal `insert$`/`update$`/`remove$` streams, so observables from store A will not react to writes to store B. Separate stores are fine only for disjoint data (e.g. tests).
-- **Every incoming event must reach `eventStore.add(...)`.** Bypass it and models never update. `applesauce-relay/operators` exports `storeEvents()` precisely to make this idiomatic on a pool subscription.
+- **Share stores within a data scope.** Models observe only their own store. Share the application's signed-event `EventStore`, but keep validated wrapped plaintext in an account-scoped `RumorStore` or `AsyncRumorStore`; the receiver and conversation queries share that rumor store. Injected stores remain application-owned.
+- **Route incoming data through its owning store.** Signed relay events go through `eventStore.add(...)`; `GiftWrapReceiver` validates and inserts inner rumors into its separate rumor store. Query the same store that receives the data so models update.
 - **Loader observables must be subscribed.** Every loader returns a cold `Observable` — no request is sent until you `.subscribe()` (or compose with `firstValueFrom` / `lastValueFrom`). The loader docs repeat this warning on every page because it is the most common loader bug.
 - **Subscriptions are RxJS Observables and must be torn down.** Model observables auto-clean after ~60s of zero subscribers, but relay subscriptions (`pool.subscription(...)`, `pool.req(...)`) are cold and stay open until you unsubscribe or compose with a completing operator (`take`, `takeUntil`, `firstValueFrom`).
 - **Import from the public package entry, not `dist/`.** Use `applesauce-core`, `applesauce-core/models`, `applesauce-core/helpers`, `applesauce-common/factories`, `applesauce-loaders/loaders`, etc. — never `applesauce-core/dist/...`. Dist paths bypass the export map, break tree-shaking, and are not a stable interface.

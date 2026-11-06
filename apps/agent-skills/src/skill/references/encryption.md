@@ -6,15 +6,20 @@ Encrypted content and hidden tags are **opt-in**: the store holds the raw event;
 
 ## One-time wiring at startup
 
-Call `persistEncryptedContent(signer, eventStore)` once, after the active signer is known. This lets the `EncryptedContentModel` (and casts that read it) deliver decrypted bodies as the signer permits, instead of every component fending for itself.
+Use `persistEncryptedContent(eventStore, storage)` to restore cached plaintext on insertion and save newly unlocked content. It does not ask a signer to decrypt; unlocking remains an explicit application action.
 
 ```ts
-import { persistEncryptedContent } from "applesauce-core/helpers";
+import { persistEncryptedContent } from "applesauce-common/helpers";
 
-persistEncryptedContent(signer, eventStore);
+const stopCaching = persistEncryptedContent(eventStore, accountStorage);
+
+// When the account session ends:
+stopCaching();
 ```
 
-Switching signers (different active account)? Call it again with the new signer. The store entries are cached on the event symbol per signer.
+Supply account-scoped storage encrypted at rest: values are plaintext keyed by event ID. Plaintext attached to an event is not scoped by signer. On account change, stop the old persistence process, dispose account-owned messaging clients and private stores, and create the next account's resources. Stopping persistence does not erase plaintext already attached to events.
+
+For direct cache access or bounded stream restoration, see the [encrypted-content caching guide](https://applesauce.build/apps/encryption/caching).
 
 ## Reading encrypted content reactively
 
@@ -28,7 +33,7 @@ eventStore.model(EncryptedContentModel, event).subscribe((content) => {
 
 In React: `useEventModel(EncryptedContentModel, [event])`.
 
-If the user hasn't authorized decryption yet (NIP-07 prompt, NIP-46 round-trip, …), `content` stays `undefined`. The signer's UX is the source of truth — don't gate UI on a sync check; let the observable flip when permission lands.
+The model is passive: it emits `undefined` until plaintext is restored or explicitly unlocked. It observes unlock updates even without persistence. In non-React consumers, retain and unsubscribe the subscription when the view closes.
 
 ## Hidden tags lifecycle
 
@@ -47,17 +52,22 @@ Gate UI on `isHiddenTagsUnlocked(event)` (or its reactive equivalent through a m
 
 ## NIP-17 gift-wrapped messages
 
-`WrappedMessageBlueprint` (in `applesauce-common/factories`) and `SendWrappedMessage`/`ReplyToWrappedMessage`/`GiftWrapMessageToParticipants` (in `applesauce-actions`) handle the full NIP-59 wrap on the way out. On the way in, run incoming gift-wrap events through the unwrap helpers in `applesauce-common/helpers` (or use the `Wrap` cast) so the inner rumor reaches the store and its model fires.
+Use `WrappedMessagesClient` from `applesauce-extra/messages` for conversations, drafts, receiving and retryable sending. It uses a `GiftWrapReceiver` with the application's encrypted-event `EventStore` and a separate `RumorStore` or `AsyncRumorStore` for validated plaintext. Query conversations through that shared rumor store; reading does not invoke the signer.
+
+Use `GiftWrapReceiver` from `applesauce-extra/gift-wrap` directly for other gift-wrapped protocols. Receivers and clients are account-scoped; injected stores and receivers remain application-owned. Keep prepared send handles for retries instead of calling `send()` again.
+
+Follow the [messaging client](https://applesauce.build/extra/messages), [receiver](https://applesauce.build/extra/gift-wrap), and [encrypted file](https://applesauce.build/features/files/encrypted-files) workflows. For device registration, durable ratchet state and groups, use the [NDR client](https://applesauce.build/extra/ndr).
 
 ## Common pitfalls
 
-- Calling `unlockHiddenTags` or decrypting before `persistEncryptedContent(signer, eventStore)` — the result won't propagate to models.
-- Calling them in a loop per render — the signer may prompt the user every time. Sign / decrypt at a stable boundary (the model, or a once-per-event effect), not per render.
+- Assuming a cache or model unlocks content — call an unlock method from a user action, or explicitly opt into background decryption.
+- Decrypting in a loop per render — use the client's shared processing and cache so views do not repeat signer prompts.
 - Treating empty hidden tags as "no hidden entries" instead of "not yet unlocked". Always check `isHiddenTagsUnlocked`.
 
 ## Worked examples
 
-- `examples/messages/legacy.md` — NIP-04 DM round-trip
-- `examples/messages/gift-wrap.md` — NIP-17 / NIP-59 wrapped messages
+- `assets/examples/messages/legacy.tsx` — NIP-04 receiving and durable send retries
+- `assets/examples/messages/gift-wrap.tsx` — shared rumor queries and encrypted attachments
+- `assets/examples/messages/ndr.tsx` — devices, groups and durable messaging state
 
-Both indexed in `examples.md`.
+All indexed in `examples.md`.

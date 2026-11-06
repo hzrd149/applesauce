@@ -28,11 +28,11 @@ await client.start();
 client.conversations$.subscribe(renderInbox);
 ```
 
-Storage holds device secrets, session state, and decrypted history. It can't be rebuilt from relays, so it must be durable, scoped to one account and device, and **encrypted at rest**. `createNdrStorage()` turns any string key/value store into the adapter the client needs, but doesn't encrypt anything itself.
+Storage holds device secrets, session state, and decrypted history. It can't be rebuilt from relays, so it must be durable, scoped to one account and device, and **encrypted at rest**. `createNdrStorage()` adapts a listable string key/value store with `getItem`, `setItem`, `removeItem`, and `keys()`; methods may be synchronous or asynchronous, and missing reads return `null`. It JSON-encodes values but doesn't encrypt them. Writes must finish durably before resolving; a `setItem` result of `false` is treated as failure.
 
 Use the same `relays` for every device on the account; peers only find each other's invites and messages on shared relays.
 
-Only one client should use a storage at a time. In browsers, `start()` takes a lock for the account, and `lifecycle$` reports `locked` when another tab already holds it. Call `dispose()` on logout or account change to release the lock.
+Only one client should use a storage at a time. Where Web Locks is available, `start()` takes an account lock; contention rejects startup and `lifecycle$` reports `locked`. Dispose that client and create a new instance to retry after the other owner releases the lock. Without Web Locks, or with `lockName: false`, the application must enforce single-writer storage ownership. Call `dispose()` on logout or account change to release owned resources and the lock.
 
 ### Conversations
 

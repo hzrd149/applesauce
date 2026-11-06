@@ -47,6 +47,20 @@ const pubkey = await signer.getPublicKey();
 const account = new NostrConnectAccount(pubkey, signer);
 ```
 
+## Known identity in actions and factories
+
+Pass an account or `AccountManager.signer` to actions and factories when the account identity is already known. Accounts expose synchronous `getKnownPublicKey()` and the manager's proxy forwards it, so action context creation and factory stamping can avoid another public-key discovery request to an extension or bunker.
+
+```ts
+import { ActionRunner } from "applesauce-actions";
+import { NoteFactory } from "applesauce-common/factories";
+
+const actions = new ActionRunner(eventStore, manager.signer, publish);
+const signed = await NoteFactory.create("Hello").sign(manager.signer);
+```
+
+This does not bypass signing or signer identity checks. `account.getPublicKey()` still contacts the signer and verifies it matches the account. A proxy without a known identity falls back to ordinary discovery. See [ActionRunner](../actions/action-runner.md) and [EventFactory](../../creating/factory/event-factory.md) for setup and publishing.
+
 ## Request queue
 
 By default all accounts use a request queue, so the signer only gets on sign/encrypt/decrypt request at a time. This should make it safe to make a bunch of requests to the account without overloading the user
@@ -81,7 +95,7 @@ All the requests will be made one at a time in order, if any request fails (user
 
 The `account.abortQueue(reason?: Error)` method can be used to abort all pending requests. this will cause all promises to throw with `undefined` or `reason` if it was passed to the `abortQueue` method
 
-To disable the request queue set `account.disableQueue = false` directly after creating the account. it can also be disabled on the `AccountManager` before any accounts are added
+To disable the request queue set `account.disableQueue = true` directly after creating the account. It can also be disabled on the `AccountManager` before any accounts are added.
 
 ## Custom account types
 

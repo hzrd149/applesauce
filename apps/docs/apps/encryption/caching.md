@@ -1,53 +1,34 @@
 ---
-description: Automatic persistence and restoration of encrypted content for Nostr events to avoid repeated decryption
+description: Cache decrypted event content and restore plaintext to avoid repeated signer requests
 ---
 
 # Caching Encrypted Content
 
-The `persistEncryptedContent` function from `applesauce-common/helpers` provides automatic persistence and restoration of encrypted content for Nostr events. This allows your application to cache decrypted content so users don't need to decrypt the same events repeatedly.
+The `persistEncryptedContent` function from `applesauce-common/helpers` persists and restores decrypted event content. Cache values are plaintext; encrypt the storage at rest and scope it to the intended account.
 
 ## Overview
 
 When working with encrypted events (like direct messages, gift wraps, or wallet data), decrypting content can be expensive or require user interaction. The `persistEncryptedContent` helper automatically:
 
-- **Persists** encrypted content to storage when events are unlocked/decrypted
-- **Restores** encrypted content from storage when events are loaded
+- **Persists** plaintext to storage when events are unlocked/decrypted
+- **Restores** plaintext from storage when events are loaded
 - **Handles** gift wrap seals automatically
 - **Works** with any storage backend that implements the `EncryptedContentCache` interface
 
 ## Basic Setup
 
-The simplest way to use encrypted content caching is to pass your event store and a storage observable. Here's an example using `localforage`:
+Pass the application's event store and an account-scoped cache. Storage implements `getItem` and `setItem`; the application supplies its encryption at rest:
 
 ```typescript
 import { persistEncryptedContent } from "applesauce-common/helpers";
-import { EventStore } from "applesauce-core";
-import { BehaviorSubject } from "rxjs";
-import { defined } from "applesauce-core";
-import localforage from "localforage";
+import { unlockLegacyMessage } from "applesauce-common/helpers";
 
-// Create your event store
-const eventStore = new EventStore();
+const cleanup = persistEncryptedContent(eventStore, accountStorage);
+eventStore.add(message);
+await unlockLegacyMessage(message, pubkey, signer); // From a user action
 
-// Create a localforage instance for encrypted content
-const encryptedContentStorage = localforage.createInstance({
-  name: "encrypted-content",
-});
-
-// Start persisting and restoring encrypted content
-persistEncryptedContent(eventStore, encryptedContentStorage);
-
-// Insert an event into the store that can have encrypted content
-eventStore.add(bookmarks);
-eventStore.add(nip04Message);
-eventStore.add(giftWrap);
-
-// Decrypt the events content
-await unlockHiddenBookmarks(bookmarks, signer);
-await unlockLegacyMessage(nip04Message, signer);
-await unlockGiftWrap(giftWrap, signer);
-
-// The decrypted content is now stored in the cache
+// When this account's persistence owner ends:
+cleanup();
 ```
 
 ## Implementing EncryptedContentCache
@@ -108,51 +89,25 @@ Use the same storage instance with these helpers and `persistEncryptedContent` t
 
 The [Gift-wrap Receiver](/extra/gift-wrap) manages restoration and saving of both encryption layers through its `decryptionCache` option. For conversation-level loading and decryption controls, see [Messaging Clients](/extra/messages).
 
-## Complete Example
-
-Here's a complete example showing how it's used in practice:
-
-```typescript
-import { ProxySigner } from "applesauce-accounts";
-import { ActionRunner } from "applesauce-actions";
-import { EventStore } from "applesauce-core";
-import { defined } from "applesauce-core/observable";
-import { persistEncryptedContent } from "applesauce-common/helpers";
-import { ExtensionSigner } from "applesauce-signers";
-import { BehaviorSubject } from "rxjs";
-
-// Setup application state
-const storage$ = new BehaviorSubject<SecureStorage | null>(null);
-const signer$ = new BehaviorSubject<ExtensionSigner | null>(null);
-
-// Setup event store
-const eventStore = new EventStore();
-const signer = new ProxySigner(signer$.pipe(defined()));
-const actions = new ActionRunner(eventStore, signer);
-
-// Persist encrypted content - this is the key line!
-persistEncryptedContent(eventStore, storage$.pipe(defined()));
-
-// Later, when storage is unlocked/initialized:
-storage$.next(new SecureStorage(/* ... */));
-```
-
 ## How It Works
 
 1. **When events are inserted** into the store, `persistEncryptedContent` checks if they have encrypted content that's locked
-2. If locked, it attempts to restore the encrypted content from your storage
-3. **When events are unlocked/decrypted**, it automatically saves the encrypted content to storage
-4. **For gift wraps**, it also handles seals automatically - when a gift wrap is unlocked, it restores and persists the seal's encrypted content
+2. If locked, it attempts to restore plaintext from your storage
+3. **When events are unlocked/decrypted**, it automatically saves plaintext to storage
+4. **For gift wraps**, it also handles seals automatically - when a gift wrap is unlocked, it restores and persists the seal's plaintext
 
 ## Using with Observable Storage
 
-You can pass either a storage instance directly or an Observable of storage. This is useful when storage needs to be unlocked asynchronously:
+You can pass either a storage instance directly or an Observable of storage. This is useful when an account's storage needs to be unlocked asynchronously:
 
 ```typescript
 // Using Observable pattern (recommended)
+import { BehaviorSubject } from "rxjs";
+import { defined } from "applesauce-core/observable";
+
 const storage$ = new BehaviorSubject<SecureStorage | null>(null);
 
-persistEncryptedContent(eventStore, storage$.pipe(defined()));
+const cleanup = persistEncryptedContent(eventStore, storage$.pipe(defined()));
 
 // Later, when storage is ready:
 await storage.unlock(pin);
@@ -173,7 +128,7 @@ persistEncryptedContent(eventStore, storage$.pipe(defined()), async (event) => {
 
 ## Stopping the Process
 
-The function returns a cleanup function that you can call to stop persisting/restoring:
+The function returns a cleanup function that you can call to stop persisting/restoring. Call it when the account session ends before wiring another account's cache. Cleanup does not erase plaintext already attached to events; dispose account-owned private stores and views separately.
 
 ```typescript
 const cleanup = persistEncryptedContent(eventStore, storage$.pipe(defined()));
@@ -184,6 +139,6 @@ cleanup();
 
 ## Best Practices
 
-1. **Use Observable pattern** - Pass an Observable of storage rather than the storage directly, so you can handle async initialization or multiple storage instances for each user
+1. **Match the account lifecycle** - Use observable storage for delayed initialization, and stop the old persistence process when changing accounts
 2. **Handle errors gracefully** - The function logs errors but doesn't throw, so your app continues working even if caching fails
-3. **Store securely** - Since you're storing encrypted content, make sure your storage implementation is secure (encrypted at rest, etc.)
+3. **Protect plaintext** - Cache values are decrypted content; use account-scoped storage encrypted at rest
