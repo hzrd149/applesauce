@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fixtures.js";
 import { unixNow } from "../../helpers";
 import { includeReplaceableIdentifier, stamp } from "../event.js";
@@ -39,6 +39,20 @@ describe("includeReplaceableIdentifier", () => {
 });
 
 describe("stamp", () => {
+  it.each([false, true])("uses known identity with discovery fallback (known=%s)", async (knownIdentity) => {
+    const user = new FakeUser();
+    const signer = {
+      getKnownPublicKey: () => (knownIdentity ? user.pubkey : undefined),
+      getPublicKey: vi.fn(() => user.getPublicKey()),
+      signEvent: user.signEvent.bind(user),
+    };
+
+    const result = await stamp(signer)({ kind: 1, content: "hello", tags: [], created_at: 1 });
+
+    expect(result.pubkey).toBe(user.pubkey);
+    expect(signer.getPublicKey).toHaveBeenCalledTimes(knownIdentity ? 0 : 1);
+  });
+
   it("should not mutate the caller's original draft (CR-05)", async () => {
     const user = new FakeUser();
     const signedEvent = user.note("hello world");

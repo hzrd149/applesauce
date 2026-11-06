@@ -52,10 +52,11 @@ export class ActionRunner {
   ) {}
 
   protected async getContext(): Promise<ActionContext> {
-    // Reuse the context only while the signer still answers for the same pubkey. A proxy
+    // Reuse the context only while the signer still represents the same pubkey. A proxy
     // signer (e.g. AccountManager.signer) changes identity when the active account changes,
     // and a stale `self`/`user` would make actions read the previous account's events.
-    const self = await this.signer.getPublicKey();
+    const account = this.signer as EventSigner & { getKnownPublicKey?: () => string | undefined };
+    const self = account.getKnownPublicKey?.() ?? (await this.signer.getPublicKey());
     if (this._context?.self === self) return this._context;
     const user = castUser(self, this.events);
     this._context = {

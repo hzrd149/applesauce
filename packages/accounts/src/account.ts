@@ -105,6 +105,11 @@ export class BaseAccount<Signer extends ISigner, SignerData, Metadata extends un
     return account;
   }
 
+  /** Returns the account's known public key without contacting or unlocking the signer */
+  getKnownPublicKey(): string {
+    return this.pubkey;
+  }
+
   /** Gets the pubkey from the signer */
   getPublicKey(): Promise<string> {
     return this.operation(async () => {

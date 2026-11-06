@@ -123,7 +123,8 @@ export function stamp<K extends number = number>(
   return async (draft) => {
     if (!signer) throw new Error("Missing signer");
 
-    const pubkey = await signer.getPublicKey();
+    const account = signer as typeof signer & { getKnownPublicKey?: () => string | undefined };
+    const pubkey = account.getKnownPublicKey?.() ?? (await signer.getPublicKey());
     const newDraft = { ...draft, pubkey };
 
     // Remove old fields from the copy — never the caller's draft (CR-05: stamp must not mutate its input)

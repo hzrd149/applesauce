@@ -193,13 +193,14 @@ describe("ActionRunner", () => {
       expect(firstContext).toBe(secondContext);
     });
 
-    it("should rebuild context when the signer's pubkey changes (account switch)", async () => {
+    it.each([false, true])("should rebuild context on account switch (known identity=%s)", async (knownIdentity) => {
       const a = new FakeUser();
       const b = new FakeUser();
       let active: FakeUser = a;
       // Mirrors AccountManager.signer: a proxy that always targets the active account
-      const proxy: EventSigner = {
-        getPublicKey: () => active.getPublicKey(),
+      const proxy: EventSigner & { getKnownPublicKey: () => string | undefined } = {
+        getKnownPublicKey: () => (knownIdentity ? active.pubkey : undefined),
+        getPublicKey: vi.fn(() => active.getPublicKey()),
         signEvent: (draft) => active.signEvent(draft),
       };
       const publish = vi.fn().mockResolvedValue(undefined);
@@ -226,6 +227,7 @@ describe("ActionRunner", () => {
       expect(contexts[2].self).toBe(b.pubkey);
       expect(contexts[2].user.pubkey).toBe(b.pubkey);
       expect(contexts[2]).not.toBe(contexts[0]);
+      expect(proxy.getPublicKey).toHaveBeenCalledTimes(knownIdentity ? 0 : 3);
     });
   });
 });

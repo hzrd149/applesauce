@@ -30,6 +30,12 @@ export class ProxySigner<T extends ISigner> implements ISigner {
   async signEvent(template: EventTemplate): Promise<NostrEvent> {
     return this.signer.signEvent(template);
   }
+  /** Returns the current signer's known public key without performing discovery */
+  getKnownPublicKey(): string | undefined {
+    const account = this._signer as (T & { getKnownPublicKey?: () => string | undefined }) | undefined;
+    return account?.getKnownPublicKey?.();
+  }
+
   async getPublicKey(): Promise<string> {
     return this.signer.getPublicKey();
   }
