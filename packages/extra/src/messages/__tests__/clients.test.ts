@@ -213,7 +213,10 @@ describe("standalone messaging clients", () => {
     const { options, pool } = setup();
     const client = own(protocol === "legacy" ? new LegacyMessagesClient(options) : new WrappedMessagesClient(options));
 
-    const messages = await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()));
+    const messages =
+      client instanceof WrappedMessagesClient
+        ? await client.rumorStore.getByFilters(client.messageFilters)
+        : await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()));
 
     expect(messages).toEqual([]);
     expect(pool.subscription).not.toHaveBeenCalled();
@@ -234,8 +237,13 @@ describe("standalone messaging clients", () => {
       event = gift;
     }
 
-    const message = firstValueFrom(client.readMessages$());
+    const message = firstValueFrom(
+      client instanceof WrappedMessagesClient
+        ? client.rumorStore.filters(client.messageFilters, true)
+        : client.readMessages$(),
+    );
     eventStore.add(event);
+    if (client instanceof WrappedMessagesClient) await client.receiver.unlock(event);
     await expect(message).resolves.toBeDefined();
 
     expect(pool.subscription).not.toHaveBeenCalled();
@@ -378,7 +386,7 @@ describe("standalone messaging clients", () => {
     expect(await firstValueFrom(conversation.lifecycle$)).toBe("running");
   });
 
-  it("keeps wrapped conversation stores local, scoped, deduplicated, and reactive", async () => {
+  it("queries wrapped conversations from the shared store without retaining local copies", async () => {
     const { options, eventStore, pool } = setup();
     const client = own(new WrappedMessagesClient(options));
     const template = await WrappedMessageFactory.create(alice, "root").as(bobSigner).stamp();
@@ -400,8 +408,9 @@ describe("standalone messaging clients", () => {
     expect(client.conversation([bob, alice, bob])).toBe(conversation);
     expect(client.conversation(conversation.id)).toBe(conversation);
     expect(conversation.participants).toEqual([alice, bob].sort());
-    await vi.waitFor(() => expect(conversation.eventStore.getByFilters({})).toEqual([root]));
-    expect(await firstValueFrom(conversation.messages$)).toEqual([root]);
+    expect(conversation.rumorStore).toBe(client.rumorStore);
+    expect(await conversation.getMessages({ limit: 10 })).toEqual([root]);
+    expect(await firstValueFrom(conversation.timeline$({ since: root.created_at }))).toEqual([root]);
     expect(pool.subscription).not.toHaveBeenCalled();
     expect(pool.req).not.toHaveBeenCalled();
 
@@ -409,20 +418,19 @@ describe("standalone messaging clients", () => {
     await unlockGiftWrap(gift, aliceSigner);
     eventStore.add(gift);
     await client.unlock(gift);
-    await vi.waitFor(() => expect(conversation.eventStore.getByFilters({})).toHaveLength(2));
-    expect(await firstValueFrom(conversation.threads$)).toEqual([root]);
+    expect(await conversation.getMessages({ limit: 10 })).toHaveLength(2);
     expect(await firstValueFrom(conversation.replies$(root))).toEqual([reply]);
-    expect(await firstValueFrom(conversation.eventStore.event(root.id))).toEqual(root);
+    expect(await firstValueFrom(conversation.rumorStore.event(root.id))).toEqual(root);
 
     eventStore.remove(gifts[0]);
-    expect(conversation.eventStore.hasEvent(root.id)).toBe(true);
+    expect(await conversation.rumorStore.hasEvent(root.id)).toBe(true);
     eventStore.remove(gifts[1]);
     // Envelope eviction does not remove validated rumors from their independent store.
-    expect(conversation.eventStore.hasEvent(root.id)).toBe(true);
+    expect(await conversation.rumorStore.hasEvent(root.id)).toBe(true);
     await client.receiver.rumorStore.remove(root);
-    await vi.waitFor(() => expect(conversation.eventStore.hasEvent(root.id)).toBe(false));
+    expect(await conversation.getMessages({ limit: 10 })).toEqual([reply]);
     conversation[Symbol.dispose]();
-    expect(conversation.eventStore.getByFilters({})).toEqual([]);
+    expect(await client.rumorStore.getEvent(reply.id)).toEqual(reply);
     expect(eventStore.hasEvent(gift.id)).toBe(true);
     const replacement = client.conversation([bob]);
     expect(replacement).not.toBe(conversation);
@@ -758,7 +766,7 @@ describe("standalone messaging clients", () => {
       .map(([, event]) => event)
       .find((event) => event.tags.some((tag) => tag[0] === "p" && tag[1] === alice))!;
     eventStore.add(ownEnvelope);
-    const restored = await lastValueFrom(client.readMessages$({ history: true }));
+    const restored = await client.receiver.unlock(ownEnvelope);
     expect(pool.subscription).not.toHaveBeenCalled();
     expect(pool.req).not.toHaveBeenCalled();
     expect(restored).toEqual(rumor);
@@ -809,10 +817,10 @@ describe("standalone messaging clients", () => {
     );
     eventStore.add(JSON.parse(JSON.stringify(gift)));
     await client.start();
-    await vi.waitFor(async () => expect((await firstValueFrom(client.messages$))[0]?.content).toBe("cached"));
+    await vi.waitFor(async () => expect((await client.rumorStore.getEvent(rumor.id))?.content).toBe("cached"));
     expect(decrypt).not.toHaveBeenCalled();
-    expect((await firstValueFrom(client.conversation$([alice, bob])))[0].id).toBe(rumor.id);
-    expect((await firstValueFrom(client.conversation$([alice, bob].sort().join(":"))))[0].id).toBe(rumor.id);
+    expect((await client.conversation([alice, bob]).getMessages({ limit: 10 }))[0].id).toBe(rumor.id);
+    expect((await client.conversation([alice, bob].sort().join(":")).getMessages({ limit: 10 }))[0].id).toBe(rumor.id);
   });
 
   it("restarts the wrapped inbox and decrypts both layers only after opting in", async () => {
@@ -829,7 +837,7 @@ describe("standalone messaging clients", () => {
     expect(pool.subscription).toHaveBeenCalledTimes(1);
     expect(decrypt).not.toHaveBeenCalled();
     client.setAutoUnlock(true);
-    await vi.waitFor(async () => expect((await firstValueFrom(client.messages$))[0]?.content).toBe("wrapped hello"));
+    await vi.waitFor(async () => expect((await client.rumorStore.getEvent(rumor.id))?.content).toBe("wrapped hello"));
     expect(decrypt).toHaveBeenCalledTimes(2);
 
     client.stop();
@@ -936,7 +944,9 @@ describe("standalone messaging clients", () => {
     }
     const client = own(new WrappedMessagesClient(options));
     await client.unlock();
-    expect((await firstValueFrom(client.messages$)).map((message) => message.id)).toEqual([rumor.id]);
+    expect((await client.rumorStore.getByFilters(client.messageFilters)).map((message) => message.id)).toEqual([
+      rumor.id,
+    ]);
   });
 
   it.each([LegacyMessagesClient, WrappedMessagesClient])(

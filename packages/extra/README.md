@@ -97,7 +97,7 @@ Each client owns its options, request types, lifecycle, and protocol orchestrati
 ```ts
 const client = new WrappedMessagesClient({ pubkey, signer, eventStore, pool });
 await client.start();
-const subscription = client.conversation$([recipient]).subscribe(renderMessages);
+const subscription = client.conversation([recipient]).timeline$({ since, until }).subscribe(renderMessages);
 client.setAutoUnlock(true);
 await client.send({ recipients: [recipient], content: "Hello" });
 // When the owner ends:
@@ -131,7 +131,7 @@ await conversation.publish(prepared);
 
 `sending$` stays active through the complete draft handoff, including storage. If draft removal fails after preparation, the handle is still returned and `errors$` reports a contextual `storage` error with its event ID; the draft remains available. Cancellation before preparation succeeds preserves the draft; cancellation after success skips removal if it has not started and still returns the handle. An already-started storage removal may finish after cancellation, but queued newer edits are preserved. With `publicationStorage`, preparation retains the signed event durably before removing the draft; after `stop()` or disposal, recover pending publications through an active conversation.
 
-`messages$`, `readMessages$()`, `send()`, and prepared publications expose native kind-4 events for legacy messages and validated kind-14 chat or kind-15 file rumors for wrapped messages. `readMessages$()` only reads events already in memory and watches store additions; `{ history: true }` reads a finite stored snapshot. It can invoke signer decryption even when auto-unlock is disabled. Use `start()`, `sync$()`, `loadHistory()`, or conversation timeline loaders to load from the network. Legacy plaintext remains available through `getEncryptedContent(event)` or `EncryptedContentModel`; the signed event's `content` remains encrypted. `conversations$` and `conversation$()` derive their state from the shared store.
+Legacy `messages$` and `readMessages$()` expose native kind-4 events, with plaintext available through `getEncryptedContent(event)` or `EncryptedContentModel`. Legacy `readMessages$()` can invoke signer decryption; `{ history: true }` reads a finite stored snapshot. Wrapped messages are validated kind-14 chat or kind-15 file rumors read directly from `rumorStore`; receiving and unwrapping belong to `receiver`. Use `start()`, `sync$()`, or `loadHistory()` to load encrypted envelopes from the network, independently of plaintext queries.
 
 Legacy sends take `{ recipient, content }` and use `LegacyMessagesClientOptions`; wrapped sends take `{ recipients, content }` and use `WrappedMessagesClientOptions`. Kehto's protocol adapters translate native events into normalized messages before the multi-protocol adapter merges them.
 
@@ -191,13 +191,12 @@ Use `client.start()` separately for account-wide inbox discovery. Stopping a con
 
 ### Consume a wrapped conversation
 
-`WrappedConversation` exposes a local `RumorStore` containing the conversation's decrypted kind-14 chat and kind-15 file messages. Participant order and duplicate pubkeys resolve to the same client-owned instance, including self-conversations.
+`WrappedConversation` is a lightweight handle over the client's shared `RumorStore` or `AsyncRumorStore`. Participant order and duplicate pubkeys resolve to the same client-owned handle, including self-conversations. Creating a handle does not read or subscribe to the store.
 
 ```ts
 const conversation = client.conversation([recipient]);
-const messages = use$(conversation.messages$);
-const threads = use$(conversation.threads$);
-const replies = use$(() => conversation.replies$(parent), [conversation, parent]);
+const messages = use$(() => conversation.timeline$({ since, until }), [conversation, since, until]);
+const replies = use$(() => conversation.replies$(parent, { since, until }), [conversation, parent, since, until]);
 
 await conversation.send({ content: "Hello" });
 await conversation.reply(parent, { content: "Reply" });
@@ -205,17 +204,19 @@ const prepared = await conversation.prepareSend({ content: "Retryable" });
 await prepared.publish();
 ```
 
-`conversation.eventStore` supports ordinary rumor queries and custom models. `ConversationMessagesModel`, `ConversationThreadsModel`, and `ConversationRepliesModel` are also exported from `applesauce-extra/messages` for use with conversation-scoped rumor stores. Threads are root messages with direct replies; replies select only the specified parent.
+`client.rumorStore`, `client.receiver.rumorStore`, and `conversation.rumorStore` are the same instance. Use normal store filters, timelines, and models to query it. `client.messageFilters` selects the account's chat and file rumors; `conversation.filter` selects candidates, and `conversation.matches(rumor)` checks exact participant membership.
 
-Creating a conversation follows already-decrypted messages without loading or prompting the signer. Start, sync, unlock, and authenticate through the client: encrypted gift wraps cannot be filtered by conversation. Removing the last envelope for a rumor removes it from the local store too.
+`getMessages(filter)` reads a snapshot and `timeline$(filter)` watches an explicit window. Both filter exact conversation membership after the store query: NIP-01 limits apply to candidates, so a filtered page may be short or empty. Timeline limits bound the initial query, not future arrivals. Choose history windows and conversation-list aggregation in the application; the client retains no all-inbox message array or conversation index.
 
-`dispose()` or `[Symbol.dispose]()` releases the local store and cancels conversation sends without stopping the inbox. The next `client.conversation(...)` call creates a fresh instance. Disposing the client disposes all its conversations; stopping inbox loading leaves local views available. Keep profile queries on the application's shared store, and persist private plaintext only through encrypted storage.
+Processing belongs to the receiver: use `receiver.unlock(envelope)`, `readInbox()`, or background receiving, then query stored rumors. Envelope eviction does not remove stored plaintext. Conversation disposal releases its views and drafts without disposing or clearing the shared store.
 
 ### Integration
 
 Configure the store's profile/relay-list loaders before creating the client. Supply `cacheRequest` for encrypted-event hydration and `decryptionCache` for private plaintext; the application owns event persistence and encryption at rest. Pass `onAuthRequired` and `authTimeout` to integrate relay authentication with your UI.
 
-Wrapped sends require kind-10050 relays for every participant, including the sender. `fallbackRelays` applies to reads and legacy delivery only. `expiration` tags the logical message; `envelopeExpiration` independently expires wrapped relay envelopes.
+Pass `rumorStore` at the top level to share an application-owned plaintext store with the receiver. Otherwise, an injected receiver supplies its store, or the owned receiver creates an in-memory default. Only the default store is disposed by the client; a supplied receiver and explicitly supplied store must reference the same rumor store.
+
+Wrapped sends require kind-10050 relays for every participant, including the sender. `fallbackRelays` applies to reads and legacy delivery only. `expiration` tags the logical message; `envelopeExpiration` independently expires wrapped relay envelopes. Wrapped sends use explicit expiration values and never inspect message history to infer a lifetime.
 
 ```ts
 const prepared = await client.prepareSend({ recipients, content });

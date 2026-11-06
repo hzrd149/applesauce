@@ -3,16 +3,15 @@ import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
   getConversationParticipants,
+  getWrappedMessageParent,
   isWrappedMessage,
 } from "applesauce-common/helpers";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
-import { RumorStore } from "applesauce-core/event-store";
-import type { Rumor } from "applesauce-core/helpers";
-import type { Observable, Subscription } from "rxjs";
+import { kinds, type Filter, type Rumor } from "applesauce-core/helpers";
+import { Observable, ReplaySubject, map, shareReplay, takeUntil } from "rxjs";
 import type { UploadEncryptedFileOptions } from "../common/attachments.js";
 import type { MessageDraft, MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
 import type { WrappedMessagesClient } from "./client.js";
-import { ConversationMessagesModel, ConversationRepliesModel, ConversationThreadsModel } from "./models.js";
 import type { PreparedWrappedMessage, WrappedMessageSendRequest } from "./types.js";
 
 /** A message request whose recipients are supplied by its conversation */
@@ -30,18 +29,15 @@ export class WrappedConversation {
   /** The canonical participant set including the client owner */
   readonly participants: readonly string[];
 
-  /** The local decrypted rumor store, without network loaders */
-  readonly eventStore = new RumorStore();
+  /** The shared plaintext store; conversation disposal never clears it */
+  readonly rumorStore;
 
-  /** The conversation's chat and file message timeline */
-  readonly messages$ = this.eventStore.model(ConversationMessagesModel);
-
-  /** The root messages that have replies */
-  readonly threads$ = this.eventStore.model(ConversationThreadsModel);
-  private readonly subscription: Subscription;
+  /** NIP-01 candidate filter; use matches to distinguish exact participant sets */
+  readonly filter: Filter;
+  private readonly destroyed = new ReplaySubject<void>(1);
   private readonly cancellation = new AbortController();
 
-  /** Creates a local conversation and follows its owner's decrypted messages */
+  /** Creates a conversation handle without subscribing to or querying the store */
   constructor(
     /** The fixed-account owner of this conversation */
     readonly client: WrappedMessagesClient,
@@ -56,17 +52,12 @@ export class WrappedConversation {
     this.drafts = new ConversationDraftState(`draft:${this.id}`, draftStorage, draftFileStorage);
     this.draft$ = this.drafts.draft$;
 
-    // Mirror the owner timeline locally, including removals, for reply and thread models.
-    // This conversation owns the subscription and releases it during disposal.
-    this.subscription = client.conversation$(this.id).subscribe((messages) => {
-      const ids = new Set(messages.map((message) => message.id));
-
-      for (const previous of this.eventStore.getByFilters({})) {
-        if (!ids.has(previous.id)) this.eventStore.remove(previous);
-      }
-
-      for (const message of messages) this.eventStore.add(message);
-    });
+    this.rumorStore = client.rumorStore;
+    this.filter = {
+      kinds: [kinds.PrivateDirectMessage, kinds.FileMessage],
+      authors: [...this.participants],
+      ...(this.participants.length > 1 ? { "#p": [...this.participants] } : {}),
+    };
   }
 
   /** Whether this conversation has been permanently released */
@@ -107,9 +98,37 @@ export class WrappedConversation {
     return { ...options, signal };
   }
 
-  /** Returns direct replies to a message ID or rumor */
-  replies$(message: string | Rumor): Observable<Rumor[]> {
-    return this.eventStore.model(ConversationRepliesModel, typeof message === "string" ? message : message.id);
+  /** Checks whether a rumor belongs to this exact conversation */
+  matches(message: Rumor): boolean {
+    return isWrappedMessage(message) && getConversationIdentifierFromMessage(message) === this.id;
+  }
+
+  /** Watches direct replies using the store's NIP-01 tag query */
+  replies$(message: string | Rumor, filter: Filter = {}): Observable<Rumor[]> {
+    const id = typeof message === "string" ? message : message.id;
+    return this.timeline$({ ...filter, "#e": [id] }).pipe(
+      map((messages) => messages.filter((message) => getWrappedMessageParent(message) === id)),
+    );
+  }
+
+  /**
+   * Reads a store snapshot; filter limits apply to candidates before exact participant matching
+   * @throws if disposed, cancelled, or the store query fails
+   */
+  async getMessages(filter: Filter, options: MessageOperationOptions = {}): Promise<Rumor[]> {
+    const { signal } = this.context(options);
+    const messages = await this.rumorStore.getTimeline({ ...this.filter, ...filter });
+    signal.throwIfAborted();
+    return messages.filter((message) => this.matches(message));
+  }
+
+  /** Watches a caller-selected store window; limit bounds initial candidates, not future live arrivals */
+  timeline$(filter: Filter): Observable<Rumor[]> {
+    return this.rumorStore.timeline({ ...this.filter, ...filter }).pipe(
+      map((messages) => messages.filter((message) => this.matches(message))),
+      shareReplay({ bufferSize: 1, refCount: true }),
+      takeUntil(this.destroyed),
+    );
   }
 
   /**
@@ -161,20 +180,18 @@ export class WrappedConversation {
     request: Omit<WrappedConversationSendRequest, "replyTo">,
     options: MessageOperationOptions = {},
   ): Promise<Rumor> {
-    if (!isWrappedMessage(parent) || getConversationIdentifierFromMessage(parent) !== this.id)
-      throw new Error("Reply parent does not belong to this conversation");
+    if (!this.matches(parent)) throw new Error("Reply parent does not belong to this conversation");
     return this.send({ ...request, replyTo: parent.id }, options);
   }
 
-  /** Releases local subscriptions, pending sends, and retained plaintext */
+  /** Releases conversation subscriptions and drafts without clearing shared rumors */
   dispose(): void {
     if (this.isDisposed) return;
 
     this.cancellation.abort();
     this.drafts.dispose();
-    this.subscription.unsubscribe();
-    this.eventStore.dispose();
-    for (const message of [...this.eventStore.getByFilters({})]) this.eventStore.remove(message);
+    this.destroyed.next();
+    this.destroyed.complete();
   }
 
   /** Releases this conversation when leaving a using scope */

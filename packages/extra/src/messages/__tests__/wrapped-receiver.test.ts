@@ -5,7 +5,7 @@ import { finalizeEvent, getEventHash, kinds, unixNow, type NostrEvent, type Rumo
 import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { BehaviorSubject, EMPTY, firstValueFrom, lastValueFrom, Observable, of, Subject, toArray } from "rxjs";
+import { BehaviorSubject, EMPTY, firstValueFrom, Observable, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 import type { GiftWrapProcessingRecord } from "../../gift-wrap/types.js";
@@ -77,6 +77,95 @@ async function envelope(content = crypto.randomUUID()) {
 }
 
 describe("wrapped receiver integration", () => {
+  it("shares an application rumor store without reading it eagerly or disposing it", async () => {
+    const { options } = setup();
+    const rumorStore = own(new RumorStore());
+    const read = vi.spyOn(rumorStore, "getByFilters");
+    const timeline = vi.spyOn(rumorStore, "getTimeline");
+    const dispose = vi.spyOn(rumorStore, "dispose");
+    const client = own(new WrappedMessagesClient({ ...options, rumorStore }));
+    const conversation = client.conversation(peer);
+
+    expect(client.rumorStore).toBe(rumorStore);
+    expect(client.receiver.rumorStore).toBe(rumorStore);
+    expect(conversation.rumorStore).toBe(rumorStore);
+    expect(read).not.toHaveBeenCalled();
+    expect(timeline).not.toHaveBeenCalled();
+
+    conversation.dispose();
+    client.dispose();
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it("disposes only its default rumor store and rejects mismatched injected stores", () => {
+    const { options } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const dispose = vi.spyOn(client.rumorStore, "dispose");
+    client.dispose();
+    client.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+
+    const receiver = own(new GiftWrapReceiver(options));
+    const anotherStore = own(new RumorStore());
+    expect(() => new WrappedMessagesClient({ ...options, receiver, rumorStore: anotherStore })).toThrow("rumor store");
+    const shared = own(new WrappedMessagesClient({ ...options, receiver, rumorStore: receiver.rumorStore }));
+    const disposeShared = vi.spyOn(receiver.rumorStore, "dispose");
+    shared.dispose();
+    expect(disposeShared).not.toHaveBeenCalled();
+  });
+
+  it("passes selective native filters to the store instead of indexing the full inbox", async () => {
+    const { options } = setup();
+    const rumorStore = own(new RumorStore());
+    for (let index = 0; index < 2000; index++) {
+      const template = {
+        pubkey: peer,
+        kind: kinds.PrivateDirectMessage,
+        content: String(index),
+        created_at: index + 1,
+        tags: [["p", pubkey]],
+      };
+      rumorStore.add({ ...template, id: getEventHash(template) });
+    }
+    const read = vi.spyOn(rumorStore, "getTimeline");
+    const scan = vi.spyOn(rumorStore, "getByFilters");
+    const client = own(new WrappedMessagesClient({ ...options, rumorStore }));
+    const conversation = client.conversation(peer);
+    expect(read).not.toHaveBeenCalled();
+    expect(scan).not.toHaveBeenCalled();
+
+    const messages = await conversation.getMessages({ since: 1990, until: 1999, limit: 5 });
+    expect(messages.map((message) => message.created_at)).toEqual([1999, 1998, 1997, 1996, 1995]);
+    expect(read).toHaveBeenCalledExactlyOnceWith({ ...conversation.filter, since: 1990, until: 1999, limit: 5 });
+    expect(scan).not.toHaveBeenCalled();
+  });
+
+  it("separates exact participant sets after querying and leaves limit semantics to the store", async () => {
+    const { options } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const conversation = client.conversation(peer);
+    const makeRumor = (created_at: number, recipients: string[]) => {
+      const template = {
+        pubkey: peer,
+        kind: kinds.PrivateDirectMessage,
+        content: "hello",
+        created_at,
+        tags: recipients.map((recipient) => ["p", recipient]),
+      };
+      return { ...template, id: getEventHash(template) };
+    };
+    const direct = makeRumor(1, [pubkey]);
+    const group = makeRumor(2, [pubkey, "ab".repeat(32)]);
+    await client.rumorStore.add(direct);
+    await client.rumorStore.add(group);
+
+    expect(conversation.matches(group)).toBe(false);
+    expect(await conversation.getMessages({ since: 0, until: 2 })).toEqual([direct]);
+    // The newest candidate is a group message; no hidden backfill or cursor traversal occurs.
+    expect(await conversation.getMessages({ limit: 1 })).toEqual([]);
+    expect(await firstValueFrom(conversation.timeline$({ since: 0, until: 2 }))).toEqual([direct]);
+  });
+
   it("keeps injected loading and policy app-owned across client start, stop, and disposal", async () => {
     const { options, pool, arrivals } = setup();
     const receiver = own(new GiftWrapReceiver({ ...options, autoUnlock: true }));
@@ -112,7 +201,8 @@ describe("wrapped receiver integration", () => {
         ...options,
         historySpan: 3600,
         autoUnlock: true,
-        receiverOptions: { rumorStore: rumors, autoUnlock: false, decryptionConcurrency: 1 },
+        rumorStore: rumors,
+        receiverOptions: { autoUnlock: false, decryptionConcurrency: 1 },
       }),
     );
     const disposeRumors = vi.spyOn(rumors, "dispose");
@@ -184,27 +274,23 @@ describe("wrapped receiver integration", () => {
     expect(await receiver.rumorStore.getEvent(rumor.id)).toEqual(rumor);
   });
 
-  it("keeps passive views prompt-free and shares active readers without changing auto-unlock", async () => {
+  it("keeps store queries prompt-free and delegates explicit decryption to the receiver", async () => {
     const { options, eventStore, pool } = setup();
     const client = own(new WrappedMessagesClient({ ...options, autoUnlock: true }));
     const { event, rumor } = await envelope();
     eventStore.add(event);
     const decrypt = vi.spyOn(signer.nip44, "decrypt");
     const policy = vi.spyOn(client.receiver, "setAutoUnlock");
-    expect(await firstValueFrom(client.messages$)).toEqual([]);
-    expect(await firstValueFrom(client.conversations$)).toEqual([]);
+    expect(await client.rumorStore.getByFilters(client.messageFilters)).toEqual([]);
     expect(decrypt).not.toHaveBeenCalled();
-    const reads = await Promise.all([
-      lastValueFrom(client.readMessages$({ history: true }).pipe(toArray())),
-      lastValueFrom(client.readMessages$({ history: true }).pipe(toArray())),
-    ]);
-    expect(reads).toEqual([[rumor], [rumor]]);
+    const reads = await Promise.all([client.receiver.unlock(event), client.receiver.unlock(event)]);
+    expect(reads).toEqual([rumor, rumor]);
     expect(decrypt).toHaveBeenCalledTimes(2);
     expect(policy).not.toHaveBeenCalled();
     expect(pool.subscription).not.toHaveBeenCalled();
   });
 
-  it("keeps finite readers scoped to their initial envelope snapshot", async () => {
+  it("keeps explicit envelope processing independent of later arrivals", async () => {
     const { options, eventStore } = setup();
     const client = own(new WrappedMessagesClient(options));
     const first = await envelope("first");
@@ -213,15 +299,15 @@ describe("wrapped receiver integration", () => {
     const gate = deferred<string>();
     const decrypt = signer.nip44.decrypt.bind(signer.nip44);
     const calls = vi.spyOn(signer.nip44, "decrypt").mockImplementationOnce(() => gate.promise);
-    const reading = lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()));
+    const reading = client.receiver.unlock(first.event);
     await vi.waitFor(() => expect(calls).toHaveBeenCalledTimes(1));
     eventStore.add(later.event);
     gate.resolve(await decrypt(first.event.pubkey, first.event.content));
-    expect(await reading).toEqual([first.rumor]);
+    expect(await reading).toEqual(first.rumor);
     expect(calls).toHaveBeenCalledTimes(2);
   });
 
-  it("reads persisted async rumors without envelopes and mirrors removal and expiration", async () => {
+  it("queries persisted async rumors directly and observes removal without envelopes", async () => {
     const { options, pool } = setup();
     const memory = new EventMemory<Rumor>();
     const database = {
@@ -252,17 +338,18 @@ describe("wrapped receiver integration", () => {
     await rumorStore.add(rumor);
     const unrelated = { ...template, kind: 1 };
     await rumorStore.add({ ...unrelated, id: getEventHash(unrelated) });
-    const client = own(new WrappedMessagesClient({ ...options, receiver, mirrorExpiration: true }));
-    expect(await firstValueFrom(client.messages$)).toEqual([rumor]);
-    expect(await lastValueFrom(client.readMessages$({ history: true }).pipe(toArray()))).toEqual([rumor]);
+    const client = own(new WrappedMessagesClient({ ...options, receiver }));
+    expect(await client.rumorStore.getByFilters(client.messageFilters)).toEqual([rumor]);
     const conversation = client.conversation(peer);
-    await vi.waitFor(() => expect(conversation.eventStore.hasEvent(rumor.id)).toBe(true));
-    const prepared = await client.prepareSend({ recipients: [peer], content: "reply" });
-    expect(prepared.message.tags).toContainEqual(["expiration", String(prepared.message.created_at + 3600)]);
+    expect(conversation.rumorStore).toBe(rumorStore);
+    expect(await conversation.getMessages({ limit: 10 })).toEqual([rumor]);
+    const snapshots: Rumor[][] = [];
+    const subscription = conversation.timeline$({ since: created }).subscribe((messages) => snapshots.push(messages));
+    cleanup.push(() => subscription.unsubscribe());
+    await vi.waitFor(() => expect(snapshots.at(-1)).toEqual([rumor]));
     await rumorStore.remove(rumor);
-    await vi.waitFor(() => expect(conversation.eventStore.hasEvent(rumor.id)).toBe(false));
-    const permanent = await client.prepareSend({ recipients: [peer], content: "permanent" });
-    expect(permanent.message.tags.some((tag) => tag[0] === "expiration")).toBe(false);
+    await vi.waitFor(() => expect(snapshots.at(-1)).toEqual([]));
+    expect(await conversation.getMessages({ limit: 10 })).toEqual([]);
     expect(pool.subscription).not.toHaveBeenCalled();
   });
 
@@ -281,7 +368,7 @@ describe("wrapped receiver integration", () => {
       attempts: 1,
     };
     const processingStore = { list: vi.fn(() => [completed]), set: vi.fn() };
-    const client = own(new WrappedMessagesClient({ ...options, receiverOptions: { rumorStore, processingStore } }));
+    const client = own(new WrappedMessagesClient({ ...options, rumorStore, receiverOptions: { processingStore } }));
     const decrypt = vi.spyOn(signer.nip44, "decrypt");
     await client.unlock(event);
     expect(decrypt).not.toHaveBeenCalled();
@@ -308,7 +395,13 @@ describe("wrapped receiver integration", () => {
     const receiver = own(new GiftWrapReceiver({ ...options, signer: undefined }));
     const client = own(new WrappedMessagesClient({ ...options, receiver }));
     const decrypt = vi.spyOn(signer.nip44, "decrypt");
-    const message = await client.send({ recipients: [peer], content: "sent" });
+    const read = vi.spyOn(receiver.rumorStore, "getByFilters");
+    const timeline = vi.spyOn(receiver.rumorStore, "getTimeline");
+    const expiration = unixNow() + 3600;
+    const message = await client.send({ recipients: [peer], content: "sent", expiration });
+    expect(message.tags).toContainEqual(["expiration", String(expiration)]);
+    expect(read).not.toHaveBeenCalled();
+    expect(timeline).not.toHaveBeenCalled();
     expect(await receiver.rumorStore.getEvent(message.id)).toEqual(message);
     expect(decrypt).not.toHaveBeenCalled();
     expect(pool.subscription).not.toHaveBeenCalled();
@@ -320,7 +413,7 @@ describe("wrapped receiver integration", () => {
     vi.spyOn(rumorStore, "add").mockImplementation(() => {
       throw new Error("rumor store offline");
     });
-    const client = own(new WrappedMessagesClient({ ...options, receiverOptions: { rumorStore } }));
+    const client = own(new WrappedMessagesClient({ ...options, rumorStore }));
     const prepared = await client.prepareSend({ recipients: [peer], content: "accepted" });
     await expect(prepared.publish()).resolves.toEqual(prepared.message);
     expect(prepared.publications.every((publication) => publication.accepted)).toBe(true);

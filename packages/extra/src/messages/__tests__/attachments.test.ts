@@ -3,7 +3,7 @@ import { EventStore } from "applesauce-core";
 import { finalizeEvent, kinds, unixNow, type NostrEvent } from "applesauce-core/helpers";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
-import { EMPTY, filter, firstValueFrom, lastValueFrom, of, Subject } from "rxjs";
+import { EMPTY, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadAttachment, uploadEncryptedFile, WrappedMessagesClient, type MessageFileUploader } from "../index.js";
 
@@ -120,10 +120,10 @@ describe("WrappedMessagesClient files", () => {
       .find((event) => event.tags.some((tag) => tag[0] === "p" && tag[1] === alice))!;
     eventStore.add(ownEnvelope);
 
-    const restored = await lastValueFrom(client.readMessages$({ history: true }));
+    const restored = await client.receiver.unlock(ownEnvelope);
     expect(restored).toEqual(rumor);
 
-    const messages = await firstValueFrom(conversation.messages$.pipe(filter((list) => list.length > 0)));
+    const messages = await conversation.getMessages({ limit: 10 });
     expect(getMessageAttachments(messages[0])).toEqual([expect.objectContaining({ url: file.url })]);
   });
 });

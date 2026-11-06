@@ -1,4 +1,5 @@
 import type { EventStore } from "applesauce-core";
+import type { AsyncRumorStore, RumorStore } from "applesauce-core/event-store";
 import type { EncryptedContentCache, Rumor } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
 import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loaders";
@@ -24,7 +25,7 @@ export type WrappedMessagesClientOptions = WrappedMessagesClientDependencies &
         /** Omit to create a client-owned receiver */
         receiver?: undefined;
         /** Incoming policies overriding client defaults; historySpan is an envelope lookback */
-        receiverOptions?: Omit<GiftWrapReceiverOptions, "pubkey" | "eventStore" | "pool">;
+        receiverOptions?: Omit<GiftWrapReceiverOptions, "pubkey" | "eventStore" | "pool" | "rumorStore">;
       }
   );
 
@@ -36,6 +37,8 @@ export interface WrappedMessagesClientDependencies {
   signer?: ISigner;
   /** The shared store with profile and relay-list loaders configured */
   eventStore: EventStore;
+  /** The shared plaintext destination; defaults to the receiver's store or an owned in-memory store */
+  rumorStore?: RumorStore | AsyncRumorStore;
   /** The shared relay pool */
   pool: RelayPool;
   /** The encrypted gift-wrap cache */
@@ -62,8 +65,6 @@ export interface WrappedMessagesClientDependencies {
   onAuthRequired?: SyncAuthHandler;
   /** The maximum wait for an authentication phase, or false */
   authTimeout?: number | false;
-  /** Whether to mirror the newest conversation rumor lifetime on sends */
-  mirrorExpiration?: boolean;
   /** The uploader for encrypted file attachments, such as a Blossom client */
   upload?: MessageFileUploader;
 }

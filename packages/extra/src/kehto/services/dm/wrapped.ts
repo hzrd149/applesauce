@@ -2,9 +2,23 @@ import { DmPreparationCache } from "./preparation-cache.js";
 import type { PreparedWrappedMessage } from "../../../messages/index.js";
 import { createClientProtocol } from "./client-protocol.js";
 import type { NostrMessageProtocolOptions } from "./nostr-options.js";
-import { getConversationParticipants } from "applesauce-common/helpers";
+import { getConversationParticipants, isWrappedMessage } from "applesauce-common/helpers";
 import { kinds, unixNow, type Rumor } from "applesauce-core/helpers";
-import { catchError, concat, defer, finalize, ignoreElements, map, merge, NEVER, share } from "rxjs";
+import {
+  catchError,
+  concat,
+  defer,
+  filter,
+  finalize,
+  fromEvent,
+  ignoreElements,
+  map,
+  merge,
+  mergeMap,
+  NEVER,
+  share,
+  takeUntil,
+} from "rxjs";
 import { WrappedMessagesClient, WrappedMessagePublicationError } from "../../../messages/index.js";
 import { DmPublicationError } from "./publication.js";
 import { approveMessage } from "./approval.js";
@@ -18,6 +32,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       ...config,
       pubkey: account.pubkey,
       signer: account.signer,
+      autoUnlock: true,
     });
     const preparations = new DmPreparationCache<PreparedWrappedMessage>();
     const normalize = (rumor: Rumor): DmProtocolMessage => ({
@@ -28,7 +43,7 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
       content: rumor.content,
       status: rumor.pubkey === account.pubkey ? "sent" : "received",
     });
-    // Kehto subscriptions own loading; message readers only observe the store.
+    // Kehto authorizes background decryption; the receiver owns all envelope processing.
     const liveLoading$ = concat(defer(() => client.start()).pipe(ignoreElements()), NEVER).pipe(
       finalize(() => client.stop()),
       share(),
@@ -40,10 +55,13 @@ export function createWrappedMessageProtocol(config: NostrMessageProtocolOptions
         (context.history
           ? concat(
               defer(() => client.loadHistory({ signal: context.signal })).pipe(ignoreElements()),
-              client.readMessages$(context),
+              defer(() => client.receiver.unlock(undefined, { signal: context.signal })).pipe(ignoreElements()),
+              defer(async () => client.rumorStore.getByFilters(client.messageFilters)).pipe(
+                mergeMap((messages) => messages),
+              ),
             )
-          : merge(client.readMessages$(context), liveLoading$)
-        ).pipe(map(normalize)),
+          : merge(client.rumorStore.filters(client.messageFilters), liveLoading$)
+        ).pipe(filter(isWrappedMessage), map(normalize), takeUntil(fromEvent(context.signal, "abort"))),
       prepareSend$: (request, context) =>
         defer(async () => {
           const prepared = await preparations.prepare(request, context.windowId, async () => {

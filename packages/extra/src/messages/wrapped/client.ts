@@ -1,11 +1,10 @@
 import {
   createConversationIdentifier,
-  getConversationIdentifierFromMessage,
   getConversationParticipants,
   isGiftWrapUnlocked,
 } from "applesauce-common/helpers";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
-import { unixNow, type NostrEvent, type Rumor } from "applesauce-core/helpers";
+import { kinds, unixNow, type Filter, type NostrEvent, type Rumor } from "applesauce-core/helpers";
 import {
   BehaviorSubject,
   catchError,
@@ -38,8 +37,6 @@ import type {
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
-import { selectWrappedMessages, groupWrappedMessages } from "./models.js";
-import { readWrappedMessages$ } from "./reading.js";
 
 const TWO_DAYS = 2 * 24 * 60 * 60;
 
@@ -59,14 +56,13 @@ export class WrappedMessagesClient {
 
   /** The incoming receiver, owned by this client only when constructed internally */
   readonly receiver: GiftWrapReceiver;
+  /** The shared validated plaintext store used by the receiver and conversation queries */
+  readonly rumorStore;
   private readonly ownsReceiver: boolean;
   private readonly subscriptions = new Subscription();
 
-  /** The validated, deduplicated chat and file rumors */
-  readonly messages$: Observable<Rumor[]>;
-
-  /** The conversations discovered after decryption */
-  readonly conversations$: Observable<{ id: string; participants: string[]; lastMessage: Rumor }[]>;
+  /** NIP-01 filters for this account's chat and file rumors in the shared rumor store */
+  readonly messageFilters: Filter[];
 
   /** The owner's read relays */
   readonly relays$: Observable<string[]>;
@@ -132,6 +128,8 @@ export class WrappedMessagesClient {
         options.receiver.pool !== options.pool)
     )
       throw new Error("Receiver must match the client account, event store, and relay pool");
+    if (options.receiver && options.rumorStore && options.receiver.rumorStore !== options.rumorStore)
+      throw new Error("Receiver must use the client rumor store");
 
     this.ownsReceiver = !options.receiver;
     this.receiver =
@@ -151,7 +149,9 @@ export class WrappedMessagesClient {
         pubkey: options.pubkey,
         eventStore: options.eventStore,
         pool: options.pool,
+        rumorStore: options.rumorStore,
       });
+    this.rumorStore = this.receiver.rumorStore;
     this.authentication = new MessageAuthentication(options.pool, options.pubkey, options.signer);
     this.authRequests$ = combineLatest([this.authentication.requests$, this.receiver.authRequests$]).pipe(
       map(([sending, receiving]) => [
@@ -164,6 +164,10 @@ export class WrappedMessagesClient {
     this.eventStore = options.eventStore;
     this.pool = options.pool;
     this.signer = options.signer;
+    this.messageFilters = [
+      { kinds: [kinds.PrivateDirectMessage, kinds.FileMessage], authors: [this.pubkey] },
+      { kinds: [kinds.PrivateDirectMessage, kinds.FileMessage], "#p": [this.pubkey] },
+    ];
 
     const signer = options.signer ?? {
       getPublicKey: async () => options.pubkey,
@@ -186,12 +190,6 @@ export class WrappedMessagesClient {
     this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
       map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
     );
-
-    this.messages$ = this.receiver.rumors$.pipe(
-      map((rumors) => selectWrappedMessages(rumors, this.pubkey)),
-      takeUntil(this.destroyed),
-    );
-    this.conversations$ = this.messages$.pipe(map(groupWrappedMessages));
 
     this.subscriptions.add(
       this.receiver.errors$.subscribe(({ operation, error, eventId }) => {
@@ -272,14 +270,6 @@ export class WrappedMessagesClient {
 
   private report(operation: MessageClientError["operation"], error: unknown, eventId?: string) {
     this.errors.next({ operation, error, eventId });
-  }
-
-  /** Returns decrypted messages for a participant set or conversation identifier */
-  conversation$(participants: string | string[]): Observable<Rumor[]> {
-    const id = createConversationIdentifier(this.pubkey, getConversationParticipants(participants));
-    return this.messages$.pipe(
-      map((messages) => messages.filter((message) => getConversationIdentifierFromMessage(message) === id)),
-    );
   }
 
   /**
@@ -424,18 +414,6 @@ export class WrappedMessagesClient {
     return lastValueFrom(this.sync$(options));
   }
 
-  /** Reads decrypted messages from a stored snapshot or watches the store for additions */
-  readMessages$(options: MessageOperationOptions & { history?: boolean } = {}): Observable<Rumor> {
-    return defer(() => {
-      const context = this.context(options);
-      return readWrappedMessages$(this.receiver, this.messages$, {
-        ...context,
-        history: options.history ?? false,
-        timeout: this.options.timeout ?? 4000,
-      }).pipe(takeUntil(fromEvent(context.signal, "abort")), takeUntil(this.destroyed));
-    });
-  }
-
   /** Discovers kind-10050 relays for every participant, including the owner */
   async discover(
     request: WrappedMessageSendRequest,
@@ -461,15 +439,6 @@ export class WrappedMessagesClient {
     );
     if (signerPubkey !== this.pubkey) throw new Error("Signer does not match the messages client owner");
     context.signal.throwIfAborted();
-    if (this.options.mirrorExpiration) {
-      const rumors = await firstValueFrom(
-        defer(async () => this.receiver.rumorStore.getByFilters({})).pipe(
-          timeout({ first: this.options.timeout ?? 4000 }),
-          takeUntil(fromEvent(context.signal, "abort")),
-        ),
-      );
-      this.session.observeMessages(selectWrappedMessages(rumors, this.pubkey));
-    }
     const prepared = await firstValueFrom(
       this.session.prepareSend$(request, context).pipe(takeUntil(fromEvent(context.signal, "abort"))),
     );

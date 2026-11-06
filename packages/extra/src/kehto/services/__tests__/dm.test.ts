@@ -100,7 +100,7 @@ describe("kehto DM lifecycle", () => {
     await expect(dm.subscribe({}, vi.fn())).rejects.toThrow("closed");
   });
 
-  it("shares concurrent decryptions and serializes each inbox", async () => {
+  it("shares receiver processing and lets unblocked envelopes progress", async () => {
     const first = await gift("first");
     const second = await gift("second");
     const delayed = deferred<string>();
@@ -110,14 +110,19 @@ describe("kehto DM lifecycle", () => {
     cleanup.push(() => decrypt.mockRestore());
     const { dm, eventStore } = setup({ decryptionTimeout: 2000 });
     const onMessage = vi.fn();
+    const otherReader = vi.fn();
     await dm.subscribe({}, onMessage);
-    await dm.subscribe({}, vi.fn());
+    await dm.subscribe({}, otherReader);
     eventStore.add(first);
     eventStore.add(second);
-    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(1));
+    expect(onMessage.mock.calls[0][0].content).toBe("second");
+    expect(decrypt).toHaveBeenCalledTimes(3);
     delayed.resolve(await original(first.pubkey, first.content));
     await vi.waitFor(() => expect(onMessage).toHaveBeenCalledTimes(2));
-    expect(onMessage.mock.calls.map(([message]) => message.content)).toEqual(["first", "second"]);
+    await vi.waitFor(() => expect(otherReader).toHaveBeenCalledTimes(2));
+    expect(onMessage.mock.calls.map(([message]) => message.content)).toEqual(["second", "first"]);
+    expect(otherReader.mock.calls.map(([message]) => message.content)).toEqual(["second", "first"]);
     expect(decrypt).toHaveBeenCalledTimes(4);
   });
 

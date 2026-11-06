@@ -4,12 +4,12 @@ description: Build NIP-04 and NIP-17 direct messaging with conversations, drafts
 
 # Messaging clients
 
-`applesauce-extra/messages` has two direct message clients that share the same shape:
+`applesauce-extra/messages` has two direct message clients:
 
 - `LegacyMessagesClient` for [NIP-04](https://github.com/nostr-protocol/nips/blob/master/04.md) kind 4 messages, which most older clients still use.
 - `WrappedMessagesClient` for [NIP-17](https://github.com/nostr-protocol/nips/blob/master/17.md) private messages sent in NIP-59 gift wraps, which hide who is talking to whom.
 
-Both clients load messages into your app's `EventStore` through its `RelayPool`, group them into conversations, and handle decryption, drafts, sending, and relay authentication.
+Both clients use your app's `RelayPool` and encrypted-event `EventStore`. The wrapped client delegates receiving and decryption to `GiftWrapReceiver`, which writes validated plaintext into a separate `RumorStore` or `AsyncRumorStore`.
 
 ## How to use it
 
@@ -21,7 +21,6 @@ import { LegacyMessagesClient, WrappedMessagesClient } from "applesauce-extra/me
 const legacy = new LegacyMessagesClient({ pubkey, signer, eventStore, pool });
 const wrapped = new WrappedMessagesClient({ pubkey, signer, eventStore, pool });
 
-wrapped.conversations$.subscribe(renderInbox);
 await wrapped.start();
 ```
 
@@ -31,11 +30,11 @@ When the user switches accounts, dispose the clients and create new ones. Dispos
 
 ### Conversations
 
-`client.conversation(...)` returns a view of one conversation with its own `messages$`, drafts, and `send()`. Legacy conversations take one pubkey; wrapped conversations take a list of participants, so group chats work too:
+`client.conversation(...)` returns a handle with drafts and sending methods. Legacy conversations take one pubkey; wrapped conversations take a list of participants, so group chats work too. Wrapped reads use ordinary NIP-01 filters over the shared rumor store:
 
 ```ts
 const chat = wrapped.conversation([alice, bob]);
-chat.messages$.subscribe(renderMessages);
+chat.timeline$({ since, until }).subscribe(renderMessages);
 
 await chat.send({ content: "Hello" });
 ```
@@ -43,9 +42,24 @@ await chat.send({ content: "Hello" });
 The two protocols load conversations differently:
 
 - **Legacy** messages can be filtered by correspondent, so a conversation can load on its own without starting the whole inbox. Subscribe to `conversation.watch$()` to load while a view is open.
-- **Wrapped** messages only reveal their participants after decryption, so the client loads the whole inbox and each conversation is a local, filtered view of it.
+- **Wrapped** messages only reveal their participants after decryption. The receiver loads envelopes for the account; conversation handles query the shared rumor store without creating local copies or loading relays.
 
 Legacy messages are kind 4 events with encrypted content; read the plaintext with `getEncryptedContent()` or `EncryptedContentModel`. Wrapped conversations return the decrypted kind 14 and 15 rumors directly.
+
+### Query stored rumors
+
+Use `wrapped.rumorStore` for the existing store APIs: `getEvent`, `getByFilters`, `getTimeline`, `filters`, `timeline`, and `model`. `wrapped.messageFilters` selects the account's kind-14 and kind-15 rumors, including sent messages. Queries never invoke the decryption signer.
+
+```ts
+const filters = wrapped.messageFilters.map((filter) => ({ ...filter, since, until }));
+const messages = await wrapped.rumorStore.getTimeline(filters);
+const incoming$ = wrapped.rumorStore.filters(filters, true);
+const replies$ = chat.replies$(parentId, { since, until });
+```
+
+`chat.getMessages(filter)` reads one snapshot; `chat.timeline$(filter)` watches a selected window. Both apply `chat.matches(rumor)` after the store query because NIP-01 filters cannot express exact participant-set equality. `chat.filter` exposes the candidate filter for custom store models.
+
+A `limit` applies to candidate events **before** exact participant matching, so the resulting conversation list can be shorter or empty. It also limits only the initial store timeline query, not later matching arrivals. Use explicit `since`/`until` windows for history views; choose window movement and conversation-list aggregation in the application. There is no automatic full-inbox array, conversation index, or custom cursor API.
 
 ### Loading history
 
@@ -59,7 +73,7 @@ A finished load can still include relays that failed, and loaded messages may st
 
 ## Decryption and signer prompts
 
-The clients never ask the signer to decrypt in the background unless you opt in. Showing `messages$` or `conversations$` only reveals messages that are already decrypted or cached. Unlock from a user action, or enable background decryption once the user agrees:
+The clients never ask the signer to decrypt in the background unless you opt in. Reading the wrapped rumor store only reveals messages already processed by the receiver. Unlock from a user action, or enable background decryption once the user agrees:
 
 ```ts
 await wrapped.unlock(); // decrypt what's loaded now
@@ -68,13 +82,15 @@ wrapped.setAutoUnlock(true); // keep decrypting new messages
 
 `decryptionState$` reports how many messages are locked, unlocked, or failed, which is useful for an "Unlock messages" button. Retry a failed message with `retryDecryption(event)`.
 
-`readMessages$()` actively decrypts while subscribed, even with `autoUnlock` off. Use it when you want a reader that processes messages, not for passive rendering.
+For explicit wrapped processing, use `wrapped.receiver.unlock(envelope)` or iterate `wrapped.receiver.readInbox({ signal })`. Observe receiver outcomes through `receive$` and stored messages through the rumor store. Legacy `readMessages$()` retains its active-decryption behavior.
 
 ## Sending and drafts
 
 Check `discover(...)` before offering to send so the UI can explain when a participant has no inbox relays. Wrapped messages need kind 10050 inbox relays for every participant, including the sender.
 
 Messages support replies with `replyTo` and optional expirations. File attachments are covered in [Encrypted files](../features/files/encrypted-files.md).
+
+Wrapped sends use the explicit `expiration` and `envelopeExpiration` request fields. They do not query message history to infer an expiration policy.
 
 Conversations keep a draft in `draft$` with `setDraft()`, `loadDraft()`, and `clearDraft()`. Pass `draftStorage` to keep drafts between sessions. Sending doesn't clear the draft, so clear it yourself after a successful send. Legacy conversations also have `prepareDraft()`, which signs the current draft and clears it only if the user hasn't edited it in the meantime.
 
@@ -111,7 +127,22 @@ const wrapped = new WrappedMessagesClient({ pubkey, signer, eventStore, pool, re
 await receiver.start();
 ```
 
-The app then owns loading and decryption: `wrapped.start()` won't open subscriptions, and `wrapped.setAutoUnlock()` changes the setting for everyone using the receiver. To configure a receiver the client creates itself, pass `receiverOptions` instead, for example to keep rumors in a database with `rumorStore`.
+The app then owns loading and decryption: `wrapped.start()` won't open subscriptions, and `wrapped.setAutoUnlock()` changes the setting for everyone using the receiver. Use `receiverOptions` for receiver-specific construction policies such as processing concurrency.
+
+### Share a rumor store
+
+Pass `rumorStore` at the top level to use an application-owned `RumorStore` or database-backed `AsyncRumorStore`. The client and receiver expose the same instance:
+
+```ts
+const rumorStore = new AsyncRumorStore({ database });
+const wrapped = new WrappedMessagesClient({ pubkey, signer, eventStore, pool, rumorStore });
+
+await wrapped.receiver.unlock(envelope);
+const rumor = await rumorStore.getEvent(messageId);
+wrapped.dispose(); // The application still owns rumorStore
+```
+
+Without an injected store or receiver, the receiver creates and owns an in-memory `RumorStore`. With an injected receiver, the client uses `receiver.rumorStore`; supplying a different `rumorStore` is an error. Disposing a conversation never clears shared rumors.
 
 ### Relay authentication
 
@@ -130,14 +161,15 @@ Use `onAuthRequired` to apply an app-wide policy instead of asking each time.
 
 The app decides what's stored and how it's protected. All of these are optional:
 
-| Option                | Stores                                               |
-| --------------------- | ---------------------------------------------------- |
-| `cacheRequest`        | Encrypted messages loaded from a local event cache   |
-| `decryptionCache`     | Decrypted plaintext, so the signer isn't asked again |
-| `draftStorage`        | Drafts                                               |
-| `publicationStorage`  | Legacy messages waiting to be published              |
-| `conversationStorage` | Legacy correspondents the user has talked to         |
-| `draftFileStorage`    | Wrapped draft attachments, **unencrypted**           |
+| Option                | Stores                                                      |
+| --------------------- | ----------------------------------------------------------- |
+| `cacheRequest`        | Encrypted messages loaded from a local event cache          |
+| `decryptionCache`     | Decrypted plaintext, so the signer isn't asked again        |
+| `rumorStore`          | Validated wrapped rumors, queried through normal store APIs |
+| `draftStorage`        | Drafts                                                      |
+| `publicationStorage`  | Legacy messages waiting to be published                     |
+| `conversationStorage` | Legacy correspondents the user has talked to                |
+| `draftFileStorage`    | Wrapped draft attachments, **unencrypted**                  |
 
 Storage keys aren't namespaced by account or protocol, so give each client its own adapter. Plaintext caches and drafts are private data; encrypt them at rest.
 

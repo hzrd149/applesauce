@@ -6,9 +6,12 @@
 import { castUser, User } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
+  getConversationIdentifierFromMessage,
+  getConversationParticipants,
   getMessageAttachments,
   getWrappedMessageParent,
   isEncryptedFile,
+  isWrappedMessage,
   type FileMetadataFields,
   type Rumor,
 } from "applesauce-common/helpers";
@@ -401,7 +404,7 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
 
 /** Shows a one-line preview of a message in the conversation */
 function MessagePreview({ conversation, id }: { conversation: WrappedConversation; id: string }) {
-  const message = use$(() => conversation.eventStore.event(id), [conversation, id]);
+  const message = use$(() => conversation.rumorStore.event(id), [conversation, id]);
 
   if (!message) return <span className="opacity-60">Message unavailable</span>;
   if (message.kind === kinds.FileMessage) return <>Attachment</>;
@@ -767,7 +770,10 @@ function MessageBubble({
 }
 
 function Conversation({ conversation }: { conversation: WrappedConversation }) {
-  const messages = use$(conversation.messages$);
+  const [openedAt] = useState(unixNow);
+  const [until, setUntil] = useState<number>();
+  const since = (until ?? openedAt) - 7 * 86400;
+  const messages = use$(() => conversation.timeline$({ since, until }), [conversation, since, until]);
   const publications = use$(conversation.client.publications$);
   const [expiration, setExpiration] = useState(0);
   const [error, setError] = useState<string>();
@@ -798,6 +804,14 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
           </>
         )}
         <span className="badge badge-ghost ms-auto">{messages?.length ?? 0} messages</span>
+        <button className="btn btn-sm" onClick={() => setUntil(since - 1)}>
+          Earlier week
+        </button>
+        {until !== undefined && (
+          <button className="btn btn-sm" onClick={() => setUntil(undefined)}>
+            Latest
+          </button>
+        )}
         <select
           aria-label="Message expiration"
           className="select select-sm w-36"
@@ -836,7 +850,24 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 }
 
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
-  const groups = use$(client.conversations$);
+  const [since] = useState(() => unixNow() - 30 * 86400);
+  // This UI lists conversations seen in its recent window, not a complete historical conversation index.
+  const groups = use$(
+    () =>
+      client.rumorStore.timeline(client.messageFilters.map((filter) => ({ ...filter, since }))).pipe(
+        map((messages) => {
+          const groups = new Map<string, { id: string; participants: string[]; lastMessage: Rumor }>();
+          for (const message of messages) {
+            if (!isWrappedMessage(message)) continue;
+            const id = getConversationIdentifierFromMessage(message);
+            if (!groups.has(id))
+              groups.set(id, { id, participants: getConversationParticipants(message), lastMessage: message });
+          }
+          return [...groups.values()];
+        }),
+      ),
+    [client, since],
+  );
   const [selected, setSelected] = useState(client.pubkey);
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -884,6 +915,7 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-base-300 p-3">
               <PubkeyPicker value="" placeholder="Start a conversation" onChange={startConversation} />
+              <span className="text-sm opacity-60">Conversations from the last 30 days</span>
             </div>
 
             {selfGroup ? (

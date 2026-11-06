@@ -2,7 +2,7 @@ import { logger } from "applesauce-core";
 import type { ISigner } from "applesauce-signers";
 import { castUser } from "applesauce-common/casts";
 import { FileMessageFactory, GiftWrapFactory, WrappedMessageFactory } from "applesauce-common/factories";
-import { getConversationParticipants, getGiftWrapSeal, type Rumor } from "applesauce-common/helpers";
+import { getGiftWrapSeal, type Rumor } from "applesauce-common/helpers";
 import {
   saveEncryptedContent,
   isEncryptedContentFromCache,
@@ -16,8 +16,6 @@ import {
 import { defer, finalize, firstValueFrom, timeout } from "rxjs";
 import { withMessageAuth$ } from "../common/authentication.js";
 import { settle } from "../common/helpers.js";
-import { WrappedMessageExpirationTracker } from "./expiration.js";
-import { WrappedMessagePublicationError } from "./publication.js";
 import type {
   WrappedMessageSendRequest,
   WrappedMessagePreparation,
@@ -54,10 +52,24 @@ function publicationResults(delivery: WrappedDelivery): WrappedMessagePublicatio
   }));
 }
 
+/** A failed or partially accepted wrapped publication with per-participant outcomes */
+export class WrappedMessagePublicationError extends Error {
+  /** Creates a failure retaining the native rumor and envelope outcomes */
+  constructor(
+    /** The native kind-14 rumor whose envelopes were published */
+    public readonly rumor: Rumor,
+    /** The relay acceptance outcomes for all participants */
+    public readonly publications: readonly WrappedMessagePublicationResult[],
+  ) {
+    const accepted = publications.filter((publication) => publication.accepted).length;
+    super(`DM publication incomplete: ${accepted}/${publications.length} envelopes accepted`);
+    this.name = "WrappedMessagePublicationError";
+  }
+}
+
 /** A fixed-account NIP-17 session with per-participant gift wraps */
 export class WrappedMessageSession {
   private closed = false;
-  private expiration = new WrappedMessageExpirationTracker();
   private get wait() {
     return this.config.timeout ?? 4000;
   }
@@ -111,12 +123,6 @@ export class WrappedMessageSession {
           : "unknown",
       recipients: support,
     };
-  }
-
-  /** Replaces expiration preferences with the currently available message timeline */
-  observeMessages(messages: Rumor[]): void {
-    this.expiration = new WrappedMessageExpirationTracker();
-    for (const message of messages) this.expiration.observe(message, getConversationParticipants(message));
   }
 
   private publishDelivery$(delivery: WrappedDelivery, context: { signal: AbortSignal }) {
@@ -176,7 +182,7 @@ export class WrappedMessageSession {
 
   /** Prepares every participant's envelope before allowing publication */
   prepareSend$(request: WrappedMessageSendRequest, context: { signal: AbortSignal }) {
-    const { config, owner, expiration } = this;
+    const { config, owner } = this;
     return defer(() => {
       // Keep cancellation guards local to this preparation.
       let active = true;
@@ -190,15 +196,13 @@ export class WrappedMessageSession {
         const participants = [...new Set([...request.recipients, owner.pubkey])];
         // In NIP-17 every p tag is a recipient, so note mention operations must not run here.
         const createdAt = unixNow();
-        const expirationTimestamp =
-          request.expiration ?? (config.mirrorExpiration ? expiration.expiration(participants, createdAt) : undefined);
         const recipients = [...new Set(request.recipients)];
         let factory = (
           request.file
             ? FileMessageFactory.create(recipients, request.file)
             : WrappedMessageFactory.create(recipients, request.content)
         ).created(createdAt);
-        if (expirationTimestamp !== undefined) factory = factory.expiration(expirationTimestamp);
+        if (request.expiration !== undefined) factory = factory.expiration(request.expiration);
         if (request.replyTo) factory = factory.replyTo(request.replyTo);
         const template = await factory.as(owner.signer).stamp();
         assertCurrent();

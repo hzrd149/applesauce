@@ -281,7 +281,10 @@ function Thread({ client, note, replies }: { client: WrappedMessagesClient; note
 }
 
 function Notes({ client, user }: { client: WrappedMessagesClient; user: User }) {
-  const notes = use$(() => client.conversation$(client.pubkey), [client]);
+  const [openedAt] = useState(unixNow);
+  const [until, setUntil] = useState<number>();
+  const since = (until ?? openedAt) - 30 * 86400;
+  const notes = use$(() => client.conversation(client.pubkey).timeline$({ since, until }), [client, since, until]);
   const error = use$(() => client.errors$.pipe(map((failure) => String(failure.error))), [client]);
   const [selected, setSelected] = useState<string>();
 
@@ -314,6 +317,16 @@ function Notes({ client, user }: { client: WrappedMessagesClient; user: User }) 
           </div>
 
           <SyncStatus client={client} />
+          <div className="flex gap-2 border-b border-base-300 p-3">
+            <button className="btn btn-sm" onClick={() => setUntil(since - 1)}>
+              Earlier month
+            </button>
+            {until !== undefined && (
+              <button className="btn btn-sm" onClick={() => setUntil(undefined)}>
+                Latest
+              </button>
+            )}
+          </div>
 
           {notes === undefined ? (
             <div className="flex justify-center p-6">
