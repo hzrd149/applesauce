@@ -4,7 +4,7 @@
  * @related messages/gift-wrap, messages/personal-notes, loader/sync-loader
  */
 import { castUser, User } from "applesauce-common/casts";
-import { getLegacyMessageParent } from "applesauce-common/helpers";
+import { getLegacyMessageParent, groupMessageEvents } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
 import {
   getDisplayName,
@@ -17,6 +17,7 @@ import { EncryptedContentModel } from "applesauce-core/models";
 import {
   LegacyMessagesClient,
   type LegacyConversation,
+  type LegacyDecryptionState,
   type MessageAuthRequest,
   type PreparedLegacyMessage,
 } from "applesauce-extra/messages";
@@ -24,7 +25,7 @@ import { createEventLoaderForStore, isTimelineWindowCovered, type TimelineWindow
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { Lock, PanelLeft, PanelRight, X } from "lucide-react";
+import { Lock, PanelLeft, PanelRight, Reply, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
@@ -421,21 +422,20 @@ function Account({ user, readOnly }: { user: User; readOnly: boolean }) {
 function MessageBubble({
   conversation,
   event,
+  isOwn,
   error,
   hasError,
   onReply,
 }: {
   conversation: LegacyConversation;
   event: NostrEvent;
+  isOwn: boolean;
   error?: unknown;
   hasError: boolean;
   onReply: () => void;
 }) {
   const content = use$(() => eventStore.model(EncryptedContentModel, event), [event]);
   const client = conversation.client;
-
-  const author = castUser(event.pubkey, eventStore);
-  const isOwn = event.pubkey === client.pubkey;
   const parent = getLegacyMessageParent(event);
 
   const unlock = () => {
@@ -445,42 +445,78 @@ function MessageBubble({
   };
 
   return (
-    <div className={`chat min-w-0 ${isOwn ? "chat-end" : "chat-start"}`}>
-      <div className="chat-image">
-        <Avatar user={author} size="h-10 w-10" />
-      </div>
-      <div className="chat-header flex min-w-0 flex-wrap gap-2 text-sm">
-        <Name user={author} />
-        <time className="opacity-60">{formatShortTime(event.created_at)}</time>
-      </div>
-      {parent && (
-        <div className="max-w-xs truncate border-s-2 border-base-300 ps-2 text-sm opacity-60">
-          <Preview event={parent} />
+    <div className={`flex max-w-[90%] flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}>
+      <div className={`flex max-w-full items-center gap-1 ${isOwn ? "flex-row-reverse" : ""}`}>
+        <div
+          className={`flex min-w-0 flex-col gap-2 rounded-box px-3 py-2 whitespace-pre-wrap [overflow-wrap:anywhere] ${isOwn ? "bg-primary text-primary-content" : "bg-base-300"}`}
+          title={new Date(event.created_at * 1000).toLocaleString()}
+        >
+          {parent && (
+            <div className="max-w-xs truncate border-s-2 border-current ps-2 text-sm whitespace-normal opacity-60">
+              <Preview event={parent} />
+            </div>
+          )}
+          {content !== undefined ? (
+            <span>{content}</span>
+          ) : !client.signer ? (
+            <span className="inline-flex items-center gap-1 opacity-60">
+              <Lock className="h-4 w-4" /> Encrypted
+            </span>
+          ) : (
+            <button className="inline-flex items-center gap-1" onClick={unlock}>
+              <Lock className="h-4 w-4" />
+              {hasError ? "Retry decryption" : "Decrypt"}
+            </button>
+          )}
         </div>
-      )}
-      <div
-        className={`chat-bubble min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere] ${isOwn ? "chat-bubble-primary" : ""}`}
-      >
-        {content !== undefined ? (
-          content
-        ) : !client.signer ? (
-          <span className="inline-flex items-center gap-1 opacity-60">
-            <Lock className="h-4 w-4" /> Encrypted
-          </span>
-        ) : (
-          <button className="inline-flex items-center gap-1" onClick={unlock}>
-            <Lock className="h-4 w-4" />
-            {hasError ? "Retry decryption" : "Decrypt"}
+        {client.signer && (
+          <button className="btn btn-ghost btn-sm btn-square shrink-0 opacity-60" title="Reply" onClick={onReply}>
+            <Reply className="h-4 w-4" />
           </button>
         )}
       </div>
-      <div className="chat-footer flex min-w-0 flex-wrap gap-2 text-sm [overflow-wrap:anywhere]">
-        {hasError && content === undefined && <span className="text-error">{String(error)}</span>}
-        {client.signer && (
-          <button className="link opacity-60" onClick={onReply}>
-            Reply
-          </button>
-        )}
+      {hasError && content === undefined && (
+        <span className="px-1 text-sm text-error [overflow-wrap:anywhere]">{String(error)}</span>
+      )}
+    </div>
+  );
+}
+
+/** Shows consecutive messages from one author under a single avatar, name and time */
+function MessageGroup({
+  conversation,
+  events,
+  decryption,
+  onReply,
+}: {
+  conversation: LegacyConversation;
+  events: NostrEvent[];
+  decryption?: LegacyDecryptionState;
+  onReply: (event: NostrEvent) => void;
+}) {
+  const first = events[0];
+  const author = castUser(first.pubkey, eventStore);
+  const isOwn = first.pubkey === conversation.client.pubkey;
+
+  return (
+    <div className={`flex items-end gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+      {!isOwn && <Avatar user={author} size="h-8 w-8" />}
+      <div className={`flex min-w-0 flex-1 flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}>
+        <div className="flex gap-2 px-1 text-sm">
+          {!isOwn && <Name user={author} />}
+          <time className="opacity-60">{formatShortTime(first.created_at)}</time>
+        </div>
+        {events.map((event) => (
+          <MessageBubble
+            key={event.id}
+            conversation={conversation}
+            event={event}
+            isOwn={isOwn}
+            error={decryption?.errors.get(event.id)}
+            hasError={decryption?.errors.has(event.id) ?? false}
+            onReply={() => onReply(event)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -657,6 +693,8 @@ function Conversation({
 
   use$(() => conversation.watch$(), [conversation]);
   const messages = use$(conversation.messages$);
+  // The timeline is newest first, so group oldest first and flip the groups back for the reversed scroll area
+  const groups = useMemo(() => (messages ? groupMessageEvents([...messages].reverse()).reverse() : []), [messages]);
   const relays = use$(conversation.relays$);
 
   // Subscribing to the current slice drives the load while status$ reports its coverage.
@@ -733,16 +771,15 @@ function Conversation({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col-reverse gap-4 overflow-x-hidden overflow-y-auto p-4">
         {(error || failure) && <p className="text-sm text-error">{error ?? failure}</p>}
-        {messages?.map((event) => (
-          <MessageBubble
-            key={event.id}
+        {groups.map((group) => (
+          <MessageGroup
+            key={group[0].id}
             conversation={conversation}
-            event={event}
-            error={decryption?.errors.get(event.id)}
-            hasError={decryption?.errors.has(event.id) ?? false}
-            onReply={() => setReply(event.id).catch((error) => setError(String(error)))}
+            events={group}
+            decryption={decryption}
+            onReply={(event) => setReply(event.id).catch((error) => setError(String(error)))}
           />
         ))}
         {messages?.length === 0 && complete && <p className="text-center opacity-60">No messages</p>}
