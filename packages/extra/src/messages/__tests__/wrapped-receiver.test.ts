@@ -92,9 +92,52 @@ describe("wrapped receiver integration", () => {
     expect(read).not.toHaveBeenCalled();
     expect(timeline).not.toHaveBeenCalled();
 
-    conversation.dispose();
     client.dispose();
     expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it("keeps store views independent of client-owned drafts and subscription lifetimes", async () => {
+    const { options } = setup();
+    const rumorStore = own(new RumorStore());
+    const client = own(new WrappedMessagesClient({ ...options, rumorStore }));
+    const conversation = client.conversation(peer);
+    expect(client.conversation([peer, pubkey])).toBe(conversation);
+    await conversation.setDraft({ content: "unsent" });
+
+    const draftsComplete = vi.fn();
+    const draftSubscription = conversation.draft$.subscribe({ complete: draftsComplete });
+    const messages: Rumor[][] = [];
+    const timeline = conversation.timeline$({ since: 0 });
+    const subscription = timeline.subscribe((value) => messages.push(value));
+    cleanup.push(() => subscription.unsubscribe());
+    const otherSubscription = timeline.subscribe();
+    otherSubscription.unsubscribe();
+
+    client.dispose();
+    expect(draftSubscription.closed).toBe(true);
+    expect(draftsComplete).toHaveBeenCalledOnce();
+    expect(subscription.closed).toBe(false);
+
+    const { rumor } = await envelope();
+    rumorStore.add(rumor);
+    await vi.waitFor(() => expect(messages.at(-1)).toEqual([rumor]));
+    expect(await conversation.getMessages({ since: 0 })).toEqual([rumor]);
+    await expect(conversation.setDraft({ content: "closed" })).rejects.toThrow("disposed");
+  });
+
+  it("honors caller cancellation for conversation queries", async () => {
+    const { options } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const conversation = client.conversation(peer);
+    const controller = new AbortController();
+    const read = vi.spyOn(client.rumorStore, "getTimeline");
+    controller.abort(new Error("Query cancelled"));
+
+    await expect(conversation.getMessages({ limit: 1 }, { signal: controller.signal })).rejects.toThrow(
+      "Query cancelled",
+    );
+    expect(read).not.toHaveBeenCalled();
+    expect(await conversation.getMessages({ limit: 1 })).toEqual([]);
   });
 
   it("disposes only its default rumor store and rejects mismatched injected stores", () => {

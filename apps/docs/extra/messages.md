@@ -142,7 +142,9 @@ const rumor = await rumorStore.getEvent(messageId);
 wrapped.dispose(); // The application still owns rumorStore
 ```
 
-Without an injected store or receiver, the receiver creates and owns an in-memory `RumorStore`. With an injected receiver, the client uses `receiver.rumorStore`; supplying a different `rumorStore` is an error. Disposing a conversation never clears shared rumors.
+Without an injected store or receiver, the receiver creates and owns an in-memory `RumorStore`. With an injected receiver, the client uses `receiver.rumorStore`; supplying a different `rumorStore` is an error.
+
+Wrapped conversation handles have no disposal lifecycle. Unsubscribe to release a query view and pass an operation `signal` to cancel a query or send. The client owns draft state and cleans it up on disposal; conversation queries remain usable while the shared rumor store is usable.
 
 ### Relay authentication
 

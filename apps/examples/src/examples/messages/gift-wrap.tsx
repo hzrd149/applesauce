@@ -1,7 +1,7 @@
 /**
- * A NIP-17 inbox with local WrappedConversation views, encrypted file messages, cached history and retryable publication
- * @tags nip-17, nip-44, nip-59, nip-77, messages, gift-wrap, encryption, dm, sync, files, blossom
- * @related messages/personal-notes, messages/legacy, messages/ndr, loader/sync-loader
+ * A NIP-17 inbox that keeps decrypted messages in an encrypted AsyncRumorStore so conversations survive reloads without decrypting again
+ * @tags nip-17, nip-44, nip-59, nip-77, messages, gift-wrap, encryption, dm, sync, files, blossom, rumor-store
+ * @related messages/personal-notes, messages/legacy, messages/ndr, gift-wrap/receiver, loader/sync-loader
  */
 import { castUser, User } from "applesauce-common/casts";
 import {
@@ -10,12 +10,14 @@ import {
   getConversationParticipants,
   getMessageAttachments,
   getWrappedMessageParent,
+  groupMessageEvents,
   isEncryptedFile,
   isWrappedMessage,
   type FileMetadataFields,
   type Rumor,
 } from "applesauce-common/helpers";
 import { EventStore } from "applesauce-core";
+import { AsyncRumorStore } from "applesauce-core/event-store";
 import {
   getDisplayName,
   getProfilePicture,
@@ -24,6 +26,7 @@ import {
   unixNow,
   type NostrEvent,
 } from "applesauce-core/helpers";
+import type { GiftWrapProcessingStore } from "applesauce-extra/gift-wrap";
 import {
   loadAttachment,
   WrappedMessagesClient,
@@ -38,9 +41,9 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
-import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
+import { PanelLeft, PanelRight, Paperclip, Reply, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { type ClipboardEvent, type ReactNode, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
@@ -67,10 +70,13 @@ import NoteContent from "../../components/note-content";
 import PubkeyPicker from "../../components/pubkey-picker";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
+import { RumorDatabase } from "../../extra/rumor-database";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
 
 type HistoryRange = "recent" | "year" | "all";
+
+type ConversationGroup = { id: string; participants: string[]; lastMessage: Rumor };
 
 const HISTORY_RANGES: { value: HistoryRange; label: string }[] = [
   { value: "recent", label: "Recent" },
@@ -114,54 +120,95 @@ function createBlossomUploader(signer: ISigner, user: User): MessageFileUploader
   };
 }
 
+/** Creates a processing store that remembers which envelopes already have a saved rumor */
+function createProcessingStore(storage: SecureStorage): GiftWrapProcessingStore {
+  return {
+    list: async () => {
+      const keys = await storage.keys();
+      const records = await Promise.all(keys.map((key) => storage.getItem(key)));
+
+      return records.filter((record) => record !== null).map((record) => JSON.parse(record));
+    },
+    set: (record) => storage.setItem(record.eventId, JSON.stringify(record)),
+  };
+}
+
+/** Creates a client for one account whose rumor store and checkpoints persist between reloads */
+function createClient(signer: ISigner, user: User, storage: SecureStorage, database: RumorDatabase) {
+  const scoped = (name: string) => storage.createInstance({ name: `gift-wrap-${name}:${user.pubkey}` });
+  const drafts = storage.createInstance({ name: `gift-wrap:${user.pubkey}`, storeName: "drafts" });
+
+  // The app owns the rumor store; the client and its receiver read and write the same instance
+  const rumorStore = new AsyncRumorStore({ database });
+
+  return new WrappedMessagesClient({
+    pubkey: user.pubkey,
+    signer,
+    pool,
+    eventStore,
+    rumorStore,
+    cacheRequest,
+    decryptionCache: storage,
+    // Completed envelopes are skipped on reload because their rumors are already in the store
+    receiverOptions: { processingStore: createProcessingStore(scoped("checkpoints")) },
+    draftStorage: drafts,
+    // Pasted and picked files are kept encrypted at rest until they are sent
+    draftFileStorage: drafts.blobs,
+    authTimeout: false,
+    upload: createBlossomUploader(signer, user),
+  });
+}
+
 // The stream owns the client and outlives the page, since this module is only loaded once; switching accounts disposes it
 const client$ = combineLatest([signer$, user$, storage$]).pipe(
   switchMap(([signer, user, storage]) => {
     if (!signer || !user || !storage) return of(undefined);
 
-    return defer(() => {
-      const drafts = storage.createInstance({ name: `gift-wrap:${user.pubkey}`, storeName: "drafts" });
-      const client = new WrappedMessagesClient({
-        pubkey: user.pubkey,
-        signer,
-        pool,
-        eventStore,
-        cacheRequest,
-        decryptionCache: storage,
-        draftStorage: {
-          getItem: (key) => drafts.getItem(key),
-          setItem: async (key, value) => {
-            if (!(await drafts.setItem(key, value))) throw new Error("Failed to save draft");
-          },
-          removeItem: (key) => drafts.removeItem(key),
-        },
-        // Pasted and picked files are kept encrypted at rest until they are sent
-        draftFileStorage: {
-          getItem: (key) => drafts.getBlob(key),
-          setItem: (key, blob) => drafts.setBlob(key, blob),
-          removeItem: (key) => drafts.removeItem(key),
-        },
-        authTimeout: false,
-        upload: createBlossomUploader(signer, user),
-      });
+    // Rumors are indexed in IndexedDB by their metadata and encrypted with the storage PIN
+    return from(RumorDatabase.open(`gift-wrap-messages:${user.pubkey}`, storage)).pipe(
+      switchMap((database) => {
+        const client = createClient(signer, user, storage, database);
 
-      return merge(
-        of(client),
-        defer(() => client.start()).pipe(
-          ignoreElements(),
-          // Startup failures are reported by the client's errors$ stream.
-          catchError(() => EMPTY),
-        ),
-        NEVER,
-      ).pipe(
-        finalize(() => {
-          client.dispose();
-        }),
-      );
-    });
+        return merge(
+          of(client),
+          defer(() => client.start()).pipe(
+            ignoreElements(),
+            // Startup failures are reported by the client's errors$ stream.
+            catchError(() => EMPTY),
+          ),
+          NEVER,
+        ).pipe(
+          finalize(() => {
+            client.dispose();
+            database.close();
+          }),
+        );
+      }),
+    );
   }),
   shareReplay({ bufferSize: 1, refCount: false }),
 );
+
+/** Groups the saved messages since a timestamp into conversations, newest first */
+function conversations$(client: WrappedMessagesClient, since: number) {
+  const filters = client.messageFilters.map((filter) => ({ ...filter, since }));
+
+  return client.rumorStore.timeline(filters).pipe(
+    map((messages) => {
+      const groups = new Map<string, ConversationGroup>();
+
+      for (const message of messages) {
+        if (!isWrappedMessage(message)) continue;
+
+        const id = getConversationIdentifierFromMessage(message);
+        if (!groups.has(id))
+          groups.set(id, { id, participants: getConversationParticipants(message), lastMessage: message });
+      }
+
+      return [...groups.values()];
+    }),
+  );
+}
 
 /** Creates an object URL for a blob that is revoked when the subscription ends */
 function objectUrl$(blob: Blob): Observable<string> {
@@ -276,10 +323,11 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
   const sync = use$(client.syncStatus$);
   const stats = use$(client.decryptionState$);
   const relays = use$(client.relays$);
+  const autoUnlock = use$(client.receiver.autoUnlock$);
+  const saved = use$(() => client.rumorStore.timeline(client.messageFilters).pipe(map((m) => m.length)), [client]);
   const auth = use$(client.authRequests$) ?? [];
   const failure = use$(() => client.errors$.pipe(map((failure) => String(failure.error))), [client]);
 
-  const [autoUnlock, setAutoUnlock] = useState(false);
   const [range, setRange] = useState<HistoryRange>("recent");
   const [authenticatingAll, setAuthenticatingAll] = useState(false);
   const [error, setError] = useState<string>();
@@ -295,9 +343,19 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
     .flatMap((mailbox) => Object.values(mailbox.relays))
     .filter((relay) => relay.error);
 
-  const toggleAutoUnlock = (enabled: boolean) => {
-    client.setAutoUnlock(enabled);
-    setAutoUnlock(enabled);
+  const [decrypting, setDecrypting] = useState(false);
+
+  const decryptAll = async () => {
+    setDecrypting(true);
+    setError(undefined);
+
+    try {
+      await client.unlock();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setDecrypting(false);
+    }
   };
 
   const retryFailed = async () => {
@@ -335,16 +393,25 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
           <input
             type="checkbox"
             className="toggle toggle-sm"
-            checked={autoUnlock}
-            onChange={(event) => toggleAutoUnlock(event.target.checked)}
+            checked={autoUnlock ?? false}
+            onChange={(event) => client.setAutoUnlock(event.target.checked)}
           />
         </label>
         <div className="flex flex-wrap items-center gap-2">
+          <span className="badge badge-ghost" title="Decrypted messages kept in encrypted local storage">
+            {saved ?? 0} saved
+          </span>
           <span className="badge badge-ghost">{stats?.unlocked ?? 0} unlocked</span>
           <span className="badge badge-ghost">{stats?.locked ?? 0} locked</span>
           {!!stats?.failed.length && <span className="badge badge-error">{stats.failed.length} failed</span>}
+          {!!stats?.locked && !autoUnlock && (
+            <button className="btn btn-sm ms-auto" disabled={decrypting} onClick={decryptAll}>
+              {decrypting && <span className="loading loading-spinner loading-sm" />}
+              Decrypt
+            </button>
+          )}
           {!!stats?.failed.length && (
-            <button className="btn btn-sm ms-auto" title="Retry decrypting failed messages" onClick={retryFailed}>
+            <button className="btn btn-sm" title="Retry decrypting failed messages" onClick={retryFailed}>
               Retry
             </button>
           )}
@@ -417,7 +484,7 @@ function ConversationRow({
   active,
   onSelect,
 }: {
-  group: { id: string; participants: string[]; lastMessage: Rumor };
+  group: ConversationGroup;
   self: User;
   active: boolean;
   onSelect: () => void;
@@ -724,30 +791,25 @@ function Attachment({ file }: { file: FileMetadataFields }) {
 function MessageBubble({
   conversation,
   message,
+  isOwn,
   status,
   onReply,
 }: {
   conversation: WrappedConversation;
   message: Rumor;
+  isOwn: boolean;
   status?: string;
   onReply: () => void;
 }) {
-  const author = castUser(message.pubkey, eventStore);
-  const isOwn = message.pubkey === conversation.client.pubkey;
   const attachments = getMessageAttachments(message);
   const parent = getWrappedMessageParent(message);
 
   return (
-    <div className={`chat ${isOwn ? "chat-end" : "chat-start"}`}>
-      <div className="chat-image">
-        <Avatar user={author} size="h-10 w-10" />
-      </div>
-      <div className="chat-header flex gap-2 text-sm">
-        <Name user={author} />
-        <time className="opacity-60">{formatShortTime(message.created_at)}</time>
-      </div>
-      <div className={`chat-bubble flex min-w-0 flex-col gap-2 ${isOwn ? "chat-bubble-primary" : ""}`}>
-        {/* The quote lives inside the bubble because the chat grid only places its named parts */}
+    <div className={`flex max-w-[90%] items-center gap-1 ${isOwn ? "flex-row-reverse" : ""}`}>
+      <div
+        className={`flex min-w-0 flex-col gap-2 rounded-box px-3 py-2 ${isOwn ? "bg-primary text-primary-content" : "bg-base-300"}`}
+        title={new Date(message.created_at * 1000).toLocaleString()}
+      >
         {parent && (
           <div className="max-w-xs truncate border-s-2 border-current ps-2 text-sm opacity-60">
             <MessagePreview conversation={conversation} id={parent} />
@@ -759,11 +821,48 @@ function MessageBubble({
           <Attachment key={file.url} file={file} />
         ))}
       </div>
-      <div className="chat-footer gap-2 text-sm">
-        {status && <span className="opacity-60">{status}</span>}
-        <button className="link opacity-60" onClick={onReply}>
-          Reply
-        </button>
+      <button className="btn btn-ghost btn-sm btn-square shrink-0 opacity-60" title="Reply" onClick={onReply}>
+        <Reply className="h-4 w-4" />
+      </button>
+      {status && <span className="shrink-0 text-sm opacity-60">{status}</span>}
+    </div>
+  );
+}
+
+/** Shows consecutive messages from one author under a single avatar, name and time */
+function MessageGroup({
+  conversation,
+  messages,
+  publications,
+  onReply,
+}: {
+  conversation: WrappedConversation;
+  messages: Rumor[];
+  publications?: Record<string, string>;
+  onReply: (message: Rumor) => void;
+}) {
+  const first = messages[0];
+  const author = castUser(first.pubkey, eventStore);
+  const isOwn = first.pubkey === conversation.client.pubkey;
+
+  return (
+    <div className={`flex items-end gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+      {!isOwn && <Avatar user={author} size="h-8 w-8" />}
+      <div className={`flex min-w-0 flex-1 flex-col gap-1 ${isOwn ? "items-end" : "items-start"}`}>
+        <div className="flex gap-2 px-1 text-sm">
+          {!isOwn && <Name user={author} />}
+          <time className="opacity-60">{formatShortTime(first.created_at)}</time>
+        </div>
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            conversation={conversation}
+            message={message}
+            isOwn={isOwn}
+            status={publications?.[message.id]}
+            onReply={() => onReply(message)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -774,6 +873,8 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
   const [until, setUntil] = useState<number>();
   const since = (until ?? openedAt) - 7 * 86400;
   const messages = use$(() => conversation.timeline$({ since, until }), [conversation, since, until]);
+  // The timeline is newest first, so group oldest first and flip the groups back for the reversed scroll area
+  const groups = useMemo(() => (messages ? groupMessageEvents([...messages].reverse()).reverse() : []), [messages]);
   const publications = use$(conversation.client.publications$);
   const [expiration, setExpiration] = useState(0);
   const [error, setError] = useState<string>();
@@ -825,20 +926,20 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
         </select>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col-reverse gap-2 overflow-x-hidden overflow-y-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col-reverse gap-4 overflow-x-hidden overflow-y-auto p-4">
         {error && <p className="text-sm text-error">{error}</p>}
         {messages === undefined ? (
           <span className="loading loading-dots mx-auto" />
         ) : messages.length === 0 ? (
           <p className="text-center opacity-60">No messages</p>
         ) : (
-          messages.map((message) => (
-            <MessageBubble
-              key={message.id}
+          groups.map((group) => (
+            <MessageGroup
+              key={group[0].id}
               conversation={conversation}
-              message={message}
-              status={publications?.[message.id]}
-              onReply={() => setReply(message.id).catch((error) => setError(String(error)))}
+              messages={group}
+              publications={publications}
+              onReply={(message) => setReply(message.id).catch((error) => setError(String(error)))}
             />
           ))
         )}
@@ -851,23 +952,8 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
   const [since] = useState(() => unixNow() - 30 * 86400);
-  // This UI lists conversations seen in its recent window, not a complete historical conversation index.
-  const groups = use$(
-    () =>
-      client.rumorStore.timeline(client.messageFilters.map((filter) => ({ ...filter, since }))).pipe(
-        map((messages) => {
-          const groups = new Map<string, { id: string; participants: string[]; lastMessage: Rumor }>();
-          for (const message of messages) {
-            if (!isWrappedMessage(message)) continue;
-            const id = getConversationIdentifierFromMessage(message);
-            if (!groups.has(id))
-              groups.set(id, { id, participants: getConversationParticipants(message), lastMessage: message });
-          }
-          return [...groups.values()];
-        }),
-      ),
-    [client, since],
-  );
+  // Saved rumors render immediately after unlocking storage, before any relay or signer work
+  const groups = use$(() => conversations$(client, since), [client, since]);
   const [selected, setSelected] = useState(client.pubkey);
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);

@@ -429,13 +429,10 @@ describe("standalone messaging clients", () => {
     expect(await conversation.rumorStore.hasEvent(root.id)).toBe(true);
     await client.receiver.rumorStore.remove(root);
     expect(await conversation.getMessages({ limit: 10 })).toEqual([reply]);
-    conversation[Symbol.dispose]();
     expect(await client.rumorStore.getEvent(reply.id)).toEqual(reply);
     expect(eventStore.hasEvent(gift.id)).toBe(true);
-    const replacement = client.conversation([bob]);
-    expect(replacement).not.toBe(conversation);
+    expect(client.conversation([bob])).toBe(conversation);
     client[Symbol.dispose]();
-    expect(replacement.isDisposed).toBe(true);
     expect(() => client.conversation([bob])).toThrow("disposed");
   });
 
@@ -453,7 +450,12 @@ describe("standalone messaging clients", () => {
 
     const prepared = await conversation.prepareSend({ content: "cancel me" });
     const publications = pool.publish.mock.calls.length;
-    conversation.dispose();
+    const controller = new AbortController();
+    controller.abort(new Error("Publication cancelled"));
+    await expect(prepared.publish({ signal: controller.signal })).rejects.toThrow("Publication cancelled");
+    expect(pool.publish).toHaveBeenCalledTimes(publications);
+
+    client.dispose();
     await expect(prepared.publish()).rejects.toThrow();
     await expect(conversation.send({ content: "disposed" })).rejects.toThrow();
     expect(pool.publish).toHaveBeenCalledTimes(publications);

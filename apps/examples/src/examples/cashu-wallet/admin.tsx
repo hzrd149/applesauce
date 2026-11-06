@@ -132,7 +132,7 @@ async function loadConnectConfig(pubkey: string): Promise<ConnectConfig | null> 
   const legacy = localStorage.getItem(key);
   if (!raw && legacy) {
     // Migrate this account's existing service credential only after its encrypted copy is durable.
-    if (!(await storage.setItem(key, legacy))) throw new Error("Could not encrypt the saved service credential");
+    await storage.setItem(key, legacy);
     localStorage.removeItem(key);
     raw = legacy;
   }
@@ -143,8 +143,7 @@ async function saveConnectConfig(pubkey: string, config: ConnectConfig | null) {
   if (!storage) throw new Error("Unlock encrypted storage first");
   const key = connectStorageKey(pubkey);
   if (config) {
-    if (!(await storage.setItem(key, JSON.stringify(config))))
-      throw new Error("Could not save encrypted service credential");
+    await storage.setItem(key, JSON.stringify(config));
   } else await storage.removeItem(key);
 }
 

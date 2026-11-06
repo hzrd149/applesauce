@@ -208,7 +208,7 @@ await prepared.publish();
 
 `getMessages(filter)` reads a snapshot and `timeline$(filter)` watches an explicit window. Both filter exact conversation membership after the store query: NIP-01 limits apply to candidates, so a filtered page may be short or empty. Timeline limits bound the initial query, not future arrivals. Choose history windows and conversation-list aggregation in the application; the client retains no all-inbox message array or conversation index.
 
-Processing belongs to the receiver: use `receiver.unlock(envelope)`, `readInbox()`, or background receiving, then query stored rumors. Envelope eviction does not remove stored plaintext. Conversation disposal releases its views and drafts without disposing or clearing the shared store.
+Processing belongs to the receiver: use `receiver.unlock(envelope)`, `readInbox()`, or background receiving, then query stored rumors. Envelope eviction does not remove stored plaintext. Conversation handles have no disposal lifecycle: callers own query subscriptions and cancellation signals, while the client owns draft state and sending operations.
 
 ### Integration
 

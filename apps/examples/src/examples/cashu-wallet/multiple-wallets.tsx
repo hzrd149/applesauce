@@ -61,8 +61,7 @@ const decryptionCache: EncryptedContentCache = {
   getItem: async (key) => storage$.value?.getItem(`wallet-content:${key}`) ?? null,
   setItem: async (key, value) => {
     if (!storage$.value) throw new Error("Storage locked");
-    if (!(await storage$.value.setItem(`wallet-content:${key}`, value)))
-      throw new Error("Could not persist encrypted wallet content");
+    await storage$.value.setItem(`wallet-content:${key}`, value);
   },
 };
 
@@ -386,7 +385,7 @@ async function loadStored(): Promise<{ backends: StoredBackend[]; activeId?: str
   let raw = await storage.getItem(STORAGE_KEY);
   const legacy = localStorage.getItem(STORAGE_KEY);
   if (!raw && legacy) {
-    if (!(await storage.setItem(STORAGE_KEY, legacy))) throw new Error("Could not encrypt saved wallet connections");
+    await storage.setItem(STORAGE_KEY, legacy);
     localStorage.removeItem(STORAGE_KEY);
     raw = legacy;
   }
@@ -1080,13 +1079,11 @@ function WalletApp({ signer, pubkey }: { signer: ISigner; pubkey: string }) {
       combineLatest([backends$, activeId$]).pipe(
         concatMap(([backends, activeId]) =>
           defer(async () => {
-            if (
-              !(await storage$.value?.setItem(
-                STORAGE_KEY,
-                JSON.stringify({ backends: backends.map((backend) => backend.serialize()), activeId }),
-              ))
-            )
-              throw new Error("Could not save encrypted wallet connections");
+            if (!storage$.value) throw new Error("Storage locked");
+            await storage$.value.setItem(
+              STORAGE_KEY,
+              JSON.stringify({ backends: backends.map((backend) => backend.serialize()), activeId }),
+            );
             return "";
           }).pipe(catchError((error) => of(String(error.message ?? error)))),
         ),

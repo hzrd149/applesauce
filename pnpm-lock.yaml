@@ -370,6 +370,9 @@ importers:
       hls.js:
         specifier: ^1.7.3
         version: 1.7.3
+      idb:
+        specifier: ^8.0.4
+        version: 8.0.4
       keyv:
         specifier: ^6.1.0
         version: 6.1.0

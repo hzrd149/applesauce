@@ -187,7 +187,7 @@ function cachedSigner(signer: ISigner, pubkey: string, storage: SecureStorage): 
           if (cached !== null) return cached;
 
           const plaintext = await implementation.decrypt(peer, ciphertext);
-          if (!(await storage.setItem(key, plaintext))) throw new Error("Failed to cache decrypted message");
+          await storage.setItem(key, plaintext);
           return plaintext;
         })();
 

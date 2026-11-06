@@ -88,11 +88,8 @@ function createProcessingStore(storage: SecureStorage): GiftWrapProcessingStore 
 
       return records.filter((record) => record !== null).map((record) => JSON.parse(record));
     },
-    set: async (record) => {
-      // The receiver only records progress once this write resolves, so failed writes must reject
-      const saved = await storage.setItem(record.eventId, JSON.stringify(record));
-      if (!saved) throw new Error("Failed to save processing checkpoint");
-    },
+    // The receiver only records progress once this write resolves, so failed writes must reject
+    set: (record) => storage.setItem(record.eventId, JSON.stringify(record)),
   };
 }
 
@@ -120,8 +117,7 @@ async function createRumorDatabase(storage: SecureStorage): Promise<IAsyncEventD
     getTimeline: async (filters) => memory.getTimeline(filters),
     // Writing the same rumor twice only overwrites it, so a repeated add after a crash is harmless
     add: async (rumor) => {
-      const saved = await storage.setItem(rumor.id, JSON.stringify(rumor));
-      if (!saved) throw new Error("Failed to save rumor");
+      await storage.setItem(rumor.id, JSON.stringify(rumor));
 
       return memory.add(rumor);
     },

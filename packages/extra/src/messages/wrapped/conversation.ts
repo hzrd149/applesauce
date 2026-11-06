@@ -1,4 +1,4 @@
-import { ConversationDraftState } from "../common/drafts.js";
+import type { ConversationDraftState } from "../common/drafts.js";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
@@ -8,9 +8,9 @@ import {
 } from "applesauce-common/helpers";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import { kinds, type Filter, type Rumor } from "applesauce-core/helpers";
-import { Observable, ReplaySubject, map, shareReplay, takeUntil } from "rxjs";
+import { Observable, map, shareReplay } from "rxjs";
 import type { UploadEncryptedFileOptions } from "../common/attachments.js";
-import type { MessageDraft, MessageFileStorage, MessageStorage, MessageOperationOptions } from "../common/types.js";
+import type { MessageDraft, MessageOperationOptions } from "../common/types.js";
 import type { WrappedMessagesClient } from "./client.js";
 import type { PreparedWrappedMessage, WrappedMessageSendRequest } from "./types.js";
 
@@ -22,34 +22,28 @@ export class WrappedConversation {
   /** The canonical conversation identifier */
   readonly id: string;
 
-  private readonly drafts: ConversationDraftState;
   /** The current plaintext draft, restored from storage on subscription */
   readonly draft$: Observable<Readonly<MessageDraft> | undefined>;
 
   /** The canonical participant set including the client owner */
   readonly participants: readonly string[];
 
-  /** The shared plaintext store; conversation disposal never clears it */
+  /** The shared plaintext store owned by the receiver or application */
   readonly rumorStore;
 
   /** NIP-01 candidate filter; use matches to distinguish exact participant sets */
   readonly filter: Filter;
-  private readonly destroyed = new ReplaySubject<void>(1);
-  private readonly cancellation = new AbortController();
 
   /** Creates a conversation handle without subscribing to or querying the store */
   constructor(
     /** The fixed-account owner of this conversation */
     readonly client: WrappedMessagesClient,
     participants: string | string[],
-    /** The optional plaintext draft storage */
-    draftStorage?: MessageStorage,
-    /** The optional storage for files staged in drafts */
-    draftFileStorage?: MessageFileStorage,
+    /** The draft state owned and disposed by the client */
+    private readonly drafts: ConversationDraftState,
   ) {
     this.id = createConversationIdentifier(client.pubkey, getConversationParticipants(participants));
     this.participants = Object.freeze(getConversationParticipants(this.id));
-    this.drafts = new ConversationDraftState(`draft:${this.id}`, draftStorage, draftFileStorage);
     this.draft$ = this.drafts.draft$;
 
     this.rumorStore = client.rumorStore;
@@ -60,14 +54,9 @@ export class WrappedConversation {
     };
   }
 
-  /** Whether this conversation has been permanently released */
-  get isDisposed(): boolean {
-    return this.cancellation.signal.aborted;
-  }
-
   /**
    * Restores the saved draft without starting message loading
-   * @throws if disposed, storage fails, or the saved draft is invalid
+   * @throws if the client is disposed, storage fails, or the saved draft is invalid
    */
   loadDraft(): Promise<Readonly<MessageDraft> | undefined> {
     return this.drafts.load();
@@ -75,7 +64,7 @@ export class WrappedConversation {
 
   /**
    * Saves the conversation's plaintext draft before notifying subscribers
-   * @throws if disposed, the draft is invalid, or storage fails
+   * @throws if the client is disposed, the draft is invalid, or storage fails
    */
   setDraft(draft: MessageDraft): Promise<void> {
     return this.drafts.set(draft);
@@ -83,19 +72,10 @@ export class WrappedConversation {
 
   /**
    * Removes the conversation's saved draft before notifying subscribers
-   * @throws if disposed or storage fails
+   * @throws if the client is disposed or storage fails
    */
   clearDraft(): Promise<void> {
     return this.drafts.clear();
-  }
-
-  private context(options: MessageOperationOptions) {
-    const signal = options.signal
-      ? AbortSignal.any([options.signal, this.cancellation.signal])
-      : this.cancellation.signal;
-    signal.throwIfAborted();
-
-    return { ...options, signal };
   }
 
   /** Checks whether a rumor belongs to this exact conversation */
@@ -113,12 +93,13 @@ export class WrappedConversation {
 
   /**
    * Reads a store snapshot; filter limits apply to candidates before exact participant matching
-   * @throws if disposed, cancelled, or the store query fails
+   * @throws if cancelled or the store query fails
    */
   async getMessages(filter: Filter, options: MessageOperationOptions = {}): Promise<Rumor[]> {
-    const { signal } = this.context(options);
+    const { signal } = options;
+    signal?.throwIfAborted();
     const messages = await this.rumorStore.getTimeline({ ...this.filter, ...filter });
-    signal.throwIfAborted();
+    signal?.throwIfAborted();
     return messages.filter((message) => this.matches(message));
   }
 
@@ -127,45 +108,34 @@ export class WrappedConversation {
     return this.rumorStore.timeline({ ...this.filter, ...filter }).pipe(
       map((messages) => messages.filter((message) => this.matches(message))),
       shareReplay({ bufferSize: 1, refCount: true }),
-      takeUntil(this.destroyed),
     );
   }
 
   /**
    * Prepares encrypted envelopes for this conversation's participants
-   * @throws if disposed or envelope preparation fails
+   * @throws if the client is disposed, cancelled, or envelope preparation fails
    */
-  async prepareSend(
+  prepareSend(
     request: WrappedConversationSendRequest,
     options: MessageOperationOptions = {},
   ): Promise<PreparedWrappedMessage> {
-    const prepared = await this.client.prepareSend(
-      { ...request, recipients: this.participants },
-      this.context(options),
-    );
-    return {
-      message: prepared.message,
-      get publications() {
-        return prepared.publications;
-      },
-      publish: async (publishOptions = {}) => prepared.publish(this.context(publishOptions)),
-    };
+    return this.client.prepareSend({ ...request, recipients: this.participants }, options);
   }
 
   /**
    * Encrypts and uploads a file with the client's uploader, returning the metadata to send with {@link send}
-   * @throws if disposed, no uploader is configured, or the upload fails
+   * @throws if the client is disposed, no uploader is configured, or the upload fails
    */
   async uploadFile(
     file: Blob,
     options: MessageOperationOptions & UploadEncryptedFileOptions = {},
   ): Promise<FileMetadataFields> {
-    return this.client.uploadFile(file, { ...options, ...this.context(options) });
+    return this.client.uploadFile(file, options);
   }
 
   /**
    * Sends a message to this conversation's participants
-   * @throws if disposed, preparation fails, or publication fails
+   * @throws if the client is disposed, preparation fails, or publication fails
    */
   async send(request: WrappedConversationSendRequest, options: MessageOperationOptions = {}): Promise<Rumor> {
     return (await this.prepareSend(request, options)).publish(options);
@@ -182,20 +152,5 @@ export class WrappedConversation {
   ): Promise<Rumor> {
     if (!this.matches(parent)) throw new Error("Reply parent does not belong to this conversation");
     return this.send({ ...request, replyTo: parent.id }, options);
-  }
-
-  /** Releases conversation subscriptions and drafts without clearing shared rumors */
-  dispose(): void {
-    if (this.isDisposed) return;
-
-    this.cancellation.abort();
-    this.drafts.dispose();
-    this.destroyed.next();
-    this.destroyed.complete();
-  }
-
-  /** Releases this conversation when leaving a using scope */
-  [Symbol.dispose](): void {
-    this.dispose();
   }
 }

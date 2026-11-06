@@ -45,7 +45,7 @@ describe.each(["legacy", "wrapped"] as const)("%s conversation drafts", (protoco
     await conversation.setDraft(draft);
     expect(await firstValueFrom(conversation.draft$)).toEqual(draft);
     expect(values.size).toBe(1);
-    conversation.dispose();
+    conversation.client.dispose();
 
     const restored = createConversation(protocol, storage);
     expect(await firstValueFrom(restored.draft$)).toEqual(draft);
@@ -74,13 +74,13 @@ describe.each(["legacy", "wrapped"] as const)("%s conversation drafts", (protoco
     expect(await createConversation(protocol, otherAccountStorage, bob, alice).loadDraft()).toBeUndefined();
   });
 
-  it("preserves storage on disposal and rejects further edits", async () => {
+  it("preserves storage on client disposal and rejects further edits", async () => {
     const { storage, values } = createStorage();
     const conversation = createConversation(protocol, storage);
     await conversation.setDraft({ content: "keep" });
     const complete = vi.fn();
     const subscription = conversation.draft$.subscribe({ complete });
-    conversation.dispose();
+    conversation.client.dispose();
     expect(complete).toHaveBeenCalledOnce();
     expect(subscription.closed).toBe(true);
     await expect(conversation.setDraft({ content: "closed" })).rejects.toThrow("disposed");

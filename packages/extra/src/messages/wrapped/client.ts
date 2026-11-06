@@ -36,6 +36,7 @@ import type {
 } from "./types.js";
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
+import { ConversationDraftState } from "../common/drafts.js";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 
 const TWO_DAYS = 2 * 24 * 60 * 60;
@@ -112,7 +113,10 @@ export class WrappedMessagesClient {
   private background?: Subscription;
   private generation = new AbortController();
   private disposed = false;
-  private readonly conversationInstances = new Map<string, WrappedConversation>();
+  private readonly conversationInstances = new Map<
+    string,
+    { conversation: WrappedConversation; drafts: ConversationDraftState }
+  >();
 
   /**
    * Creates a stopped wrapped client using shared application dependencies
@@ -279,13 +283,19 @@ export class WrappedMessagesClient {
   conversation(participants: string | string[]): WrappedConversation {
     this.assertActive();
     const id = createConversationIdentifier(this.pubkey, getConversationParticipants(participants));
-    let conversation = this.conversationInstances.get(id);
-    if (!conversation || conversation.isDisposed) {
-      conversation = new WrappedConversation(this, id, this.options.draftStorage, this.options.draftFileStorage);
-      this.conversationInstances.set(id, conversation);
+    let entry = this.conversationInstances.get(id);
+    if (!entry) {
+      const drafts = new ConversationDraftState(
+        `draft:${id}`,
+        this.options.draftStorage,
+        this.options.draftFileStorage,
+      );
+      const conversation = new WrappedConversation(this, id, drafts);
+      entry = { conversation, drafts };
+      this.conversationInstances.set(id, entry);
     }
 
-    return conversation;
+    return entry.conversation;
   }
 
   /** Starts owned receiving and reconciliation, or attaches to an application-managed receiver */
@@ -348,7 +358,7 @@ export class WrappedMessagesClient {
     if (!this.disposed) this.lifecycle.next("idle");
   }
 
-  /** Releases client subscriptions, conversations, and an internally created receiver */
+  /** Releases client subscriptions, draft state, and an internally created receiver */
   dispose(): void {
     if (this.disposed) return;
 
@@ -357,7 +367,7 @@ export class WrappedMessagesClient {
     this.subscriptions.unsubscribe();
     if (this.ownsReceiver) this.receiver.dispose();
     this.session.close();
-    for (const conversation of this.conversationInstances.values()) conversation.dispose();
+    for (const { drafts } of this.conversationInstances.values()) drafts.dispose();
     this.conversationInstances.clear();
     this.destroyed.next();
     this.destroyed.complete();

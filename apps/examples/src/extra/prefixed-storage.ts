@@ -4,9 +4,7 @@ import type SecureStorage from "./encrypted-storage";
 export function createPrefixedStorage(storage: SecureStorage, prefix: string) {
   return {
     getItem: (key: string) => storage.getItem(prefix + key),
-    setItem: async (key: string, value: string): Promise<void> => {
-      if (!(await storage.setItem(prefix + key, value))) throw new Error("Failed to save encrypted storage data");
-    },
+    setItem: (key: string, value: string) => storage.setItem(prefix + key, value),
     removeItem: (key: string) => storage.removeItem(prefix + key),
   };
 }

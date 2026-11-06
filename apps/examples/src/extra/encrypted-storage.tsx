@@ -9,6 +9,9 @@ const SALT = hexToBytes(
   "3053020101300506032b657004220420d8f35f4eb7b8f494b1604490edb3ca0d1324ed200627a220b1e15794bb7810ab",
 );
 
+/** An AES-CBC ciphertext and the IV used to create it */
+export type EncryptedValue = { iv: Uint8Array; data: Uint8Array };
+
 // Encryption utility class
 export default class SecureStorage {
   private key: Uint8Array | null = null;
@@ -60,58 +63,56 @@ export default class SecureStorage {
     return key;
   }
 
-  // Encrypt and store data
-  async setItem(key: string, value: string, encryptionKey = this.encryptionKey): Promise<boolean> {
+  /**
+   * Encrypts a string with the unlocked key so callers can store it outside this storage
+   * @throws if the storage is locked
+   */
+  encrypt(value: string, encryptionKey = this.encryptionKey): EncryptedValue {
     if (!encryptionKey) throw new Error("Storage locked");
 
+    // Generate a random IV for CBC mode
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const data = cbc(encryptionKey, iv).encrypt(utf8ToBytes(value));
+
+    return { iv, data };
+  }
+
+  /**
+   * Decrypts a value created by {@link encrypt}
+   * @throws if the storage is locked or the key does not match
+   */
+  decrypt(value: EncryptedValue, encryptionKey = this.encryptionKey): string {
+    if (!encryptionKey) throw new Error("Storage locked");
+
+    let decryptedBytes: Uint8Array;
     try {
-      // Convert value to string if it's an object
-      const valueBytes = utf8ToBytes(value);
-
-      // Generate a random IV for CBC mode
-      const iv = crypto.getRandomValues(new Uint8Array(16));
-
-      // Create AES-CBC cipher
-      const cipher = cbc(encryptionKey, iv);
-
-      // Encrypt the data
-      const encryptedData = cipher.encrypt(valueBytes);
-
-      // Store IV and encrypted data directly as binary
-      const dataToStore = { iv, data: encryptedData };
-
-      // Store the encrypted data - LocalForage can handle this directly
-      await this.database.setItem(key, dataToStore);
-      return true;
-    } catch (error) {
-      console.error("Encryption error:", error);
-      return false;
+      decryptedBytes = cbc(encryptionKey, value.iv).decrypt(value.data);
+    } catch (e) {
+      throw new Error("Decryption failed, incorrect PIN");
     }
+
+    return new TextDecoder().decode(decryptedBytes);
+  }
+
+  /**
+   * Encrypts and stores a string
+   * @throws if the storage is locked or the write fails
+   */
+  async setItem(key: string, value: string, encryptionKey = this.encryptionKey): Promise<void> {
+    if (!encryptionKey) throw new Error("Storage locked");
+
+    // Store IV and encrypted data directly as binary, LocalForage can handle this directly
+    await this.database.setItem(key, this.encrypt(value, encryptionKey));
   }
 
   // Retrieve and decrypt data
   async getItem(key: string, encryptionKey = this.encryptionKey): Promise<string | null> {
     if (!encryptionKey) throw new Error("Storage locked");
 
-    // Get encrypted data
-    const encryptedPackage = (await this.database.getItem(key)) as { iv: Uint8Array; data: Uint8Array } | null;
+    const encryptedPackage = (await this.database.getItem(key)) as EncryptedValue | null;
     if (!encryptedPackage) return null;
 
-    // Create AES-CBC decipher
-    const decipher = cbc(encryptionKey, encryptedPackage.iv);
-
-    // Decrypt the data
-    let decryptedBytes: Uint8Array;
-    try {
-      decryptedBytes = decipher.decrypt(encryptedPackage.data);
-    } catch (e) {
-      throw new Error("Decryption failed, incorrect PIN");
-    }
-
-    // Convert bytes to UTF-8 string
-    const decryptedText = new TextDecoder().decode(decryptedBytes);
-
-    return decryptedText;
+    return this.decrypt(encryptedPackage, encryptionKey);
   }
 
   /** Encrypts and stores a blob's bytes along with its type */
@@ -138,6 +139,13 @@ export default class SecureStorage {
     const bytes = cbc(this.encryptionKey, encryptedPackage.iv).decrypt(encryptedPackage.data);
     return new Blob([bytes], { type: encryptedPackage.type });
   }
+
+  /** A key-value view of this storage's encrypted blobs */
+  readonly blobs = {
+    getItem: (key: string) => this.getBlob(key),
+    setItem: (key: string, blob: Blob) => this.setBlob(key, blob),
+    removeItem: (key: string) => this.removeItem(key),
+  };
 
   // Remove an item
   async removeItem(key: string): Promise<void> {
