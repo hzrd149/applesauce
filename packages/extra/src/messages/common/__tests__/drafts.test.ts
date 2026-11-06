@@ -3,8 +3,13 @@ import type { RelayPool } from "applesauce-relay";
 import { firstValueFrom } from "rxjs";
 import localforage from "localforage";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-import { LegacyMessagesClient, WrappedMessagesClient, type MessageFileStorage, type MessageStorage } from "../index.js";
-import { ConversationDraftState } from "../common/drafts.js";
+import {
+  LegacyMessagesClient,
+  WrappedMessagesClient,
+  type MessageFileStorage,
+  type MessageStorage,
+} from "../../index.js";
+import { ConversationDraftState } from "../drafts.js";
 
 const alice = "a".repeat(64);
 const bob = "b".repeat(64);

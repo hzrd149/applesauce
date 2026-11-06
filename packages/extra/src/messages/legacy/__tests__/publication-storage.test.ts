@@ -5,7 +5,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import { firstValueFrom } from "rxjs";
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LegacyMessagesClient, type MessageStorage, type PreparedLegacyMessage } from "../index.js";
+import { LegacyMessagesClient, type MessageStorage, type PreparedLegacyMessage } from "../../index.js";
 
 const aliceKey = new Uint8Array(32).fill(1);
 const bobKey = new Uint8Array(32).fill(2);

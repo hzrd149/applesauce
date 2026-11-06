@@ -1,6 +1,6 @@
-import type { ConversationIndexEntry } from "../common/types.js";
+import type { ConversationIndexEntry } from "../types.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { IndexedDBConversationIndexStore } from "../common/indexed-db-conversation-index.js";
+import { IndexedDBConversationIndexStore } from "../indexed-db-conversation-index.js";
 
 function entry(index: number, lastActivity: number): ConversationIndexEntry {
   return { id: index.toString(16).padStart(64, "0"), lastMessageId: "f".repeat(64), lastActivity };

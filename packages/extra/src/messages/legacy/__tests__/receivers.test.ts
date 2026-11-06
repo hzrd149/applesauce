@@ -11,9 +11,9 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner, type ISigner } from "applesauce-signers";
 import { EMPTY, firstValueFrom, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LegacyMessagesClient } from "../legacy/client.js";
-import { LegacyInboxReceiver } from "../legacy/inbox-receiver.js";
-import type { LegacyInboxReceiverOptions, LegacyReadResult } from "../legacy/types.js";
+import { LegacyMessagesClient } from "../client.js";
+import { LegacyInboxReceiver } from "../inbox-receiver.js";
+import type { LegacyInboxReceiverOptions, LegacyReadResult } from "../types.js";
 
 const ownerSigner = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const peerSigner = new PrivateKeySigner(new Uint8Array(32).fill(2));

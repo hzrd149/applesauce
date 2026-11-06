@@ -14,7 +14,7 @@ import { PrivateKeySigner } from "applesauce-signers";
 import type { RelayPool } from "applesauce-relay";
 import { EMPTY, firstValueFrom, lastValueFrom, Subject, toArray } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LegacyMessagesClient } from "../legacy/client.js";
+import { LegacyMessagesClient } from "../client.js";
 
 const ownerKey = new Uint8Array(32).fill(1);
 const peerKey = new Uint8Array(32).fill(2);

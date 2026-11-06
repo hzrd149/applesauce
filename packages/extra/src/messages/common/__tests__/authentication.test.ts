@@ -3,7 +3,7 @@ import { Relay, type RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, firstValueFrom, NEVER, of } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MessageAuthentication, withMessageAuth$ } from "../common/authentication.js";
+import { MessageAuthentication, withMessageAuth$ } from "../authentication.js";
 
 const signer = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const pubkey = await signer.getPublicKey();

@@ -3,7 +3,7 @@ import { getEncryptedContent, type EncryptedContentCache, type NostrEvent } from
 import { PrivateKeySigner, type ISigner } from "applesauce-signers";
 import { firstValueFrom, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
-import { LegacyMessageDecryptor } from "../legacy/decryptor.js";
+import { LegacyMessageDecryptor } from "../decryptor.js";
 
 const ownerSigner = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const peerSigner = new PrivateKeySigner(new Uint8Array(32).fill(2));

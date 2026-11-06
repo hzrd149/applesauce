@@ -12,7 +12,7 @@ import {
   type ConversationIndexEntry,
   type ConversationIndexStore,
   type WrappedConversationSummary,
-} from "../index.js";
+} from "../../index.js";
 
 const owner = await new PrivateKeySigner(new Uint8Array(32).fill(1)).getPublicKey();
 const alice = await new PrivateKeySigner(new Uint8Array(32).fill(2)).getPublicKey();

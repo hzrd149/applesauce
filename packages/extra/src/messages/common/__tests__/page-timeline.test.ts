@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { pageTimeline, type TimelineWindow } from "../common/helpers.js";
+import { pageTimeline, type TimelineWindow } from "../helpers.js";
 
 type Item = { id: number; created_at: number };
 

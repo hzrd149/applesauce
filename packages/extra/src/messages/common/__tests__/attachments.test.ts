@@ -5,7 +5,7 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { EMPTY, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAttachment, uploadEncryptedFile, WrappedMessagesClient, type MessageFileUploader } from "../index.js";
+import { loadAttachment, uploadEncryptedFile, WrappedMessagesClient, type MessageFileUploader } from "../../index.js";
 
 const aliceSigner = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const alice = await aliceSigner.getPublicKey();

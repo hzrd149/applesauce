@@ -1,6 +1,6 @@
 import { Observable, Subject } from "rxjs";
 import { afterEach, expect, it, vi } from "vitest";
-import { withFallback$ } from "../common/helpers.js";
+import { withFallback$ } from "../helpers.js";
 
 afterEach(() => vi.useRealTimers());
 

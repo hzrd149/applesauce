@@ -7,9 +7,9 @@ import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, EMPTY, firstValueFrom, Observable, of, Subject } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
-import type { GiftWrapProcessingRecord } from "../../gift-wrap/types.js";
-import { WrappedMessagesClient } from "../wrapped/client.js";
+import { GiftWrapReceiver } from "../../../gift-wrap/receiver.js";
+import type { GiftWrapProcessingRecord } from "../../../gift-wrap/types.js";
+import { WrappedMessagesClient } from "../client.js";
 
 const ownerKey = new Uint8Array(32).fill(31);
 const peerKey = new Uint8Array(32).fill(32);
