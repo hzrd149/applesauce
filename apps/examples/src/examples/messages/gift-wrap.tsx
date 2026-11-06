@@ -6,13 +6,10 @@
 import { castUser, User } from "applesauce-common/casts";
 import {
   createConversationIdentifier,
-  getConversationIdentifierFromMessage,
-  getConversationParticipants,
   getMessageAttachments,
   getWrappedMessageParent,
   groupMessageEvents,
   isEncryptedFile,
-  isWrappedMessage,
   type FileMetadataFields,
   type Rumor,
 } from "applesauce-common/helpers";
@@ -33,6 +30,7 @@ import {
   type MessageAuthRequest,
   type MessageFileUploader,
   type WrappedConversation,
+  type WrappedConversationSummary,
   type PreparedWrappedMessage,
 } from "applesauce-extra/messages";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
@@ -43,7 +41,7 @@ import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { PanelLeft, PanelRight, Paperclip, Reply, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { type ClipboardEvent, type ReactNode, useMemo, useState } from "react";
+import { type ClipboardEvent, type ReactNode, useCallback, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
@@ -60,6 +58,7 @@ import {
   NEVER,
   type Observable,
   of,
+  scan,
   shareReplay,
   switchMap,
   timeout,
@@ -70,13 +69,14 @@ import NoteContent from "../../components/note-content";
 import PubkeyPicker from "../../components/pubkey-picker";
 import UnlockView from "../../components/unlock-view";
 import SecureStorage from "../../extra/encrypted-storage";
+import { ConversationIndexDatabase } from "../../extra/conversation-index-database";
 import { RumorDatabase } from "../../extra/rumor-database";
 import { verifyEvent } from "../../extra/verifier";
 import { lookupRelays$ } from "../../settings";
 
 type HistoryRange = "recent" | "year" | "all";
 
-type ConversationGroup = { id: string; participants: string[]; lastMessage: Rumor };
+const CONVERSATION_PAGE_SIZE = 30;
 
 const HISTORY_RANGES: { value: HistoryRange; label: string }[] = [
   { value: "recent", label: "Recent" },
@@ -134,7 +134,13 @@ function createProcessingStore(storage: SecureStorage): GiftWrapProcessingStore 
 }
 
 /** Creates a client for one account whose rumor store and checkpoints persist between reloads */
-function createClient(signer: ISigner, user: User, storage: SecureStorage, database: RumorDatabase) {
+function createClient(
+  signer: ISigner,
+  user: User,
+  storage: SecureStorage,
+  database: RumorDatabase,
+  conversationIndex: ConversationIndexDatabase,
+) {
   const scoped = (name: string) => storage.createInstance({ name: `gift-wrap-${name}:${user.pubkey}` });
   const drafts = storage.createInstance({ name: `gift-wrap:${user.pubkey}`, storeName: "drafts" });
 
@@ -154,6 +160,8 @@ function createClient(signer: ISigner, user: User, storage: SecureStorage, datab
     draftStorage: drafts,
     // Pasted and picked files are kept encrypted at rest until they are sent
     draftFileStorage: drafts.blobs,
+    // The conversation list is restored on reload before any envelope is decrypted again
+    conversationIndex,
     authTimeout: false,
     upload: createBlossomUploader(signer, user),
   });
@@ -165,9 +173,14 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
     if (!signer || !user || !storage) return of(undefined);
 
     // Rumors are indexed in IndexedDB by their metadata and encrypted with the storage PIN
-    return from(RumorDatabase.open(`gift-wrap-messages:${user.pubkey}`, storage)).pipe(
-      switchMap((database) => {
-        const client = createClient(signer, user, storage, database);
+    const databases = Promise.all([
+      RumorDatabase.open(`gift-wrap-messages:${user.pubkey}`, storage),
+      ConversationIndexDatabase.open(`gift-wrap-conversations:${user.pubkey}`),
+    ]);
+
+    return from(databases).pipe(
+      switchMap(([database, conversationIndex]) => {
+        const client = createClient(signer, user, storage, database, conversationIndex);
 
         return merge(
           of(client),
@@ -181,6 +194,7 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
           finalize(() => {
             client.dispose();
             database.close();
+            conversationIndex.close();
           }),
         );
       }),
@@ -189,23 +203,36 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   shareReplay({ bufferSize: 1, refCount: false }),
 );
 
-/** Groups all saved messages into conversations, newest first */
-function conversations$(client: WrappedMessagesClient) {
-  return client.rumorStore.timeline(client.messageFilters).pipe(
-    map((messages) => {
-      const groups = new Map<string, ConversationGroup>();
+/** Merges conversations by id, keeping the newest activity, and sorts them newest first */
+function mergeConversations(list: WrappedConversationSummary[], incoming: WrappedConversationSummary[]) {
+  const merged = new Map(list.map((summary) => [summary.id, summary]));
 
-      for (const message of messages) {
-        if (!isWrappedMessage(message)) continue;
+  for (const summary of incoming) {
+    const existing = merged.get(summary.id);
+    if (!existing || existing.lastActivity <= summary.lastActivity) merged.set(summary.id, summary);
+  }
 
-        const id = getConversationIdentifierFromMessage(message);
-        if (!groups.has(id))
-          groups.set(id, { id, participants: getConversationParticipants(message), lastMessage: message });
-      }
+  return [...merged.values()].sort((a, b) => b.lastActivity - a.lastActivity);
+}
 
-      return [...groups.values()];
-    }),
-  );
+/** Reads the newest conversations from the index and moves updated conversations to the top */
+function conversationList$(client: WrappedMessagesClient, limit: number) {
+  const firstPage = defer(async () => {
+    const page: WrappedConversationSummary[] = [];
+
+    for await (const summary of client.conversations()) {
+      page.push(summary);
+      if (page.length === limit) break;
+    }
+
+    return page;
+  });
+
+  // Updates are merged in while the page loads, so a message arriving meanwhile is not lost
+  const updates = client.conversationUpdates$.pipe(map((update) => [update]));
+
+  // No initial value, so use$ keeps showing the current list while a longer page loads
+  return merge(firstPage, updates).pipe(scan(mergeConversations, []));
 }
 
 /** Creates an object URL for a blob that is revoked when the subscription ends */
@@ -342,6 +369,8 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
     .filter((relay) => relay.error);
 
   const [decrypting, setDecrypting] = useState(false);
+  const [indexing, setIndexing] = useState(false);
+  const [indexed, setIndexed] = useState<number>();
 
   const decryptAll = async () => {
     setDecrypting(true);
@@ -353,6 +382,20 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
       setError(String(error));
     } finally {
       setDecrypting(false);
+    }
+  };
+
+  // Messages saved before the conversation index existed only appear after indexing them once
+  const indexStoredMessages = async () => {
+    setIndexing(true);
+    setError(undefined);
+
+    try {
+      setIndexed(await client.indexConversations());
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      setIndexing(false);
     }
   };
 
@@ -413,6 +456,18 @@ function InboxStatus({ client }: { client: WrappedMessagesClient }) {
               Retry
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-sm"
+            title="Add saved messages to the conversation list"
+            disabled={indexing}
+            onClick={indexStoredMessages}
+          >
+            {indexing && <span className="loading loading-spinner loading-sm" />}
+            Index saved messages
+          </button>
+          {indexed !== undefined && <span className="badge badge-ghost">{indexed} indexed</span>}
         </div>
       </Section>
 
@@ -482,7 +537,7 @@ function ConversationRow({
   active,
   onSelect,
 }: {
-  group: ConversationGroup;
+  group: WrappedConversationSummary;
   self: User;
   active: boolean;
   onSelect: () => void;
@@ -502,14 +557,20 @@ function ConversationRow({
         <div className="flex items-center gap-2">
           {isSelf ? <span className="font-medium">Notes to self</span> : <Names users={others} />}
           {others.length > 1 && <span className="badge badge-ghost">{others.length}</span>}
-          <span className="ms-auto shrink-0 text-sm opacity-60">{formatShortTime(group.lastMessage.created_at)}</span>
+          <span className="ms-auto shrink-0 text-sm opacity-60">{formatShortTime(group.lastActivity)}</span>
         </div>
-        <span className="truncate text-sm opacity-60">
-          {group.lastMessage.kind === kinds.FileMessage ? "Attachment" : group.lastMessage.content}
-        </span>
+        <span className="truncate text-sm opacity-60">{getMessagePreview(group.lastMessage)}</span>
       </div>
     </button>
   );
+}
+
+/** Returns the sidebar preview text for a conversation's newest message */
+function getMessagePreview(message?: Rumor) {
+  if (!message) return "Message not loaded";
+  if (message.kind === kinds.FileMessage) return "Attachment";
+
+  return message.content;
 }
 
 function Account({ user }: { user: User }) {
@@ -937,8 +998,24 @@ function Conversation({ conversation }: { conversation: WrappedConversation }) {
 }
 
 function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) {
-  // Saved rumors render immediately after unlocking storage, before any relay or signer work
-  const groups = use$(() => conversations$(client), [client]);
+  // Saved conversations render immediately after unlocking storage, before any relay or signer work
+  const [limit, setLimit] = useState(CONVERSATION_PAGE_SIZE);
+  const groups = use$(() => conversationList$(client, limit), [client, limit]);
+  const hasMore = (groups?.length ?? 0) >= limit;
+
+  // Load the next page when the end of the list scrolls into view
+  const watchEnd = useCallback(
+    (end: HTMLDivElement | null) => {
+      if (!end || !hasMore) return;
+
+      const observer = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) setLimit(limit + CONVERSATION_PAGE_SIZE);
+      });
+      observer.observe(end);
+      return () => observer.disconnect();
+    },
+    [hasMore, limit],
+  );
   const [selected, setSelected] = useState(client.pubkey);
   const [conversationsOpen, setConversationsOpen] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -986,7 +1063,6 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="border-b border-base-300 p-3">
               <PubkeyPicker value="" placeholder="Start a conversation" onChange={startConversation} />
-              <span className="text-sm opacity-60">Conversations from the last 30 days</span>
             </div>
 
             {selfGroup ? (
@@ -1022,6 +1098,11 @@ function Inbox({ client, user }: { client: WrappedMessagesClient; user: User }) 
                   onSelect={() => setSelected(group.id)}
                 />
               ))
+            )}
+            {hasMore && (
+              <div ref={watchEnd} className="flex justify-center p-3">
+                <span className="loading loading-dots" />
+              </div>
             )}
           </div>
           <Account user={user} />

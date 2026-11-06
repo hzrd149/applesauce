@@ -17,6 +17,7 @@ export default defineConfig({
       "packages/core/src/helpers/__tests__/url-native.test.ts",
       "packages/relay/src/operators/__tests__/liveness.test.ts",
       "apps/examples/src/extra/__tests__/rumor-database.browser.test.ts",
+      "apps/examples/src/extra/__tests__/conversation-index-database.browser.test.ts",
     ],
     browser: {
       enabled: true,

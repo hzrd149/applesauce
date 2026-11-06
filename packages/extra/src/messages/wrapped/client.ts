@@ -1,7 +1,9 @@
 import {
   createConversationIdentifier,
+  getConversationIdentifierFromMessage,
   getConversationParticipants,
   isGiftWrapUnlocked,
+  isWrappedMessage,
 } from "applesauce-common/helpers";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import { kinds, unixNow, type Filter, type NostrEvent, type Rumor } from "applesauce-core/helpers";
@@ -9,6 +11,7 @@ import {
   BehaviorSubject,
   catchError,
   combineLatest,
+  concatMap,
   defer,
   EMPTY,
   firstValueFrom,
@@ -33,13 +36,30 @@ import type {
   WrappedMessagesClientOptions,
   WrappedMessagesSyncStatus,
   PreparedWrappedMessage,
+  WrappedConversationSummary,
+  WrappedConversationListOptions,
+  WrappedConversationIndexingOptions,
+  WrappedConversationIndexEntry,
+  WrappedConversationIndexStore,
 } from "./types.js";
 import { WrappedMessageSession } from "./session.js";
 import { WrappedConversation } from "./conversation.js";
+import { MemoryWrappedConversationIndexStore } from "./conversation-index.js";
 import { ConversationDraftState } from "../common/drafts.js";
 import { GiftWrapReceiver } from "../../gift-wrap/receiver.js";
 
 const TWO_DAYS = 2 * 24 * 60 * 60;
+
+/** The number of rumors read from the rumor store per filter while indexing conversations */
+const INDEXING_PAGE_SIZE = 500;
+
+/** Checks whether a rumor is newer than a conversation's indexed message, breaking timestamp ties by the lower id */
+function isNewerThan(rumor: Rumor, entry: WrappedConversationIndexEntry | undefined): boolean {
+  if (!entry) return true;
+  if (rumor.created_at !== entry.lastActivity) return rumor.created_at > entry.lastActivity;
+
+  return rumor.id < entry.lastMessageId;
+}
 
 /** An account-scoped NIP-17 inbox with per-recipient gift wraps and resumable publication */
 export class WrappedMessagesClient {
@@ -64,6 +84,15 @@ export class WrappedMessagesClient {
 
   /** NIP-01 filters for this account's chat and file rumors in the shared rumor store */
   readonly messageFilters: Filter[];
+
+  private readonly conversationIndex: WrappedConversationIndexStore;
+  private readonly conversationUpdates = new Subject<WrappedConversationSummary>();
+
+  /** The conversations whose newest message changed, for updating pages loaded with conversations() */
+  readonly conversationUpdates$ = this.conversationUpdates.asObservable();
+
+  // Serializes index writes so live arrivals and indexConversations() never overwrite each other
+  private conversationWrites: Promise<unknown> = Promise.resolve();
 
   /** The owner's read relays */
   readonly relays$: Observable<string[]>;
@@ -202,6 +231,25 @@ export class WrappedMessagesClient {
       }),
     );
 
+    this.conversationIndex = options.conversationIndex ?? new MemoryWrappedConversationIndexStore();
+
+    // Index failures are reported without stopping the subscription, so the next message is still recorded.
+    this.subscriptions.add(
+      this.rumorStore
+        .filters(this.messageFilters, true)
+        .pipe(
+          concatMap((rumor) =>
+            defer(() => this.recordConversation(rumor)).pipe(
+              catchError((error) => {
+                this.report("storage", error, rumor.id);
+                return EMPTY;
+              }),
+            ),
+          ),
+        )
+        .subscribe(),
+    );
+
     // Derive counts from envelopes; rumor models expose only successfully decrypted messages.
     this.decryptionState$ = combineLatest([this.giftWraps$, this.receiver.decryptionState$]).pipe(
       map(([events, state]) => ({
@@ -212,6 +260,38 @@ export class WrappedMessagesClient {
         pending: state.pending,
       })),
     );
+  }
+
+  /** Records a message as its conversation's newest activity when it is newer than the indexed message */
+  private recordConversation(rumor: Rumor): Promise<void> {
+    if (!isWrappedMessage(rumor)) return Promise.resolve();
+
+    const write = this.conversationWrites.then(async () => {
+      const id = getConversationIdentifierFromMessage(rumor);
+      const existing = await this.conversationIndex.get(id);
+      if (!isNewerThan(rumor, existing)) return;
+
+      const entry = { id, lastMessageId: rumor.id, lastActivity: rumor.created_at };
+      await this.conversationIndex.set(entry);
+      this.conversationUpdates.next(await this.summarizeConversation(entry, rumor));
+    });
+    this.conversationWrites = write.catch(() => undefined);
+
+    return write;
+  }
+
+  private async summarizeConversation(
+    entry: WrappedConversationIndexEntry,
+    lastMessage?: Rumor,
+  ): Promise<WrappedConversationSummary> {
+    const message = lastMessage ?? (await this.rumorStore.getEvent(entry.lastMessageId));
+
+    return {
+      id: entry.id,
+      participants: getConversationParticipants(entry.id),
+      lastMessage: message ?? undefined,
+      lastActivity: entry.lastActivity,
+    };
   }
 
   private assertActive() {
@@ -365,6 +445,7 @@ export class WrappedMessagesClient {
     this.disposed = true;
     this.stop();
     this.subscriptions.unsubscribe();
+    this.conversationUpdates.complete();
     if (this.ownsReceiver) this.receiver.dispose();
     this.session.close();
     for (const { drafts } of this.conversationInstances.values()) drafts.dispose();
@@ -422,6 +503,65 @@ export class WrappedMessagesClient {
   /** Loads a finite inbox range; conversations are filtered locally after decryption */
   async loadHistory(options: WrappedMessageHistoryOptions = {}): Promise<WrappedMessagesSyncStatus> {
     return lastValueFrom(this.sync$(options));
+  }
+
+  /**
+   * Pages through the conversation index newest activity first, reading each newest message from the rumor store
+   * @throws if the client is disposed, the signal aborts, or the index store fails
+   */
+  async *conversations(options: WrappedConversationListOptions = {}): AsyncGenerator<WrappedConversationSummary> {
+    this.assertActive();
+    options.signal?.throwIfAborted();
+
+    for await (const entry of this.conversationIndex.list({ until: options.until })) {
+      const summary = await this.summarizeConversation(entry);
+      this.assertActive();
+      options.signal?.throwIfAborted();
+      yield summary;
+    }
+  }
+
+  /**
+   * Indexes rumors already in the rumor store, such as messages decrypted before the index existed
+   * @returns the number of rumors scanned
+   * @throws if the client is disposed or stopped, the signal aborts, or the rumor store or index store fails
+   */
+  async indexConversations(options: WrappedConversationIndexingOptions = {}): Promise<number> {
+    const context = this.context(options);
+    const { since } = options;
+    let until = options.until;
+    let scanned = 0;
+
+    while (until === undefined || since === undefined || until >= since) {
+      const page = await this.rumorStore.getTimeline(this.indexingFilters({ since, until, limit: INDEXING_PAGE_SIZE }));
+      context.signal.throwIfAborted();
+      if (page.length === 0) break;
+
+      // The page may end partway through its oldest second, so read that whole second separately
+      const oldest = Math.min(...page.map((rumor) => rumor.created_at));
+      const newer = page.filter((rumor) => rumor.created_at > oldest);
+      const oldestSecond = await this.rumorStore.getTimeline(this.indexingFilters({ since: oldest, until: oldest }));
+      context.signal.throwIfAborted();
+
+      for (const rumor of [...newer, ...oldestSecond]) {
+        await this.recordConversation(rumor);
+        context.signal.throwIfAborted();
+      }
+
+      scanned += newer.length + oldestSecond.length;
+      until = oldest - 1;
+    }
+
+    return scanned;
+  }
+
+  private indexingFilters(window: { since?: number; until?: number; limit?: number }): Filter[] {
+    const bounds: Filter = {};
+    if (window.since !== undefined) bounds.since = window.since;
+    if (window.until !== undefined) bounds.until = window.until;
+    if (window.limit !== undefined) bounds.limit = window.limit;
+
+    return this.messageFilters.map((filter) => ({ ...filter, ...bounds }));
   }
 
   /** Discovers kind-10050 relays for every participant, including the owner */
