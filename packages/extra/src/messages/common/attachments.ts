@@ -49,21 +49,77 @@ export async function uploadEncryptedFile(
   };
 }
 
+/** The default limit on the bytes {@link loadAttachment} downloads from one source */
+export const DEFAULT_MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024;
+
+// AES-GCM appends a 16-byte tag, and clients disagree on whether an encrypted file's size counts it.
+const GCM_TAG_SIZE = 16;
+
 /** Options for {@link loadAttachment} */
 export type LoadAttachmentOptions = {
   /** Aborts the download */
   signal?: AbortSignal;
   /** The fetch implementation, defaults to the global fetch */
   fetch?: typeof fetch;
+  /** The most bytes to download from one source, defaults to {@link DEFAULT_MAX_ATTACHMENT_SIZE} */
+  maxSize?: number;
 };
 
 /**
+ * Reads a response body, failing as soon as it grows past `limit` bytes
+ * @throws if the body is larger than the limit
+ */
+async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
+  const length = Number(response.headers.get("content-length"));
+  if (length > limit) throw new Error(`Attachment is ${length} bytes, more than the ${limit} byte limit`);
+
+  if (!response.body) {
+    const data = new Uint8Array(await response.arrayBuffer());
+    if (data.length > limit) throw new Error(`Attachment is larger than the ${limit} byte limit`);
+    return data;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    size += value.length;
+    if (size > limit) {
+      // Cancelling stops the download rather than buffering a body that will be thrown away.
+      await reader.cancel().catch(() => {});
+      throw new Error(`Attachment is larger than the ${limit} byte limit`);
+    }
+    chunks.push(value);
+  }
+
+  const data = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    data.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return data;
+}
+
+/**
  * Downloads a message attachment from its URL or fallbacks and decrypts it when it is encrypted
- * @throws if the attachment has no URL, every source fails, or decryption fails
+ * @throws if the attachment has no URL, is larger than `maxSize`, every source fails, or decryption fails
  */
 export async function loadAttachment(file: FileMetadataFields, options: LoadAttachmentOptions = {}): Promise<Blob> {
   const sources = [file.url, ...(file.fallback ?? [])].filter((url): url is string => !!url);
   if (sources.length === 0) throw new Error("Attachment has no URL");
+
+  const maxSize = options.maxSize ?? DEFAULT_MAX_ATTACHMENT_SIZE;
+  const declared = Number.isSafeInteger(file.size) && file.size! >= 0 ? file.size! : undefined;
+  if (declared !== undefined && declared > maxSize)
+    throw new Error(`Attachment is ${declared} bytes, more than the ${maxSize} byte limit`);
+
+  // A source serving more bytes than the sender declared is serving the wrong file.
+  const limit =
+    declared === undefined ? maxSize : Math.min(maxSize, declared + (isEncryptedFile(file) ? GCM_TAG_SIZE : 0));
 
   const download = options.fetch ?? fetch;
   let lastError: unknown;
@@ -72,9 +128,9 @@ export async function loadAttachment(file: FileMetadataFields, options: LoadAtta
     try {
       const response = await download(url, { signal: options.signal });
       if (!response.ok) throw new Error(`${url} responded ${response.status}`);
-      const data = await response.arrayBuffer();
+      const data = await readLimited(response, limit);
 
-      if (!isEncryptedFile(file)) return new Blob([data], { type: file.type });
+      if (!isEncryptedFile(file)) return new Blob([data as Uint8Array<ArrayBuffer>], { type: file.type });
 
       // A hash or authentication failure means this mirror served the wrong bytes, so try the next one.
       const plaintext = await decryptFile(data, file);
