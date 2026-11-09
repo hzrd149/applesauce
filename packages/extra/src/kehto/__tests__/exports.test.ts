@@ -44,7 +44,6 @@ describe("exports", () => {
         "createLegacyMessageProtocol",
         "createListsOptions",
         "createMultiProtocolDmAdapter",
-        "createNdrMessageProtocol",
         "createOutboxRouter",
         "createResourceOptions",
         "createUploadOptions",

@@ -32,7 +32,7 @@ The root `applesauce-extra` import re-exports Primal, Vertex, Open Ranking, remo
 
 Only some modules need extra packages. Install them when you import that module:
 
-- `nostr-double-ratchet` for `applesauce-extra/messages/ndr`
+- `nostr-double-ratchet` for `applesauce-extra/messages/ndr` and `applesauce-extra/kehto/services/dm/ndr`
 - `@kehto/nip`, `@kehto/runtime`, `@kehto/services`, and `@kehto/shell` for `applesauce-extra/kehto`
 - `@contextvm/sdk` and `@contextvm/mcp-sdk` for `applesauce-extra/kehto/services/dm/cordn`
 

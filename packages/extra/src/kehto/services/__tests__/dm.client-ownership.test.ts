@@ -7,12 +7,8 @@ import { BehaviorSubject, EMPTY, filter, firstValueFrom, NEVER, toArray } from "
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LegacyMessagesClient } from "../../../messages/legacy/client.js";
 import { NdrMessagesClient } from "../../../messages/ndr/client.js";
-import {
-  createLegacyMessageProtocol,
-  createNdrMessageProtocol,
-  createMultiProtocolDmAdapter,
-  useProtocol,
-} from "../dm.js";
+import { createLegacyMessageProtocol, createMultiProtocolDmAdapter, useProtocol } from "../dm.js";
+import { createNdrMessageProtocol } from "../dm/ndr.js";
 
 const signer = new PrivateKeySigner(new Uint8Array(32).fill(1));
 const peerSigner = new PrivateKeySigner(new Uint8Array(32).fill(2));

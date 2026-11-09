@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NdrMessagesClient } from "../../../messages/ndr/client.js";
 import { NdrHistory } from "../../../messages/ndr/history.js";
 import type { NdrClientLifecycle } from "../../../messages/ndr/types.js";
-import { createNdrMessageProtocol, createMultiProtocolDmAdapter, useProtocol } from "../dm.js";
+import { createMultiProtocolDmAdapter, useProtocol } from "../dm.js";
+import { createNdrMessageProtocol } from "../dm/ndr.js";
 
 const alice = "a".repeat(64);
 const bob = "b".repeat(64);

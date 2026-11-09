@@ -47,7 +47,6 @@ import {
   createKehtoCommonService,
   createWrappedMessageProtocol,
   createLegacyMessageProtocol,
-  createNdrMessageProtocol,
   defaultDmRouter,
   firstMatchingRoute,
   useProtocolWhenSupported,
@@ -56,6 +55,7 @@ import {
   type KehtoContext,
 } from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
+import { createNdrMessageProtocol } from "applesauce-extra/kehto/services/dm/ndr";
 import { NdrMessagesClient } from "applesauce-extra/messages/ndr";
 import type { NdrRuntimeState, StorageAdapter } from "nostr-double-ratchet";
 import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";

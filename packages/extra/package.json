@@ -33,19 +33,10 @@
       "require": "./dist/kehto/host/index.js",
       "types": "./dist/kehto/host/index.d.ts"
     },
-    "./kehto/services/cvm": {
-      "import": "./dist/kehto/services/cvm.js",
-      "require": "./dist/kehto/services/cvm.js",
-      "types": "./dist/kehto/services/cvm.d.ts"
-    },
-    "./kehto/services/dm/ndr": {
-      "import": "./dist/kehto/services/dm/ndr.js",
-      "require": "./dist/kehto/services/dm/ndr.js",
-      "types": "./dist/kehto/services/dm/ndr.d.ts"
-    },
-    "./kehto/services/dm/cordn": {
-      "import": "./dist/kehto/services/dm/cordn.js",
-      "types": "./dist/kehto/services/dm/cordn.d.ts"
+    "./kehto/services/*": {
+      "import": "./dist/kehto/services/*.js",
+      "require": "./dist/kehto/services/*.js",
+      "types": "./dist/kehto/services/*.d.ts"
     },
     "./nspam": {
       "import": "./dist/nspam/index.js",

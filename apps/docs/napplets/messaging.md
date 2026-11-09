@@ -157,7 +157,8 @@ Existing adapters own their send approval and publication behavior. The bridge i
 `createNdrMessageProtocol` exposes an [NDR messages client](../extra/ndr.md) to napplets, using the [client ownership options](#client-ownership). The host supplies encrypted, account-scoped storage, the client manages history, devices, and the outbox, and Kehto adds routing, message normalization, and plaintext send approval.
 
 ```ts
-import { createNdrMessageProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
+import { createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
+import { createNdrMessageProtocol } from "applesauce-extra/kehto/services/dm/ndr";
 
 const ndr = createNdrMessageProtocol({
   client: activeNdrClient$, // NdrMessagesClient | undefined
