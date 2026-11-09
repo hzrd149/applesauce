@@ -1,5 +1,6 @@
 import type { DmSendRequest } from "@kehto/services";
 import { unixNow } from "applesauce-core/helpers";
+import { CHAT_MESSAGE_KIND } from "nostr-double-ratchet";
 import {
   concat,
   defer,
@@ -174,7 +175,7 @@ export function createNdrMessageProtocol(config: NdrMessageProtocolOptions): Ndr
               await approveMessage(
                 config,
                 {
-                  kind: 14,
+                  kind: CHAT_MESSAGE_KIND,
                   content: request.content,
                   created_at: unixNow(),
                   tags: request.recipients.map((peer) => ["p", peer]),

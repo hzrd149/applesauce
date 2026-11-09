@@ -1,5 +1,8 @@
 import {
+  APP_KEYS_EVENT_KIND,
   AppKeys,
+  CHAT_MESSAGE_KIND,
+  CHAT_SETTINGS_KIND,
   createPersistentNostrOutbox,
   GROUP_ROSTER_FACT_KIND,
   Invite,
@@ -8,6 +11,9 @@ import {
   isGroupRosterFactEvent,
   NdrRuntime,
   parseGroupRosterFactRumor,
+  REACTION_KIND,
+  RECEIPT_KIND,
+  TYPING_KIND,
   type GroupDecryptedEvent,
   type NdrRuntimeState,
   type OnEventMeta,
@@ -44,12 +50,6 @@ import type {
   NdrMessagesClientOptions,
 } from "./types.js";
 
-const CHAT_KIND = 14;
-const REACTION_KIND = 7;
-const RECEIPT_KIND = 15;
-const TYPING_KIND = 25;
-const CHAT_SETTINGS_KIND = 10448;
-const APP_KEYS_KIND = 37368;
 const OUTBOX_PREFIX = "v1/runtime-outbox/";
 const TYPING_TIMEOUT = 6000;
 const EXPIRY_INTERVAL = 60_000;
@@ -408,7 +408,7 @@ export class NdrMessagesClient {
 
     this.detach.push(
       this.runtime.onDurableSessionEvent(
-        [CHAT_KIND, REACTION_KIND, RECEIPT_KIND, CHAT_SETTINGS_KIND],
+        [CHAT_MESSAGE_KIND, REACTION_KIND, RECEIPT_KIND, CHAT_SETTINGS_KIND],
         (rumor, from, meta) => this.receiveDirect(rumor, from, meta),
       ),
     );
@@ -472,7 +472,7 @@ export class NdrMessagesClient {
           if (!peers.length) return EMPTY;
 
           return new Observable<Parameters<NdrRuntime["applyVerifiedAppKeysEvent"]>[0]>((subscriber) =>
-            this.transport.nostrSubscribe({ kinds: [APP_KEYS_KIND], authors: peers }, (event) => {
+            this.transport.nostrSubscribe({ kinds: [APP_KEYS_EVENT_KIND], authors: peers }, (event) => {
               if (isValidPeerRoster(event, peers)) subscriber.next(event);
             }),
           );

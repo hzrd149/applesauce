@@ -1,4 +1,4 @@
-import { AppKeys, type DeviceEntry } from "nostr-double-ratchet";
+import { AppKeys, REACTION_KIND, type DeviceEntry } from "nostr-double-ratchet";
 import {
   BehaviorSubject,
   combineLatest,
@@ -177,7 +177,10 @@ export class NdrConversation {
    * @throws if the runtime cannot send
    */
   async react(messageId: string, content: string): Promise<void> {
-    const rumor = await this.client.runtime.sendMessage(this.peer, content, { kind: 7, tags: [["e", messageId]] });
+    const rumor = await this.client.runtime.sendMessage(this.peer, content, {
+      kind: REACTION_KIND,
+      tags: [["e", messageId]],
+    });
     await this.client.history.addReaction(this.id, {
       id: rumor.id,
       target: messageId,

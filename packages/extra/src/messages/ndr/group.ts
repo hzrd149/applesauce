@@ -2,7 +2,9 @@ import { getEventHash, unixNow } from "applesauce-core/helpers";
 import {
   addGroupMember,
   buildGroupRosterFactEvent,
+  CHAT_MESSAGE_KIND,
   isGroupAdmin,
+  REACTION_KIND,
   removeGroupMember,
   updateGroupData,
   type GroupData,
@@ -125,7 +127,11 @@ export class NdrGroupConversation {
     this.record();
 
     return this.track(async () => {
-      const { inner } = await this.client.runtime.sendGroupEvent(this.groupId, { kind: 14, content, tags });
+      const { inner } = await this.client.runtime.sendGroupEvent(this.groupId, {
+        kind: CHAT_MESSAGE_KIND,
+        content,
+        tags,
+      });
       await this.client.storeSent(this.id, inner);
       return this.client.history.messages(this.id).find((message) => message.id === inner.id);
     });
@@ -157,7 +163,7 @@ export class NdrGroupConversation {
   async react(messageId: string, content: string): Promise<void> {
     this.record();
     const { inner } = await this.client.runtime.sendGroupEvent(this.groupId, {
-      kind: 7,
+      kind: REACTION_KIND,
       content,
       tags: [["e", messageId]],
     });

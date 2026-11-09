@@ -1,10 +1,9 @@
 import { getMessageAttachments, isValidFileMessage } from "applesauce-common/helpers/file-message";
 import { createImetaTagForAttachment } from "applesauce-common/helpers/file-metadata";
 import { getExpirationTimestamp, type Rumor } from "applesauce-core/helpers";
+import { CHAT_MESSAGE_KIND } from "nostr-double-ratchet";
 import type { StoredNdrMessage } from "./history.js";
 import type { NdrDeliveryState, NdrSendRequest } from "./types.js";
-
-const CHAT_MESSAGE_KIND = 14;
 
 /**
  * Builds the content and tags of a kind 14 chat rumor, with each attachment URL in the content and described by an imeta tag
