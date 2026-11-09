@@ -1167,4 +1167,63 @@ describe("standalone messaging clients", () => {
     expect(getConversationParticipants(rumor).sort()).toEqual([alice, bob].sort());
     expect(rumor.content).toBe(content);
   });
+
+  it.each(["client", "conversation", "reply"] as const)(
+    "encrypts custom emojis for every participant through %s sends",
+    async (entry) => {
+      const { options, pool } = setup();
+      const client = own(new WrappedMessagesClient(options));
+      const conversation = client.conversation(bob);
+      const emoji = { shortcode: "wave", url: "https://example.com/wave.png" };
+      const request = {
+        content: `hello :wave: :unknown: nostr:${"3".repeat(64)}`,
+        emojis: [emoji, { shortcode: "unused", url: "https://example.com/unused.png" }],
+      };
+      const template = await WrappedMessageFactory.create(alice, "parent").as(bobSigner).stamp();
+      const parent = { ...template, id: getEventHash(template) };
+      const message =
+        entry === "client"
+          ? await client.send({ ...request, recipients: [bob] })
+          : entry === "conversation"
+            ? await (await conversation.prepareSend(request)).publish()
+            : await conversation.reply(parent, request);
+
+      expect(pool.publish).toHaveBeenCalledTimes(2);
+      expect(message.id).toBe(getEventHash(message));
+      if (entry === "reply") expect(message.tags).toContainEqual(["e", parent.id]);
+
+      for (const [, gift] of pool.publish.mock.calls) {
+        const recipient = gift.tags.find((tag) => tag[0] === "p")![1];
+        const rumor = await unlockGiftWrap(gift, recipient === alice ? aliceSigner : bobSigner);
+        expect(rumor).toEqual(message);
+        expect(rumor.content).toBe(request.content);
+        expect(getConversationParticipants(rumor).sort()).toEqual([alice, bob].sort());
+        expect(rumor.tags.filter((tag) => tag[0] === "emoji")).toEqual([["emoji", emoji.shortcode, emoji.url]]);
+        expect(gift.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+        expect(getGiftWrapSeal(gift)!.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+      }
+    },
+  );
+
+  it.each([undefined, []])("preserves wrapped plaintext without emoji definitions (%s)", async (emojis) => {
+    const { options } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const prepared = await client.prepareSend({ recipients: [bob], content: ":wave:", emojis });
+    expect(prepared.message.content).toBe(":wave:");
+    expect(prepared.message.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+  });
+
+  it("ignores plaintext emojis when sending a wrapped file", async () => {
+    const { options } = setup();
+    const client = own(new WrappedMessagesClient(options));
+    const prepared = await client.prepareSend({
+      recipients: [bob],
+      content: ":wave:",
+      emojis: [{ shortcode: "wave", url: "https://example.com/wave.png" }],
+      file: { url: "https://example.com/encrypted" },
+    });
+    expect(prepared.message.kind).toBe(kinds.FileMessage);
+    expect(prepared.message.content).toBe("https://example.com/encrypted");
+    expect(prepared.message.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+  });
 });

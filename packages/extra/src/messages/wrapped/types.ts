@@ -1,4 +1,5 @@
 import type { EventStore } from "applesauce-core";
+import type { Emoji } from "applesauce-core/factories";
 import type { AsyncRumorStore, RumorStore } from "applesauce-core/event-store";
 import type { EncryptedContentCache, Rumor } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
@@ -94,6 +95,8 @@ export interface WrappedMessageSendRequest {
   recipients: readonly string[];
   /** The unmodified plaintext, ignored when a file is sent */
   content: string;
+  /** Custom emojis used in the encrypted plaintext, ignored when a file is sent */
+  emojis?: Emoji[];
   /** An uploaded file to send as a kind-15 file message instead of the text content */
   file?: FileMetadataFields;
   /** The parent rumor ID */

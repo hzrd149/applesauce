@@ -62,7 +62,10 @@ export function SendWrappedMessage(
     if (!signer) throw new Error("Missing signer");
 
     // Create the rumor of the message, including all participants as p-tags
-    const rumor = await WrappedMessageFactory.create(participants, message).as(signer).stamp();
+    const rumor = await WrappedMessageFactory.create(participants, message)
+      .text(message, { emojis: opts?.emojis })
+      .as(signer)
+      .stamp();
     await run(GiftWrapMessageToParticipants, rumor as Rumor, opts);
   };
 }
@@ -84,7 +87,10 @@ export function ReplyToWrappedMessage(
     const recipient = parent.tags.find((t) => t[0] === "p")?.[1] ?? parent.pubkey;
 
     // Create the reply message
-    const rumor = await WrappedMessageFactory.reply(parent, recipient, message).as(signer).stamp();
+    const rumor = await WrappedMessageFactory.reply(parent, recipient, message)
+      .text(message, { emojis: opts?.emojis })
+      .as(signer)
+      .stamp();
     await run(GiftWrapMessageToParticipants, rumor as Rumor, opts);
   };
 }

@@ -2,12 +2,12 @@ import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { WrappedMessageFactory } from "applesauce-common/factories";
 import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked, Rumor } from "applesauce-common/helpers/gift-wrap";
 import { EventStore } from "applesauce-core";
-import { getTagValue, kinds } from "applesauce-core/helpers/event";
+import { getEventHash, getTagValue, kinds } from "applesauce-core/helpers/event";
 import { TagOperations } from "applesauce-core/operations";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionRunner } from "../../action-runner.js";
-import { GiftWrapMessageToParticipants, SendWrappedMessage } from "../wrapped-messages.js";
+import { GiftWrapMessageToParticipants, ReplyToWrappedMessage, SendWrappedMessage } from "../wrapped-messages.js";
 
 const bob = new FakeUser();
 const alice = new FakeUser();
@@ -36,6 +36,29 @@ beforeEach(() => {
 });
 
 describe("SendWrappedMessage", () => {
+  it.each([false, true])("includes custom emojis only in the rumor (reply: %s)", async (reply) => {
+    const emoji = { shortcode: "wave", url: "https://example.com/wave.png" };
+    const content = "hello :wave: :unknown:";
+    const template = await WrappedMessageFactory.create(alice.pubkey, "parent").as(bob).stamp();
+    const parent = { ...template, id: getEventHash(template) } as Rumor;
+    const options = { emojis: [emoji, { shortcode: "unused", url: "https://example.com/unused.png" }] };
+    const action = reply
+      ? hub.exec(ReplyToWrappedMessage, parent, content, options)
+      : hub.exec(SendWrappedMessage, alice.pubkey, content, options);
+    const spy = subscribeSpyTo(action, { expectErrors: false });
+    await spy.onComplete();
+
+    expect(spy.getValuesLength()).toBe(2);
+    for (const gift of spy.getValues()) {
+      const rumor = getGiftWrapRumor(gift)!;
+      expect(rumor.content).toBe(content);
+      expect(rumor.tags.filter((tag) => tag[0] === "emoji")).toEqual([["emoji", emoji.shortcode, emoji.url]]);
+      expect(gift.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+      expect(getGiftWrapSeal(gift)!.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+      if (reply) expect(rumor.tags).toContainEqual(["e", parent.id]);
+    }
+  });
+
   it("should create a gift wrap for each participant", async () => {
     const spy = subscribeSpyTo(hub.exec(SendWrappedMessage, alice.pubkey, "hello world"), { expectErrors: false });
     await spy.onComplete();

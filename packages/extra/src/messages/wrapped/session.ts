@@ -200,7 +200,9 @@ export class WrappedMessageSession {
         let factory = (
           request.file
             ? FileMessageFactory.create(recipients, request.file)
-            : WrappedMessageFactory.create(recipients, request.content)
+            : WrappedMessageFactory.create(recipients, request.content).text(request.content, {
+                emojis: request.emojis,
+              })
         ).created(createdAt);
         if (request.expiration !== undefined) factory = factory.expiration(request.expiration);
         if (request.replyTo) factory = factory.replyTo(request.replyTo);
