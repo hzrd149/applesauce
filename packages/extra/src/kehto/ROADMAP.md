@@ -6,13 +6,5 @@ The browser host and lower-level shell adapter live in `host/`; the service regi
 
 ## Remaining integration work
 
-- Remove the host's explicit `intent.deliver` recipient checks when Kehto provides the missing recipient mapping, retaining tests for denied delivery.
-
-## Performance verification
-
-Automated tests cover concurrent iframe instances, per-window routing and teardown, account changes, artifact verification and caching, and recipient permissions. Broader real-relay measurements remain:
-
-- Subscription fan-out across many napplet windows sharing one pool
-- Open relay subscriptions after individual windows close
-- Store hit rate and relay round-trips for repeated identity and outbox reads
-- Publish latency and failure reporting through runtime-mediated signing
+- Remove the host's explicit `intent.deliver` recipient checks once the supported Kehto dependency provides recipient-gated delivery ([kehto/web#415](https://github.com/kehto/web/issues/415)), retaining tests for denied delivery.
+- Extend browser tests for intent delivery denied by a revoked `intent:read` capability, an unavailable `intent` domain, or an unregistered session; blocked-recipient coverage already exists.
