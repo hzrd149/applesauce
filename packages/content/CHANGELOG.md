@@ -1,5 +1,14 @@
 # applesauce-content
 
+## 7.1.0
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-common@7.1.0
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Major Changes

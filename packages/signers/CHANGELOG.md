@@ -1,5 +1,15 @@
 # applesauce-signer
 
+## 7.1.0
+
+### Patch Changes
+
+- 940195d: Redact secrets and sensitive content from NIP-46 debug logs.
+- b4ab677: Redact key material from `SerialPortSigner` debug logs
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.1
 
 ### Patch Changes

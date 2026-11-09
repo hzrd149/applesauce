@@ -1,5 +1,14 @@
 # applesauce-sqlite
 
+## 7.1.0
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- 19a10c5: Allow the tested libsql 0.18 and better-sqlite3 13 drivers alongside previously supported versions
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Major Changes

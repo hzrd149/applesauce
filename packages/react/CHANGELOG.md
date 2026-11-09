@@ -1,5 +1,11 @@
 # applesauce-react
 
+## 7.1.0
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+
 ## 7.0.0
 
 ### Patch Changes

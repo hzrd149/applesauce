@@ -1,5 +1,23 @@
 # applesauce-core
 
+## 7.1.0
+
+### Minor Changes
+
+- 1042bc5: Batch TimelineModel updates over a 16 ms window by default using incremental snapshot merging with an explicit immediate mode.
+- d6ac421: Add direct encrypted content cache helpers in `applesauce-core` with re-exports from `applesauce-common`
+- d6ac421: Add restoreEncryptedContentFromCache to restore event plaintext with bounded concurrency and continue on cache failures.
+
+### Patch Changes
+
+- 1042bc5: Deprecate boolean arguments to TimelineModel and eventStore.timeline in favor of TimelineOptions ahead of removal in the next major release.
+- 6a1b439: Fix stale EventMemory indexes when removing an event by a copied instance
+- 18ce1a5: Avoid public-key discovery during factory stamping and action context creation when an account supplies its known identity through `getKnownPublicKey()`.
+- 19a10c5: Require nostr-tools 2.26.0 or later within version 2 for core and relay functionality
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- aa68cb1: Remember failed casts so timelines skip invalid events instead of re-validating them on every update
+- 1042bc5: Make timeline claims track current membership instead of retaining removed and superseded events.
+
 ## 7.0.3
 
 ### Patch Changes

@@ -1,5 +1,31 @@
 # applesauce-common
 
+## 7.1.0
+
+### Minor Changes
+
+- 10486c0: Add helpers for parsing, creating, and matching napplet convention identities
+- 10486c0: Add helpers, operations, a factory, a cast, and models for napplet handler preference events
+- d6ac421: Add direct encrypted content cache helpers in `applesauce-core` with re-exports from `applesauce-common`
+- bb6709f: Add `encryptFile` and `decryptFile` helpers for AES-GCM encrypted file attachments.
+- bb6709f: Add `encryptionAlgorithm`, `decryptionKey`, and `decryptionNonce` to `FileMetadataFields` and read and write them in `imeta` tags.
+- bb6709f: Add NIP-17 kind 15 file message support with `FileMessageFactory`, `isValidFileMessage`, `getFileMessageMetadata`, and `getMessageAttachments`.
+- d6ac421: Allow synchronous storage methods in EncryptedContentCache.
+- bb6709f: Include NIP-17 kind 15 file messages in the wrapped message models and conversation helpers.
+
+### Patch Changes
+
+- d6ac421: Preserve empty plaintext when restoring and persisting encrypted content.
+- 36df1af: Fix `filterTimelineByMutes` keeping only the muted events instead of removing them from the timeline
+- 1932777: Fix muted word matching for Unicode letters, emoji, and symbols using Unicode-aware word boundaries.
+- a4f5040: Include outgoing-only conversations in the legacy message groups model.
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- a4f5040: Deduplicate wrapped message rumors across multiple envelopes in the message model.
+- a4f5040: Exclude wrapped conversations that do not include the requested owner from message models.
+- a4f5040: Preserve wrapped message plaintext without interpreting mentions as additional recipients.
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Minor Changes

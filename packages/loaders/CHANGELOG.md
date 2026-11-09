@@ -1,5 +1,19 @@
 # applesauce-loaders
 
+## 7.1.0
+
+### Minor Changes
+
+- fd4acc5: Add a reactive filter-map timeline loader with independent cache filters and subscription-owned status aggregation.
+- 78285e8: Add `isTimelineWindowCovered` to check successful coverage across active timeline sources.
+- 4e91748: `createTimelineLoader` accepts an observable relay list and an observable filter, reconciling added, unchanged and removed relays like an outbox map
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.2
 
 ### Patch Changes

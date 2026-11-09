@@ -1,5 +1,14 @@
 # applesauce-relay
 
+## 7.1.0
+
+### Patch Changes
+
+- 19a10c5: Require nostr-tools 2.26.0 or later within version 2 for core and relay functionality
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Major Changes

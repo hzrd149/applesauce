@@ -1,5 +1,18 @@
 # applesauce-accounts
 
+## 7.1.0
+
+### Minor Changes
+
+- 18ce1a5: Avoid public-key discovery during factory stamping and action context creation when an account supplies its known identity through `getKnownPublicKey()`.
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-core@7.1.0
+  - applesauce-signers@7.1.0
+
 ## 7.0.2
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # applesauce-wallet
 
+## 7.1.0
+
+### Minor Changes
+
+- cd483f5: Add optional durable recovery storage for `NutWallet` deposits and quote redemption
+- cd483f5: Add MintRecovery for durable invoice-funded P2PK nutzaps with pending-operation discovery and idempotent publication retries.
+- cd483f5: Add KeyValueCouch with token identity and copy-before-delete migration helpers for consumer-provided persistent storage.
+
+### Patch Changes
+
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- d6ac421: Restore cached wallet content with bounded parallel lookups using the shared core operator.
+- cd483f5: Reject wallet publications when no relay explicitly accepts the event.
+- Updated dependencies
+  - applesauce-common@7.1.0
+  - applesauce-actions@7.1.0
+  - applesauce-core@7.1.0
+  - applesauce-loaders@7.1.0
+
 ## 7.0.0
 
 ### Minor Changes

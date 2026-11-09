@@ -1,5 +1,19 @@
 # applesauce-actions
 
+## 7.1.0
+
+### Minor Changes
+
+- 947abf2: Add actions for managing a user's preferred napplet handlers
+
+### Patch Changes
+
+- 18ce1a5: Avoid public-key discovery during factory stamping and action context creation when an account supplies its known identity through `getKnownPublicKey()`.
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-common@7.1.0
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Minor Changes

@@ -1,5 +1,35 @@
 # applesauce-extra
 
+## 7.1.0
+
+### Minor Changes
+
+- fd4acc5: Add persistent conversation drafts with staged file storage and revision-safe handoff to message publication
+- 907a959: Add a signer-backed Cordn coordinator client with isolated account and ephemeral ContextVM identities over the shared relay pool.
+- fbdf7fb: Add `applesauce-extra/kehto` service constructors and a shell adapter for hosting napplets over shared application resources
+- 6f484b8: Add an account-scoped `GiftWrapReceiver` for cache-first inbox processing with shared reactive outcomes
+- abfbc98: Add Kehto NIP-17 and NIP-04 messaging protocols with store-backed history and configurable client ownership
+- 0253126: Add `createNdrMessageProtocol` for app-owned or protocol-owned NDR messaging clients in Kehto
+- 7c888b6: Expose every module under `applesauce-extra/kehto/services/` as its own import path.
+- a87e312: Add standalone legacy inbox and conversation receivers backed by a shared NIP-04 message decryptor
+- fd4acc5: Add optional key/value persistence with restoration and discard of unpublished legacy conversation messages.
+- a87e312: Add paginated legacy and wrapped conversation discovery with in-memory and IndexedDB conversation index stores
+- a4f5040: Add account-scoped legacy and wrapped messaging clients with persistent decryption caching, relay authentication, and client-owned draft cleanup
+- 374feac: Add `NdrMessagesClient` for double-ratchet direct chats, groups, and app-key device management at `applesauce-extra/messages/ndr`.
+- 907a959: Add standalone NDR transport hooks with shared relay connections, verified event caching, and optional owner signing
+- a4f5040: Add legacy conversations with explicit history loading, live watching, cached previews, and prepared message publication
+- 73466cf: Add an optional Kehto browser host for running verified napplets
+- 24ad6e9: Add composable Kehto ContextVM services with isolated per-window transports over a shared relay pool
+- 056038e: Add wrapped conversations with caller-owned filtered queries over a shared rumor store and recipient-bound sending with explicit expiration
+
+### Patch Changes
+
+- 19a10c5: Allow ContextVM SDK 0.14.3 alongside the previously supported 0.13.10 release
+- 600af2b: Deprecate the `Vertex` client and its related exports in favor of `OpenRanking` with the `https://ranking.vertexlab.io` provider.
+- 19a10c5: Update runtime dependencies to their latest stable releases
+- Updated dependencies
+  - applesauce-core@7.1.0
+
 ## 7.0.0
 
 ### Minor Changes

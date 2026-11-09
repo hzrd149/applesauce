@@ -1,6 +1,6 @@
 {
   "name": "applesauce-extra",
-  "version": "7.0.0",
+  "version": "7.1.0",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -84,15 +84,15 @@
   ],
   "dependencies": {
     "@noble/hashes": "^2.4.0",
-    "applesauce-core": "^7.0.3",
+    "applesauce-core": "^7.1.0",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
-    "applesauce-actions": "^7.0.0",
-    "applesauce-common": "^7.0.0",
-    "applesauce-loaders": "^7.0.2",
-    "applesauce-relay": "^7.0.0",
-    "applesauce-signers": "^7.0.1",
+    "applesauce-actions": "^7.1.0",
+    "applesauce-common": "^7.1.0",
+    "applesauce-loaders": "^7.1.0",
+    "applesauce-relay": "^7.1.0",
+    "applesauce-signers": "^7.1.0",
     "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
