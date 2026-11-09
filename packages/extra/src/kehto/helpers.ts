@@ -12,24 +12,6 @@ export function settle<T>(value$: Observable<T | undefined>, fallback: T, ms: nu
   );
 }
 
-/** Keeps the latest value of a static value or observable for synchronous kehto callbacks */
-export function latest<T>(input: T | Observable<T> | undefined, initial: T) {
-  let value = initial;
-  if (isObservable(input)) {
-    const subscription = input.subscribe((nextValue) => {
-      value = nextValue;
-    });
-
-    return {
-      get: () => value,
-      stop: () => subscription.unsubscribe(),
-    };
-  }
-  if (input !== undefined) value = input;
-
-  return { get: () => value, stop: () => {} };
-}
-
 /** Returns the message of an unknown error */
 export function errorMessage(err: unknown, fallback = "failed"): string {
   if (err instanceof Error) return err.message;

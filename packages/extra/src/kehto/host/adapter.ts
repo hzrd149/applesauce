@@ -1,12 +1,13 @@
 import type { ServiceRegistry } from "@kehto/runtime";
 import type { ShellAdapter } from "@kehto/shell";
 import type { Filter } from "applesauce-core/helpers";
-import { kehtoAccount$ } from "../foundation/account.js";
+import { combineLatest, startWith } from "rxjs";
+import { kehtoAccount$, type KehtoAccount } from "../foundation/account.js";
 import { decryptForNapplet$ } from "../foundation/encryption.js";
 import { createKehtoRelayPool } from "../foundation/pool.js";
-import { relaySelection$, selectRelayTier } from "../foundation/relays.js";
+import { relaySelection$, selectRelayTier, type KehtoRelaySelection } from "../foundation/relays.js";
 import { createKehtoSigner } from "../foundation/signer.js";
-import { configured$, latest } from "../helpers.js";
+import { configured$ } from "../helpers.js";
 import type { KehtoContext } from "../types.js";
 
 /** Partial shell hook groups for extending the applesauce defaults */
@@ -45,9 +46,21 @@ export interface KehtoShellAdapter extends ShellAdapter {
  * window.addEventListener("message", bridge.handleMessage);
  */
 export function createKehtoShellAdapter(context: KehtoContext, options?: KehtoShellAdapterOptions): KehtoShellAdapter {
-  const account = latest(kehtoAccount$(context), undefined);
-  const fallbackRelays = latest(configured$(context.fallbackRelays, []), []);
-  const selection = latest(relaySelection$(context.pool, context.relaySelection), {});
+  // Kehto shell hooks are synchronous, so keep a snapshot of the reactive context.
+  // getUserPubkey returns null until the signer's pubkey resolves.
+  let snapshot: { account?: KehtoAccount; fallbackRelays: string[]; selection: KehtoRelaySelection } = {
+    account: undefined,
+    fallbackRelays: [],
+    selection: {},
+  };
+  const snapshotSubscription = combineLatest({
+    account: kehtoAccount$(context).pipe(startWith(undefined)),
+    fallbackRelays: configured$(context.fallbackRelays, []).pipe(startWith([])),
+    selection: relaySelection$(context.pool, context.relaySelection).pipe(startWith({})),
+  }).subscribe((nextSnapshot) => {
+    snapshot = nextSnapshot;
+  });
+
   const relayPool = createKehtoRelayPool(context, (event) => decryptForNapplet$(context, event));
   const subscriptions = new Map<string, () => void>();
   const services = { ...options?.services };
@@ -58,9 +71,7 @@ export function createKehtoShellAdapter(context: KehtoContext, options?: KehtoSh
     stop: (stopOptions) => {
       if (stopped) return;
       stopped = true;
-      account.stop();
-      fallbackRelays.stop();
-      selection.stop();
+      snapshotSubscription.unsubscribe();
       for (const cleanup of subscriptions.values()) cleanup();
       subscriptions.clear();
       if (stopOptions?.services !== false) {
@@ -83,9 +94,9 @@ export function createKehtoShellAdapter(context: KehtoContext, options?: KehtoSh
         selectRelayTier(
           context.eventStore,
           filters as Filter[],
-          account.get()?.pubkey,
-          fallbackRelays.get(),
-          selection.get(),
+          snapshot.account?.pubkey,
+          snapshot.fallbackRelays,
+          snapshot.selection,
         ),
     },
     relayConfig: {
@@ -94,13 +105,13 @@ export function createKehtoShellAdapter(context: KehtoContext, options?: KehtoSh
       getRelayConfig: () => ({
         discovery: [],
         super: [],
-        outbox: selectRelayTier(context.eventStore, [], account.get()?.pubkey, fallbackRelays.get()),
+        outbox: selectRelayTier(context.eventStore, [], snapshot.account?.pubkey, snapshot.fallbackRelays),
       }),
       getNip66Suggestions: () => [],
     },
     auth: {
-      getUserPubkey: () => account.get()?.pubkey ?? null,
-      getSigner: (windowId) => createKehtoSigner(account.get()?.signer, context, windowId),
+      getUserPubkey: () => snapshot.account?.pubkey ?? null,
+      getSigner: (windowId) => createKehtoSigner(snapshot.account?.signer, context, windowId),
     },
     // Follow the store's verification policy
     crypto: { verifyEvent: async (event) => context.eventStore.verifyEvent?.(event) ?? true },
