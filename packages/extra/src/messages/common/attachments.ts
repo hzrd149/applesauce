@@ -55,6 +55,26 @@ export const DEFAULT_MAX_ATTACHMENT_SIZE = 100 * 1024 * 1024;
 // AES-GCM appends a 16-byte tag, and clients disagree on whether an encrypted file's size counts it.
 const GCM_TAG_SIZE = 16;
 
+// Types a browser renders as a document that can run script when a blob URL is opened directly.
+const ACTIVE_CONTENT_TYPES = new Set([
+  "text/html",
+  "application/xhtml+xml",
+  "image/svg+xml",
+  "text/xml",
+  "application/xml",
+  "text/javascript",
+  "application/javascript",
+  "application/ecmascript",
+  "text/ecmascript",
+]);
+
+/** Returns the Blob type for a sender-declared type, downgrading script-capable types unless allowed */
+function blobType(type: string | undefined, allowActiveContent?: boolean): string | undefined {
+  if (!type || allowActiveContent) return type;
+  const essence = type.split(";")[0].trim().toLowerCase();
+  return ACTIVE_CONTENT_TYPES.has(essence) ? "application/octet-stream" : type;
+}
+
 /** Options for {@link loadAttachment} */
 export type LoadAttachmentOptions = {
   /** Aborts the download */
@@ -63,6 +83,12 @@ export type LoadAttachmentOptions = {
   fetch?: typeof fetch;
   /** The most bytes to download from one source, defaults to {@link DEFAULT_MAX_ATTACHMENT_SIZE} */
   maxSize?: number;
+  /**
+   * Keeps script-capable types like `text/html` and `image/svg+xml` on the returned Blob. Off by default:
+   * the type is chosen by the sender, and opening a blob URL with an active type runs its script in the
+   * app's origin. Enable this to render SVG attachments in `<img>`, which never runs script.
+   */
+  allowActiveContent?: boolean;
 };
 
 /**
@@ -122,6 +148,7 @@ export async function loadAttachment(file: FileMetadataFields, options: LoadAtta
     declared === undefined ? maxSize : Math.min(maxSize, declared + (isEncryptedFile(file) ? GCM_TAG_SIZE : 0));
 
   const download = options.fetch ?? fetch;
+  const type = blobType(file.type, options.allowActiveContent);
   let lastError: unknown;
 
   for (const url of sources) {
@@ -130,11 +157,11 @@ export async function loadAttachment(file: FileMetadataFields, options: LoadAtta
       if (!response.ok) throw new Error(`${url} responded ${response.status}`);
       const data = await readLimited(response, limit);
 
-      if (!isEncryptedFile(file)) return new Blob([data as Uint8Array<ArrayBuffer>], { type: file.type });
+      if (!isEncryptedFile(file)) return new Blob([data as Uint8Array<ArrayBuffer>], { type });
 
       // A hash or authentication failure means this mirror served the wrong bytes, so try the next one.
       const plaintext = await decryptFile(data, file);
-      return new Blob([plaintext as Uint8Array<ArrayBuffer>], { type: file.type });
+      return new Blob([plaintext as Uint8Array<ArrayBuffer>], { type });
     } catch (error) {
       if (options.signal?.aborted) throw error;
       lastError = error;

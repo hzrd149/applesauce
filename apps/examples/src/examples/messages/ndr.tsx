@@ -184,7 +184,9 @@ function attachmentSource$(file: FileMetadataFields): Observable<{ url?: string;
   return defer(() => {
     const controller = new AbortController();
 
-    return from(loadAttachment(file, { signal: controller.signal })).pipe(
+    // Images only ever render in <img>, which never runs script, so SVG can keep its type
+    const allowActiveContent = file.type?.startsWith("image/");
+    return from(loadAttachment(file, { signal: controller.signal, allowActiveContent })).pipe(
       switchMap((blob) => objectUrl$(blob).pipe(map((url) => ({ url })))),
       catchError((error) => of({ error: error instanceof Error ? error.message : String(error) })),
       finalize(() => controller.abort()),

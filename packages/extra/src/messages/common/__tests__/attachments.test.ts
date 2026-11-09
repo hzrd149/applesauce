@@ -138,6 +138,33 @@ describe("attachment download limits", () => {
   });
 });
 
+describe("attachment content types", () => {
+  const page = new Blob(["<script>alert(document.domain)</script>"], { type: "text/html" });
+
+  it.each(["text/html", "text/html; charset=utf-8", "IMAGE/SVG+XML", "application/xhtml+xml", "text/javascript"])(
+    "downgrades a declared %s to application/octet-stream",
+    async (declared) => {
+      const server = memoryServer();
+      const file = await uploadEncryptedFile(page, server.upload);
+      const loaded = await loadAttachment({ ...file, type: declared }, { fetch: server.fetch });
+      expect(loaded.type).toBe("application/octet-stream");
+    },
+  );
+
+  it("keeps passive media types", async () => {
+    const server = memoryServer();
+    const file = await uploadEncryptedFile(image, server.upload);
+    expect((await loadAttachment(file, { fetch: server.fetch })).type).toBe("image/png");
+  });
+
+  it("keeps active types when allowed", async () => {
+    const server = memoryServer();
+    const file = await uploadEncryptedFile(page, server.upload);
+    const loaded = await loadAttachment({ ...file, type: "image/svg+xml" }, { fetch: server.fetch, allowActiveContent: true });
+    expect(loaded.type).toBe("image/svg+xml");
+  });
+});
+
 describe("WrappedMessagesClient files", () => {
   function setup(upload?: MessageFileUploader) {
     const eventStore = new EventStore();
