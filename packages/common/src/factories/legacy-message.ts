@@ -1,22 +1,36 @@
 import { EventFactory, blankEventTemplate } from "applesauce-core/factories";
 import { kinds, KnownEventTemplate, NostrEvent } from "applesauce-core/helpers";
+import { includeEmojis, setContent, type TextContentOptions } from "applesauce-core/operations/content";
 import { setMessageAddress, setMessageParent } from "../operations/legacy-message.js";
 
 export type LegacyMessageTemplate = KnownEventTemplate<kinds.EncryptedDirectMessage>;
 
 export class LegacyMessageFactory extends EventFactory<kinds.EncryptedDirectMessage, LegacyMessageTemplate> {
-  static create(recipient: string, message: string): LegacyMessageFactory {
+  /** Creates an encrypted message with optional public emoji tags */
+  static create(
+    recipient: string,
+    message: string,
+    options?: Pick<TextContentOptions, "emojis">,
+  ): LegacyMessageFactory {
     return new LegacyMessageFactory((res) => res(blankEventTemplate(kinds.EncryptedDirectMessage)))
       .recipient(recipient)
+      .chain(setContent(message))
+      .chain(includeEmojis(options?.emojis))
       .encryptedContent(recipient, message, "nip04");
   }
 
-  static reply(parent: NostrEvent, recipient: string, message: string): LegacyMessageFactory {
+  /**
+   * Creates an encrypted reply with optional public emoji tags
+   * @throws if the parent is not a legacy message
+   */
+  static reply(
+    parent: NostrEvent,
+    recipient: string,
+    message: string,
+    options?: Pick<TextContentOptions, "emojis">,
+  ): LegacyMessageFactory {
     if (parent.kind !== kinds.EncryptedDirectMessage) throw new Error("Parent must be a legacy message (kind 4)");
-    return new LegacyMessageFactory((res) => res(blankEventTemplate(kinds.EncryptedDirectMessage)))
-      .recipient(recipient)
-      .encryptedContent(recipient, message, "nip04")
-      .replyTo(parent);
+    return LegacyMessageFactory.create(recipient, message, options).replyTo(parent);
   }
 
   /** Sets the "p" tag of the user the message is addressed to */

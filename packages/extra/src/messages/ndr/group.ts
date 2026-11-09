@@ -123,7 +123,7 @@ export class NdrGroupConversation {
    * @throws if the message has no text or attachments, the group is unknown, or sending fails
    */
   async send(request: NdrSendRequest): Promise<NdrMessage | undefined> {
-    const { content, tags } = buildNdrChatMessage(request);
+    const { content, tags } = await buildNdrChatMessage({ ...request, emojis: request.emojis ?? this.client.emojis });
     this.record();
 
     return this.track(async () => {

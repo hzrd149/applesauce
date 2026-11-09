@@ -1,5 +1,7 @@
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
 import type { EventStore } from "applesauce-core";
+import type { Emoji } from "applesauce-core/factories";
+import type { Observable } from "rxjs";
 import type { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import type { GroupData, StorageAdapter } from "nostr-double-ratchet";
@@ -17,6 +19,8 @@ export type NdrDeliveryState = "queued" | "published" | "delivered" | "seen" | "
 
 /** Options for an account's NDR messages client */
 export interface NdrMessagesClientOptions {
+  /** Default custom emojis; streams use their latest list or an empty list before emitting */
+  emojis?: Emoji[] | Observable<Emoji[]>;
   /** The account's owner pubkey */
   pubkey: string;
   /** The account signer; omit it for a device that is linked by another device */
@@ -53,6 +57,8 @@ export interface NdrMessage {
   conversationId: string;
   /** The plaintext message */
   content: string;
+  /** The custom emojis from the decrypted message tags */
+  emojis?: Emoji[];
   /** The sender's owner pubkey */
   sender: string;
   /** The sender's device identity pubkey when known */
@@ -121,6 +127,8 @@ export interface NdrClientError {
 export interface NdrSendRequest {
   /** The message text, which may be empty when there are attachments */
   content: string;
+  /** Custom emojis used in the text, included inside the encrypted message */
+  emojis?: Emoji[];
   /** Uploaded files to attach, from `uploadFile` */
   attachments?: FileMetadataFields[];
   /** The parent message ID when replying */

@@ -3,11 +3,11 @@ import { finalizeEvent, getPublicKey, matchFilter, type Filter, type NostrEvent 
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { InMemoryStorageAdapter } from "nostr-double-ratchet";
-import { filter, firstValueFrom, map, merge, Observable, of, Subject, timeout } from "rxjs";
+import { BehaviorSubject, filter, firstValueFrom, map, merge, Observable, of, Subject, timeout } from "rxjs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessageFileUploader } from "../../common/attachments.js";
 import { NdrMessagesClient } from "../client.js";
-import type { NdrMessage } from "../types.js";
+import type { NdrMessage, NdrMessagesClientOptions } from "../types.js";
 
 const relays = ["wss://ndr.example.com/"];
 const clients: NdrMessagesClient[] = [];
@@ -54,7 +54,12 @@ const upload: MessageFileUploader = async (blob) => ({
   url: `https://files.example.com/${blob.size}-${Math.random()}`,
 });
 
-function createClient(relay: ReturnType<typeof createRelay>, key: number, signed = true) {
+function createClient(
+  relay: ReturnType<typeof createRelay>,
+  key: number,
+  signed = true,
+  emojis?: NdrMessagesClientOptions["emojis"],
+) {
   const secret = new Uint8Array(32).fill(key);
   const pubkey = getPublicKey(secret);
   const client = new NdrMessagesClient({
@@ -68,6 +73,7 @@ function createClient(relay: ReturnType<typeof createRelay>, key: number, signed
     appKeysTimeoutMs: 300,
     lockName: false,
     upload,
+    emojis,
   });
   clients.push(client);
   return client;
@@ -95,6 +101,13 @@ afterEach(() => {
 });
 
 describe("NdrMessagesClient", () => {
+  it("releases the emoji subscription on disposal", () => {
+    const unsubscribe = vi.fn();
+    const client = createClient(createRelay(), 1, true, new Observable<[]>(() => unsubscribe));
+    client.dispose();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
   describe.each(["direct", "group"] as const)("%s drafts", (type) => {
     function conversation() {
       const client = createClient(createRelay(), 1);
@@ -147,16 +160,28 @@ describe("NdrMessagesClient", () => {
 
   it("exchanges messages, reactions, and receipts between two owners", { timeout: 20000 }, async () => {
     const relay = createRelay();
-    const alice = createClient(relay, 1);
+    const emojis = [{ shortcode: "wave", url: "https://example.com/wave.png" }];
+    const source = new BehaviorSubject(emojis);
+    const alice = createClient(relay, 1, true, source);
     const bob = createClient(relay, 2);
     await Promise.all([register(alice), register(bob)]);
 
     const toBob = alice.conversation(bob.pubkey);
-    const sent = await toBob.send({ content: "hello bob" });
+    const sent = await toBob.send({ content: "hello bob :wave:" });
+    expect(sent?.emojis).toEqual(emojis);
     expect(sent?.delivery).toMatch(/queued|published/);
 
     const fromAlice = bob.conversation(alice.pubkey);
-    const received = await waitForMessage(fromAlice.messages$, (m) => m.content === "hello bob");
+    const received = await waitForMessage(fromAlice.messages$, (m) => m.content === "hello bob :wave:");
+    expect(received.emojis).toEqual(emojis);
+    const updatedEmojis = [{ shortcode: "wave", url: "https://example.com/updated.png" }];
+    source.next(updatedEmojis);
+    await toBob.setDraft({ content: "updated :wave:" });
+    await toBob.sendDraft();
+    const updated = await waitForMessage(fromAlice.messages$, (m) => m.content === "updated :wave:");
+    expect(updated.emojis).toEqual(updatedEmojis);
+    const disabled = await toBob.send({ content: "disabled :wave:", emojis: [] });
+    expect(disabled?.emojis).toBeUndefined();
     expect(received).toMatchObject({ sender: alice.pubkey, delivery: "received" });
 
     // Bob's automatic delivered receipt reaches Alice.
@@ -175,9 +200,10 @@ describe("NdrMessagesClient", () => {
     const reacted = await waitForMessage(toBob.messages$, (m) => m.delivery === "seen" && !!m.reactions["+"]);
     expect(reacted.reactions["+"]).toEqual([bob.pubkey]);
 
-    const reply = await fromAlice.send({ content: "hi alice", replyTo: received.id });
+    const reply = await fromAlice.send({ content: "hi alice :wave:", replyTo: received.id, emojis });
     const replied = await waitForMessage(toBob.messages$, (m) => m.id === reply!.id);
     expect(replied.replyTo).toBe(received.id);
+    expect(replied.emojis).toEqual(emojis);
   });
 
   it("sends encrypted attachments as imeta and still applies receipts", { timeout: 20000 }, async () => {
@@ -223,7 +249,9 @@ describe("NdrMessagesClient", () => {
 
   it("creates a group, delivers the invitation, and exchanges group messages", { timeout: 20000 }, async () => {
     const relay = createRelay();
-    const alice = createClient(relay, 1);
+    const emojis = [{ shortcode: "wave", url: "https://example.com/wave.png" }];
+    const source = new BehaviorSubject(emojis);
+    const alice = createClient(relay, 1, true, source);
     const bob = createClient(relay, 2);
     await Promise.all([register(alice), register(bob)]);
 
@@ -253,9 +281,21 @@ describe("NdrMessagesClient", () => {
     expect(await firstValueFrom(bobGroup.pending$)).toBe(false);
     expect(await firstValueFrom(bobGroup.canSend$)).toBe(true);
 
-    const sent = await aliceGroup.send({ content: "welcome" });
-    expect(sent).toMatchObject({ content: "welcome", conversationId: aliceGroup.id, sender: alice.pubkey });
-    await waitForMessage(bobGroup.messages$, (m) => m.content === "welcome" && m.sender === alice.pubkey);
+    const sent = await aliceGroup.send({ content: "welcome :wave:" });
+    expect(sent).toMatchObject({
+      content: "welcome :wave:",
+      conversationId: aliceGroup.id,
+      sender: alice.pubkey,
+      emojis,
+    });
+    const received = await waitForMessage(bobGroup.messages$, (m) => m.id === sent!.id);
+    expect(received.emojis).toEqual(emojis);
+    const updatedEmojis = [{ shortcode: "wave", url: "https://example.com/updated.png" }];
+    source.next(updatedEmojis);
+    await aliceGroup.setDraft({ content: "updated :wave:" });
+    await aliceGroup.sendDraft();
+    const updated = await waitForMessage(bobGroup.messages$, (m) => m.content === "updated :wave:");
+    expect(updated.emojis).toEqual(updatedEmojis);
 
     await bobGroup.send({ content: "thanks" });
     await waitForMessage(aliceGroup.messages$, (m) => m.content === "thanks" && m.sender === bob.pubkey);

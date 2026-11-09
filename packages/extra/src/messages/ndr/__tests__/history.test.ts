@@ -40,6 +40,16 @@ describe("NdrHistory", () => {
     expect(restored.messages(bob)[0].attachments).toEqual(attachments);
   });
 
+  it("restores custom emoji definitions", async () => {
+    const storage = new InMemoryStorageAdapter();
+    const emojis = [{ shortcode: "wave", url: "https://example.com/wave.png" }];
+    await new NdrHistory(storage, () => 1000).addMessage(message({ content: ":wave:", emojis }));
+
+    const restored = new NdrHistory(storage, () => 1000);
+    await restored.restore();
+    expect(restored.messages(bob)[0].emojis).toEqual(emojis);
+  });
+
   it("applies reactions that arrive before their message", async () => {
     const history = new NdrHistory(new InMemoryStorageAdapter(), () => 1000);
 

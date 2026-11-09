@@ -1,3 +1,4 @@
+import type { Emoji } from "applesauce-core/factories";
 import {
   createConversationIdentifier,
   getConversationIdentifierFromMessage,
@@ -16,6 +17,7 @@ import {
   EMPTY,
   firstValueFrom,
   fromEvent,
+  isObservable,
   lastValueFrom,
   map,
   Observable,
@@ -116,6 +118,12 @@ export class WrappedMessagesClient {
   readonly status$ = this.lifecycle.asObservable();
 
   private readonly errors = new Subject<MessageClientError>();
+  private currentEmojis: Emoji[] = [];
+
+  /** The latest emoji definitions, copied for use in a new message */
+  get emojis() {
+    return this.currentEmojis.map((emoji) => ({ ...emoji }));
+  }
 
   /** Nonterminal failures from individual operations */
   readonly errors$ = this.errors.asObservable();
@@ -236,6 +244,11 @@ export class WrappedMessagesClient {
     );
 
     this.conversationIndex = options.conversationIndex ?? new MemoryConversationIndexStore();
+    this.subscriptions.add(
+      (isObservable(options.emojis) ? options.emojis : of(options.emojis ?? [])).subscribe((emojis) => {
+        this.currentEmojis = emojis;
+      }),
+    );
 
     // Index failures are reported without stopping the subscription, so the next message is still recorded.
     this.subscriptions.add(
@@ -539,6 +552,7 @@ export class WrappedMessagesClient {
     request: WrappedMessageSendRequest,
     options: MessageOperationOptions = {},
   ): Promise<PreparedWrappedMessage> {
+    request = { ...request, emojis: request.emojis ?? this.emojis };
     const context = this.context(options);
     const generation = this.generation.signal;
     if (!this.signer?.nip44) throw new Error("Signer does not support this message protocol");
@@ -608,7 +622,8 @@ export class WrappedMessagesClient {
   async reply(
     parent: Rumor,
     content: string,
-    options: MessageOperationOptions & { expiration?: number; envelopeExpiration?: number } = {},
+    options: MessageOperationOptions &
+      Pick<WrappedMessageSendRequest, "expiration" | "envelopeExpiration" | "emojis"> = {},
   ): Promise<Rumor> {
     return this.send(
       {
@@ -617,6 +632,7 @@ export class WrappedMessagesClient {
         replyTo: parent.id,
         expiration: options.expiration,
         envelopeExpiration: options.envelopeExpiration,
+        emojis: options.emojis,
       },
       options,
     );

@@ -37,6 +37,8 @@ export type WrappedMessagesClientOptions = WrappedMessagesClientDependencies &
 
 /** Shared dependencies and messaging policies for a NIP-17 client */
 export interface WrappedMessagesClientDependencies {
+  /** Default custom emojis; streams use their latest list or an empty list before emitting */
+  emojis?: Emoji[] | Observable<Emoji[]>;
   /** The immutable owner pubkey */
   pubkey: string;
   /** The NIP-44 signer, omitted when restoring cached plaintext only */

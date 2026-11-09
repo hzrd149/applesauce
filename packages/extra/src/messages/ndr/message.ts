@@ -1,6 +1,9 @@
 import { getMessageAttachments, isValidFileMessage } from "applesauce-common/helpers/file-message";
+import { getEmojiFromTags } from "applesauce-common/helpers/emoji";
+import { blankEventTemplate } from "applesauce-core/factories";
+import { includeEmojis } from "applesauce-core/operations/content";
 import { createImetaTagForAttachment } from "applesauce-common/helpers/file-metadata";
-import { getExpirationTimestamp, type Rumor } from "applesauce-core/helpers";
+import { getExpirationTimestamp, processTags, type Rumor } from "applesauce-core/helpers";
 import { CHAT_MESSAGE_KIND } from "nostr-double-ratchet";
 import type { StoredNdrMessage } from "./history.js";
 import type { NdrDeliveryState, NdrSendRequest } from "./types.js";
@@ -9,7 +12,7 @@ import type { NdrDeliveryState, NdrSendRequest } from "./types.js";
  * Builds the content and tags of a kind 14 chat rumor, with each attachment URL in the content and described by an imeta tag
  * @throws if the message has no text and no attachments
  */
-export function buildNdrChatMessage(request: NdrSendRequest): { content: string; tags: string[][] } {
+export async function buildNdrChatMessage(request: NdrSendRequest): Promise<{ content: string; tags: string[][] }> {
   const text = request.content.trim();
   const attachments = (request.attachments ?? []).filter((attachment) => !!attachment.url);
   if (!text && attachments.length === 0) throw new Error("Message is empty");
@@ -19,7 +22,8 @@ export function buildNdrChatMessage(request: NdrSendRequest): { content: string;
   const tags = attachments.map((attachment) => createImetaTagForAttachment(attachment));
   if (request.replyTo) tags.push(["e", request.replyTo]);
 
-  return { content, tags };
+  const draft = await includeEmojis(request.emojis)({ ...blankEventTemplate(CHAT_MESSAGE_KIND), content: text, tags });
+  return { content, tags: draft.tags };
 }
 
 /** Checks if a rumor is a chat message: a kind 14 message or a NIP-17 kind 15 file message, but never a receipt */
@@ -33,6 +37,10 @@ export function createStoredNdrMessage(
   fields: { conversationId: string; sender: string; senderDevice?: string; delivery: NdrDeliveryState },
 ): StoredNdrMessage {
   const attachments = getMessageAttachments(rumor);
+  const emojis = processTags(rumor.tags, (tag) => {
+    if (tag[0] !== "emoji" || !tag[1] || !tag[2]) return undefined;
+    return getEmojiFromTags([tag], tag[1]);
+  });
 
   return {
     ...fields,
@@ -43,5 +51,6 @@ export function createStoredNdrMessage(
     replyTo: rumor.tags.find((tag) => tag[0] === "e")?.[1],
     expiresAt: getExpirationTimestamp(rumor),
     attachments: attachments.length ? attachments : undefined,
+    emojis: emojis.length ? emojis : undefined,
   };
 }

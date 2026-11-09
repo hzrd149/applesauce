@@ -143,7 +143,7 @@ export class NdrConversation {
    * @throws if the message has no text or attachments, or the runtime cannot send
    */
   async send(request: NdrSendRequest): Promise<NdrMessage | undefined> {
-    const { content, tags } = buildNdrChatMessage(request);
+    const { content, tags } = await buildNdrChatMessage({ ...request, emojis: request.emojis ?? this.client.emojis });
 
     return this.track(async () => {
       const rumor = await this.client.runtime.sendMessage(this.peer, content, { tags });

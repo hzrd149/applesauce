@@ -564,6 +564,7 @@ export class LegacyConversation {
       };
 
       return defer(async (): Promise<NostrEvent> => {
+        const emojis = request.emojis ?? this.client.emojis;
         if (!isHexKey(this.correspondent)) throw new Error("Invalid recipient");
         assertCurrent();
         await this.loadPublications();
@@ -572,7 +573,7 @@ export class LegacyConversation {
         const createdAt = unixNow();
         const expiration = request.expiration ?? this.getExpiration(createdAt);
 
-        let factory = LegacyMessageFactory.create(recipient, request.content).created(createdAt);
+        let factory = LegacyMessageFactory.create(recipient, request.content, { emojis }).created(createdAt);
         if (request.replyTo) factory = factory.replyTo(request.replyTo);
         if (expiration !== undefined) factory = factory.expiration(expiration);
         const event = await factory.sign(this.options.signer!);
@@ -869,10 +870,10 @@ export class LegacyConversation {
   async reply(
     parent: NostrEvent,
     content: string,
-    options: MessageOperationOptions & { expiration?: number } = {},
+    options: MessageOperationOptions & Pick<LegacyMessageSendRequest, "expiration" | "emojis"> = {},
   ): Promise<NostrEvent> {
     if (getLegacyMessageCorrespondent(parent, this.options.pubkey) !== this.correspondent)
       throw new Error("Message does not belong to this conversation");
-    return this.send({ content, replyTo: parent.id, expiration: options.expiration }, options);
+    return this.send({ content, replyTo: parent.id, expiration: options.expiration, emojis: options.emojis }, options);
   }
 }

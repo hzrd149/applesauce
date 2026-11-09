@@ -1,3 +1,4 @@
+import type { Emoji } from "applesauce-core/factories";
 import {
   APP_KEYS_EVENT_KIND,
   AppKeys,
@@ -26,11 +27,15 @@ import {
   combineLatest,
   distinctUntilChanged,
   EMPTY,
+  fromEvent,
+  isObservable,
   map,
   Observable,
+  of,
   shareReplay,
   Subject,
   switchMap,
+  takeUntil,
   type MonoTypeOperatorFunction,
 } from "rxjs";
 import type { FileMetadataFields } from "applesauce-common/helpers/file-metadata";
@@ -137,6 +142,12 @@ export class NdrMessagesClient {
   readonly history: NdrHistory;
 
   private readonly options: NdrMessagesClientOptions;
+  private currentEmojis: Emoji[] = [];
+
+  /** The latest emoji definitions, copied for use in a new message */
+  get emojis() {
+    return this.currentEmojis.map((emoji) => ({ ...emoji }));
+  }
   private readonly storage: StorageAdapter;
   private readonly outbox: ReturnType<typeof createPersistentNostrOutbox>;
   private readonly lifetime = new AbortController();
@@ -249,6 +260,11 @@ export class NdrMessagesClient {
       map(() => this.history.groups()),
       shareLatest(),
     );
+    (isObservable(options.emojis) ? options.emojis : of(options.emojis ?? []))
+      .pipe(takeUntil(fromEvent(this.lifetime.signal, "abort")))
+      .subscribe((emojis) => {
+        this.currentEmojis = emojis;
+      });
   }
 
   /** Whether the client has been disposed */

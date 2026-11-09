@@ -1,4 +1,5 @@
 import type { EventStore } from "applesauce-core";
+import type { Emoji } from "applesauce-core/factories";
 import type { EncryptedContentCache, NostrEvent } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
 import type { SyncAuthHandler, SyncLoaderStatus } from "applesauce-loaders/loaders";
@@ -25,6 +26,8 @@ export interface LegacyDecryptionState {
 
 /** Dependencies and policies for a NIP-04 inbox */
 export interface LegacyMessagesClientOptions {
+  /** Default custom emojis, exposed as public tags; streams use their latest list or an empty list before emitting */
+  emojis?: Emoji[] | Observable<Emoji[]>;
   /** The immutable owner pubkey */
   pubkey: string;
   /** The NIP-04 signer, omitted for read-only browsing */
@@ -166,6 +169,8 @@ export interface LegacyMessageSendRequest {
   recipient: string;
   /** The unmodified plaintext */
   content: string;
+  /** Custom emojis used in the plaintext, exposed as public event tags */
+  emojis?: Emoji[];
   /** The parent kind-4 event ID */
   replyTo?: string;
   /** The absolute event expiration timestamp in seconds */

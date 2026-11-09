@@ -1,14 +1,23 @@
 import { LegacyMessageFactory } from "applesauce-common/factories";
 import { castUser } from "applesauce-common/casts";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
+import type { Emoji } from "applesauce-core/factories";
 
 import { Action } from "../action-runner.js";
 
+/** Options for sending a legacy encrypted message */
+export interface LegacyMessageOptions {
+  /** The absolute event expiration timestamp in seconds */
+  expiration?: number;
+  /** Custom emojis used in the plaintext, exposed as public event tags */
+  emojis?: Emoji[];
+}
+
 /** Sends a legacy NIP-04 message to a recipient */
-export function SendLegacyMessage(recipient: string, message: string, options?: { expiration?: number }): Action {
+export function SendLegacyMessage(recipient: string, message: string, options?: LegacyMessageOptions): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
-    let draft = LegacyMessageFactory.create(recipient, message);
+    let draft = LegacyMessageFactory.create(recipient, message, options);
     if (options?.expiration) draft = draft.expiration(options.expiration);
     const signed = await draft.sign(signer);
 
@@ -26,7 +35,7 @@ export function SendLegacyMessage(recipient: string, message: string, options?: 
 }
 
 /** Send a reply to a legacy message */
-export function ReplyToLegacyMessage(parent: NostrEvent, message: string, options?: { expiration?: number }): Action {
+export function ReplyToLegacyMessage(parent: NostrEvent, message: string, options?: LegacyMessageOptions): Action {
   return async ({ signer, publish, events }) => {
     if (!signer) throw new Error("Missing signer");
     if (parent.kind !== kinds.EncryptedDirectMessage)
@@ -37,7 +46,7 @@ export function ReplyToLegacyMessage(parent: NostrEvent, message: string, option
     const recipient = parent.pubkey === self ? parent.tags.find((t) => t[0] === "p")?.[1] : parent.pubkey;
     if (!recipient) throw new Error("Could not determine reply recipient");
 
-    let draft = LegacyMessageFactory.reply(parent, recipient, message);
+    let draft = LegacyMessageFactory.reply(parent, recipient, message, options);
     if (options?.expiration) draft = draft.expiration(options.expiration);
     const signed = await draft.sign(signer);
 

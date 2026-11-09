@@ -71,6 +71,52 @@ function own<T extends { dispose(): void }>(client: T): T {
 }
 
 describe("standalone messaging clients", () => {
+  it.each([LegacyMessagesClient, WrappedMessagesClient])(
+    "%s snapshots reactive defaults for sends without changing prepared messages",
+    async (Client) => {
+      const { options } = setup();
+      const first = { shortcode: "wave", url: "https://example.com/first.png" };
+      const second = { shortcode: "wave", url: "https://example.com/second.png" };
+      const emojis = new Subject<(typeof first)[]>();
+      const client = own(new Client({ ...options, emojis }));
+      const conversation = client.conversation(bob);
+      const unloaded = await conversation.send({ content: ":wave:" });
+      expect(unloaded.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+      emojis.next([first]);
+      const prepared = await conversation.prepareSend({ content: ":wave:" });
+      emojis.next([second]);
+      const original = await prepared.publish();
+      expect(original.tags).toContainEqual(["emoji", "wave", first.url]);
+      const updated = await conversation.send({ content: ":wave:" });
+      expect(updated.tags).toContainEqual(["emoji", "wave", second.url]);
+      const disabled = await conversation.send({ content: ":wave:", emojis: [] });
+      expect(disabled.tags.some((tag) => tag[0] === "emoji")).toBe(false);
+      const overridden = await conversation.send({ content: ":wave:", emojis: [first] });
+      expect(overridden.tags).toContainEqual(["emoji", "wave", first.url]);
+
+      emojis.complete();
+      const retained = await conversation.send({ content: ":wave:" });
+      expect(retained.tags).toContainEqual(["emoji", "wave", second.url]);
+    },
+  );
+
+  it.each([LegacyMessagesClient, WrappedMessagesClient])("%s disposes its emoji source", (Client) => {
+    const { options } = setup();
+    const unsubscribe = vi.fn();
+    const source = new Observable<[]>(() => unsubscribe);
+    const client = own(new Client({ ...options, emojis: source }));
+    client.dispose();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it.each([LegacyMessagesClient, WrappedMessagesClient])("%s accepts static emoji defaults", async (Client) => {
+    const { options } = setup();
+    const emoji = { shortcode: "wave", url: "https://example.com/wave.png" };
+    const client = own(new Client({ ...options, emojis: [emoji] }));
+    const message = await client.conversation(bob).send({ content: ":wave:" });
+    expect(message.tags).toContainEqual(["emoji", "wave", emoji.url]);
+  });
+
   it("keeps the legacy client lifecycle idempotent and starts no implicit history sync", async () => {
     const { options, pool } = setup();
     const cacheRequest = vi.fn(() => []);
@@ -1167,6 +1213,28 @@ describe("standalone messaging clients", () => {
     expect(getConversationParticipants(rumor).sort()).toEqual([alice, bob].sort());
     expect(rumor.content).toBe(content);
   });
+
+  it.each(["client", "conversation", "reply"] as const)(
+    "preserves public legacy emoji tags through %s sends",
+    async (entry) => {
+      const { options } = setup();
+      const client = own(new LegacyMessagesClient(options));
+      const conversation = client.conversation(bob);
+      const emoji = { shortcode: "wave", url: "https://example.com/wave.png" };
+      const request = { content: ":wave:", emojis: [emoji] };
+      const parent = await LegacyMessageFactory.create(alice, "parent").sign(bobSigner);
+      const event =
+        entry === "client"
+          ? await client.send({ ...request, recipient: bob })
+          : entry === "conversation"
+            ? await conversation.send(request)
+            : await conversation.reply(parent, request.content, { emojis: request.emojis });
+
+      expect(event.tags).toContainEqual(["emoji", emoji.shortcode, emoji.url]);
+      expect(await bobSigner.nip04.decrypt(alice, event.content)).toBe(request.content);
+      if (entry === "reply") expect(event.tags).toContainEqual(["e", parent.id]);
+    },
+  );
 
   it.each(["client", "conversation", "reply"] as const)(
     "encrypts custom emojis for every participant through %s sends",

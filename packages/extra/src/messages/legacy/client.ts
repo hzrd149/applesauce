@@ -1,3 +1,4 @@
+import type { Emoji } from "applesauce-core/factories";
 import {
   createConversationIdentifier,
   getConversationParticipants,
@@ -21,9 +22,11 @@ import {
   firstValueFrom,
   from,
   fromEvent,
+  isObservable,
   lastValueFrom,
   map,
   Observable,
+  of,
   ReplaySubject,
   Subscription,
   Subject,
@@ -132,6 +135,12 @@ export class LegacyMessagesClient {
   private disposed = false;
   private readonly destroyed = new ReplaySubject<void>(1);
   private readonly lifetime = new Subscription();
+  private currentEmojis: Emoji[] = [];
+
+  /** The latest emoji definitions, copied for use in a new message */
+  get emojis() {
+    return this.currentEmojis.map((emoji) => ({ ...emoji }));
+  }
 
   /**
    * Creates a stopped legacy client using shared application dependencies
@@ -194,6 +203,11 @@ export class LegacyMessagesClient {
     );
 
     this.conversationIndex = options.conversationIndex ?? new MemoryConversationIndexStore();
+    this.lifetime.add(
+      (isObservable(options.emojis) ? options.emojis : of(options.emojis ?? [])).subscribe((emojis) => {
+        this.currentEmojis = emojis;
+      }),
+    );
 
     // Index failures are reported without stopping the subscription, so the next message is still recorded.
     this.lifetime.add(
@@ -514,13 +528,14 @@ export class LegacyMessagesClient {
   async reply(
     parent: NostrEvent,
     content: string,
-    options: MessageOperationOptions & { expiration?: number } = {},
+    options: MessageOperationOptions & Pick<LegacyMessageSendRequest, "expiration" | "emojis"> = {},
   ): Promise<NostrEvent> {
     const recipient = getLegacyMessageCorrespondent(parent, this.pubkey);
     if (!recipient) throw new Error("Message does not belong to this owner");
     return this.conversation(recipient).reply(parent, content, {
       ...this.context(options),
       expiration: options.expiration,
+      emojis: options.emojis,
     });
   }
 }

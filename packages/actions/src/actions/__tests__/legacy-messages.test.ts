@@ -3,7 +3,7 @@ import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeUser } from "../../__tests__/fake-user.js";
 import { ActionRunner } from "../../action-runner.js";
-import { ReplyToLegacyMessage } from "../legacy-messages.js";
+import { ReplyToLegacyMessage, SendLegacyMessage } from "../legacy-messages.js";
 
 const bob = new FakeUser();
 const alice = new FakeUser();
@@ -24,6 +24,17 @@ beforeEach(() => {
 });
 
 describe("ReplyToLegacyMessage", () => {
+  it.each([false, true])("forwards custom emoji definitions (reply: %s)", async (reply) => {
+    const emoji = { shortcode: "wave", url: "https://example.com/wave.png" };
+    const parent = alice.event({ kind: kinds.EncryptedDirectMessage, tags: [["p", bob.pubkey]] });
+    if (reply) await hub.run(ReplyToLegacyMessage, parent, ":wave:", { emojis: [emoji] });
+    else await hub.run(SendLegacyMessage, alice.pubkey, ":wave:", { emojis: [emoji] });
+
+    const event = publish.mock.calls[0][0];
+    expect(event.tags).toContainEqual(["emoji", emoji.shortcode, emoji.url]);
+    expect(await alice.nip04!.decrypt(bob.pubkey, event.content)).toBe(":wave:");
+  });
+
   it("should publish a reply to a received message to the sender's inboxes", async () => {
     const parent = alice.event({ kind: kinds.EncryptedDirectMessage, tags: [["p", bob.pubkey]] });
     await hub.run(ReplyToLegacyMessage, parent, "hi");
