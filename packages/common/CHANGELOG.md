@@ -1,5 +1,11 @@
 # applesauce-common
 
+## 7.1.1
+
+### Patch Changes
+
+- 19911bd: Support custom emojis as public tags when sending and replying to legacy encrypted messages.
+
 ## 7.1.0
 
 ### Minor Changes

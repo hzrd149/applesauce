@@ -1,5 +1,20 @@
 # applesauce-extra
 
+## 7.1.1
+
+### Patch Changes
+
+- e5c3c54: Add additive transport relays with `readRelays$` and wrapped-client relay status reporting.
+- e5c3c54: Add custom envelope selection filters to `GiftWrapReceiver`.
+- e5c3c54: Preserve unchanged live gift-wrap subscriptions when the relay set changes.
+- 3a97699: Send authorized Kehto intent deliveries through the registered MessagePort instead of the iframe window.
+- 3a97699: Observe Kehto MessagePort readiness after dispatch instead of listening for window-level readiness messages.
+- 3a97699: Destroy hosted napplet instances when Kehto revokes their transport binding.
+- 19911bd: Support custom emojis as public tags when sending and replying to legacy encrypted messages.
+- 19911bd: Preserve custom emojis in encrypted NDR direct and group messages and their stored history.
+- 19911bd: Accept reactive client-level emoji defaults for legacy, wrapped, and NDR messages with per-message overrides.
+- 49fa432: Support custom emojis inside encrypted wrapped-message client sends and replies.
+
 ## 7.1.0
 
 ### Minor Changes

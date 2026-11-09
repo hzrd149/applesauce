@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 7.1.1
+
+### Patch Changes
+
+- e94da6d: Validate expiration tags as nonnegative safe-integer seconds and correctly handle timestamp zero.
+
 ## 7.1.0
 
 ### Minor Changes
