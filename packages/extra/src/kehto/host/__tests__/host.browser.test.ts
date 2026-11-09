@@ -72,6 +72,141 @@ afterEach(async () => {
 });
 
 describe("browser napplet host", () => {
+  it("delivers an intent exactly once to the injected SDK callback", async () => {
+    const custom = service("intent");
+    const { host } = createHost({ services: { intent: custom } });
+    const fixture = await artifact(`<html><body><script>
+      window.napplet.intent.onDelivery((delivery) => {
+        window.napplet.intent.available(JSON.stringify(delivery)).catch(() => {});
+      });
+      window.napplet.intent.onChanged(() => {
+        window.napplet.intent.available("barrier").catch(() => {});
+      });
+    </script></body></html>`);
+    const instance = await host.resolve(fixture.event, fixture);
+    instance.mount(frame());
+    await instance.whenReady();
+
+    const delivery = { sender: "host", archetype: "test", action: "open", convention: "napplet:test/open" };
+    expect(instance.send({ type: "intent.deliver", delivery })).toBe(true);
+    expect(instance.send({ type: "intent.changed", availability: {} })).toBe(true);
+    await vi.waitFor(() => expect(custom.handleMessage).toHaveBeenCalledTimes(2));
+    const received = vi.mocked(custom.handleMessage).mock.calls.map(([, message]) => message);
+    expect(received).toEqual([
+      expect.objectContaining({ type: "intent.available", archetype: JSON.stringify(delivery) }),
+      expect.objectContaining({ type: "intent.available", archetype: "barrier" }),
+    ]);
+  });
+
+  it.each(["load-first", "ready-first"])("waits for both readiness signals (%s)", async (ordering) => {
+    const observed = vi.fn();
+    const { host } = createHost({ shell: { onNappletMessage: observed } });
+    const fixture = await artifact();
+    const instance = await host.resolve(fixture.event, fixture);
+    const iframe = frame();
+    const settled = vi.fn();
+    void instance.whenReady().then(settled);
+
+    if (ordering === "load-first") {
+      const dispatch = host.bridge.handleMessage;
+      const pending: MessageEvent[] = [];
+      vi.spyOn(host.bridge, "handleMessage").mockImplementation((event) => pending.push(event));
+      const loaded = new Promise<void>((resolve) => iframe.addEventListener("load", () => resolve(), { once: true }));
+      instance.mount(iframe);
+      await loaded;
+      await vi.waitFor(() => expect(pending).toHaveLength(1));
+      expect(settled).not.toHaveBeenCalled();
+      expect(observed).not.toHaveBeenCalled();
+      dispatch(pending[0]);
+    } else {
+      const addListener = iframe.addEventListener.bind(iframe);
+      let loadListener: EventListener | undefined;
+      vi.spyOn(iframe, "addEventListener").mockImplementation((type, listener, options) => {
+        if (type === "load") loadListener = listener as EventListener;
+        else addListener(type, listener, options);
+      });
+      instance.mount(iframe);
+      await vi.waitFor(() => expect(observed).toHaveBeenCalledWith(instance.windowId, { type: "shell.ready" }));
+      expect(host.bridge.runtime.sessionRegistry.isRegistered(instance.windowId)).toBe(true);
+      expect(settled).not.toHaveBeenCalled();
+      loadListener!.call(iframe, new Event("load"));
+    }
+
+    await instance.whenReady();
+    expect(settled).toHaveBeenCalledOnce();
+    const port = originRegistry.getPort(instance.windowId)!;
+    port.dispatchEvent(new MessageEvent("message", { data: { type: "shell.ready" } }));
+    await Promise.resolve();
+    expect(settled).toHaveBeenCalledOnce();
+    expect(observed).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["destroy", "revoke"])("does not accept deferred readiness after %s", async (action) => {
+    const revoked = vi.fn();
+    const { host } = createHost({
+      shell: {
+        onNappletMessage(windowId, message) {
+          if (message.type !== "shell.ready") return;
+          if (action === "destroy") instance.destroy();
+          else host.bridge.revokeNapplet(windowId);
+        },
+        onNappletRevoked: revoked,
+      },
+    });
+    const fixture = await artifact();
+    const instance = await host.resolve(fixture.event, fixture);
+    instance.mount(frame());
+    await expect(instance.whenReady()).rejects.toThrow("destroyed");
+    await Promise.resolve();
+    expect(instance.destroyed).toBe(true);
+    expect(host.bridge.runtime.sessionRegistry.isRegistered(instance.windowId)).toBe(false);
+    expect(originRegistry.getPort(instance.windowId)).toBeUndefined();
+    if (action === "revoke") expect(revoked).toHaveBeenCalledOnce();
+  });
+
+  it("keeps separate hosts isolated", async () => {
+    const firstMessages = vi.fn();
+    const secondMessages = vi.fn();
+    const first = createHost({ shell: { onNappletMessage: firstMessages } }).host;
+    const second = createHost({ shell: { onNappletMessage: secondMessages } }).host;
+    const fixture = await artifact();
+    const firstInstance = await first.resolve(fixture.event, fixture);
+    const secondInstance = await second.resolve(fixture.event, fixture);
+    firstInstance.mount(frame());
+    secondInstance.mount(frame());
+    await Promise.all([firstInstance.whenReady(), secondInstance.whenReady()]);
+    expect(firstMessages).toHaveBeenCalledExactlyOnceWith(firstInstance.windowId, { type: "shell.ready" });
+    expect(secondMessages).toHaveBeenCalledExactlyOnceWith(secondInstance.windowId, { type: "shell.ready" });
+    first.destroy();
+    expect(secondInstance.destroyed).toBe(false);
+  });
+
+  it.each(["domain", "session", "port", "revoked-port", "permission"])(
+    "rejects intent delivery without %s",
+    async (missing) => {
+      const { host } = createHost({ services: missing === "domain" ? {} : { intent: service("intent") } });
+      const fixture = await artifact();
+      const instance = await host.resolve(fixture.event, fixture);
+      instance.mount(frame());
+      await instance.whenReady();
+      if (missing === "permission") {
+        host.bridge.runtime.aclState.revoke("", instance.resolved.dTag, instance.resolved.aggregateHash, "intent:read");
+      }
+      if (missing === "session") host.bridge.runtime.sessionRegistry.unregister(instance.windowId);
+      if (missing === "port") originRegistry.unregister(instance.windowId);
+      if (missing === "revoked-port") {
+        originRegistry.getPort(instance.windowId)!.dispatchEvent(new Event("messageerror"));
+        expect(instance.destroyed).toBe(true);
+      }
+      expect(
+        instance.send({
+          type: "intent.deliver",
+          delivery: { sender: "host", archetype: "test", action: "open", convention: "napplet:test/open" },
+        }),
+      ).toBe(false);
+    },
+  );
+
   it("mounts two instances of one artifact and tears down each independently", async () => {
     const custom = service("intent");
     const { host, pool, signer } = createHost({ services: { intent: custom } });
@@ -139,10 +274,9 @@ describe("browser napplet host", () => {
     const custom = service("intent");
     const { host } = createHost({ services: { intent: custom } });
     const fixture = await artifact(`<html><body><script>
-      addEventListener("message", (event) => {
-        if (event.data.type === "shell.init") {
-          parent.postMessage({ type: "intent.available", id: "same", archetype: "test" }, "*");
-        }
+      crypto.randomUUID = () => "same";
+      window.napplet.shell.onReady(() => {
+        window.napplet.intent.available("test").catch(() => {});
       });
     </script></body></html>`);
     const first = await host.resolve(fixture.event, fixture);

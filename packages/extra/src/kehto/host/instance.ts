@@ -120,7 +120,7 @@ export function createNappletInstance(resolved: ResolvedNapplet, source: "cache"
     send(message) {
       if (instanceDestroyed || !readySettled) return false;
 
-      // Kehto 0.26's recipient map omits intent.deliver. Apply its recipient
+      // Kehto 0.32's recipient map omits intent.deliver. Apply its recipient
       // policy explicitly until the runtime supports this host-owned delivery.
       if (message.type === "intent.deliver") {
         const delivery = "delivery" in message ? message.delivery : undefined;
@@ -132,8 +132,7 @@ export function createNappletInstance(resolved: ResolvedNapplet, source: "cache"
         if (!environment?.capabilities.domains.includes("intent")) return false;
         if (!bridge.runtime.sessionRegistry.isRegistered(windowId)) return false;
         if (!context.getRuntimeContext()?.hasCapability(windowId, "intent:read") || !sourceWindow) return false;
-        sourceWindow.postMessage(message, "*");
-        return true;
+        return originRegistry.postToNapplet(windowId, message);
       }
 
       return context.getRuntimeContext()?.sendToEligibleNapplet(windowId, message) ?? false;
@@ -168,6 +167,7 @@ export function createNappletInstance(resolved: ResolvedNapplet, source: "cache"
   return {
     instance,
     handleShellReady() {
+      if (instanceDestroyed) return;
       shellInitialized = true;
       finishReady();
     },

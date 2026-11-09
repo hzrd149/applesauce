@@ -11,10 +11,12 @@ description: Host concurrent Kehto napplets using a shared applesauce store, rel
 Install `applesauce-extra` and its optional Kehto peers. These ranges match the integration's current peer dependencies:
 
 ```sh
-pnpm add applesauce-extra @kehto/nip@^0.7.0 @kehto/runtime@^0.26.0 @kehto/services@^0.25.1 @kehto/shell@^0.24.4
+pnpm add applesauce-extra @kehto/nip@^0.8.0 @kehto/runtime@^0.28.1 @kehto/services@^0.30.1 @kehto/shell@^0.32.0
 ```
 
 Use `applesauce-extra/kehto/host` in browser code. For server rendering, create the host only after the browser is available.
+
+The host uses Kehto 0.32's MessagePort transport: window messaging establishes the initial handshake, then readiness, requests, and host messages use the bound port. Browser regressions cover shell 0.32.0 with runtime 0.28.1, services 0.30.1, and nip 0.8.0.
 
 ## Basic usage
 
@@ -81,6 +83,8 @@ firstIframe.remove();
 Each instance has a unique `windowId`. Kehto routes requests and replies by registered source window and manages per-window subscriptions. The instances share event data, relay connections, and the host's active account; they are not separate account sessions or private databases.
 
 Instances represent one document. Mounting into another iframe requires a new instance. Calling `mount` again with the same iframe is harmless. A subsequent document load destroys the instance; use a new instance for reloads. Keep iframe navigation under host control.
+
+Kehto transport revocation also destroys the instance. Custom `onNappletMessage` and `onNappletRevoked` shell hooks remain available alongside the host's lifecycle handling.
 
 ## Integration
 

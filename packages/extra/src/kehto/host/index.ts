@@ -34,10 +34,39 @@ export function createKehtoHost(context: KehtoContext, options: KehtoHostOptions
       },
     };
   }
-  const bridge = createShellBridge(adapter);
   const instances = new Map<string, ReturnType<typeof createNappletInstance>>();
   const fetchController = new AbortController();
   let destroyed = false;
+
+  const onNappletMessage = adapter.onNappletMessage;
+  adapter.onNappletMessage = (windowId, message) => {
+    if (message.type === "shell.ready") {
+      const controller = instances.get(windowId);
+      const port = originRegistry.getPort(windowId);
+
+      // Kehto 0.32 observes messages before synchronously registering the session
+      // and queuing shell.init. Check after dispatch, without requiring a guest acknowledgment.
+      queueMicrotask(() => {
+        if (destroyed || !controller || instances.get(windowId) !== controller) return;
+        if (!port || originRegistry.getPort(windowId) !== port) return;
+        if (!bridge.runtime.sessionRegistry.isRegistered(windowId)) return;
+        controller.handleShellReady();
+      });
+    }
+
+    onNappletMessage?.(windowId, message);
+  };
+
+  const onNappletRevoked = adapter.onNappletRevoked;
+  adapter.onNappletRevoked = (revocation) => {
+    try {
+      instances.get(revocation.windowId)?.instance.destroy();
+    } finally {
+      onNappletRevoked?.(revocation);
+    }
+  };
+
+  const bridge = createShellBridge(adapter);
 
   function assertActive() {
     if (destroyed) throw new Error("Kehto host is destroyed");
@@ -49,12 +78,6 @@ export function createKehtoHost(context: KehtoContext, options: KehtoHostOptions
     if (!windowId || !instances.has(windowId)) return;
 
     bridge.handleMessage(event);
-
-    // The installed bridge posts shell.init synchronously after accepting shell.ready.
-    // This observes that transition; it does not acknowledge receipt in the child.
-    if (event.data?.type === "shell.ready" && bridge.runtime.sessionRegistry.isRegistered(windowId)) {
-      instances.get(windowId)?.handleShellReady();
-    }
   }
 
   window.addEventListener("message", handleMessage);
