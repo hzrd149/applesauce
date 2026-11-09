@@ -25,6 +25,45 @@ The receiver reads from the account's kind 10050 inbox relays when they're alrea
 
 The pubkey is fixed. When the user switches accounts, dispose the receiver and create a new one. Leave out the `signer` to only show plaintext you've already cached.
 
+### Narrowing the inbox
+
+Pass one `filter` to select envelopes by additional tags, IDs, or authors. For example, a dedicated invite receiver can request only envelopes tagged with `k:3313`:
+
+```ts
+const receiver = new GiftWrapReceiver({
+  pubkey,
+  signer,
+  pool,
+  eventStore,
+  filter: { "#k": ["3313"] },
+});
+```
+
+The constraints apply to live reads, cache hydration, history sync, background processing, `readNext()`, `readInbox()`, and bulk `unlock()`. They also scope `giftWraps$` and `decryptionState$`, including when another component adds envelopes to the shared event store.
+
+The receiver snapshots the filter at construction and always fixes `kinds` to 1059 and `#p` to its account. Time bounds belong to the loading options; `since`, `until`, `search`, and `limit` are not supported in the inbox filter and are ignored if supplied at runtime. Every processed envelope must still have a valid signature and exactly one recipient tag for the account.
+
+Explicit `ingest(event)` and `unlock(event)` accept valid account envelopes even if they don't match the inbox filter. Ingestion alone does not prompt the signer; explicit unlock can decrypt and add the rumor to `rumors$`. An outer `k` tag is only a selection hint: consumers must still validate the decrypted rumor's kind and contents.
+
+### Adding transport relays
+
+Use `extraRelays` to read community or application relays alongside the selected inbox. It accepts an array or an observable of arrays:
+
+```ts
+const receiver = new GiftWrapReceiver({
+  pubkey,
+  signer,
+  pool,
+  eventStore,
+  fallbackRelays: ["wss://inbox.example"],
+  extraRelays: communityRelays$,
+});
+```
+
+Extras are added to explicit `relays`, advertised kind-10050 relays, or the fallback set. `relays$` remains the selected inbox; `readRelays$` exposes the normalized, deduplicated union used for live reads and history sync. The wrapped client's `relayStatus$` includes these extra relays too.
+
+Inbox reads start even if the extras observable hasn't emitted. Changing extras opens or closes only the affected live relay subscriptions, preserving other subscriptions and their authentication state. A history sync with `followRelays: false` snapshots the currently available union; it does not wait for future extras.
+
 ### Ways to receive
 
 - `start()` and `stop()` keep the receiver loading envelopes in the background until you stop it.
@@ -90,6 +129,8 @@ The receiver uses your shared pool and event store but never disposes them. Encr
 Rumor stores and decryption caches hold plaintext, so protect them at rest and never share one between accounts.
 
 The [wrapped messaging client](./messages.md#share-an-application-receiver) can use a receiver you created, so several features can share one inbox.
+
+Prefer one receiver per account and envelope store: share a broad receiver between consumers, or give a dedicated narrow receiver its own stores. Overlapping receivers can duplicate decryption work and overwrite checkpoints if they share a `processingStore`; filters are not a coordination mechanism for splitting one inbox between receivers.
 
 **Example:** [Gift-wrap messages](https://applesauce.build/examples/#/example/messages/gift-wrap)
 

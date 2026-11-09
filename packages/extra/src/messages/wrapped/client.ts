@@ -224,7 +224,7 @@ export class WrappedMessagesClient {
 
     this.relays$ = this.receiver.relays$;
     this.giftWraps$ = this.receiver.giftWraps$;
-    this.relayStatus$ = combineLatest([this.relays$, this.pool.status$ ?? of({})]).pipe(
+    this.relayStatus$ = combineLatest([this.receiver.readRelays$, this.pool.status$ ?? of({})]).pipe(
       map(([relays, connections]) => relays.map((url) => ({ url, connection: connections[url] }))),
     );
 

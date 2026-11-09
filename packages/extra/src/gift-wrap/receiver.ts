@@ -2,6 +2,7 @@ import { castUser } from "applesauce-common/casts";
 import { getGiftWrapRumor, getGiftWrapSeal, isGiftWrapUnlocked } from "applesauce-common/helpers";
 import { RumorStore } from "applesauce-core/event-store";
 import {
+  compileFilter,
   getEncryptedContent,
   isEncryptedContentUnlocked,
   isHexKey,
@@ -17,7 +18,12 @@ import {
   type NostrEvent,
   type Rumor,
 } from "applesauce-core/helpers";
-import { mapEventsToStore, watchEventsUpdates } from "applesauce-core/observable";
+import {
+  combineLatestByValue,
+  mapEventsToStore,
+  watchEventsUpdates,
+  withImmediateValueOrDefault,
+} from "applesauce-core/observable";
 import { makeCacheRequest } from "applesauce-loaders/helpers";
 import { createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import {
@@ -31,6 +37,7 @@ import {
   combineLatest,
   concat,
   defer,
+  defaultIfEmpty,
   distinctUntilChanged,
   exhaustMap,
   filter,
@@ -137,6 +144,8 @@ export class GiftWrapReceiver {
   readonly rumorStore;
   /** The selected normalized inbox relays */
   readonly relays$: Observable<string[]>;
+  /** The selected inbox relays plus the additive transport relays */
+  readonly readRelays$: Observable<string[]>;
   /** The loaded account envelopes, including plaintext updates */
   readonly giftWraps$: Observable<NostrEvent[]>;
   /** The validated rumors in the destination store */
@@ -189,6 +198,7 @@ export class GiftWrapReceiver {
   private retryGeneration?: AbortSignal;
   private readonly reserved = new Set<string>();
   private readonly inboxFilter: Filter;
+  private readonly matchesInbox: (event: NostrEvent) => boolean;
   private generation = new AbortController();
   private background?: Subscription;
   private disposed = false;
@@ -225,7 +235,16 @@ export class GiftWrapReceiver {
     if (!Number.isSafeInteger(this.processingConcurrency) || this.processingConcurrency < 1)
       throw new Error("Invalid processing concurrency");
     this.autoUnlock.next(options.autoUnlock ?? false);
-    this.inboxFilter = { kinds: [kinds.GiftWrap], "#p": [this.pubkey] };
+    // Snapshot constraints so later caller mutations cannot diverge from the compiled matcher.
+    const constraints: Filter = Object.fromEntries(
+      Object.entries(options.filter ?? {}).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+    );
+    delete constraints.since;
+    delete constraints.until;
+    delete constraints.search;
+    delete constraints.limit;
+    this.inboxFilter = { ...constraints, kinds: [kinds.GiftWrap], "#p": [this.pubkey] };
+    this.matchesInbox = compileFilter(this.inboxFilter);
 
     this.authentication = new MessageAuthentication(this.pool, this.pubkey, options.signer, true);
     this.authOptions = this.authentication.configure({
@@ -253,6 +272,16 @@ export class GiftWrapReceiver {
           )
     ).pipe(
       map((relays) => mergeRelaySets(relays).sort()),
+      distinctUntilChanged((previous, next) => previous.join() === next.join()),
+      shareReplay({ bufferSize: 1, refCount: true }),
+    );
+
+    this.readRelays$ = combineLatest([
+      this.relays$,
+      // Optional discovery must not delay reading the selected inbox.
+      configured$(options.extraRelays, []).pipe(defaultIfEmpty([]), withImmediateValueOrDefault([])),
+    ]).pipe(
+      map(([relays, extra]) => mergeRelaySets(relays, extra).sort()),
       distinctUntilChanged((previous, next) => previous.join() === next.join()),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
@@ -293,24 +322,22 @@ export class GiftWrapReceiver {
     this.watch$ = defer(() => {
       const signal = this.context();
       const since = Math.max(0, unixNow() - (options.historySpan ?? 30 * 86400));
-      const live$ = this.relays$.pipe(
-        switchMap((relays) =>
-          merge(
-            ...relays.map((relay) =>
-              withMessageAuth$(this.authOptions, (auth) =>
-                this.pool.subscription(
-                  [relay],
-                  { ...this.inboxFilter, since },
-                  { eventStore: this.eventStore, reconnect: true, ...auth },
-                ),
-              ).pipe(
-                mapEventsToStore(this.eventStore),
-                catchError((error) => {
-                  this.report("read", error);
-                  return EMPTY;
-                }),
-              ),
+      const live$ = this.readRelays$.pipe(
+        // Keep unchanged relay subscriptions and their authentication state alive.
+        combineLatestByValue((relay) =>
+          withMessageAuth$(this.authOptions, (auth) =>
+            this.pool.subscription(
+              [relay],
+              { ...this.inboxFilter, since },
+              { eventStore: this.eventStore, reconnect: true, ...auth },
             ),
+          ).pipe(
+            mapEventsToStore(this.eventStore),
+            catchError((error) => {
+              this.report("read", error);
+              return EMPTY;
+            }),
+            ignoreElements(),
           ),
         ),
       );
@@ -463,9 +490,7 @@ export class GiftWrapReceiver {
 
   private inboxEvent(eventId: string): NostrEvent | undefined {
     const event = this.eventStore.getEvent(eventId);
-    return event?.kind === kinds.GiftWrap && event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey)
-      ? event
-      : undefined;
+    return event && this.matchesInbox(event) ? event : undefined;
   }
 
   private candidates(): Set<string> {
@@ -589,12 +614,7 @@ export class GiftWrapReceiver {
         };
 
         const arrivals$ = merge(this.eventStore.insert$, this.eventStore.update$).pipe(
-          filter(
-            (event) =>
-              (!this.completed.has(event.id) || !isGiftWrapUnlocked(event)) &&
-              event.kind === kinds.GiftWrap &&
-              event.tags.some((tag) => tag[0] === "p" && tag[1] === this.pubkey),
-          ),
+          filter((event) => (!this.completed.has(event.id) || !isGiftWrapUnlocked(event)) && this.matchesInbox(event)),
           filter((event) => {
             const previous = visited.get(event.id);
             const current = plaintext(event);
@@ -1292,11 +1312,11 @@ export class GiftWrapReceiver {
       const relays =
         options.followRelays === false
           ? withFallback$(
-              this.relays$.pipe(map((relays) => (relays.length ? relays : undefined))),
+              this.readRelays$.pipe(map((relays) => (relays.length ? relays : undefined))),
               [],
               this.options.timeout ?? 10000,
             ).pipe(take(1))
-          : this.relays$;
+          : this.readRelays$;
       const sync = createSyncLoader({ pool: this.pool, eventStore: this.eventStore });
       const reconciliation$ = withMessageAuth$(this.authOptions, (auth) => {
         const operation = sync({ filter, relays, ...auth });

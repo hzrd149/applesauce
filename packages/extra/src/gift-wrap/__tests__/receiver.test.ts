@@ -37,7 +37,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function envelope(kind = 1) {
+async function envelope(kind = 1, tags?: string[][]) {
   const template = {
     kind,
     pubkey: await sender.getPublicKey(),
@@ -46,7 +46,16 @@ async function envelope(kind = 1) {
     content: crypto.randomUUID(),
   };
   const rumor = { ...template, id: getEventHash(template) };
-  const gift = await GiftWrapFactory.create(sender, pubkey, rumor);
+  let gift: NostrEvent = await GiftWrapFactory.create(sender, pubkey, rumor);
+  if (tags) {
+    const seal = await recipient.nip44.decrypt(gift.pubkey, gift.content);
+    gift = await sender.signEvent({
+      kind: 1059,
+      created_at: gift.created_at,
+      tags: [["p", pubkey], ...tags],
+      content: await sender.nip44.encrypt(pubkey, seal),
+    });
+  }
   return { rumor, event: JSON.parse(JSON.stringify(gift)) as NostrEvent };
 }
 
@@ -88,6 +97,162 @@ function processingStorage() {
   };
   return { storage, records };
 }
+
+describe("GiftWrapReceiver inbox selection", () => {
+  it("narrows live and cache requests and snapshots constraints while discarding reserved fields", async () => {
+    const filter = {
+      "#k": ["3313"],
+      kinds: [1],
+      "#p": ["foreign"],
+      since: 1,
+      until: 2,
+      limit: 1,
+      search: "invite",
+    };
+    const cacheRequest = vi.fn(async () => []);
+    const { receiver, pool } = setup({ filter: filter as unknown as GiftWrapReceiverOptions["filter"], cacheRequest });
+    filter["#k"].push("14");
+    await receiver.start();
+    expect(cacheRequest).toHaveBeenCalledWith([{ kinds: [1059], "#p": [pubkey], "#k": ["3313"] }]);
+    expect(pool.subscription).toHaveBeenCalledWith(
+      ["wss://inbox.test/"],
+      { kinds: [1059], "#p": [pubkey], "#k": ["3313"], since: expect.any(Number) },
+      expect.anything(),
+    );
+  });
+
+  it("excludes existing and arriving nonmatches from background processing and inbox state", async () => {
+    const invite = await envelope(3313, [["k", "3313"]]);
+    const existing = await envelope(14);
+    const arriving = await envelope(14);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const { receiver, eventStore } = setup({ filter: { "#k": ["3313"] }, autoUnlock: true });
+    eventStore.add(existing.event);
+    eventStore.add(invite.event);
+    const subscription = receiver.receive$.subscribe();
+    eventStore.add(arriving.event);
+    notifyEventUpdate(arriving.event);
+    await vi.waitFor(async () => expect(await firstValueFrom(receiver.rumors$)).toEqual([invite.rumor]));
+    expect(decrypt).toHaveBeenCalledTimes(2);
+    expect(await firstValueFrom(receiver.giftWraps$)).toEqual([invite.event]);
+    expect(await firstValueFrom(receiver.decryptionState$)).toMatchObject({ total: 1, unlocked: 1 });
+    expect(await receiver.readNext()).toBeUndefined();
+    await receiver.unlock();
+    expect(decrypt).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it("keeps pull candidates narrowed after the initial scan but permits an explicit unlock", async () => {
+    const excluded = await envelope(14);
+    const invite = await envelope(3313, [["k", "3313"]]);
+    const { receiver } = setup({ filter: { "#k": ["3313"] } });
+    expect(await receiver.readNext()).toBeUndefined();
+    await receiver.ingest(excluded.event);
+    await receiver.ingest(invite.event);
+    expect(await receiver.readNext()).toMatchObject({ status: "success", rumor: invite.rumor });
+    expect(await receiver.readNext()).toBeUndefined();
+    expect(await receiver.unlock(excluded.event)).toEqual(excluded.rumor);
+    expect(await firstValueFrom(receiver.giftWraps$)).toEqual([invite.event]);
+  });
+
+  it("rejects a matching envelope with multiple recipients before decrypting", async () => {
+    const { event } = await envelope(3313, [
+      ["k", "3313"],
+      ["p", pubkey],
+    ]);
+    const decrypt = vi.spyOn(recipient.nip44, "decrypt");
+    const { receiver } = setup({ filter: { "#k": ["3313"] } });
+    await expect(receiver.unlock(event)).rejects.toThrow("not addressed");
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+});
+
+describe("GiftWrapReceiver additive relays", () => {
+  it.each(["explicit", "advertised", "fallback"])(
+    "adds extras to %s relays without changing the selected inbox",
+    async (mode) => {
+      const { receiver, eventStore } = setup({
+        relays: mode === "explicit" ? ["wss://inbox.test"] : undefined,
+        fallbackRelays: ["wss://fallback.test"],
+        extraRelays: ["wss://extra.test", "wss://extra.test/"],
+      });
+      if (mode === "advertised") {
+        eventStore.add(
+          await recipient.signEvent({
+            kind: 10050,
+            tags: [["relay", "wss://advertised.test"]],
+            content: "",
+            created_at: unixNow(),
+          }),
+        );
+      }
+      const selected: string[][] = [];
+      const reads: string[][] = [];
+      const selectedSubscription = receiver.relays$.subscribe((value) => selected.push(value));
+      const readSubscription = receiver.readRelays$.subscribe((value) => reads.push(value));
+      const inbox = `wss://${mode === "explicit" ? "inbox" : mode}.test/`;
+      await vi.waitFor(() => expect(selected.at(-1)).toEqual([inbox]));
+      expect(reads.at(-1)).toEqual([inbox, "wss://extra.test/"].sort());
+      await receiver.start();
+      readSubscription.unsubscribe();
+      selectedSubscription.unsubscribe();
+    },
+  );
+
+  it("reads immediately with delayed extras and only opens or closes changed relay subscriptions", async () => {
+    const extras = new Subject<string[]>();
+    const { receiver, pool, closed } = setup({ extraRelays: extras });
+    await receiver.start();
+    expect(pool.subscription).toHaveBeenCalledTimes(1);
+    extras.next(["wss://extra.test"]);
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    expect(closed).not.toHaveBeenCalled();
+    extras.next(["wss://extra.test/", "wss://inbox.test", "wss://extra.test"]);
+    expect(pool.subscription).toHaveBeenCalledTimes(2);
+    expect(closed).not.toHaveBeenCalled();
+    extras.next([]);
+    expect(closed).toHaveBeenCalledTimes(1);
+    extras.next(["wss://extra.test"]);
+    expect(pool.subscription).toHaveBeenCalledTimes(3);
+    receiver.stop();
+    expect(closed).toHaveBeenCalledTimes(3);
+    await receiver.start();
+    expect(pool.subscription).toHaveBeenCalledTimes(4);
+    receiver.stop();
+    expect(closed).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([[], ["wss://inbox.test", "wss://inbox.test/"], EMPTY])(
+    "preserves the inbox for empty or duplicate extras (%s)",
+    async (extraRelays) => {
+      const { receiver } = setup({ extraRelays });
+      expect(await firstValueFrom(receiver.readRelays$)).toEqual(await firstValueFrom(receiver.relays$));
+    },
+  );
+
+  it.each([true, false])("syncs the narrowed inbox on extra relays with followRelays=%s", async (followRelays) => {
+    const request = vi.fn(() => EMPTY);
+    const pool = {
+      req: vi.fn(() => of({ type: "EOSE", from: "wss://inbox.test/" })),
+      relay: vi.fn(() => ({ getSupported: async () => [], getLimitations: async () => ({ max_limit: 500 }), request })),
+    };
+    const cacheRequest = vi.fn(async () => []);
+    const { receiver } = setup({
+      pool: pool as unknown as RelayPool,
+      extraRelays: new BehaviorSubject(["wss://extra.test"]),
+      filter: { "#k": ["3313"] },
+      cacheRequest,
+    });
+    const subscription = receiver.sync$({ since: 100, until: 200, followRelays }).subscribe();
+    await vi.waitFor(() => expect(pool.relay).toHaveBeenCalledWith("wss://extra.test/"));
+    expect(pool.relay).toHaveBeenCalledWith("wss://inbox.test/");
+    const filter = { kinds: [1059], "#p": [pubkey], "#k": ["3313"], since: 100, until: 200 };
+    expect(cacheRequest).toHaveBeenCalledWith([filter]);
+    await vi.waitFor(() => expect(request).toHaveBeenCalled());
+    expect(request).toHaveBeenCalledWith([expect.objectContaining(filter)], expect.anything());
+    subscription.unsubscribe();
+  });
+});
 
 describe("GiftWrapReceiver scaling", () => {
   it("defaults to four occupied signer calls", async () => {
@@ -1060,70 +1225,83 @@ describe("GiftWrapReceiver", () => {
     watch.unsubscribe();
   });
 
-  it.each([false, true])("authenticates independently of an active decrypt with autoAuth=%s", async (autoAuth) => {
-    const authenticatedPubkeys$ = new BehaviorSubject<string[]>([]);
-    const challenge$ = new BehaviorSubject<string | null>("challenge");
-    const acknowledgement = deferred<void>();
-    const relay = {
-      url: "wss://auth.test/",
-      authenticatedPubkeys$,
-      challenge$,
-      authenticate: vi.fn(async (signer: Pick<ISigner, "signEvent">) => {
-        await signer.signEvent({
-          kind: 22242,
-          created_at: unixNow(),
-          content: "",
-          tags: [
-            ["challenge", "challenge"],
-            ["relay", "wss://auth.test/"],
-          ],
-        });
-        await acknowledgement.promise;
-        authenticatedPubkeys$.next([pubkey]);
-        return { ok: true, message: "accepted" };
-      }),
-    };
-    const pool = {
-      relay: () => relay,
-      subscription: (_relays: string[], _filter: unknown, options: { onAuthRequired: SyncAuthHandler }) =>
-        new Observable<NostrEvent>(() => {
-          void options.onAuthRequired({
-            relay: relay as never,
-            url: relay.url,
-            challenge: "challenge",
-            requirement: pubkey,
-            missingPubkeys: [pubkey],
-            reason: "auth-required",
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    "authenticates independently of an active decrypt with autoAuth=%s and extraRelay=%s",
+    async (autoAuth, extraRelay) => {
+      const authenticatedPubkeys$ = new BehaviorSubject<string[]>([]);
+      const challenge$ = new BehaviorSubject<string | null>("challenge");
+      const acknowledgement = deferred<void>();
+      const relay = {
+        url: "wss://auth.test/",
+        authenticatedPubkeys$,
+        challenge$,
+        authenticate: vi.fn(async (signer: Pick<ISigner, "signEvent">) => {
+          await signer.signEvent({
+            kind: 22242,
+            created_at: unixNow(),
+            content: "",
+            tags: [
+              ["challenge", "challenge"],
+              ["relay", "wss://auth.test/"],
+            ],
           });
+          await acknowledgement.promise;
+          authenticatedPubkeys$.next([pubkey]);
+          return { ok: true, message: "accepted" };
         }),
-    };
-    const { receiver } = setup({ pool: pool as unknown as RelayPool, relays: [relay.url], autoAuth });
-    const first = await envelope();
-    const gate = deferred<string>();
-    const originalDecrypt = recipient.nip44.decrypt.bind(recipient.nip44);
-    const decrypt = vi.spyOn(recipient.nip44, "decrypt").mockImplementationOnce(() => gate.promise);
-    const sign = vi.spyOn(recipient, "signEvent");
-    const unlocking = receiver.unlock(first.event);
-    await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
-    const watch = receiver.watch$.subscribe();
-    expect(await firstValueFrom(receiver.authRequests$)).toHaveLength(1);
-    if (autoAuth) await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
-    else expect(sign).not.toHaveBeenCalled();
-    const auth = receiver.authenticate(relay.url);
-    const duplicate = receiver.authenticate(relay.url);
-    expect(duplicate).toBe(auth);
-    await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
-    expect(decrypt).toHaveBeenCalledTimes(1);
-    gate.resolve(await originalDecrypt(first.event.pubkey, first.event.content));
-    await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
-    // Acknowledgement is still blocked, but NIP-44 work can finish.
-    await unlocking;
-    expect(decrypt).toHaveBeenCalledTimes(2);
-    acknowledgement.resolve();
-    await auth;
-    expect(await firstValueFrom(receiver.authRequests$)).toHaveLength(0);
-    watch.unsubscribe();
-  });
+      };
+      const pool = {
+        relay: () => relay,
+        subscription: (_relays: string[], _filter: unknown, options: { onAuthRequired: SyncAuthHandler }) =>
+          new Observable<NostrEvent>(() => {
+            void options.onAuthRequired({
+              relay: relay as never,
+              url: relay.url,
+              challenge: "challenge",
+              requirement: pubkey,
+              missingPubkeys: [pubkey],
+              reason: "auth-required",
+            });
+          }),
+      };
+      const { receiver } = setup({
+        pool: pool as unknown as RelayPool,
+        relays: extraRelay ? [] : [relay.url],
+        extraRelays: extraRelay ? [relay.url] : [],
+        autoAuth,
+      });
+      const first = await envelope();
+      const gate = deferred<string>();
+      const originalDecrypt = recipient.nip44.decrypt.bind(recipient.nip44);
+      const decrypt = vi.spyOn(recipient.nip44, "decrypt").mockImplementationOnce(() => gate.promise);
+      const sign = vi.spyOn(recipient, "signEvent");
+      const unlocking = receiver.unlock(first.event);
+      await vi.waitFor(() => expect(decrypt).toHaveBeenCalledTimes(1));
+      const watch = receiver.watch$.subscribe();
+      expect(await firstValueFrom(receiver.authRequests$)).toHaveLength(1);
+      if (autoAuth) await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
+      else expect(sign).not.toHaveBeenCalled();
+      const auth = receiver.authenticate(relay.url);
+      const duplicate = receiver.authenticate(relay.url);
+      expect(duplicate).toBe(auth);
+      await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
+      expect(decrypt).toHaveBeenCalledTimes(1);
+      gate.resolve(await originalDecrypt(first.event.pubkey, first.event.content));
+      await vi.waitFor(() => expect(sign).toHaveBeenCalledTimes(1));
+      // Acknowledgement is still blocked, but NIP-44 work can finish.
+      await unlocking;
+      expect(decrypt).toHaveBeenCalledTimes(2);
+      acknowledgement.resolve();
+      await auth;
+      expect(await firstValueFrom(receiver.authRequests$)).toHaveLength(0);
+      watch.unsubscribe();
+    },
+  );
 
   it("continues bulk processing after malformed ciphertext and retains the failure", async () => {
     const { receiver } = setup();

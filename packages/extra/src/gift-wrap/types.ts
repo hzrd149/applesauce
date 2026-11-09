@@ -1,6 +1,6 @@
 import type { EventStore } from "applesauce-core";
 import type { AsyncRumorStore, RumorStore } from "applesauce-core/event-store";
-import type { EncryptedContentCache, NostrEvent, Rumor } from "applesauce-core/helpers";
+import type { EncryptedContentCache, Filter, NostrEvent, Rumor } from "applesauce-core/helpers";
 import type { CacheRequest } from "applesauce-loaders";
 import type { SyncAuthHandler } from "applesauce-loaders/loaders";
 import type { RelayPool } from "applesauce-relay";
@@ -25,6 +25,13 @@ export interface GiftWrapReceiverOptions {
   relays?: string[] | Observable<string[]>;
   /** The read relays used when no inbox relays are advertised */
   fallbackRelays?: string[] | Observable<string[]>;
+  /** The relays always read in addition to the selected inbox relays */
+  extraRelays?: string[] | Observable<string[]>;
+  /** The inbox selection constraints, excluding receiver-owned fields and query-only controls */
+  filter?: Omit<Filter, "kinds" | "#p" | "since" | "until" | "search" | "limit"> & {
+    /** The recipient constraint reserved for the receiver */
+    "#p"?: never;
+  };
   /** The encrypted envelope cache reader */
   cacheRequest?: CacheRequest;
   /** The plaintext cache for both encryption layers */

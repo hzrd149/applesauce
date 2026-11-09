@@ -77,6 +77,25 @@ async function envelope(content = crypto.randomUUID()) {
 }
 
 describe("wrapped receiver integration", () => {
+  it("reports extra transport relays without changing the selected inbox", async () => {
+    const { options } = setup();
+    const extras = new BehaviorSubject(["wss://extra.test"]);
+    const client = own(
+      new WrappedMessagesClient({
+        ...options,
+        receiverOptions: { relays: ["wss://inbox.test"], extraRelays: extras },
+      }),
+    );
+    const statuses: string[][] = [];
+    const subscription = client.relayStatus$.subscribe((value) => statuses.push(value.map((relay) => relay.url)));
+    cleanup.push(() => subscription.unsubscribe());
+
+    expect(await firstValueFrom(client.relays$)).toEqual(["wss://inbox.test/"]);
+    expect(statuses.at(-1)).toEqual(["wss://extra.test/", "wss://inbox.test/"]);
+    extras.next([]);
+    expect(statuses.at(-1)).toEqual(["wss://inbox.test/"]);
+  });
+
   it("shares an application rumor store without reading it eagerly or disposing it", async () => {
     const { options } = setup();
     const rumorStore = own(new RumorStore());
