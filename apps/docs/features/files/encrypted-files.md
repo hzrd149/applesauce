@@ -106,7 +106,7 @@ const retry = () => prepared.publish();
 
 Drafts can hold staged files with `setDraft({ content, files })`. Reload recovery requires both a saved draft record and a file-byte store. Wrapped clients need **both `draftStorage` and `draftFileStorage`**; NDR derives its draft record store from the required `storage` and needs `draftFileStorage` for the bytes. Without both stores, staged files remain in memory only.
 
-File storage implements `getItem`, `setItem`, and `removeItem` for blobs, such as a localForage instance. The adapters receive plaintext draft records and files; neither the clients nor `createNdrStorage` encrypt them. Supply account-scoped encrypting stores to protect drafts at rest:
+File storage implements `getItem`, `setItem`, and `removeItem` for blobs, such as a localForage instance. The adapters receive plaintext draft records and files; the clients don't encrypt them. Supply account-scoped encrypting stores to protect drafts at rest:
 
 ```ts
 const client = new WrappedMessagesClient({

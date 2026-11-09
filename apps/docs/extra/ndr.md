@@ -19,20 +19,33 @@ npm install nostr-double-ratchet@0.0.183
 Give the client the account, the shared `pool` and `eventStore`, the relays to use for messaging, and a storage adapter:
 
 ```ts
-import { NdrMessagesClient, createNdrStorage } from "applesauce-extra/messages/ndr";
+import { NdrMessagesClient } from "applesauce-extra/messages/ndr";
 
-const storage = createNdrStorage(encryptedStore);
 const client = new NdrMessagesClient({ pubkey, signer, pool, eventStore, relays, storage });
 
 await client.start();
 client.conversations$.subscribe(renderInbox);
 ```
 
-Storage holds device secrets, session state, and decrypted history. It can't be rebuilt from relays, so it must be durable, scoped to one account and device, and **encrypted at rest**. `createNdrStorage()` adapts a listable string key/value store with `getItem`, `setItem`, `removeItem`, and `keys()`; methods may be synchronous or asynchronous, and missing reads return `null`. It JSON-encodes values but doesn't encrypt them. Writes must finish durably before resolving; a `setItem` result of `false` is treated as failure.
+`storage` holds device secrets, session state, and decrypted history. It can't be rebuilt from relays, so keep it durable, **encrypted at rest**, and scoped to one account on one device. It is a nostr-double-ratchet `StorageAdapter`, which you can implement over any encrypted key/value store:
 
-Use the same `relays` for every device on the account; peers only find each other's invites and messages on shared relays.
+```ts
+const storage: StorageAdapter = {
+  get: async (key) => {
+    const value = await store.getItem(key);
+    return value === null ? undefined : JSON.parse(value);
+  },
+  put: (key, value) => store.setItem(key, JSON.stringify(value)),
+  del: (key) => store.removeItem(key),
+  list: async (prefix = "") => (await store.keys()).filter((key) => key.startsWith(prefix)),
+};
+```
 
-Only one client should use a storage at a time. Where Web Locks is available, `start()` takes an account lock; contention rejects startup and `lifecycle$` reports `locked`. Dispose that client and create a new instance to retry after the other owner releases the lock. Without Web Locks, or with `lockName: false`, the application must enforce single-writer storage ownership. Call `dispose()` on logout or account change to release owned resources and the lock.
+Writes must reject when they fail. Use the library's `InMemoryStorageAdapter` in tests.
+
+Use the same `relays` on every device of an account; peers only find each other's invites and messages on shared relays.
+
+Only one client may use a storage at a time. Where Web Locks are available, `start()` takes an account lock and rejects if another tab holds it, with `lifecycle$` reporting `locked`; create a new client to retry. Without Web Locks, or with `lockName: false`, the app must keep to one client per storage. Call `dispose()` on logout or account change to release the lock.
 
 ### Conversations
 
@@ -49,7 +62,7 @@ chat.sendTyping();
 await chat.setTtl(86400); // disappearing messages for both sides
 ```
 
-Each message has a `delivery` state that moves from `queued` to `published`, then `delivered` and `seen` as the peer's receipts arrive. Before sending, check `canSend$`: it stays false until the peer has a device you can reach.
+Sent messages move from `queued` to `published`, then to `delivered` and `seen` as the peer's receipts arrive; incoming messages are `received`. Before sending, check `canSend$`: it stays false until the peer has a device you can reach.
 
 Conversations also support drafts with `draft$`, `setDraft()`, and `sendDraft()`. With an `upload` option on the client, `uploadFile()` encrypts and uploads a file to attach to a message. Upload staged draft files before calling `sendDraft()`; see [Encrypted files](../features/files/encrypted-files.md#draft-attachments).
 

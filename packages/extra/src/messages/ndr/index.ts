@@ -13,7 +13,6 @@ export {
   type UploadedFile,
   type UploadEncryptedFileOptions,
 } from "../common/attachments.js";
-export { createNdrStorage, type NdrKeyValueStorage } from "./storage.js";
 export type { MessageDraft, MessageFileStorage } from "../common/types.js";
 export { NdrConversation, typingUntil$ } from "./conversation.js";
 export { NdrGroupConversation } from "./group.js";

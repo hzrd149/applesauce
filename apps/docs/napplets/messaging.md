@@ -154,7 +154,7 @@ Existing adapters own their send approval and publication behavior. The bridge i
 
 ## NDR Messages Client
 
-Use `createNdrMessageProtocol` to wrap or construct an [NDR messages client](../extra/ndr.md), following the [client ownership options](#client-ownership). The client manages runtime persistence, durable history, device registration, the outbox, and the Web Lock where available; the host supplies account/device-scoped storage and its encryption at rest. `createNdrStorage` is only a JSON wrapper, not an encrypting adapter. Kehto supplies routing, normalization, and plaintext send approval.
+`createNdrMessageProtocol` exposes an [NDR messages client](../extra/ndr.md) to napplets, using the [client ownership options](#client-ownership). The host supplies encrypted, account-scoped storage, the client manages history, devices, and the outbox, and Kehto adds routing, message normalization, and plaintext send approval.
 
 ```ts
 import { createNdrMessageProtocol, createMultiProtocolDmAdapter } from "applesauce-extra/kehto";
@@ -169,17 +169,17 @@ const adapter = createMultiProtocolDmAdapter({
 });
 ```
 
-For an app-owned client, the host calls `client.start()` and `client.dispose()`. With `clientOptions`, the protocol owns those calls. Only clients with a ready lifecycle expose a session, but lifecycle readiness does not imply registration or send readiness: observe `state$` and conversation `canSend$`. A reactive client stream can emit `undefined` on logout; replacement invalidates pending Kehto operations. Registration remains explicit in either mode.
+The protocol only exposes a session once the client's lifecycle is `ready`. A ready client may still be unregistered, so check `state$` and `canSend$` before sending; registration is always up to the host.
 
-Use `errors$` for background failures, `pendingPublications$` for the queued-envelope count, and `retryPublications()` to retry durable envelopes rather than issuing another plaintext send. `republishInvite()` republishes an already registered device's invite. See [Messages](../extra/messages.md) for full client lifecycle and recovery guidance.
+Use `errors$`, `pendingPublications$`, and `retryPublications()` to recover failed publications instead of sending again. See [Double-ratchet messaging](../extra/ndr.md) for the client lifecycle.
 
-Discovery waits up to `discoveryTimeout` (default 3000 ms) for peer devices. Missing discovery is unknown support, so automatic routing can fall back while an explicit NDR route can still attempt delivery. Direct conversations merge by participants; existing groups retain their native IDs and require matching recipients and accepted membership. Create groups through the client before sending to them through Kehto.
+Discovery waits up to `discoveryTimeout` (default 3000 ms) for peer devices. A timeout reports `unknown` support, so automatic routing falls back to another protocol. Direct conversations merge by participants. Groups keep their NDR IDs, must be created and accepted through the client, and only accept sends whose recipients match the members.
 
-Kehto's `sent` status means submitted: queued and relay-published NDR messages both map to it. Only peer `delivered` or `seen` receipts map to `delivered`. Subscriptions forward changed delivery statuses. Rich attachments, reactions, drafts, and typing remain available through the core client's conversation APIs.
+Queued and published NDR messages report as `sent`; only peer `delivered` or `seen` receipts report as `delivered`. Attachments, reactions, drafts, and typing are only available through the client's conversation APIs.
 
-Pass a stable `clientMessageId` to retain the last 100 send handles per client session and conversation/window scope. Retries reuse the original send result, including failures whose durable handoff may be ambiguous; a new ID starts a new send. Checks before approval and dispatch prevent cancelled requests from starting sends, but a client send already in progress can still complete its durable handoff.
+Pass a stable `clientMessageId` to make retries reuse the original send result instead of advancing the ratchet again; the last 100 IDs per window are kept. A send already handed to the client can still complete after the request is cancelled.
 
-For low-level runtime integrations, `createNdrTransport` remains available from `applesauce-extra/messages/ndr`; the older `applesauce-extra/kehto/services/dm/ndr` transport exports remain compatible alongside the new protocol factory.
+For low-level runtime integrations, use `createNdrTransport` from `applesauce-extra/messages/ndr`.
 
 ### Testing in the messages example
 

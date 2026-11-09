@@ -56,8 +56,8 @@ import {
   type KehtoContext,
 } from "applesauce-extra/kehto";
 import { createKehtoHost, type KehtoNappletInstance } from "applesauce-extra/kehto/host";
-import { createNdrStorage, NdrMessagesClient } from "applesauce-extra/messages/ndr";
-import type { NdrRuntimeState } from "nostr-double-ratchet";
+import { NdrMessagesClient } from "applesauce-extra/messages/ndr";
+import type { NdrRuntimeState, StorageAdapter } from "nostr-double-ratchet";
 import { createEventLoaderForStore, createSyncLoader, type SyncLoaderStatus } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
@@ -318,6 +318,22 @@ type NdrView = {
   error?: string;
   run?: (action: "register" | "invite") => Promise<void>;
 };
+
+/** Adapts PIN-encrypted string storage to the NDR StorageAdapter, which stores JSON values and lists keys by prefix */
+function createNdrStorage(secure: SecureStorage): StorageAdapter {
+  return {
+    get: async (key) => {
+      const value = await secure.getItem(key);
+      return value === null ? undefined : JSON.parse(value);
+    },
+    put: (key, value) => secure.setItem(key, JSON.stringify(value)),
+    del: (key) => secure.removeItem(key),
+    list: async (prefix = "") => {
+      const keys = await secure.keys();
+      return keys.filter((key) => key.startsWith(prefix));
+    },
+  };
+}
 
 function ndrAccount$(secure: SecureStorage, signer: ISigner, pubkey: string, relays: string[]) {
   return new Observable<NdrView>((subscriber) => {

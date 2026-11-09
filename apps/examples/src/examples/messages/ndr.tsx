@@ -8,7 +8,6 @@ import { isEncryptedFile, type FileMetadataFields } from "applesauce-common/help
 import { EventStore } from "applesauce-core";
 import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
 import {
-  createNdrStorage,
   getNdrGroupId,
   loadAttachment,
   NdrConversation,
@@ -26,7 +25,7 @@ import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
-import type { PreparedRegistration } from "nostr-double-ratchet";
+import type { PreparedRegistration, StorageAdapter } from "nostr-double-ratchet";
 import { type ClipboardEvent, type ReactNode, useCallback, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
@@ -92,6 +91,22 @@ const pool = new RelayPool();
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
 
 /** Creates an uploader that stores encrypted blobs on the user's Blossom servers */
+/** Adapts PIN-encrypted string storage to the NDR StorageAdapter, which stores JSON values and lists keys by prefix */
+function createNdrStorage(secure: SecureStorage): StorageAdapter {
+  return {
+    get: async (key) => {
+      const value = await secure.getItem(key);
+      return value === null ? undefined : JSON.parse(value);
+    },
+    put: (key, value) => secure.setItem(key, JSON.stringify(value)),
+    del: (key) => secure.removeItem(key),
+    list: async (prefix = "") => {
+      const keys = await secure.keys();
+      return keys.filter((key) => key.startsWith(prefix));
+    },
+  };
+}
+
 function createBlossomUploader(signer: ISigner, user: User): MessageFileUploader {
   return async (blob, { signal }) => {
     const servers = await firstValueFrom(
