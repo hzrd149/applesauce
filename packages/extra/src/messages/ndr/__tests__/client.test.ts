@@ -274,6 +274,28 @@ describe("NdrMessagesClient", () => {
     );
   });
 
+  it("rotates the sender key when removing a member before the group manager is ready", { timeout: 20000 }, async () => {
+    const relay = createRelay();
+    const alice = createClient(relay, 1);
+    const bob = createClient(relay, 2);
+    const carol = createClient(relay, 3);
+    await Promise.all([register(alice), register(bob), register(carol)]);
+
+    const group = await alice.createGroup("Team", [bob.pubkey, carol.pubkey]);
+    const manager = await alice.runtime.waitForGroupManager();
+    const rotate = vi.spyOn(manager, "rotateSenderKey");
+
+    // The runtime reports no manager while it is still initializing, which must not skip the rotation
+    const notReady = vi.spyOn(alice.runtime, "getGroupManager").mockReturnValue(null);
+    try {
+      await group.removeMember(carol.pubkey);
+    } finally {
+      notReady.mockRestore();
+    }
+
+    expect(rotate).toHaveBeenCalledWith(group.groupId, expect.any(Object));
+  });
+
   it("links a signer-less device approved by the owner's device", { timeout: 20000 }, async () => {
     const relay = createRelay();
     const phone = createClient(relay, 1);
