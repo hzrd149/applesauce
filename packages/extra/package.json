@@ -53,9 +53,9 @@
       "types": "./dist/nspam/index.d.ts"
     },
     "./open-ranking": {
-      "import": "./dist/open-ranking.js",
-      "require": "./dist/open-ranking.js",
-      "types": "./dist/open-ranking.d.ts"
+      "import": "./dist/open-ranking/index.js",
+      "require": "./dist/open-ranking/index.js",
+      "types": "./dist/open-ranking/index.d.ts"
     },
     "./primal": {
       "import": "./dist/primal.js",

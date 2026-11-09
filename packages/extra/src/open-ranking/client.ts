@@ -1,54 +1,30 @@
-import { LRU } from "applesauce-core/helpers";
-import { ProfilePointer } from "applesauce-core/helpers/pointers";
-import { createNostrWebTokenAuthorizationHeader } from "applesauce-common/helpers";
 import { NostrWebTokenFactory } from "applesauce-common/factories";
+import { createNostrWebTokenAuthorizationHeader } from "applesauce-common/helpers";
+import { LRU } from "applesauce-core/helpers";
 import { type ISigner } from "applesauce-signers";
 
-/** A public Open Ranking provider that exposes its web of trust over HTTP/JSON */
-export const DEFAULT_OPEN_RANKING_PROVIDER = "https://staging.brainstorm.world";
+import {
+  DEFAULT_OPEN_RANKING_PROVIDER,
+  OpenRankingCapabilities,
+  OpenRankingOptions,
+  OpenRankingRequestOptions,
+  OpenRankingSearchResult,
+  OpenRankingStats,
+} from "./types.js";
 
-/** A single algorithm offered by an Open Ranking endpoint */
-export type OpenRankingAlgorithm = {
-  id: string;
-  name: string;
-  /** Whether this algorithm requires a point-of-view pubkey in the request */
-  pov: boolean;
-  description: string;
-};
+/** A signed authorization header and the time (in seconds) its token expires */
+type CachedAuthorization = { expiration: number; header: Promise<string> };
 
-/** The capability document returned from `/.well-known/open-ranking.json`, keyed by endpoint path @see ORE-01 */
-export type OpenRankingCapabilities = Record<string, OpenRankingAlgorithm[]>;
+/** The response body of the `/search/pubkeys` endpoint */
+type SearchResponse = { results: { pubkey: string; rank: number }[] };
 
-/** A profile returned from a search, with its web-of-trust rank */
-export type OpenRankingSearchResult = ProfilePointer & { rank: number };
-
-/** Web-of-trust stats for a single pubkey @see ORE-02 */
-export type OpenRankingStats = {
-  pubkey: string;
-  rank: number;
-  hops?: number;
-  followers?: number;
-  muters?: number;
-  reporters?: number;
-  follows?: number;
-  mutes?: number;
-  reporting?: number;
-  pagerank?: number;
-};
-
-export type OpenRankingRequestOptions = {
-  /** The algorithm id to use, defaults to the endpoint's first (default) algorithm */
-  algorithm?: string;
-  /** The point-of-view pubkey for personalized algorithms */
-  pov?: string;
-};
-
-export type OpenRankingOptions = {
-  /** Signer used to issue Nostr Web Tokens for authenticated (point-of-view) requests */
-  signer?: ISigner;
-  /** How long (in seconds) issued Nostr Web Tokens remain valid, defaults to 300 */
-  tokenExpiration?: number;
-};
+/** Returns only the request options that are set, so unset keys are left out of the request body */
+function requestParams({ algorithm, pov }: OpenRankingRequestOptions): OpenRankingRequestOptions {
+  const params: OpenRankingRequestOptions = {};
+  if (algorithm) params.algorithm = algorithm;
+  if (pov) params.pov = pov;
+  return params;
+}
 
 /**
  * A client for an Open Ranking (ORE) provider — a plain HTTP/JSON interface to a nostr web of trust.
@@ -58,14 +34,12 @@ export type OpenRankingOptions = {
 export class OpenRanking {
   /** The base URL of the provider (without a trailing slash) */
   readonly provider: string;
+
   protected signer?: ISigner;
   protected tokenExpiration: number;
 
-  constructor(provider: string = DEFAULT_OPEN_RANKING_PROVIDER, opts?: OpenRankingOptions) {
-    this.provider = provider.replace(/\/+$/, "");
-    this.signer = opts?.signer;
-    this.tokenExpiration = opts?.tokenExpiration ?? 5 * 60;
-  }
+  // Re-issue the token slightly before it expires so it never lapses mid-request
+  protected tokenSkew = 10;
 
   // Cache the capability document for the lifetime of the client
   protected capabilities?: Promise<OpenRankingCapabilities>;
@@ -74,32 +48,40 @@ export class OpenRanking {
   protected searchCache = new LRU<OpenRankingSearchResult[]>(1000, 5 * 60 * 1000);
 
   // Cache the issued authorization header (and its in-flight signature) so a single token is reused across requests
-  protected authorizationCache?: { expiration: number; header: Promise<string> };
+  protected authorizationCache?: CachedAuthorization;
 
-  // Re-issue the token slightly before it expires so it never lapses mid-request
-  protected tokenSkew = 10;
+  constructor(provider: string = DEFAULT_OPEN_RANKING_PROVIDER, opts?: OpenRankingOptions) {
+    this.provider = provider.replace(/\/+$/, "");
+    this.signer = opts?.signer;
+    this.tokenExpiration = opts?.tokenExpiration ?? 5 * 60;
+  }
 
   /** Sets or clears the signer used to issue Nostr Web Tokens */
   setSigner(signer?: ISigner) {
     this.signer = signer;
+
     // A new signer issues different tokens, so drop the cached authorization
     this.authorizationCache = undefined;
   }
 
   /** Fetches the provider's capability document @see ORE-01 */
   discover(): Promise<OpenRankingCapabilities> {
-    if (!this.capabilities)
-      this.capabilities = fetch(`${this.provider}/.well-known/open-ranking.json`).then((res) => {
-        if (!res.ok) throw new Error(`Failed to load Open Ranking capabilities (${res.status})`);
-        return res.json();
-      });
+    if (!this.capabilities) {
+      this.capabilities = this.fetchCapabilities();
+    }
+
     return this.capabilities;
   }
 
-  /**
-   * Creates a Nostr Web Token authorization header for the provider, or an empty object when no signer is set.
-   * The signed token is cached and reused until it expires, so scoring many pubkeys only ever asks the signer once.
-   */
+  /** Requests the capability document from the provider's well-known URL */
+  protected async fetchCapabilities(): Promise<OpenRankingCapabilities> {
+    const res = await fetch(`${this.provider}/.well-known/open-ranking.json`);
+    if (!res.ok) throw new Error(`Failed to load Open Ranking capabilities (${res.status})`);
+
+    return res.json();
+  }
+
+  /** Returns a cached Nostr Web Token authorization header, or an empty object when no signer is set */
   protected async authorization(): Promise<Record<string, string>> {
     if (!this.signer) return {};
 
@@ -108,6 +90,7 @@ export class OpenRanking {
     // Issue a new token only when there isn't a valid one cached (or still in flight)
     if (!this.authorizationCache || this.authorizationCache.expiration - now <= this.tokenSkew) {
       const expiration = now + this.tokenExpiration;
+
       // Kick off signing — `.sign()` returns the promise synchronously; the actual signer prompt happens later
       const header = NostrWebTokenFactory.create({
         audiences: [this.provider],
@@ -121,7 +104,7 @@ export class OpenRanking {
       // The cached pending promise IS the lock: caching it here serializes every concurrent caller onto a
       // single signature. This block MUST stay synchronous up to this assignment — do not add an `await`
       // before it, or parallel requests would each start their own signer prompt before the cache is set.
-      const cache = { expiration, header };
+      const cache: CachedAuthorization = { expiration, header };
       this.authorizationCache = cache;
 
       // Don't keep a rejected signature cached (e.g. the user declined) — let the next request retry
@@ -136,9 +119,11 @@ export class OpenRanking {
 
   /** Makes a POST request to the provider, signing a Nostr Web Token when a signer is available */
   protected async post<T>(path: string, body: unknown): Promise<T> {
+    const headers = { "Content-Type": "application/json", ...(await this.authorization()) };
+
     const res = await fetch(`${this.provider}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(await this.authorization()) },
+      headers,
       body: JSON.stringify(body),
     });
 
@@ -161,17 +146,16 @@ export class OpenRanking {
     const cached = this.searchCache.get(key);
     if (cached) return cached;
 
-    const { results } = await this.post<{ results: { pubkey: string; rank: number }[] }>("/search/pubkeys", {
+    const { results } = await this.post<SearchResponse>("/search/pubkeys", {
       query,
       limit,
-      ...(algorithm ? { algorithm } : {}),
-      ...(pov ? { pov } : {}),
+      ...requestParams(options),
     });
 
-    // Sort by rank descending and convert to ranked profile pointers
-    const pointers = results.sort((a, b) => b.rank - a.rank).map(({ pubkey, rank }) => ({ pubkey, rank }));
+    // Sort by rank descending and keep only the ranked profile pointer fields
+    const sorted = results.sort((a, b) => b.rank - a.rank);
+    const pointers = sorted.map(({ pubkey, rank }) => ({ pubkey, rank }));
 
-    // Cache the results
     this.searchCache.set(key, pointers);
 
     return pointers;
@@ -179,11 +163,6 @@ export class OpenRanking {
 
   /** Gets the provider's web-of-trust stats for a single pubkey @see ORE-02 */
   stats(pubkey: string, options: OpenRankingRequestOptions = {}): Promise<OpenRankingStats> {
-    const { algorithm, pov } = options;
-    return this.post<OpenRankingStats>("/stats/pubkey", {
-      pubkey,
-      ...(algorithm ? { algorithm } : {}),
-      ...(pov ? { pov } : {}),
-    });
+    return this.post<OpenRankingStats>("/stats/pubkey", { pubkey, ...requestParams(options) });
   }
 }
