@@ -415,6 +415,47 @@ describe("GiftWrapReceiver persistence", () => {
     broken = false;
     expect(await receiver.readNext()).toMatchObject({ status: "success", rumor });
   });
+
+  it("skips and reports invalid checkpoint rows instead of failing every restore", async () => {
+    const restored = await envelope();
+    const damaged = await envelope();
+    const storage: GiftWrapProcessingStore = {
+      async *list() {
+        // A row this version cannot read, such as one written by a newer schema
+        yield {
+          version: 2,
+          eventId: damaged.event.id,
+          status: "completed",
+          attempts: 1,
+          stage: "checkpoint",
+          rumorId: damaged.rumor.id,
+        } as unknown as GiftWrapProcessingRecord;
+        yield {
+          version: 1,
+          eventId: restored.event.id,
+          status: "completed",
+          attempts: 1,
+          stage: "checkpoint",
+          rumorId: restored.rumor.id,
+        };
+      },
+      set: vi.fn(),
+    };
+    const { receiver } = setup({ processingStore: storage });
+    const errors = vi.fn();
+    receiver.errors$.subscribe(errors);
+    await receiver.ingest(restored.event);
+    await receiver.ingest(damaged.event);
+
+    await expect(receiver.ready()).resolves.toBeUndefined();
+    expect(errors).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: "persistence", eventId: damaged.event.id }),
+    );
+
+    // The unreadable row's envelope is processed again; the valid completion is still honored
+    expect(await receiver.readNext()).toMatchObject({ status: "success", rumor: damaged.rumor });
+    expect(await receiver.readNext()).toBeUndefined();
+  });
   it("fails readiness without processing and allows retrying a failed restore", async () => {
     const { storage } = processingStorage();
     const list = vi.spyOn(storage, "list").mockRejectedValueOnce(new Error("database offline"));

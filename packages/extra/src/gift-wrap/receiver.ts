@@ -132,6 +132,45 @@ function waitForOperation<T>(operation: Promise<T>, milliseconds: number, signal
   });
 }
 
+/** Returns why a stored processing checkpoint can't be restored, or undefined when it is valid */
+function checkpointProblem(record: GiftWrapProcessingRecord): string | undefined {
+  if (typeof record !== "object" || record === null) return "Invalid gift wrap processing checkpoint";
+
+  if (
+    record.version !== 1 ||
+    !isHexKey(record.eventId) ||
+    !Number.isSafeInteger(record.attempts) ||
+    record.attempts < 0
+  )
+    return "Invalid gift wrap processing checkpoint";
+
+  if (
+    !["processing", "failed", "completed"].includes(record.status) ||
+    !["envelope", "wrap", "seal", "rumor", "storage", "checkpoint"].includes(record.stage)
+  )
+    return "Invalid gift wrap processing state";
+
+  if (record.retryAt !== undefined && (!Number.isFinite(record.retryAt) || record.retryAt < 0))
+    return "Invalid gift wrap retry time";
+
+  const failure = record.failure;
+  if (
+    record.status === "failed" &&
+    (!failure ||
+      failure.eventId !== record.eventId ||
+      !Object.hasOwn(defaultRetry, failure.code) ||
+      failure.attempts !== record.attempts ||
+      failure.stage !== record.stage ||
+      typeof failure.message !== "string" ||
+      !["never", "manual", "automatic"].includes(failure.retry))
+  )
+    return "Invalid gift wrap failure checkpoint";
+
+  if (record.status === "completed" && !isHexKey(record.rumorId ?? "")) return "Missing completed rumor ID";
+
+  return undefined;
+}
+
 /** An account-scoped NIP-59 inbox with bounded decryption and independent authentication */
 export class GiftWrapReceiver {
   /** The immutable recipient pubkey */
@@ -358,7 +397,7 @@ export class GiftWrapReceiver {
 
   /**
    * Restores processing checkpoints before receiving or explicitly processing envelopes
-   * @throws if disposed, stopped, restoration times out, or checkpoint storage cannot be read or validated
+   * @throws if disposed, stopped, restoration times out, or checkpoint storage cannot be read
    */
   async ready(): Promise<void> {
     const signal = this.context();
@@ -392,38 +431,15 @@ export class GiftWrapReceiver {
 
     // Consume database pages without retaining their records, then publish the validated snapshot atomically.
     for await (const record of records) {
-      if (
-        record.version !== 1 ||
-        !isHexKey(record.eventId) ||
-        !Number.isSafeInteger(record.attempts) ||
-        record.attempts < 0
-      )
-        throw new Error("Invalid gift wrap processing checkpoint");
-
-      if (
-        !["processing", "failed", "completed"].includes(record.status) ||
-        !["envelope", "wrap", "seal", "rumor", "storage", "checkpoint"].includes(record.stage)
-      )
-        throw new Error("Invalid gift wrap processing state");
-
-      if (record.retryAt !== undefined && (!Number.isFinite(record.retryAt) || record.retryAt < 0))
-        throw new Error("Invalid gift wrap retry time");
-
-      const failure = record.failure;
-      if (
-        record.status === "failed" &&
-        (!failure ||
-          failure.eventId !== record.eventId ||
-          !Object.hasOwn(defaultRetry, failure.code) ||
-          failure.attempts !== record.attempts ||
-          failure.stage !== record.stage ||
-          typeof failure.message !== "string" ||
-          !["never", "manual", "automatic"].includes(failure.retry))
-      )
-        throw new Error("Invalid gift wrap failure checkpoint");
-
-      if (record.status === "completed" && !isHexKey(record.rumorId ?? ""))
-        throw new Error("Missing completed rumor ID");
+      // A failed read is transient and fails the restore so it can be retried, but an invalid row
+      // would fail every retry. Skip it so the rest of the snapshot restores; its envelope is then
+      // processed again as if it had never been checkpointed.
+      const problem = checkpointProblem(record);
+      if (problem) {
+        const eventId = typeof record === "object" && record !== null && isHexKey(record.eventId) ? record.eventId : undefined;
+        this.report("persistence", new Error(problem), eventId);
+        continue;
+      }
 
       attempts.set(record.eventId, record.attempts);
       if (record.rumorId && record.status !== "completed") storedRumors.set(record.eventId, record.rumorId);
