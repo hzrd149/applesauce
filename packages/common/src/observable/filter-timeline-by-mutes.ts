@@ -15,6 +15,6 @@ export function filterTimelineByMutes<T extends NostrEvent>(
 ): MonoTypeOperatorFunction<T[]> {
   return (source) =>
     combineLatest([source, eventStore.model(MuteModel, user)]).pipe(
-      map(([source, mutes]) => (mutes ? source.filter((event) => matchMutes(mutes, event)) : source)),
+      map(([source, mutes]) => (mutes ? source.filter((event) => !matchMutes(mutes, event)) : source)),
     );
 }
