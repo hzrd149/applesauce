@@ -40,7 +40,41 @@ describe("getExpirationTimestamp", () => {
       tags: [["expiration", "invalid"]],
     });
 
-    expect(getExpirationTimestamp(event)).toBeNaN();
+    expect(getExpirationTimestamp(event)).toBeUndefined();
+  });
+
+  it.each([
+    "17942512502592076",
+    "9007199254740992",
+    "123junk",
+    "1.5",
+    "-1",
+    "+1",
+    "NaN",
+    "Infinity",
+    "1e3",
+    "0x10",
+    " ",
+    " 123",
+    "123 ",
+    "123\n",
+  ])("should reject malformed or unsafe expiration %j", (expiration) => {
+    const event = user.note("test content", { tags: [["expiration", expiration]] });
+
+    expect(getExpirationTimestamp(event)).toBeUndefined();
+    expect(isExpired(event)).toBe(false);
+  });
+
+  it.each([
+    ["0", 0],
+    ["1", 1],
+    ["00123", 123],
+    ["8640000000001", 8640000000001],
+    ["9007199254740991", Number.MAX_SAFE_INTEGER],
+  ])("should preserve valid integer seconds %s", (expiration, expected) => {
+    const event = user.note("test content", { tags: [["expiration", expiration]] });
+
+    expect(getExpirationTimestamp(event)).toBe(expected);
   });
 
   it("should handle multiple tags and find the expiration tag", () => {
@@ -174,9 +208,17 @@ describe("isExpired", () => {
 
     vi.setSystemTime(new Date(1732999999 * 1000));
 
-    // Since getExpirationTimestamp returns NaN for invalid values,
-    // and NaN comparisons are always false, isExpired should return false
     expect(isExpired(event)).toBe(false);
+  });
+
+  it("should treat zero as an expiration timestamp", () => {
+    const event = user.note("test content", { tags: [["expiration", "0"]] });
+
+    vi.setSystemTime(new Date(0));
+    expect(isExpired(event)).toBe(false);
+
+    vi.setSystemTime(new Date(1000));
+    expect(isExpired(event)).toBe(true);
   });
 
   it("should work with real-time progression", () => {
