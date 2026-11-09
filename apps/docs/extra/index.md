@@ -20,7 +20,7 @@ Each module has its own entry point, so importing one doesn't load the others or
 | `applesauce-extra/gift-wrap`                     | `GiftWrapReceiver`                              | [Gift-wrap Receiver](./gift-wrap.md)                               |
 | `applesauce-extra/messages/ndr`                  | `NdrMessagesClient`, `createNdrTransport`       | [Double-ratchet Messaging](./ndr.md)                               |
 | `applesauce-extra/primal`                        | `PrimalCache`                                   | [Primal Cache](./primal.md)                                        |
-| `applesauce-extra/vertex`                        | `Vertex`                                        | [Vertex](./vertex.md)                                              |
+| `applesauce-extra/vertex`                        | `Vertex` (deprecated)                           | [Vertex](./vertex.md)                                              |
 | `applesauce-extra/open-ranking`                  | `OpenRanking`                                   | [Open Ranking](./open-ranking.md)                                  |
 | `applesauce-extra/remote-monitor-relay-liveness` | `RemoteMonitorRelayLiveness`                    | [Remote Monitor Liveness](/loading/relays/remote-monitor-liveness) |
 | `applesauce-extra/nspam`                         | `NspamClassifier`, `filterSpam`                 | [Spam Filtering](/features/moderation/spam-filtering)              |

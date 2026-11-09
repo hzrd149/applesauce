@@ -4,8 +4,8 @@ description: Search profiles and check reputation with the Vertex web-of-trust r
 
 # Vertex
 
-::: warning
-Vertex now offers the newer [Open Ranking](./open-ranking.md) API at `https://ranking.vertexlab.io`. Use the `OpenRanking` client with that endpoint for new apps instead of this DVM-based client.
+::: warning Deprecated
+`Vertex` is deprecated and will be removed in a future major release. Vertex now offers the [Open Ranking](./open-ranking.md) API at `https://ranking.vertexlab.io`, so use the `OpenRanking` client with that endpoint instead of this DVM-based client.
 :::
 
 `Vertex` from `applesauce-extra/vertex` is a [`Relay`](/loading/relays/relays) subclass for [Vertex](https://vertexlab.io/docs/services/), a paid web-of-trust service. It sends signed DVM requests (kinds 5315 and 5312) and returns users ranked by pagerank or follower count.

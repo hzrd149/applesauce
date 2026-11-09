@@ -4,14 +4,20 @@ import { onlyEvents, Relay, type RelayOptions } from "applesauce-relay";
 import { type ISigner } from "applesauce-signers";
 import { combineLatest, filter, firstValueFrom, map, Subscription, take } from "rxjs";
 
+/** @deprecated Use OpenRanking from applesauce-extra/open-ranking with https://ranking.vertexlab.io instead */
 export const VERTEX_RELAY = "wss://relay.vertexlab.io";
+/** @deprecated Use OpenRanking from applesauce-extra/open-ranking instead */
 export const VERTEX_SEARCH_KIND = 5315;
+/** @deprecated Use OpenRanking from applesauce-extra/open-ranking instead */
 export const VERTEX_VERIFY_REPUTATION_KIND = 5312;
 
+/** @deprecated Use the algorithm option of OpenRankingRequestOptions instead */
 export type SortMethod = "globalPagerank" | "personalizedPagerank" | "followerCount";
 
+/** @deprecated Use OpenRankingSearchResult instead */
 export type SearchProfileResult = ProfilePointer & { rank: number };
 
+/** @deprecated Use OpenRankingStats instead */
 export type VerifyReputationResult = {
   pubkey: string;
   rank: number;
@@ -19,6 +25,7 @@ export type VerifyReputationResult = {
   followers?: number;
 };
 
+/** @deprecated Use OpenRankingRequestOptions instead */
 export type VerifyReputationOptions = {
   target: string;
   sort?: SortMethod;
@@ -26,7 +33,10 @@ export type VerifyReputationOptions = {
   limit?: number;
 };
 
-/** Extended relay class for interacting with the vertex relay */
+/**
+ * Extended relay class for interacting with the vertex relay
+ * @deprecated Use OpenRanking from applesauce-extra/open-ranking with https://ranking.vertexlab.io instead
+ */
 export class Vertex extends Relay {
   private signer: ISigner;
   private autoAuth: Subscription;
