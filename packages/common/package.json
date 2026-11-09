@@ -89,26 +89,22 @@
     }
   },
   "dependencies": {
-    "@noble/hashes": "^2.2.0",
-    "@scure/base": "^2.2.0",
-    "applesauce-core": "^7.0.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/base": "^2.4.0",
+    "applesauce-core": "^7.0.3",
     "hash-sum": "^2.0.0",
     "light-bolt11-decoder": "^3.2.0",
-    "nanoid": "^5.0.9",
-    "rxjs": "^7.8.1"
+    "nanoid": "^6.0.2",
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@hirez_io/observer-spy": "^2.2.0",
-    "@nostrability/schemata": "^0.3.2",
     "@types/hash-sum": "^1.0.2",
-    "@types/node": "^22.20.5",
-    "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1",
-    "nostr-tools": "^2.25.2",
-    "rimraf": "^6.1.3",
+    "@types/node": "^26.6.6",
+    "nostr-tools": "^2.26.0",
+    "rimraf": "^6.1.4",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5",
-    "yaml": "^2.9.1"
+    "vitest": "^5.1.0"
   },
   "funding": {
     "type": "lightning",

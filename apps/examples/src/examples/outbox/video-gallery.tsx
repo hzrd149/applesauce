@@ -272,12 +272,19 @@ function arrange(videos: Video[], format: Format | "all", sort: Sort) {
 }
 
 /** The smallest playable variant, used for the hover preview */
-const previewVariant = (video: Video) => video.variants.filter(canPlay).at(-1);
+function previewVariant(video: Video) {
+  const playable = video.variants.filter(canPlay);
+  return playable[playable.length - 1];
+}
 
 /** The largest playable variant up to 1080p, or the smallest if they are all larger */
 function defaultVariant(video: Video) {
   const playable = video.variants.filter(canPlay);
-  return playable.find((v) => Math.min(v.width ?? 0, v.height ?? 0) <= 1080) ?? playable.at(-1) ?? video.variants[0];
+  return (
+    playable.find((v) => Math.min(v.width ?? 0, v.height ?? 0) <= 1080) ??
+    playable[playable.length - 1] ??
+    video.variants[0]
+  );
 }
 
 // ---------------------------------------------------------------------------

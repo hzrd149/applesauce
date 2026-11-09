@@ -2,7 +2,6 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    isolate: false,
     exclude: [...configDefaults.exclude, "**/*.browser.test.ts"],
     server: {
       deps: {

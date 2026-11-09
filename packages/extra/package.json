@@ -84,20 +84,20 @@
   ],
   "dependencies": {
     "@noble/hashes": "^2.4.0",
-    "applesauce-core": "^7.0.0",
+    "applesauce-core": "^7.0.3",
     "rxjs": "^7.8.2"
   },
   "optionalDependencies": {
     "applesauce-actions": "^7.0.0",
     "applesauce-common": "^7.0.0",
-    "applesauce-loaders": "^7.0.0",
+    "applesauce-loaders": "^7.0.2",
     "applesauce-relay": "^7.0.0",
-    "applesauce-signers": "^7.0.0",
+    "applesauce-signers": "^7.0.1",
     "blossom-client-sdk": "^5.1.0"
   },
   "peerDependencies": {
     "@contextvm/mcp-sdk": "1.30.0",
-    "@contextvm/sdk": "0.13.10",
+    "@contextvm/sdk": "0.13.10 || ^0.14.3",
     "@kehto/nip": "^0.8.0",
     "@kehto/runtime": "^0.28.1",
     "@kehto/services": "^0.30.1",
@@ -129,7 +129,7 @@
   },
   "devDependencies": {
     "@contextvm/mcp-sdk": "1.30.0",
-    "@contextvm/sdk": "0.13.10",
+    "@contextvm/sdk": "0.14.3",
     "@hirez_io/observer-spy": "^2.2.0",
     "@kehto/nip": "^0.8.0",
     "@kehto/runtime": "^0.28.1",
