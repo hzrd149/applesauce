@@ -113,8 +113,8 @@ export function createMutedWordsRegExp(mutedWords: string[]): RegExp {
   // Escape special characters and join with |
   const escapedWords = mutedWords.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
 
-  // Create the RegExp with word boundaries and case insensitive flag
-  return new RegExp(`\\b(${escapedWords.join("|")})\\b`, "gi");
+  // Keep matches outside Unicode words, including combining marks and underscores
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])(${escapedWords.join("|")})(?![\\p{L}\\p{M}\\p{N}_])`, "giu");
 }
 
 // Compiled muted word RegExps, keyed by the words set so matchMutes doesn't rebuild one per event

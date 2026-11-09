@@ -82,6 +82,41 @@ describe("matchMutes", () => {
     expect(matchMutes(changed, nonMutedUser.note("gn"))).toBe(true);
   });
 
+  it.each([
+    ["spam", "this is spam"],
+    ["привет", "привет всем"],
+    ["γειά", "γειά σου"],
+    ["café", "I love café"],
+    ["🍆", "look 🍆"],
+    ["c++", "I like c++ a lot"],
+    ["猫", "猫 です"],
+    ["привет", "(ПРИВЕТ!)"],
+    ["c++", "c++"],
+  ])("matches muted %s in %s", (word, content) => {
+    const words = { ...mutes, words: new Set([word]) };
+
+    expect(matchMutes(words, nonMutedUser.note(content))).toBe(true);
+  });
+
+  it.each([
+    ["spam", "spammer"],
+    ["кот", "котлета"],
+    ["猫", "猫が好き"],
+    ["spam", "éspam"],
+    ["spam", "spamé"],
+    ["spam", "_spam"],
+    ["spam", "spam_foo"],
+    ["spam", "1spam"],
+    ["spam", "spam١"],
+    ["a", "a\u0301"],
+    ["a", "\u0301a"],
+    ["c++", "I like ccc a lot"],
+  ])("does not match muted %s in %s", (word, content) => {
+    const words = { ...mutes, words: new Set([word]) };
+
+    expect(matchMutes(words, nonMutedUser.note(content))).toBe(false);
+  });
+
   it("should match words added to the set after a previous match", () => {
     const words = { ...mutes, words: new Set(["gm"]) };
     expect(matchMutes(words, nonMutedUser.note("gn"))).toBe(false);
