@@ -11,6 +11,7 @@ function setup() {
   const eventStore = new EventStore();
   const publish = vi.fn(async (relays: string[]) => relays.map(() => ({ ok: true })));
   const config = {
+    approve: () => true,
     signer,
     eventStore,
     pool: { publish } as unknown as RelayPool,
@@ -22,6 +23,19 @@ function setup() {
 }
 
 describe("common reliability", () => {
+  it("rejects actions without host approval before signing or publishing", async () => {
+    const { config, publish } = setup();
+    const sign = vi.spyOn(config.signer, "signEvent");
+    const common = createCommonOptions({ ...config, approve: undefined });
+
+    expect(await common.follow!(["a".repeat(64)], { windowId: "w" })).toMatchObject({
+      ok: false,
+      error: "No approval callback configured",
+    });
+    expect(sign).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
   it("bounds silent accounts and converts account errors into results", async () => {
     const { config } = setup();
     const silent = createCommonOptions({ ...config, account$: NEVER });

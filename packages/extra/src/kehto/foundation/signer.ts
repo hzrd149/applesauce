@@ -17,7 +17,7 @@ export interface NappletSigningOptions {
 
 /**
  * Signs a template for a napplet after the host approves it
- * @throws if no signer is configured, approval is denied, or signing fails
+ * @throws if no signer or approval callback is configured, approval is denied, or signing fails
  */
 export async function signForNapplet(
   signer: ISigner | undefined,
@@ -25,16 +25,15 @@ export async function signForNapplet(
   { approve, windowId, minimumTimestamp = 0 }: NappletSigningOptions = {},
 ) {
   if (!signer) throw new Error("No signer configured");
+  if (!approve) throw new Error("No approval callback configured");
 
   // Kehto may pass a full event, so only keep the template fields
   const { kind, tags, content, created_at } = template;
-  if (approve) {
-    const approved = await approve({
-      windowId,
-      template: { kind, tags, content, created_at },
-    });
-    if (!approved) throw new Error("User denied");
-  }
+  const approved = await approve({
+    windowId,
+    template: { kind, tags, content, created_at },
+  });
+  if (!approved) throw new Error("User denied");
 
   // Kehto rejects events older than 30 seconds, so stamp after the approval prompt
   return signer.signEvent({

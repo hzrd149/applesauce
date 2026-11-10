@@ -59,7 +59,8 @@ export function createActionExecutor(config: ActionExecutorOptions) {
               windowId,
               approve: async (request) => {
                 signal.throwIfAborted();
-                const approved = config.approve ? await config.approve(request) : true;
+                if (!config.approve) throw new Error("No approval callback configured");
+                const approved = await config.approve(request);
                 signal.throwIfAborted();
                 return approved;
               },

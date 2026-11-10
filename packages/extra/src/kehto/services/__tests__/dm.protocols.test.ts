@@ -82,6 +82,7 @@ function nostr() {
     publish: vi.fn(async (relays: string[]) => relays.map((from) => ({ from, ok: true }))),
   };
   const config = {
+    approve: () => true,
     eventStore,
     pool: pool as unknown as RelayPool,
     signer: aliceSigner,
@@ -325,6 +326,29 @@ describe("Nostr DM protocols", () => {
     expect((await dm.status()).implementations).toEqual(["nip04"]);
     await expect(dm.send({ recipients: [bob, "f".repeat(64)], content: "group" })).rejects.toThrow("Ineligible");
     expect((await dm.send({ recipients: [bob], content: "direct" })).ok).toBe(true);
+  });
+
+  it.each(["nip04", "nip17"])("rejects %s sends without host approval", async (protocolId) => {
+    const { config, pool, relayList } = nostr();
+    relayList(bobSigner.key, kinds.DirectMessageRelaysList, [["relay", "wss://recipient.test/"]]);
+    const encrypt04 = vi.spyOn(aliceSigner.nip04, "encrypt");
+    const encrypt44 = vi.spyOn(aliceSigner.nip44, "encrypt");
+    const sign = vi.spyOn(aliceSigner, "signEvent");
+    cleanup.push(() => {
+      encrypt04.mockRestore();
+      encrypt44.mockRestore();
+      sign.mockRestore();
+    });
+    const createProtocol = protocolId === "nip04" ? createLegacyMessageProtocol : createWrappedMessageProtocol;
+    const dm = compose([createProtocol({ ...config, approve: undefined })], {
+      routeSend: useProtocol(protocolId),
+    });
+
+    await expect(dm.send({ recipients: [bob], content: "private" })).rejects.toThrow("No approval callback configured");
+    expect(encrypt04).not.toHaveBeenCalled();
+    expect(encrypt44).not.toHaveBeenCalled();
+    expect(sign).not.toHaveBeenCalled();
+    expect(pool.publish).not.toHaveBeenCalled();
   });
 
   it("does not encrypt or sign a legacy message when approval is denied", async () => {

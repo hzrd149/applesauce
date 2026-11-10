@@ -28,7 +28,7 @@ let store: EventStore;
 let pool: ReturnType<typeof fakePool>;
 let adapters: ReturnType<typeof createKehtoShellAdapter>[];
 async function create(ctx: Partial<KehtoContext> = {}): Promise<KehtoContext> {
-  return { pool: pool as unknown as RelayPool, eventStore: store, signer, timeout: 50, ...ctx };
+  return { pool: pool as unknown as RelayPool, eventStore: store, signer, timeout: 50, approve: () => true, ...ctx };
 }
 const event = (key: Uint8Array, kind: number, tags: string[][] = [], content = "") =>
   store.add(finalizeEvent({ kind, created_at: unixNow(), content, tags }, key))!;
@@ -62,6 +62,7 @@ describe("common", () => {
   it("uses a shared account stream without a signer dependency", async () => {
     const account$ = new BehaviorSubject({ signer, pubkey: alice });
     const common = createCommonOptions({
+      approve: () => true,
       eventStore: store,
       pool: pool as unknown as RelayPool,
       account$,

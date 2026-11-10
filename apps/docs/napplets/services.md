@@ -23,7 +23,7 @@ const context: KehtoContext = {
 };
 ```
 
-The store, pool, accounts, relay lists, and approval UI belong to your application. `signer` accepts a signer or an observable such as `AccountManager.active$`; the latter follows login, logout, and account switches. Omitting it leaves operations requiring signing or decryption unavailable. Omitting `approve` allows adapter signing under the existing policy.
+The store, pool, accounts, relay lists, and approval UI belong to your application. `signer` accepts a signer or an observable such as `AccountManager.active$`; the latter follows login, logout, and account switches. Omitting it leaves operations requiring signing or decryption unavailable. Omitting `approve` denies adapter signing and native DM sends. Integrations that previously omitted it must supply an approval callback; trusted hosts can explicitly use `approve: () => true`.
 
 ## Service registry
 

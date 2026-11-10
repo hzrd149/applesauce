@@ -4,7 +4,7 @@ import { getPublicKey } from "applesauce-core/helpers/keys";
 import type { RelayPool } from "applesauce-relay";
 import { PrivateKeySigner } from "applesauce-signers";
 import { BehaviorSubject, firstValueFrom, Subject } from "rxjs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type { KehtoContext } from "../../types.js";
 import { kehtoAccount$ } from "../account.js";
 import { createApprovingSigner, createKehtoSigner, signForNapplet } from "../signer.js";
@@ -40,6 +40,19 @@ beforeEach(() => {
   pool = fakePool();
 });
 describe("signForNapplet", () => {
+  it("rejects every signer entry point without a host approval callback", async () => {
+    const sign = vi.spyOn(alice, "signEvent");
+    onTestFinished(() => sign.mockRestore());
+    const template = { kind: 1, content: "hello", tags: [], created_at: 1 };
+
+    await expect(signForNapplet(alice, template)).rejects.toThrow("No approval callback configured");
+    await expect(createApprovingSigner(alice)!.signEvent(template)).rejects.toThrow("No approval callback configured");
+    await expect(createKehtoSigner(alice, { eventStore: store })!.signEvent(template)).rejects.toThrow(
+      "No approval callback configured",
+    );
+    expect(sign).not.toHaveBeenCalled();
+  });
+
   it("restamps created_at after approval", async () => {
     const state = create({ signer: alice, approve: () => true });
     const event = await signForNapplet(

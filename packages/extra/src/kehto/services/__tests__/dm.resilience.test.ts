@@ -64,6 +64,7 @@ function nostr() {
   const advertise = (key: Uint8Array, tags: string[][], kind = kinds.DirectMessageRelaysList) =>
     eventStore.add(finalizeEvent({ kind, created_at: unixNow(), tags, content: "" }, key));
   const config = {
+    approve: () => true,
     eventStore,
     pool: pool as unknown as RelayPool,
     signer: aliceSigner,

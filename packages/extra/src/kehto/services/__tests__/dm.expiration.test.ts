@@ -38,7 +38,14 @@ describe.each(["nip04", "nip17"])("%s expiration policy", (protocolId) => {
       publish,
     } as unknown as RelayPool;
     const createProtocol = protocolId === "nip04" ? createLegacyMessageProtocol : createWrappedMessageProtocol;
-    const protocol = createProtocol({ eventStore, pool, signer: aliceSigner, timeout: 5, mirrorExpiration });
+    const protocol = createProtocol({
+      eventStore,
+      pool,
+      signer: aliceSigner,
+      timeout: 5,
+      mirrorExpiration,
+      approve: () => true,
+    });
     const session = (await firstValueFrom(protocol.session$))!;
     const context = { signal: new AbortController().signal };
     const createdAt = unixNow() - 60;

@@ -39,7 +39,7 @@ export interface KehtoContext {
   relaySelection?: KehtoRelaySelectionOptions;
   /** Blossom servers used when the user has no server list */
   fallbackBlossomServers?: string[] | Observable<string[]>;
-  /** Asks the user to approve a napplet signing request, signing is allowed when omitted */
+  /** The host callback approving napplet signing requests; signing is denied when omitted */
   approve?: (request: KehtoSignRequest) => boolean | Promise<boolean>;
   /** How long to wait for missing data before answering a napplet, in milliseconds */
   timeout?: number;

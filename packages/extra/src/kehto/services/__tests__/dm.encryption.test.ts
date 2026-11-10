@@ -54,6 +54,7 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
     internalGiftWrapEvents.removeByFilters({});
     eventStore.add(JSON.parse(JSON.stringify(event)));
     const protocol = createProtocol({
+      approve: () => true,
       eventStore,
       signer: aliceSigner,
       pool: {
@@ -168,6 +169,7 @@ describe.each(["nip04", "nip17"] as const)("%s decrypted content cache", (protoc
     );
     const publish = vi.fn(async (_relays: string[], _event: NostrEvent) => [{ ok: true }]);
     const protocol = createProtocol({
+      approve: () => true,
       eventStore,
       pool: { publish } as unknown as RelayPool,
       signer: aliceSigner,

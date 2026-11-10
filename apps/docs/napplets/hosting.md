@@ -164,7 +164,7 @@ Kehto verifies custom fetcher bytes too. `instance.source` is `"cache"` when no 
 
 ### Permissions and host messages
 
-Use `host.bridge` for Kehto's consent handlers, ACL management, and theme broadcasts. Manifest `R` tags declare required domains and `O` tags declare optional domains; neither grants permissions. Domain exposure and ACL grants are separate checks. See [capability negotiation](https://kehto.github.io/web/docs/concepts/capability-negotiation) and [granting a capability](https://kehto.github.io/web/docs/how-tos/grant-capability) for Kehto’s policy APIs. Signing approval is separate from Kehto's runtime permission checks. Omitting `context.approve` allows signing under the existing adapter policy; provide it when the application needs confirmation.
+Use `host.bridge` for Kehto's consent handlers, ACL management, and theme broadcasts. Manifest `R` tags declare required domains and `O` tags declare optional domains; neither grants permissions. Domain exposure and ACL grants are separate checks. See [capability negotiation](https://kehto.github.io/web/docs/concepts/capability-negotiation) and [granting a capability](https://kehto.github.io/web/docs/how-tos/grant-capability) for Kehto’s policy APIs. Signing approval is separate from Kehto's runtime permission checks. Omitting `context.approve` denies adapter signing and native DM sends; trusted hosts can explicitly allow them with `approve: () => true`.
 
 Register a consent handler before mounting to answer runtime requests, including destructive signing, undeclared-service, and firewall-policy consent:
 
