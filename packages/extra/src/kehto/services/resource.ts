@@ -23,12 +23,15 @@ export interface KehtoResourceOptions {
   fallbackServers?: string[] | Observable<string[]>;
   /** The largest resource napplets may load, in bytes (default 10MB) */
   maxBytes?: number;
-  /** The fetch implementation, defaults to the global fetch */
+  /** The fetch implementation, which must honor redirect rejection; server hosts should enforce DNS-aware destination checks */
   fetch?: typeof fetch;
+  /** The host filter for built-in HTTPS and Blossom requests, replacing the default local/private host and IPv6 literal block; hostnames are not DNS-resolved */
+  allowHost?: (url: URL) => boolean | Promise<boolean>;
 }
 
-// Browsers can't see resolved IPs, so this only blocks literal private hosts
-const PRIVATE_HOST = /^(localhost|0\.|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[|.*\.local$)/;
+// Browsers can't resolve IPs; server hosts need a DNS-aware fetch to prevent rebinding.
+const PRIVATE_HOST =
+  /^(0\.|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|\[)|(^|\.)(localhost|local)$/;
 
 /** Parses server hints that may omit the scheme */
 function parseServerHints(hints: readonly string[]) {
@@ -50,6 +53,18 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
   const { eventStore } = options;
   const maxBytes = options.maxBytes ?? 10 * 1024 * 1024;
   const fetcher = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
+
+  async function fetchServer(url: URL, signal: AbortSignal) {
+    if (url.protocol !== "https:") throw new ResourceServiceError("blocked-by-policy", "HTTPS required");
+
+    const allowed = options.allowHost
+      ? await options.allowHost(new URL(url.href))
+      : !PRIVATE_HOST.test(url.hostname.replace(/\.$/, ""));
+    if (!allowed) throw new ResourceServiceError("blocked-by-policy", "private host or denied by host policy");
+
+    signal.throwIfAborted();
+    return fetcher(url, { signal, credentials: "omit", referrerPolicy: "no-referrer", redirect: "error" });
+  }
 
   async function readBytes(response: Response): Promise<Uint8Array> {
     if (Number(response.headers.get("content-length")) > maxBytes)
@@ -104,11 +119,7 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
       attemptedServers.add(server);
 
       try {
-        const response = await fetcher(new URL(hash, server), {
-          signal,
-          credentials: "omit",
-          referrerPolicy: "no-referrer",
-        });
+        const response = await fetchServer(new URL(hash, server), signal);
         if (!response.ok) continue;
 
         const bytes = await readBytes(response);
@@ -142,8 +153,7 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
   }
 
   async function fetchHttp(url: URL, signal: AbortSignal) {
-    if (PRIVATE_HOST.test(url.hostname)) throw new ResourceServiceError("blocked-by-policy", "private host");
-    const response = await fetcher(url, { signal, credentials: "omit", referrerPolicy: "no-referrer" });
+    const response = await fetchServer(url, signal);
     if (!response.ok) throw new ResourceServiceError("not-found", `${response.status}`);
     return { bytes: await readBytes(response), type: response.headers.get("content-type") ?? "" };
   }
