@@ -243,7 +243,9 @@ function toConnectionError(error: unknown, url: string): unknown {
 }
 
 /** Whether an error represents a transport failure for which reconnecting can make progress. */
-function isReconnectableTransportError(error: unknown): error is CloseEvent {
+function isReconnectableTransportError(error: unknown): error is CloseEvent | RelayConnectionError {
+  if (error instanceof RelayConnectionError) return true;
+
   return (
     typeof error === "object" &&
     error !== null &&

@@ -1640,6 +1640,54 @@ describe("subscription", () => {
     await server.closed;
   });
 
+  it.each([1, Infinity])("reconnects after socket errors with a retry count of %s", async (count) => {
+    relay.reconnectTimer = () => timer(30);
+    const spy = subscribeSpyTo(
+      relay.subscription({ kinds: [1] }, { id: "sub1", reconnect: { count, delay: 0 } }),
+      { expectErrors: true },
+    );
+
+    try {
+      await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+      server.send(["EOSE", "sub1"]);
+      server.error({ code: 1006, wasClean: false });
+
+      expect(spy.receivedError()).toBe(false);
+      await server.closed;
+
+      server = new WS("wss://test", { jsonProtocol: true });
+      await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+      server.send(["EOSE", "sub1"]);
+
+      expect(spy.getValues()).toEqual(["EOSE", "EOSE"]);
+      expect(spy.receivedComplete()).toBe(false);
+
+      if (count === 1) {
+        server.error({ code: 1006, wasClean: false });
+        expect(spy.getError()).toBeInstanceOf(RelayConnectionError);
+      }
+    } finally {
+      spy.unsubscribe();
+      relay.close();
+    }
+  });
+
+  it.each([false, { count: 0 }])("does not retry socket errors with reconnect %j", async (reconnect) => {
+    const spy = subscribeSpyTo(relay.subscription({ kinds: [1] }, { id: "sub1", reconnect }), {
+      expectErrors: true,
+    });
+
+    try {
+      await expect(server).toReceiveMessage(["REQ", "sub1", { kinds: [1] }]);
+      server.error({ code: 1006, wasClean: false });
+
+      expect(spy.getError()).toBeInstanceOf(RelayConnectionError);
+    } finally {
+      spy.unsubscribe();
+      relay.close();
+    }
+  });
+
   it("should pass subscription reconnect option to req retry operator", () => {
     const reconnect = { count: 2, delay: 5 };
     const retry = vi.spyOn(relay as any, "customConnectionRetryOperator");
