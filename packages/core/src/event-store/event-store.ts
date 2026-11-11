@@ -275,6 +275,9 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
   add(event: E, fromRelay?: string): E | null {
     // Handle delete events differently
     if (event.kind === kinds.EventDeletion) {
+      // Verify before the delete manager changes deletion state or removes events.
+      if (this.verifyEvent && this.verifyEvent(event) === false) return null;
+
       this.deletes.add(event);
       return event;
     }

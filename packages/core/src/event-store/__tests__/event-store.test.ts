@@ -66,15 +66,12 @@ describe("add", () => {
   });
 
   it("should ignore old deleted events but not newer ones", () => {
-    const deleteEvent: NostrEvent = {
-      id: "delete event id",
+    const deleteEvent = user.event({
       kind: kinds.EventDeletion,
       created_at: profile.created_at + 100,
-      pubkey: user.pubkey,
       tags: [["e", profile.id]],
-      sig: "this should be ignored for the test",
       content: "test",
-    };
+    });
 
     // add delete event first
     eventStore.add(deleteEvent);
@@ -90,15 +87,14 @@ describe("add", () => {
   });
 
   it("should reject replaceable events deleted by ID before they are added", () => {
-    eventStore.add({
-      id: "delete event id",
-      kind: kinds.EventDeletion,
-      created_at: profile.created_at + 100,
-      pubkey: user.pubkey,
-      tags: [["e", profile.id]],
-      sig: "this should be ignored for the test",
-      content: "",
-    });
+    eventStore.add(
+      user.event({
+        kind: kinds.EventDeletion,
+        created_at: profile.created_at + 100,
+        tags: [["e", profile.id]],
+        content: "",
+      }),
+    );
 
     eventStore.add(profile);
     expect(eventStore.getEvent(profile.id)).toBeUndefined();
@@ -112,15 +108,12 @@ describe("add", () => {
     const newProfile = user.profile({ name: "new name" }, { created_at: profile.created_at + 1000 });
     eventStore.add(newProfile);
 
-    const deleteEvent: NostrEvent = {
-      id: "delete event id",
+    const deleteEvent = user.event({
       kind: kinds.EventDeletion,
       created_at: profile.created_at + 100,
-      pubkey: user.pubkey,
       tags: [["a", `${profile.kind}:${profile.pubkey}`]],
-      sig: "this should be ignored for the test",
       content: "test",
-    };
+    });
 
     // Add delete event with coordinate
     eventStore.add(deleteEvent);
@@ -143,15 +136,12 @@ describe("add", () => {
     });
     eventStore.add(newEvent);
 
-    const deleteEvent: NostrEvent = {
-      id: "delete event id",
+    const deleteEvent = user.event({
       kind: kinds.EventDeletion,
       created_at: event.created_at + 100,
-      pubkey: user.pubkey,
       tags: [["a", `${event.kind}:${event.pubkey}:test`]],
-      sig: "this should be ignored for the test",
       content: "test",
-    };
+    });
 
     // Add delete event with coordinate
     eventStore.add(deleteEvent);

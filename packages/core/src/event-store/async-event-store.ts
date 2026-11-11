@@ -203,6 +203,9 @@ export class AsyncEventStore<E extends StoreEvent = NostrEvent> extends EventMod
   async add(event: E, fromRelay?: string): Promise<E | null> {
     // Handle delete events differently
     if (event.kind === kinds.EventDeletion) {
+      // Verify before the delete manager changes deletion state or removes events.
+      if (this.verifyEvent && this.verifyEvent(event) === false) return null;
+
       await this.deletes.add(event);
       return event;
     }
