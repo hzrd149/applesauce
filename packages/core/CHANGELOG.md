@@ -1,5 +1,11 @@
 # applesauce-core
 
+## 7.1.2
+
+### Patch Changes
+
+- 4de3bd3: Verify deletion events before processing them in event stores
+
 ## 7.1.1
 
 ### Patch Changes

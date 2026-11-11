@@ -1,5 +1,20 @@
 # applesauce-extra
 
+## 7.2.0
+
+### Minor Changes
+
+- 19507f1: Return script-capable attachments as `application/octet-stream` unless `allowActiveContent` is enabled
+- fdda04b: Limit `loadAttachment` downloads to the declared size or configurable `maxSize` (100 MiB by default)
+
+### Patch Changes
+
+- 027bd81: Avoid per-event timeout scheduling during gift-wrap and legacy message cache hydration
+- b64ddbe: Prevent invalid saved processing records from blocking the gift-wrap inbox
+- e40eadc: Enforce overridable host filtering and HTTPS without redirects for Kehto resource requests
+- e466d74: Require an explicit host approval callback for Kehto event signing and DM sends
+- 027bd81: Skip restoration timeout scheduling when legacy messages need no cache read
+
 ## 7.1.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # applesauce-relay
 
+## 7.1.1
+
+### Patch Changes
+
+- 027bd81: Avoid replacing group request idle and progress timers for every received event
+- 7fffbfb: Recognize `RelayConnectionError` as a retryable transport failure
+
 ## 7.1.0
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # applesauce-loaders
 
+## 7.1.1
+
+### Patch Changes
+
+- 027bd81: Reject sync timeouts outside the supported native timer range
+- 3383483: Reduce sync loader watchdog timer scheduling during event bursts
+- 027bd81: Share and clean up the timeout across all fields in `loadAsyncMap`
+- 027bd81: Retain COUNT retry timers when queued demand leaves the earliest retry deadline unchanged
+
 ## 7.1.0
 
 ### Minor Changes

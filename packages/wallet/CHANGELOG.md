@@ -1,5 +1,11 @@
 # applesauce-wallet
 
+## 7.1.1
+
+### Patch Changes
+
+- 7f6619b: Scope wallet deletion backfills and live subscriptions to the wallet owner
+
 ## 7.1.0
 
 ### Minor Changes
