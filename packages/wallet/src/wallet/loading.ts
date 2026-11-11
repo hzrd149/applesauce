@@ -76,7 +76,7 @@ export function loadWalletEvents({
     authors: [pubkey],
   };
   const walletEventKinds = [WALLET_KIND, WALLET_TOKEN_KIND, WALLET_HISTORY_KIND];
-  const deleteFilter: Filter = { kinds: [kinds.EventDeletion], "#k": walletEventKinds.map(String) };
+  const deleteFilter: Filter = { kinds: [kinds.EventDeletion], authors: [pubkey], "#k": walletEventKinds.map(String) };
 
   // The subscription and request also watch for wallet event deletions, unless they are disabled
   const subscriptionFilters: Filter[] = useDeleteEvents ? [negentropyFilter, deleteFilter] : [negentropyFilter];
