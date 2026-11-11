@@ -1158,6 +1158,159 @@ function throwError(error: Error = new Error("sync failed")): Observable<never> 
   return new Observable((observer) => observer.error(error));
 }
 
+describe("sync progress watchdog", () => {
+  it.each([false, true])(
+    "preserves overlapping auth budgets (progress closes auth: %s)",
+    async (progressClosesAuth) => {
+      vi.useFakeTimers();
+      try {
+        const source = new Subject<NostrEvent>();
+        let methodOptions!: SyncMethodOptions;
+        const loader = createSyncLoader({
+          eventStore: new EventStore(),
+          getSupported: () => [],
+          request: (_url, _filter, options) => {
+            methodOptions = options!;
+            return source;
+          },
+          sync: () => EMPTY,
+        });
+        const statuses: SyncLoaderStatus[] = [];
+        loader({ relays: ["wss://relay/"], filter: {}, timeout: 100, authTimeout: 50 }).status$.subscribe((status) => {
+          statuses.push(status);
+        });
+
+        await vi.advanceTimersByTimeAsync(30);
+        methodOptions.onAuthRequired?.(authContext());
+        await vi.advanceTimersByTimeAsync(10);
+        methodOptions.onAuthRequired?.(authContext());
+        await vi.advanceTimersByTimeAsync(30);
+        if (progressClosesAuth) source.next(user.note("authenticated"));
+
+        // Without progress the last phase closes at 90ms, leaving the original 70ms budget.
+        // Progress at 70ms closes both phases and grants a full 100ms instead.
+        await vi.advanceTimersByTimeAsync(progressClosesAuth ? 99 : 89);
+        expect(statuses.at(-1)?.relays["wss://relay/"].state).toBe("loading");
+        await vi.advanceTimersByTimeAsync(1);
+        expect(statuses.at(-1)?.relays["wss://relay/"].state).toBe("error");
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["complete", "error", "unsubscribe", "disabled"] as const)("cleans up the watchdog on %s", async (ending) => {
+    vi.useFakeTimers();
+    const scheduleTimeout = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const source = new Subject<NostrEvent>();
+      const loader = createSyncLoader({
+        eventStore: new EventStore(),
+        getSupported: () => [],
+        request: () => source,
+        sync: () => EMPTY,
+      });
+      const subscription = loader({
+        relays: ["wss://relay/"],
+        filter: {},
+        timeout: ending === "disabled" ? false : 100,
+      }).status$.subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+
+      if (ending === "disabled") {
+        expect(scheduleTimeout).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1_000);
+      } else {
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+      }
+
+      if (ending === "complete") source.complete();
+      else if (ending === "error") source.error(new Error("request failed"));
+      else subscription.unsubscribe();
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      scheduleTimeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])("bounds timer allocations for duplicate event bursts (negentropy: %s)", async (negentropy) => {
+    vi.useFakeTimers();
+    const scheduleTimeout = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const events = Array.from({ length: 10_000 }, (_, index): NostrEvent => ({
+        id: index.toString(16).padStart(64, "0"),
+        pubkey: user.pubkey,
+        sig: "b".repeat(128),
+        kind: 1,
+        created_at: 100_000 - index,
+        content: "",
+        tags: [],
+      }));
+      const source = new Subject<NostrEvent>();
+      const loader = createSyncLoader({
+        eventStore: new EventStore({ verifyEvent: () => true }),
+        getSupported: () => [negentropy ? 77 : 1],
+        getMaxLimit: () => 20_000,
+        request: () => source,
+        sync: () => source,
+      });
+      const statuses = collect(
+        loader({ relays: ["wss://one.test", "wss://two.test"], filter: { kinds: [1] } }).status$,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const allocationsBeforeBurst = scheduleTimeout.mock.calls.length;
+
+      for (const event of events) source.next(event);
+      source.complete();
+
+      expect((await statuses).at(-1)?.loaded).toBe(10_000);
+      // Includes the shared status timer, but must not grow with the 20,000 deliveries.
+      expect(scheduleTimeout.mock.calls.length - allocationsBeforeBurst).toBeLessThanOrEqual(3);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      scheduleTimeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("extends the deadline for progress-only sync messages without allocating timers", async () => {
+    vi.useFakeTimers();
+    const scheduleTimeout = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const source = new Subject<{ type: "relay-failed"; from: string; error: Error }>();
+      const request = vi.fn().mockReturnValue(NEVER);
+      const loader = createSyncLoader({
+        eventStore: new EventStore(),
+        getSupported: () => [77],
+        request,
+        sync: () => source,
+      });
+      const subscription = loader({ relays: ["wss://relay/"], filter: {}, timeout: 100 }).status$.subscribe();
+      await vi.advanceTimersByTimeAsync(80);
+      const allocationsBeforeBurst = scheduleTimeout.mock.calls.length;
+
+      const progress = { type: "relay-failed" as const, from: "wss://other/", error: new Error("offline") };
+      for (let index = 0; index < 10_000; index++) source.next(progress);
+      expect(scheduleTimeout.mock.calls.length).toBe(allocationsBeforeBurst);
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(request).not.toHaveBeenCalled();
+      expect(scheduleTimeout.mock.calls.length).toBe(allocationsBeforeBurst + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(request).toHaveBeenCalledOnce();
+
+      subscription.unsubscribe();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      scheduleTimeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
 // 13-13: WR-03/WR-04 gap closure. Kept as its own describe block (not folded into "createSyncLoader"
 // above) so later additions can append alongside it without disturbing this file's existing structure.
 describe("13-13: handler-less auth-phase suspension and auth-phase timer lifetime (WR-03/WR-04)", () => {

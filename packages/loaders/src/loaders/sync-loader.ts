@@ -600,7 +600,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
 
           return new Observable<T>((subscriber) => {
             let remaining = budget;
-            let armedAt: number | null = null;
+            let deadline: number | null = null;
             let timer: ReturnType<typeof setTimeout> | null = null;
             let settled = false;
 
@@ -619,15 +619,24 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
               subscriber.error(new Error(`Sync loader timed out waiting for progress from ${url}`));
             };
             const arm = () => {
-              if (settled || authPhases > 0) return;
-              armedAt = Date.now();
-              clearArmed();
-              timer = setTimeout(fail, Math.max(0, remaining));
+              if (settled || authPhases > 0 || timer !== null) return;
+              deadline ??= Date.now() + remaining;
+              timer = setTimeout(
+                () => {
+                  timer = null;
+                  if (settled || deadline === null) return;
+
+                  // Progress extends the deadline without replacing the pending timer.
+                  if (Date.now() >= deadline) fail();
+                  else arm();
+                },
+                Math.max(0, deadline - Date.now()),
+              );
             };
             const disarm = () => {
-              if (armedAt !== null) {
-                remaining -= Date.now() - armedAt;
-                armedAt = null;
+              if (deadline !== null) {
+                remaining = Math.max(0, deadline - Date.now());
+                deadline = null;
               }
               clearArmed();
             };
@@ -645,8 +654,10 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
                 if (settled) return;
                 // An emission means any in-flight auth phase is over (D-16); force it closed and give
                 // the next stall window a fresh budget, matching the existing `each` semantics
-                forceCloseAuthPhases();
                 remaining = timeoutMs;
+                if (deadline !== null) deadline = Date.now() + timeoutMs;
+                // Refresh before closing phases: their notifications may resume the timer synchronously.
+                forceCloseAuthPhases();
                 arm();
                 subscriber.next(value);
               },
