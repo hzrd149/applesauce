@@ -29,8 +29,13 @@ export interface KehtoContext {
   eventStore: EventStore;
   /** The signer used for napplet signing, or an observable of it such as `AccountManager.active$` */
   signer?: ISigner | Observable<ISigner | undefined>;
-  /** Whether napplet reads decrypt encrypted content with the current signer (default true) */
+  /** Whether napplet reads decrypt encrypted content with the current signer. Opt-in (default false):
+   *  encrypted DMs and seals are only exposed to napplets when the host explicitly enables this. The DM
+   *  service also requires it, since its handlers expose message content. */
   decrypt?: boolean;
+  /** Whether napplets may direct reads and publishes to relays of their choice (default false: only the
+   *  user's configured relays are used) */
+  allowRelayHints?: boolean;
   /** The host plaintext cache, keyed by account pubkey and event id */
   decryptionCache?: EncryptedContentCache;
   /** Relays used when no outbox or relay hints are available */
