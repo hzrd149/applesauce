@@ -54,8 +54,8 @@ import {
   take,
   takeUntil,
   tap,
-  timeout,
 } from "rxjs";
+import { idleTimeout } from "../helpers/idle-timeout.js";
 import { MessageAuthentication, type MessageAuthRequest, withMessageAuth$ } from "../messages/common/authentication.js";
 import { configured$, withFallback$ } from "../messages/common/helpers.js";
 import type {
@@ -436,7 +436,8 @@ export class GiftWrapReceiver {
       // processed again as if it had never been checkpointed.
       const problem = checkpointProblem(record);
       if (problem) {
-        const eventId = typeof record === "object" && record !== null && isHexKey(record.eventId) ? record.eventId : undefined;
+        const eventId =
+          typeof record === "object" && record !== null && isHexKey(record.eventId) ? record.eventId : undefined;
         this.report("persistence", new Error(problem), eventId);
         continue;
       }
@@ -548,7 +549,7 @@ export class GiftWrapReceiver {
       signal.throwIfAborted();
       if (!this.options.cacheRequest) return EMPTY;
       return makeCacheRequest(this.options.cacheRequest, [filter]).pipe(
-        timeout({ each: this.options.timeout ?? 10000 }),
+        idleTimeout(this.options.timeout ?? 10000),
         mapEventsToStore(this.eventStore),
         catchError((error) => {
           this.report("cache", error);

@@ -76,6 +76,24 @@ it("keeps waiting observers alive without allocating a timer for each subscripti
   expect(vi.getTimerCount()).toBe(0);
 });
 
+it("retains the retry timer while unrelated demands join and leave", () => {
+  vi.useFakeTimers();
+  const { request, scheduler } = setup(() => throwError(() => new Error("network")), { concurrency: 1 });
+  const waiting = request([urls[0]]).subscribe();
+  const schedule = vi.spyOn(globalThis, "setInterval");
+  try {
+    const subscriptions = new Subscription();
+    for (let index = 0; index < 1000; index++) subscriptions.add(request([urls[0]]).subscribe());
+    subscriptions.unsubscribe();
+    expect(schedule).not.toHaveBeenCalled();
+    waiting.unsubscribe();
+    scheduler.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    schedule.mockRestore();
+  }
+});
+
 it("isolates synchronous errors and malformed answers while keeping demand alive", () => {
   const { request, count } = setup((url) => {
     if (url === urls[0]) throw Error("network");

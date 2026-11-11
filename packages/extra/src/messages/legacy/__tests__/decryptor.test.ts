@@ -1,7 +1,7 @@
 import { LegacyMessageFactory } from "applesauce-common/factories";
 import { getEncryptedContent, type EncryptedContentCache, type NostrEvent } from "applesauce-core/helpers";
 import { PrivateKeySigner, type ISigner } from "applesauce-signers";
-import { firstValueFrom, of } from "rxjs";
+import { firstValueFrom, from, of } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
 import { LegacyMessageDecryptor } from "../decryptor.js";
 
@@ -33,6 +33,21 @@ function mockSigner(decrypt = (pubkey: string, ciphertext: string) => ownerSigne
 }
 
 describe("LegacyMessageDecryptor", () => {
+  it("does not schedule restoration timers when no cache work is needed", async () => {
+    const event = await message("no cache");
+    const decryptor = new LegacyMessageDecryptor({ pubkey: owner });
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const subscription = decryptor.process$(from(Array.from({ length: 10000 }, () => event)), of(false)).subscribe();
+      expect(intervals).not.toHaveBeenCalled();
+      expect(timeouts).not.toHaveBeenCalled();
+      subscription.unsubscribe();
+    } finally {
+      intervals.mockRestore();
+      timeouts.mockRestore();
+    }
+  });
   it("shares one signer call between concurrent readers of an event", async () => {
     const { signer, decrypt } = mockSigner();
     const decryptor = new LegacyMessageDecryptor({ pubkey: owner, signer });

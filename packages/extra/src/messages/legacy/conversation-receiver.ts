@@ -39,6 +39,7 @@ import {
   takeUntil,
   timeout,
 } from "rxjs";
+import { idleTimeout } from "../../helpers/idle-timeout.js";
 import { withMessageAuth$ } from "../common/authentication.js";
 import type { MessageOperationOptions } from "../common/types.js";
 import type { LegacyMessageDecryptor } from "./decryptor.js";
@@ -224,7 +225,7 @@ export class LegacyConversationReceiver {
       if (!cacheRequest) return EMPTY;
 
       return makeCacheRequest(cacheRequest, filters).pipe(
-        timeout({ each: this.timeout }),
+        idleTimeout(this.timeout),
         mapEventsToStore(this.options.eventStore),
         catchError((error) => {
           this.errors.next({ operation: "cache", error });

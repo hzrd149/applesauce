@@ -1159,6 +1159,15 @@ function throwError(error: Error = new Error("sync failed")): Observable<never> 
 }
 
 describe("sync progress watchdog", () => {
+  it.each([NaN, Infinity, -Infinity, 2_147_483_648])("rejects unsupported timeout %s before scheduling", (timeout) => {
+    const loader = createSyncLoader({
+      eventStore: new EventStore(),
+      request: () => NEVER,
+      sync: () => EMPTY,
+      getSupported: () => [],
+    });
+    expect(() => loader({ relays: ["wss://relay/"], filter: {}, timeout })).toThrow(RangeError);
+  });
   it.each([false, true])(
     "preserves overlapping auth budgets (progress closes auth: %s)",
     async (progressClosesAuth) => {

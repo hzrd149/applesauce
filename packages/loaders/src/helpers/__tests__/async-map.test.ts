@@ -1,7 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { loadAsyncMap } from "../async-map.js";
 
 describe("loadAsyncMap", () => {
+  it("shares and clears one timer across a large map", async () => {
+    vi.useFakeTimers();
+    const schedule = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const fields = Object.fromEntries(Array.from({ length: 1000 }, (_, index) => [index, Promise.resolve(index)]));
+      expect(Object.keys(await loadAsyncMap(fields, 1000))).toHaveLength(1000);
+      expect(schedule).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      await loadAsyncMap({}, 1000);
+      expect(schedule).toHaveBeenCalledOnce();
+    } finally {
+      schedule.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   const TIMEOUT = 10; // 10ms timeout for fast tests
 
   describe("basic functionality", () => {

@@ -190,6 +190,7 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
   let dispatches = 0;
   let deferredDispatch: Subscription | undefined;
   let retryTask: Subscription | undefined;
+  let retryDeadline = Infinity;
   const publish = () =>
     status.next({
       active: [...records.values()].reduce((n, state) => n + state.active, 0),
@@ -285,14 +286,18 @@ export function createCountScheduler(options: CountSchedulerOptions = {}): Count
     }
   };
   const scheduleRetry = () => {
-    retryTask?.unsubscribe();
-    retryTask = undefined;
     let next = Infinity;
     for (const demand of demands)
       if (!demand.active && demand.retryAt > clock.now()) next = Math.min(next, demand.retryAt);
+    if (next === retryDeadline) return;
+
+    retryTask?.unsubscribe();
+    retryTask = undefined;
+    retryDeadline = next;
     if (next !== Infinity)
       retryTask = clock.schedule(() => {
         retryTask = undefined;
+        retryDeadline = Infinity;
         dispatchReady();
       }, next - clock.now());
   };

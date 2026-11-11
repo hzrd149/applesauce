@@ -16,9 +16,9 @@ import {
   Subscription,
   takeUntil,
   tap,
-  timeout,
   catchError,
 } from "rxjs";
+import { idleTimeout } from "../../helpers/idle-timeout.js";
 import {
   MessageAuthentication,
   type MessageAuthenticationResult,
@@ -208,7 +208,7 @@ export class LegacyInboxReceiver {
       if (!cacheRequest) return EMPTY;
 
       return defer(() => makeCacheRequest(cacheRequest, filters)).pipe(
-        timeout({ each: this.options.timeout ?? 4000 }),
+        idleTimeout(this.options.timeout ?? 4000),
         mapEventsToStore(this.eventStore),
         tap({ complete: () => this.cacheError.next(undefined) }),
         catchError((error) => {

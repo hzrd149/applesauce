@@ -326,7 +326,10 @@ export class LegacyMessageDecryptor {
       );
     }
 
-    const restore$ = defer(() => this.restore(event)).pipe(timeout({ first: this.decryptionTimeout }));
+    const restore$ = defer(() => {
+      if (!this.options.decryptionCache || isEncryptedContentUnlocked(event)) return of(undefined);
+      return defer(() => this.restore(event)).pipe(timeout({ first: this.decryptionTimeout }));
+    });
 
     return restore$.pipe(
       switchMap(() => (isEncryptedContentUnlocked(event) ? of<LegacyReadResult>({ status: "success", event }) : EMPTY)),

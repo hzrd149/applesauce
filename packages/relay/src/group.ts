@@ -9,6 +9,8 @@ import {
   catchError,
   combineLatest,
   connect,
+  concatWith,
+  debounceTime,
   defaultIfEmpty,
   defer,
   filter,
@@ -17,6 +19,7 @@ import {
   lastValueFrom,
   map,
   merge,
+  NEVER,
   MonoTypeOperatorFunction,
   Observable,
   of,
@@ -657,20 +660,30 @@ export class RelayGroup {
               traffic.pipe(
                 filter((m) => m.type === "EVENT"),
                 startWith(null),
-                switchMap(() =>
-                  timer(idle).pipe(
-                    map(() => true),
-                    startWith(false),
+                // Keep the pending idle check when traffic extends its deadline.
+                // Source completion must not flush debounceTime before the idle deadline.
+                concatWith(NEVER),
+                connect((events$) =>
+                  merge(
+                    events$.pipe(map(() => false)),
+                    events$.pipe(
+                      debounceTime(idle),
+                      map(() => true),
+                    ),
                   ),
                 ),
               ),
               progress.pipe(
                 filter((m) => m.type === "EVENT"),
                 startWith(null),
-                switchMap(() =>
-                  timer(Math.max(idle, progressTimeout)).pipe(
-                    map(() => true),
-                    startWith(false),
+                concatWith(NEVER),
+                connect((events$) =>
+                  merge(
+                    events$.pipe(map(() => false)),
+                    events$.pipe(
+                      debounceTime(Math.max(idle, progressTimeout)),
+                      map(() => true),
+                    ),
                   ),
                 ),
               ),

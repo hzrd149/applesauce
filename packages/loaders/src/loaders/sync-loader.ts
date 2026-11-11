@@ -268,7 +268,10 @@ export type SyncLoadRequest = {
   authRetries?: number;
 };
 
-/** A loader that loads a set of events from multiple relays using NIP-77 sync or paginated requests */
+/**
+ * A loader that loads a set of events from multiple relays using NIP-77 sync or paginated requests
+ * @throws if the timeout is non-finite or exceeds 2147483647 milliseconds
+ */
 export type SyncLoader = (request: SyncLoadRequest) => SyncLoaderResult;
 
 /**
@@ -426,6 +429,8 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
     // relay builds its own auth-aware version of this below (`buildRelayStream`'s `withTimeout`) rather
     // than sharing one function, since the clock must be suspendable per relay independently.
     const timeoutMs = timeout === false ? 0 : timeout;
+    if (!Number.isFinite(timeoutMs) || timeoutMs > 2_147_483_647)
+      throw new RangeError("Sync timeout must be finite and at most 2147483647 milliseconds");
 
     type Msg = { event: NostrEvent } | { status: SyncLoaderStatus };
 

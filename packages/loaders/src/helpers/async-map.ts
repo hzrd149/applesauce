@@ -23,21 +23,17 @@ export async function loadAsyncMap<T extends Record<string, Promise<any>>>(
   map: T,
   timeout: number,
 ): Promise<{ [K in keyof T]: Awaited<T[K]> | undefined }> {
-  // Create a timeout promise that resolves with a special marker after the timeout
-  const TIMEOUT_MARKER = Symbol("timeout");
-  type TimeoutMarker = typeof TIMEOUT_MARKER;
-
-  const createTimeoutPromise = (): Promise<TimeoutMarker> => {
-    return new Promise<TimeoutMarker>((resolve) => {
-      setTimeout(() => resolve(TIMEOUT_MARKER), timeout);
-    });
-  };
-
   // Race each promise against the timeout
   // If the promise resolves first, use its value
   // If the timeout happens first, use undefined
   // If the promise rejects, catch it and return undefined
   const entries = Object.entries(map) as Array<[keyof T, Promise<any>]>;
+  if (entries.length === 0) return {} as { [K in keyof T]: Awaited<T[K]> | undefined };
+
+  let timer: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<{ type: "timeout" }>((resolve) => {
+    timer = setTimeout(() => resolve({ type: "timeout" }), timeout);
+  });
 
   const results = await Promise.allSettled(
     entries.map(async ([key, promise]): Promise<[keyof T, Awaited<T[typeof key]> | undefined]> => {
@@ -46,10 +42,7 @@ export async function loadAsyncMap<T extends Record<string, Promise<any>>>(
         .then((value) => ({ type: "resolved" as const, value }))
         .catch(() => ({ type: "rejected" as const }));
 
-      const result = await Promise.race([
-        safePromise,
-        createTimeoutPromise().then(() => ({ type: "timeout" as const })),
-      ]);
+      const result = await Promise.race([safePromise, timeoutPromise]);
 
       if (result.type === "timeout" || result.type === "rejected") {
         return [key, undefined];
@@ -57,7 +50,7 @@ export async function loadAsyncMap<T extends Record<string, Promise<any>>>(
         return [key, result.value as Awaited<T[typeof key]>];
       }
     }),
-  );
+  ).finally(() => clearTimeout(timer));
 
   // Extract values from settled results, defaulting to undefined if anything went wrong
   const extractedResults = results.map((settled, index) => {

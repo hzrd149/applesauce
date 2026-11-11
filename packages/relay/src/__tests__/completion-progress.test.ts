@@ -1,6 +1,6 @@
 import { Subject, filter, take } from "rxjs";
 import { TestScheduler } from "rxjs/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RelayGroup } from "../group.js";
 import type { GroupReqMessage } from "../types.js";
 
@@ -29,6 +29,54 @@ function completion(entries: [number, string | null][], operator = RelayGroup.co
 }
 
 describe("idle completion progress", () => {
+  it("keeps the idle deadline when the source completes", () => {
+    vi.useFakeTimers();
+    try {
+      const messages = new Subject<GroupReqMessage>();
+      const done = vi.fn();
+      messages.pipe(RelayGroup.completeAfterIdle({ grace: 0, idle: 100 }), take(1)).subscribe(done);
+      messages.next({ type: "EOSE", from: "fast" });
+      messages.complete();
+      vi.advanceTimersByTime(99);
+      expect(done).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(done).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it.each([true, false])("does not replace timers during event bursts (unique: %s)", (unique) => {
+    vi.useFakeTimers();
+    const intervals = vi.spyOn(globalThis, "setInterval");
+    const timeouts = vi.spyOn(globalThis, "setTimeout");
+    try {
+      const messages = new Subject<GroupReqMessage>();
+      const done = vi.fn();
+      const subscription = messages.pipe(RelayGroup.completeAfterIdle(), take(1)).subscribe(done);
+      messages.next({ type: "EOSE", from: "fast" });
+      vi.advanceTimersByTime(1000);
+      const before = intervals.mock.calls.length + timeouts.mock.calls.length;
+      for (let index = 0; index < 10000; index++) {
+        messages.next({
+          type: "EVENT",
+          from: "slow",
+          event: { id: unique ? String(index) : "same" },
+        } as GroupReqMessage);
+      }
+      expect(intervals.mock.calls.length + timeouts.mock.calls.length).toBe(before);
+      vi.advanceTimersByTime(1999);
+      expect(done).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(done).toHaveBeenCalledOnce();
+      subscription.unsubscribe();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      intervals.mockRestore();
+      timeouts.mockRestore();
+      vi.useRealTimers();
+    }
+  });
   it("ignores a slow replay of ids received before the first EOSE", () => {
     expect(
       completion([
