@@ -53,7 +53,7 @@
     "lucide-react": "^1.70.0",
     "nanoid": "^6.0.2",
     "ngeohash": "^0.6.4",
-    "nostr-double-ratchet": "0.0.183",
+    "nostr-double-ratchet": "0.0.185",
     "nostr-editor": "^1.2.0",
     "nostr-idb": "^5.1.1",
     "nostr-social-graph": "^1.0.36",
