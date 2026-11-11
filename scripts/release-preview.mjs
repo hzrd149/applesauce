@@ -14,7 +14,7 @@ try {
   config.commit = false;
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
-  execFileSync("pnpm", ["exec", "changeset", "version"], { stdio: "inherit" });
+  execFileSync("pnpm", ["changeset", "version"], { stdio: "inherit" });
   execFileSync("pnpm", ["install", "--no-frozen-lockfile"], { stdio: "inherit" });
 } finally {
   writeFileSync(configPath, originalConfig);

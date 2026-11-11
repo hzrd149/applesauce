@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { releasePackages as snapshotGroup } from "./release-packages.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const configPath = join(root, ".changeset", "config.json");
@@ -14,9 +15,6 @@ const snapshotTag = args.find((arg) => !arg.startsWith("--")) ?? "next";
 
 const originalConfig = readFileSync(configPath, "utf8");
 const config = JSON.parse(originalConfig);
-const snapshotGroup = config.linked?.find((group) => group.some((name) => name.startsWith("applesauce-")));
-
-if (!snapshotGroup?.length) throw new Error("No linked applesauce package group found in .changeset/config.json");
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit", shell: process.platform === "win32" });
@@ -42,7 +40,6 @@ function validateSnapshotVersions() {
 
 try {
   config.fixed = [...(config.fixed ?? []), snapshotGroup];
-  config.linked = (config.linked ?? []).filter((group) => group !== snapshotGroup);
 
   const temporaryConfig = `${JSON.stringify(config, null, 2)}\n`;
 

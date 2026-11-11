@@ -1,0 +1,15 @@
+export const releasePackages = [
+  "applesauce-accounts",
+  "applesauce-actions",
+  "applesauce-common",
+  "applesauce-content",
+  "applesauce-core",
+  "applesauce-extra",
+  "applesauce-loaders",
+  "applesauce-react",
+  "applesauce-relay",
+  "applesauce-signers",
+  "applesauce-sqlite",
+  "applesauce-wallet-connect",
+  "applesauce-wallet",
+];

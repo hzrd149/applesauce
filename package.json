@@ -2,13 +2,14 @@
   "name": "applesauce",
   "private": true,
   "scripts": {
+    "changeset": "node scripts/changeset.mjs",
     "dev": "cd apps/examples && pnpm dev",
     "build": "turbo build",
     "test": "turbo build --filter='./packages/*' && vitest run",
     "coverage": "turbo build --filter='./packages/*' && vitest run --coverage",
     "format": "prettier --write .",
     "release-preview": "node scripts/release-preview.mjs",
-    "release-commit": "changeset version && pnpm install --no-frozen-lockfile && git add pnpm-lock.yaml && git commit --amend --no-edit",
+    "release-commit": "pnpm changeset version && pnpm install --no-frozen-lockfile && git add pnpm-lock.yaml && git commit --amend --no-edit",
     "release": "pnpm run -r build && changeset publish",
     "prerelease-snapshot": "pnpm build && pnpm test",
     "release-snapshot": "node scripts/snapshot-release.mjs",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@changesets/changelog-git": "^1.0.0",
+    "@changesets/read": "^1.0.1",
     "@changesets/types": "^7.0.0",
     "@hirez_io/observer-spy": "^2.2.0",
     "@vitest/browser": "^5.1.0",

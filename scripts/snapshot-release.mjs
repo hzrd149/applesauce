@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { releasePackages } from "./release-packages.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const { values } = parseArgs({
@@ -43,12 +44,8 @@ function git(args) {
 }
 
 function publishPackages() {
-  const config = JSON.parse(readFileSync(join(root, ".changeset/config.json"), "utf8"));
-  const group = config.linked?.find((packages) => packages.some((name) => name.startsWith("applesauce-")));
-  if (!group?.length) throw new Error("No linked applesauce package group found in .changeset/config.json");
-
   run("pnpm", [
-    ...group.flatMap((name) => ["--filter", name]),
+    ...releasePackages.flatMap((name) => ["--filter", name]),
     "--recursive",
     "publish",
     "--tag",
