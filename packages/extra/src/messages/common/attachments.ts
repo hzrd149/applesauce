@@ -97,7 +97,10 @@ export type LoadAttachmentOptions = {
  */
 async function readLimited(response: Response, limit: number): Promise<Uint8Array> {
   const length = Number(response.headers.get("content-length"));
-  if (length > limit) throw new Error(`Attachment is ${length} bytes, more than the ${limit} byte limit`);
+  if (length > limit) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`Attachment is ${length} bytes, more than the ${limit} byte limit`);
+  }
 
   if (!response.body) {
     const data = new Uint8Array(await response.arrayBuffer());

@@ -71,9 +71,11 @@ describe("attachment download limits", () => {
   /** A fetch that streams `chunks` 1 KiB chunks and counts how many were read */
   function streamingSource(chunks: number, headers?: HeadersInit) {
     let pulled = 0;
+    const cancel = vi.fn();
     const fetch = vi.fn(async () => {
       const body = new ReadableStream<Uint8Array>(
         {
+          cancel,
           pull(controller) {
             if (pulled >= chunks) return controller.close();
             pulled++;
@@ -85,7 +87,7 @@ describe("attachment download limits", () => {
       );
       return new Response(body, { headers });
     }) as unknown as typeof globalThis.fetch;
-    return { fetch, pulled: () => pulled };
+    return { fetch, cancel, pulled: () => pulled };
   }
 
   it("stops downloading a source that serves more than the declared size", async () => {
@@ -118,6 +120,7 @@ describe("attachment download limits", () => {
       loadAttachment({ url: "https://files.test/x" }, { fetch: source.fetch, maxSize: 4096 }),
     ).rejects.toThrow("limit");
     expect(source.pulled()).toBe(0);
+    expect(source.cancel).toHaveBeenCalledOnce();
   });
 
   it("ignores a malformed declared size instead of disabling the limit", async () => {
