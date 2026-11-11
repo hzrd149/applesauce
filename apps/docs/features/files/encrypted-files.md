@@ -82,6 +82,10 @@ For NDR, use `conversation.send({ content: "Photos", attachments: uploadedFiles 
 
 `loadAttachment(file)` from `applesauce-extra/messages` downloads from the URL or its fallbacks and decrypts the result into a `Blob`. Wrap it in `URL.createObjectURL` to render an image or video, and revoke the URL when the view unmounts.
 
+By default, `loadAttachment` replaces script-capable MIME types (HTML, XHTML, SVG, XML, and JavaScript/ECMAScript) with `application/octet-stream` on the returned `Blob`. The attachment still downloads, but its sender-declared type is not preserved for browser rendering.
+
+Pass `loadAttachment(file, { allowActiveContent: true })` only when you need the original type in a safe rendering context, such as SVG in an `<img>`. Opening that blob URL directly or embedding it in an `<iframe>` can run sender-provided scripts in your app's origin.
+
 ### Retrying wrapped publication
 
 Retain the prepared send before publishing so a partial relay failure can retry the same envelopes:
