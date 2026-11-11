@@ -67,6 +67,104 @@ describe("encrypted attachments", () => {
   });
 });
 
+describe("attachment download limits", () => {
+  /** A fetch that streams `chunks` 1 KiB chunks and counts how many were read */
+  function streamingSource(chunks: number, headers?: HeadersInit) {
+    let pulled = 0;
+    const fetch = vi.fn(async () => {
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            if (pulled >= chunks) return controller.close();
+            pulled++;
+            controller.enqueue(new Uint8Array(1024));
+          },
+        },
+        // No read-ahead, so `pulled` counts only chunks the reader asked for
+        { highWaterMark: 0 },
+      );
+      return new Response(body, { headers });
+    }) as unknown as typeof globalThis.fetch;
+    return { fetch, pulled: () => pulled };
+  }
+
+  it("stops downloading a source that serves more than the declared size", async () => {
+    const source = streamingSource(64);
+    await expect(
+      loadAttachment({ url: "https://files.test/x", type: "image/png", size: 10 }, { fetch: source.fetch }),
+    ).rejects.toThrow("limit");
+    expect(source.pulled()).toBeLessThan(64);
+  });
+
+  it("stops downloading at maxSize when no size is declared", async () => {
+    const source = streamingSource(64);
+    await expect(
+      loadAttachment({ url: "https://files.test/x", type: "image/png" }, { fetch: source.fetch, maxSize: 4096 }),
+    ).rejects.toThrow("limit");
+    expect(source.pulled()).toBeLessThan(64);
+  });
+
+  it("rejects a declared size over maxSize without fetching", async () => {
+    const source = streamingSource(1);
+    await expect(
+      loadAttachment({ url: "https://files.test/x", size: 1_000_000 }, { fetch: source.fetch, maxSize: 1000 }),
+    ).rejects.toThrow("limit");
+    expect(source.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized Content-Length before reading the body", async () => {
+    const source = streamingSource(64, { "content-length": String(64 * 1024) });
+    await expect(
+      loadAttachment({ url: "https://files.test/x" }, { fetch: source.fetch, maxSize: 4096 }),
+    ).rejects.toThrow("limit");
+    expect(source.pulled()).toBe(0);
+  });
+
+  it("ignores a malformed declared size instead of disabling the limit", async () => {
+    const source = streamingSource(64);
+    await expect(
+      loadAttachment({ url: "https://files.test/x", size: Number.NaN }, { fetch: source.fetch, maxSize: 4096 }),
+    ).rejects.toThrow("limit");
+  });
+
+  it("falls back to a mirror when the primary serves the wrong size", async () => {
+    const server = memoryServer();
+    const file = await uploadEncryptedFile(image, server.upload);
+    server.blobs.set(file.fallback![0], server.blobs.get(file.url!)!);
+    server.blobs.set(file.url!, new Blob([new Uint8Array(1024 * 1024)]));
+
+    const loaded = await loadAttachment(file, { fetch: server.fetch });
+    expect(new Uint8Array(await loaded.arrayBuffer())).toEqual(new Uint8Array(await image.arrayBuffer()));
+  });
+});
+
+describe("attachment content types", () => {
+  const page = new Blob(["<script>alert(document.domain)</script>"], { type: "text/html" });
+
+  it.each(["text/html", "text/html; charset=utf-8", "IMAGE/SVG+XML", "application/xhtml+xml", "text/javascript"])(
+    "downgrades a declared %s to application/octet-stream",
+    async (declared) => {
+      const server = memoryServer();
+      const file = await uploadEncryptedFile(page, server.upload);
+      const loaded = await loadAttachment({ ...file, type: declared }, { fetch: server.fetch });
+      expect(loaded.type).toBe("application/octet-stream");
+    },
+  );
+
+  it("keeps passive media types", async () => {
+    const server = memoryServer();
+    const file = await uploadEncryptedFile(image, server.upload);
+    expect((await loadAttachment(file, { fetch: server.fetch })).type).toBe("image/png");
+  });
+
+  it("keeps active types when allowed", async () => {
+    const server = memoryServer();
+    const file = await uploadEncryptedFile(page, server.upload);
+    const loaded = await loadAttachment({ ...file, type: "image/svg+xml" }, { fetch: server.fetch, allowActiveContent: true });
+    expect(loaded.type).toBe("image/svg+xml");
+  });
+});
+
 describe("WrappedMessagesClient files", () => {
   function setup(upload?: MessageFileUploader) {
     const eventStore = new EventStore();
