@@ -26,7 +26,7 @@ export interface NappletDecryptionOptions {
   signer?: ISigner | Observable<ISigner | undefined>;
   /** The shared resolved account stream */
   account$?: Observable<KehtoAccount | undefined>;
-  /** Whether encrypted content is decrypted (default true) */
+  /** Whether encrypted content is decrypted (default false) */
   decrypt?: boolean;
   /** The host plaintext cache or reactive active cache keyed by account public key and event id */
   decryptionCache?: EncryptedContentCache | Observable<EncryptedContentCache | undefined>;

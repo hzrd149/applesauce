@@ -28,7 +28,7 @@ import type { KehtoContext } from "./types.js";
 
 /**
  * Creates an applesauce-backed Kehto DM service
- * @throws if protocol ids are empty or duplicated
+ * @throws if decryption is not explicitly enabled or protocol ids are empty or duplicated
  */
 export function createKehtoDmService(context: KehtoContext, options?: Partial<KehtoDmOptions>): ServiceHandler {
   if (context.decrypt !== true)

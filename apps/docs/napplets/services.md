@@ -25,6 +25,8 @@ const context: KehtoContext = {
 
 The store, pool, accounts, relay lists, and approval UI belong to your application. `signer` accepts a signer or an observable such as `AccountManager.active$`; the latter follows login, logout, and account switches. Omitting it leaves operations requiring signing or decryption unavailable. Omitting `approve` denies adapter signing and native DM sends. Integrations that previously omitted it must supply an approval callback; trusted hosts can explicitly use `approve: () => true`.
 
+Reads leave encrypted content untouched unless the host sets `decrypt: true`; the [DM service](./messaging.md) requires this opt-in at creation. Outbox requests ignore napplet-supplied relay hints unless `allowRelayHints: true` is set. This option applies to the outbox service, not the runtime's low-level `relay` domain.
+
 ## Service registry
 
 Construct only the services your app supports and supply the complete registry to your existing shell adapter:
