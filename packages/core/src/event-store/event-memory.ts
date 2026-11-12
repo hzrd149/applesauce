@@ -507,6 +507,19 @@ export class EventMemory<E extends StoreEvent = NostrEvent> implements IEventMem
     // Each step checks every condition, so it is weighted as twice the cost of a sort comparison.
     const base = conditions.length > 0 ? size(conditions[0]) : Infinity;
     const range = this.created_at.count(since, until);
+
+    // Union broad OR conditions when repeated membership checks cost more than building the union.
+    // Limited queries can stop early, before allocating a union pays off.
+    const probes = limit ? 0 : Math.min(range, base);
+    for (let i = 0; i < conditions.length; i++) {
+      const sets = conditions[i];
+      if (sets.length > 1 && probes * sets.length > 2 * size(sets)) {
+        const union = new Set<E>();
+        for (const set of sets) for (const event of set) union.add(event);
+        conditions[i] = [union];
+      }
+    }
+
     if (range <= base || (limit && (2 * limit * range) / base < base * Math.log2(base))) {
       const found: E[] = [];
       for (const event of this.created_at.range(since, until)) {

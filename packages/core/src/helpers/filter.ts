@@ -176,9 +176,15 @@ export function compileFilter<E extends StoreEvent = NostrEvent>(filter: Filter)
     const any = (and ? values.filter((v) => !and.includes(v)) : values).map((value) => name + ":" + value);
     if (any.length === 0) continue;
 
+    // Compile broad filters once, then probe the smaller side of the tag intersection.
+    const anySet = any.length > SET_THRESHOLD ? new Set(any) : undefined;
     checks.push((event) => {
       const tags = getIndexableTags(event);
-      for (const tag of any) if (tags.has(tag)) return true;
+      if (anySet && tags.size < any.length) {
+        for (const tag of tags) if (anySet.has(tag)) return true;
+      } else {
+        for (const tag of any) if (tags.has(tag)) return true;
+      }
       return false;
     });
   }
