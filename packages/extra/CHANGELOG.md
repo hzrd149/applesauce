@@ -1,5 +1,17 @@
 # applesauce-extra
 
+## 7.3.0
+
+### Minor Changes
+
+- 3c63867: Require `decrypt: true` for Kehto napplet decryption and DM service creation.
+- c2da58d: Ignore napplet-supplied outbox relay hints unless the host sets `allowRelayHints: true`.
+
+### Patch Changes
+
+- 5b7f745: Update Kehto dependencies to the latest versions.
+- 2323bc0: Update `nostr-double-ratchet` to 0.0.185 to prevent recipient-device metadata leaks from encrypted message envelopes.
+
 ## 7.2.0
 
 ### Minor Changes

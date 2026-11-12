@@ -1,5 +1,13 @@
 # applesauce-core
 
+## 7.1.3
+
+### Patch Changes
+
+- 603630b: Speed up repeated matching of broad compiled tag filters by checking the smaller side of the tag intersection against a set.
+- 603630b: Speed up broad unbounded event queries by combining OR indexes when repeated membership checks cost more than constructing a temporary union.
+- 7e5f616: Pass event IDs to database removal in both event stores so SQLite correctly removes replaced and deleted events.
+
 ## 7.1.2
 
 ### Patch Changes

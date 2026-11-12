@@ -332,10 +332,10 @@ importers:
         specifier: ^7.1.0
         version: link:../../packages/core
       applesauce-extra:
-        specifier: ^7.2.0
+        specifier: ^7.3.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: link:../../packages/loaders
       applesauce-react:
         specifier: ^7.1.0
@@ -760,7 +760,7 @@ importers:
         specifier: ^7.1.0
         version: link:../common
       applesauce-loaders:
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: link:../loaders
       applesauce-relay:
         specifier: ^7.1.0

@@ -1,5 +1,11 @@
 # applesauce-loaders
 
+## 7.2.0
+
+### Minor Changes
+
+- 3f2a1ac: Allow cache request streams to emit an optional release signal that starts relay loading while cache results continue arriving.
+
 ## 7.1.1
 
 ### Patch Changes
