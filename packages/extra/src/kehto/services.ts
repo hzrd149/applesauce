@@ -28,9 +28,13 @@ import type { KehtoContext } from "./types.js";
 
 /**
  * Creates an applesauce-backed Kehto DM service
- * @throws if protocol ids are empty or duplicated
+ * @throws if decryption is not explicitly enabled or protocol ids are empty or duplicated
  */
 export function createKehtoDmService(context: KehtoContext, options?: Partial<KehtoDmOptions>): ServiceHandler {
+  if (context.decrypt !== true)
+    throw new Error(
+      "The DM service exposes message content to napplets: set decrypt: true in the Kehto context to enable it",
+    );
   const account$ = kehtoAccount$(context);
   const { eventStore, pool, timeout, fallbackRelays, approve, decryptionCache } = context;
 
@@ -160,6 +164,7 @@ export function createKehtoOutboxService(context: KehtoContext): ServiceHandler 
       approve,
       decrypt: context.decrypt,
       decryptionCache: context.decryptionCache,
+      allowRelayHints: context.allowRelayHints,
       getWindowId: () => publishingWindow,
     }),
   });

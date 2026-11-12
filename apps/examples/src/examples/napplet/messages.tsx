@@ -301,6 +301,7 @@ const kehtoContext: KehtoContext = {
   pool,
   eventStore,
   signer: signer$,
+  decrypt: true,
   decryptionCache: {
     getItem: (key) => storage$.value!.getItem(`napplet:${key}`),
     setItem: (key, content) => storage$.value!.setItem(`napplet:${key}`, content),

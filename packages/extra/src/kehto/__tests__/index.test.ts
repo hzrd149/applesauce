@@ -84,10 +84,20 @@ describe("registry", () => {
     }
   });
 
+  it("refuses to create the DM service when decryption is not enabled", async () => {
+    const implicit = await create({});
+    expect(() => createKehtoDmService(implicit)).toThrow(/decrypt: true/);
+    const explicitOff = await create({ decrypt: false });
+    expect(() => createKehtoDmService(explicitOff)).toThrow(/decrypt: true/);
+    const enabled = await create({ decrypt: true });
+    expect(() => createKehtoDmService(enabled)).not.toThrow();
+  });
+
   it("keeps service creation lazy and stops shell snapshots without owning the host loader", async () => {
     const signer$ = new BehaviorSubject<PrivateKeySigner | undefined>(signer);
     const fallbackRelays = new BehaviorSubject(["wss://fallback.relay.com/"]);
-    const context = await create({ signer: signer$, fallbackRelays });
+    // decrypt: true because the DM service exposes message content and refuses to create without it
+    const context = await create({ signer: signer$, fallbackRelays, decrypt: true });
     const loader = vi.fn();
     store.eventLoader = loader;
     const constructors = [

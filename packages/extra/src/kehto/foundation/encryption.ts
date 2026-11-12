@@ -26,7 +26,7 @@ export interface NappletDecryptionOptions {
   signer?: ISigner | Observable<ISigner | undefined>;
   /** The shared resolved account stream */
   account$?: Observable<KehtoAccount | undefined>;
-  /** Whether encrypted content is decrypted (default true) */
+  /** Whether encrypted content is decrypted (default false) */
   decrypt?: boolean;
   /** The host plaintext cache or reactive active cache keyed by account public key and event id */
   decryptionCache?: EncryptedContentCache | Observable<EncryptedContentCache | undefined>;
@@ -41,7 +41,7 @@ const pendingDecryptions = new WeakMap<
 /** Streams a plaintext copy for napplet reads using the current signer and optional host cache */
 export function decryptForNapplet$(context: NappletDecryptionOptions, event: NostrEvent): Observable<NostrEvent> {
   const method = isNIP04Encrypted(event.content) ? "nip04" : EventContentEncryptionMethod[event.kind];
-  if (context.decrypt === false || !event.content || !method) return of(event);
+  if (context.decrypt !== true || !event.content || !method) return of(event);
 
   return kehtoAccount$(context).pipe(
     take(1),
