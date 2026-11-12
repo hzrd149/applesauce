@@ -316,10 +316,10 @@ export class AsyncEventStore<E extends StoreEvent = NostrEvent> extends EventMod
     if (instance) Reflect.deleteProperty(instance, EventStoreSymbol);
 
     // Remove from memory if available
-    if (this.memory) this.memory.remove(event);
+    if (this.memory) this.memory.remove(eventId);
 
     // Remove the event from the database
-    const removed = await this.database.remove(event);
+    const removed = await this.database.remove(eventId);
 
     // If the event was removed, notify the subscriptions
     if (removed && instance) this.remove$.next(instance);

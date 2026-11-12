@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { EventStore } from "applesauce-core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
 
@@ -16,6 +17,52 @@ beforeEach(() => {
   if (!NativeSqliteEventDatabase) return;
   database = new NativeSqliteEventDatabase(":memory:");
   user = new FakeUser();
+});
+
+afterEach(() => {
+  database?.db.close();
+});
+
+describeIfNativeSqlite("EventStore removal", () => {
+  it.each([0, 3, 10000, 30000])("removes losing versions of kind %i and their tags", (kind) => {
+    const store = new EventStore({ database });
+    try {
+      const tags = [["p", user.pubkey], ...(kind === 30000 ? [["d", "test"]] : [])];
+      const older = user.event({ kind, created_at: 100, tags });
+      const newer = user.event({ kind, created_at: 200, tags });
+      const removed: string[] = [];
+      store.remove$.subscribe((event) => removed.push(event.id));
+
+      store.add(older);
+      store.add(newer);
+
+      expect(database.getByFilters({}).map((event) => event.id)).toEqual([newer.id]);
+      const remainingTags = database.db
+        .prepare("SELECT COUNT(*) AS count FROM event_tags WHERE event_id = ?")
+        .get(older.id);
+      expect(remainingTags?.count).toBe(0);
+      expect(store.memory.hasEvent(older.id)).toBe(false);
+      expect(removed).toEqual([older.id]);
+    } finally {
+      store.dispose();
+    }
+  });
+
+  it.each(["e", "a"])("removes NIP-09 %s targets and their tags", (tag) => {
+    const store = new EventStore({ database });
+    try {
+      const event = user.event({ kind: 30000, created_at: 100, tags: [["d", "test"]] });
+      const target = tag === "e" ? event.id : `30000:${user.pubkey}:test`;
+      store.add(event);
+      store.add(user.event({ kind: 5, created_at: 200, tags: [[tag, target]] }));
+
+      expect(database.hasEvent(event.id)).toBe(false);
+      expect(database.db.prepare("SELECT COUNT(*) AS count FROM event_tags").get()?.count).toBe(0);
+      expect(store.memory.hasEvent(event.id)).toBe(false);
+    } finally {
+      store.dispose();
+    }
+  });
 });
 
 describeIfNativeSqlite("add", () => {

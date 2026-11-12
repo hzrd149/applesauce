@@ -388,10 +388,10 @@ export class EventStore<E extends StoreEvent = NostrEvent> extends EventModels<E
     if (instance) Reflect.deleteProperty(instance, EventStoreSymbol);
 
     // Remove from memory if it's not the same as the database
-    if (this.memory !== this.database) this.memory.remove(event);
+    if (this.memory !== this.database) this.memory.remove(eventId);
 
     // Remove the event from the database
-    const removed = this.database.remove(event);
+    const removed = this.database.remove(eventId);
 
     // If the event was removed, notify the subscriptions
     if (removed && instance) this.remove$.next(instance);

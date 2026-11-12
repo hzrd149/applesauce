@@ -14,7 +14,10 @@ const user = new FakeUser();
 function asyncDatabase<E extends StoreEvent>(memory: EventMemory<E>): IAsyncEventDatabase<E> {
   return {
     add: async (event) => memory.add(structuredClone(event)),
-    remove: async (event) => memory.remove(event),
+    remove: async (id) => {
+      expect(typeof id).toBe("string");
+      return memory.remove(id);
+    },
     removeByFilters: async (filters) => memory.removeByFilters(filters),
     hasEvent: async (id) => memory.hasEvent(id),
     getEvent: async (id) => memory.getEvent(id),
@@ -125,7 +128,14 @@ describe("store removal with a copied event", () => {
   });
 
   it("clears both EventStore memory and a separate database", async () => {
-    await checkStoreRemoval(new EventStore({ database: new EventMemory() }), user.note());
+    const database = new EventMemory();
+    const remove = database.remove.bind(database);
+    database.remove = (id) => {
+      expect(typeof id).toBe("string");
+      return remove(id);
+    };
+
+    await checkStoreRemoval(new EventStore({ database }), user.note());
   });
 
   it("keeps RumorStore queries from restoring the rumor", async () => {
