@@ -98,12 +98,12 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
   }
 
   /** Fetches a blob from the first server that returns bytes matching the hash */
-  async function fetchBlossom(url: URL, servers: readonly string[], signal: AbortSignal) {
+  async function fetchBlossom(url: URL, signal: AbortSignal) {
     const hash = /^([0-9a-f]{64})(?:\.[^/]+)?$/i.exec(url.pathname)?.[1]?.toLowerCase();
     if (!hash) throw new ResourceServiceError("invalid-request", "invalid Blossom hash");
 
     async function* serverCandidates() {
-      yield* mergeBlossomServers(parseServerHints(url.searchParams.getAll("xs")), parseServerHints(servers));
+      yield* mergeBlossomServers(parseServerHints(url.searchParams.getAll("xs")));
 
       const pubkey = await firstValueFrom(configured$(options.pubkey, undefined));
       const user = pubkey ? castUser(pubkey, eventStore) : undefined;
@@ -167,7 +167,7 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
       maxBytes,
     },
     fetch: async (input, request) => {
-      const { signal, servers = [] } = request;
+      const { signal } = request;
       // Accept kehto's legacy blossom:sha256: resource URLs
       const url = new URL(input.replace(/^blossom:sha256:/i, "blossom:"));
       let result: { bytes: Uint8Array; type: string };
@@ -180,7 +180,7 @@ export function createResourceOptions(options: KehtoResourceOptions): ResourceSe
       } else {
         switch (url.protocol) {
           case "blossom:":
-            result = await fetchBlossom(url, servers, signal);
+            result = await fetchBlossom(url, signal);
             break;
           case "nostr:":
             result = await fetchNostr(url);

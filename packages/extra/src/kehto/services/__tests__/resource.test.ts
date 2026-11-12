@@ -65,9 +65,8 @@ describe("list privacy and resource integrity", () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response("corrupt")).mockResolvedValueOnce(new Response(bytes));
     const resource = createResourceOptions({ eventStore: store, pubkey: new Subject<string>(), fetch: fetcher });
 
-    const response = await resource.fetch!(`blossom:${hash}?xs=url.example`, {
+    const response = await resource.fetch!(`blossom:${hash}?xs=url.example&xs=request.example`, {
       signal: new AbortController().signal,
-      servers: ["https://request.example/"],
     });
 
     expect(await response.text()).toBe("hello");
@@ -92,9 +91,8 @@ describe("list privacy and resource integrity", () => {
       fetch: fetcher,
     });
 
-    const response = await resource.fetch!(`blossom:${hash}?xs=hint.example`, {
+    const response = await resource.fetch!(`blossom:${hash}?xs=hint.example&xs=hint.example`, {
       signal: new AbortController().signal,
-      servers: ["hint.example"],
     });
 
     expect(await response.text()).toBe("hello");
@@ -128,7 +126,7 @@ describe("list privacy and resource integrity", () => {
   it("advertises custom protocols and passes request options to their handlers", async () => {
     const handler = vi.fn(async () => new Response("custom", { headers: { "content-type": "text/plain" } }));
     const resource = createResourceOptions({ eventStore: store, protocols: { ipfs: handler } });
-    const request = { signal: new AbortController().signal, servers: ["https://hint.example/"] };
+    const request = { signal: new AbortController().signal, windowId: "example" };
     const response = await resource.fetch!("ipfs:example", request);
 
     expect(resource.resourceInfo?.schemes).toContainEqual({ scheme: "ipfs", enabled: true });
@@ -229,10 +227,10 @@ describe("resource host policy", () => {
       fallbackServers: ["https://100.64.0.1/", "https://public.example/"],
     });
 
-    const response = await resource.fetch!(`blossom:${hash}?xs=http://127.0.0.1&xs=https://app.localhost`, {
-      ...request(),
-      servers: ["https://10.0.0.1/", "http://public.example/"],
-    });
+    const response = await resource.fetch!(
+      `blossom:${hash}?xs=http://127.0.0.1&xs=https://app.localhost&xs=https://10.0.0.1/&xs=http://public.example/`,
+      request(),
+    );
     expect(await response.text()).toBe("hello");
     expect(fetcher).toHaveBeenCalledExactlyOnceWith(
       new URL(`https://public.example/${hash}`),

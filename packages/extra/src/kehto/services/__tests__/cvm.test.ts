@@ -145,7 +145,10 @@ describe("CVM", () => {
     );
 
     service.handleMessage("one", { type: "cvm.discover", id: "discover" }, send);
-    expect(pool.req).toHaveBeenCalledWith(relays, [expect.objectContaining({ kinds: [11316, 11317] })]);
+    expect(pool.req).toHaveBeenCalledWith(
+      ["wss://cvm.example.com"],
+      [expect.objectContaining({ kinds: [11316, 11317] })],
+    );
     incoming.next({ type: "EVENT", event: announcement, from: relays[0] });
     incoming.next({ type: "EOSE", from: relays[0] });
     await vi.advanceTimersByTimeAsync(0);
@@ -234,10 +237,41 @@ describe("CVM", () => {
     service.handleMessage("two", request, second);
     await vi.advanceTimersByTimeAsync(0);
 
+    const firstRequest = readRequest(pool.publish.mock.calls[0][1] as NostrEvent);
     const secondRequest = readRequest(pool.publish.mock.calls[1][1] as NostrEvent);
+
+    // Kehto records session ownership after the first successful request.
+    incoming.next({
+      type: "EVENT",
+      event: response(firstRequest.clientPubkey, firstRequest.message.id),
+      from: relays[0],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(first).toHaveBeenCalledWith({
+      type: "cvm.request.result",
+      id: request.id,
+      message: { jsonrpc: "2.0", id: "original-id", result: { tools: [] } },
+    });
+    first.mockClear();
+
+    service.handleMessage("one", { ...request, id: "pending-request" }, first);
+    await vi.advanceTimersByTimeAsync(0);
+    const pendingRequest = readRequest(pool.publish.mock.calls[2][1] as NostrEvent);
+
     service.handleMessage("one", { type: "cvm.close", id: "close", server: request.server }, first);
     await vi.advanceTimersByTimeAsync(0);
     expect(first).toHaveBeenCalledWith({ type: "cvm.close.result", id: "close" });
+    expect(first).toHaveBeenCalledWith({
+      type: "cvm.request.result",
+      id: "pending-request",
+      error: "server closed",
+    });
+
+    incoming.next({
+      type: "EVENT",
+      event: response(pendingRequest.clientPubkey, pendingRequest.message.id),
+      from: relays[0],
+    });
 
     incoming.next({
       type: "EVENT",
@@ -245,12 +279,18 @@ describe("CVM", () => {
       from: relays[0],
     });
     await vi.advanceTimersByTimeAsync(0);
+    expect(first).toHaveBeenCalledTimes(2);
     expect(second).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "cvm.request.result",
         message: expect.any(Object),
       }),
     );
+
+    service.handleMessage("two", { type: "cvm.close", id: "close-two", server: request.server }, second);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second).toHaveBeenCalledWith({ type: "cvm.close.result", id: "close-two" });
+    expect(incoming.observed).toBe(false);
   });
 
   it("suppresses late discovery results when a window id is reused", async () => {

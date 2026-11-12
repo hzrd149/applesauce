@@ -14,8 +14,8 @@
     "@contextvm/sdk": "0.14.3",
     "@hookform/resolvers": "^7.0.3",
     "@kehto/nip": "^0.8.0",
-    "@kehto/services": "^0.30.1",
-    "@kehto/shell": "^0.32.0",
+    "@kehto/services": "^0.32.1",
+    "@kehto/shell": "^0.34.0",
     "@libs/qrcode": "jsr:^3.1.0",
     "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0",
@@ -79,7 +79,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@napplet/core": "^0.38.0",
+    "@napplet/core": "^0.41.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.5",
     "@types/leaflet": "^1.9.22",
