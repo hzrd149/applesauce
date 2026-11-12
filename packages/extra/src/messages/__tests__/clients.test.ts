@@ -589,8 +589,9 @@ describe("standalone messaging clients", () => {
       expect(prepared.message.tags).toContainEqual(["expiration", String(prepared.message.created_at + 3600)]);
       expect(pool.subscription).not.toHaveBeenCalled();
 
-      const explicit = await conversation.prepareSend({ content: "explicit", expiration: unixNow() + 7200 });
-      expect(explicit.message.tags).toContainEqual(["expiration", String(unixNow() + 7200)]);
+      const expiration = unixNow() + 7200;
+      const explicit = await conversation.prepareSend({ content: "explicit", expiration });
+      expect(explicit.message.tags).toContainEqual(["expiration", String(expiration)]);
     },
   );
 
