@@ -7,10 +7,11 @@ import { use$ } from "applesauce-react/hooks";
 import { defer, catchError, of, map, startWith } from "rxjs";
 
 import { AsyncEventStore } from "applesauce-core";
-import { NostrEvent, isEvent } from "applesauce-core/helpers";
+import { castUser } from "applesauce-common/casts";
+import { NostrEvent, getDisplayName, isEvent } from "applesauce-core/helpers";
 import { TursoWasmEventDatabase } from "applesauce-sqlite/turso-wasm";
 import { connect } from "@tursodatabase/database-wasm/vite";
-import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { verifyEvent } from "../../extra/verifier";
 
 // Initialize database and event store
@@ -99,49 +100,75 @@ async function importEventsFromJsonl(file: File): Promise<{ total: number; added
   return stats;
 }
 
+// Readable names for common event kinds
+const KIND_NAMES: Record<number, string> = {
+  0: "Profile",
+  1: "Note",
+  3: "Follows",
+  5: "Deletion",
+  6: "Repost",
+  7: "Reaction",
+  1063: "File",
+  9735: "Zap",
+  10002: "Relays",
+  30023: "Article",
+};
+
+function getKindName(kind: number) {
+  return KIND_NAMES[kind] ?? `Kind ${kind}`;
+}
+
+// Summarize an event for display without showing raw JSON or tags
+function describeEvent(event: NostrEvent) {
+  switch (event.kind) {
+    case 0:
+      return "Updated their profile";
+    case 3: {
+      const followCount = event.tags.filter((tag) => tag[0] === "p").length;
+      return followCount === 1 ? "Follows 1 person" : `Follows ${followCount} people`;
+    }
+    case 6:
+      return "Reposted a note";
+    case 10002:
+      return "Updated their relays";
+    default:
+      return event.content;
+  }
+}
+
 // Event row component
 function EventRow({ event }: { event: NostrEvent }) {
-  const formatDate = (timestamp: number) => new Date(timestamp * 1000).toLocaleString();
-  const truncate = (text: string, maxLength: number = 50) =>
-    text.length <= maxLength ? text : text.slice(0, maxLength) + "...";
+  const user = useMemo(() => castUser(event.pubkey, eventStore!), [event.pubkey]);
+  const profile = use$(() => user.profile$, [user]);
+
+  const fallbackName = user.npub.slice(0, 12) + "…";
+  const authorName = getDisplayName(profile, fallbackName);
 
   return (
-    <tr>
-      <td className="font-mono text-sm">{truncate(event.id, 16)}</td>
-      <td>{event.kind}</td>
-      <td className="font-mono text-sm">{truncate(event.pubkey, 16)}</td>
-      <td>{truncate(event.content, 80)}</td>
-      <td className="text-sm">{formatDate(event.created_at)}</td>
-      <td>{event.tags.length}</td>
-    </tr>
+    <div className="py-3 border-b border-base-300">
+      <div className="flex items-center gap-2">
+        <span className="font-semibold truncate">{authorName}</span>
+        <span className="badge badge-ghost">{getKindName(event.kind)}</span>
+        <span className="ms-auto text-sm text-base-content/60 shrink-0">
+          {new Date(event.created_at * 1000).toLocaleString()}
+        </span>
+      </div>
+      <p className="line-clamp-2 break-words">{describeEvent(event)}</p>
+    </div>
   );
 }
 
-// Events table component
-function EventsTable({ events }: { events: NostrEvent[] }) {
+// Events list component
+function EventsList({ events }: { events: NostrEvent[] }) {
   if (events.length === 0) {
     return <div className="text-center py-8 text-base-content/60">No events found</div>;
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="table table-zebra w-full">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Kind</th>
-            <th>Author</th>
-            <th>Content</th>
-            <th>Created At</th>
-            <th>Tags</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((event) => (
-            <EventRow key={event.id} event={event} />
-          ))}
-        </tbody>
-      </table>
+    <div>
+      {events.map((event) => (
+        <EventRow key={event.id} event={event} />
+      ))}
     </div>
   );
 }
@@ -263,7 +290,6 @@ export default function TursoWasmExample() {
     return (
       <div className="container mx-auto p-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold mb-6">Turso WASM SQLite Example</h1>
           {isLoading || startup === undefined || query?.loading ? (
             <div className="flex items-center justify-center gap-2">
               <span className="loading loading-spinner loading-lg"></span>
@@ -296,19 +322,6 @@ export default function TursoWasmExample() {
 
   return (
     <div className="container mx-auto p-6 max-w-6xl">
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold">Turso WASM SQLite Example</h1>
-          <div className="badge badge-success ">
-            <span className="loading loading-dots loading-xs mr-1"></span>
-            SharedArrayBuffer Supported
-          </div>
-        </div>
-        <p className="text-base-content/70">
-          Import, export, and filter Nostr events using Turso WASM SQLite with standard Nostr filters.
-        </p>
-      </div>
-
       {/* Error Display */}
       {error && (
         <div className="alert alert-error mb-6">
@@ -371,9 +384,9 @@ export default function TursoWasmExample() {
         </div>
       </div>
 
-      {/* FilterEvents */}
+      {/* Filter */}
       <div className="mb-6">
-        <h2 className="text-xl font-bold mb-4">FilterEvents</h2>
+        <h2 className="text-xl font-bold mb-4">Filter</h2>
 
         <form onSubmit={handleFilter} className="flex flex-wrap gap-4 items-end">
           <div>
@@ -384,63 +397,12 @@ export default function TursoWasmExample() {
               className="select select-bordered w-48"
               disabled={isLoading || query?.loading}
             >
-              <option value="">Any</option>
-              <option value="0">Profile (0)</option>
-              <option value="1">Note (1)</option>
-              <option value="2">Recommend Relay (2)</option>
-              <option value="3">Contacts (3)</option>
-              <option value="4">Encrypted DM (4)</option>
-              <option value="5">Event Deletion (5)</option>
-              <option value="6">Repost (6)</option>
-              <option value="7">Reaction (7)</option>
-              <option value="8">Badge Award (8)</option>
-              <option value="40">Channel Creation (40)</option>
-              <option value="41">Channel Metadata (41)</option>
-              <option value="42">Channel Message (42)</option>
-              <option value="43">Channel Hide Message (43)</option>
-              <option value="44">Channel Mute User (44)</option>
-              <option value="10000">Mute List (10000)</option>
-              <option value="10001">Pin List (10001)</option>
-              <option value="10002">Relay List Metadata (10002)</option>
-              <option value="10003">Bookmark List (10003)</option>
-              <option value="10004">Communities List (10004)</option>
-              <option value="10005">Public Chats List (10005)</option>
-              <option value="10006">Public Chats List (10006)</option>
-              <option value="10007">App-specific Data (10007)</option>
-              <option value="10015">Interests List (10015)</option>
-              <option value="10030">User Emoji List (10030)</option>
-              <option value="1063">File Metadata (1063)</option>
-              <option value="30000">Follow Sets (30000)</option>
-              <option value="30001">Communities (30001)</option>
-              <option value="30008">Profile Badges (30008)</option>
-              <option value="30009">Badge Definition (30009)</option>
-              <option value="30015">Interest Sets (30015)</option>
-              <option value="30017">Create or update a stall (30017)</option>
-              <option value="30018">Create or update a product (30018)</option>
-              <option value="30019">Create or update a pickup method (30019)</option>
-              <option value="30023">Long-form Content (30023)</option>
-              <option value="30024">Draft Long-form Content (30024)</option>
-              <option value="30030">Emoji Sets (30030)</option>
-              <option value="30078">Application-specific Data (30078)</option>
-              <option value="30311">Classified Listing (30311)</option>
-              <option value="30315">User Status (30315)</option>
-              <option value="30315">Live Event Messages (30315)</option>
-              <option value="30402">Community Post Approval (30402)</option>
-              <option value="30403">Community Post (30403)</option>
-              <option value="31922">Date-based Calendar Event (31922)</option>
-              <option value="31923">Time-based Calendar Event (31923)</option>
-              <option value="31924">Calendar (31924)</option>
-              <option value="31925">Calendar Event RSVP (31925)</option>
-              <option value="31990">File Header (31990)</option>
-              <option value="31991">File Metadata (31991)</option>
-              <option value="31992">Live Event (31992)</option>
-              <option value="31993">Live Event Messages (31993)</option>
-              <option value="31994">Handler Recommendation (31994)</option>
-              <option value="31995">Handler Information (31995)</option>
-              <option value="31996">Community Moderation (31996)</option>
-              <option value="31997">Community Post (31997)</option>
-              <option value="31998">Community (31998)</option>
-              <option value="31999">Community Admin (31999)</option>
+              <option value="">All kinds</option>
+              {Object.entries(KIND_NAMES).map(([kind, name]) => (
+                <option key={kind} value={kind}>
+                  {name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -470,7 +432,7 @@ export default function TursoWasmExample() {
           )}
         </div>
 
-        <EventsTable events={events} />
+        <EventsList events={events} />
       </div>
     </div>
   );
