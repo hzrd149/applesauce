@@ -52,7 +52,7 @@ import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { Bell, Database, LogOut, Play, ShieldCheck, X } from "lucide-react";
 import { addEvents, getEventsForFilters, openDB } from "nostr-idb";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router";
 import { BehaviorSubject, catchError, concatMap, filter, from, map, merge, of, take } from "rxjs";
 import LoginView, { forgetActiveAccount } from "../../components/login-view";
@@ -336,6 +336,13 @@ function NappletItem({ napplet }: { napplet: Napplet }) {
 }
 
 function NappletPane({ pane }: { pane: Pane }) {
+  // Keep React from retrying the mount when this pane or the pane list updates.
+  const mountIframe = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      if (iframe) pane.instance.mount(iframe);
+    },
+    [pane.instance],
+  );
   const prompts = use$(prompts$)?.filter((p) => p.windowId === pane.windowId) ?? [];
   const badge = use$(pane.badge$);
   const initializationError = use$(
@@ -376,9 +383,7 @@ function NappletPane({ pane }: { pane: Pane }) {
       {initializationError === undefined && <p className="p-2">Starting napplet…</p>}
       {initializationError && <p className="p-2 text-error">{initializationError.message}</p>}
       <iframe
-        ref={(iframe) => {
-          if (iframe) pane.instance.mount(iframe);
-        }}
+        ref={mountIframe}
         sandbox="allow-scripts"
         className="flex-1"
         title={title(pane.napplet)}
