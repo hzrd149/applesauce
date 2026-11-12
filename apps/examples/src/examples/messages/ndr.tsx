@@ -1,12 +1,21 @@
 /**
- * A double-ratchet NdrMessagesClient with direct chats, groups, encrypted attachments, reactions, receipts, typing, and app-key device management
- * @tags messages, ndr, double-ratchet, app-keys, multi-device, groups, dm, receipts, typing, storage, files, blossom
+ * A double-ratchet NdrMessagesClient with direct chats, groups, encrypted attachments, reactions, receipts, typing, app-key device management, and contacts found by syncing their device rosters from their outboxes
+ * @tags messages, ndr, double-ratchet, app-keys, multi-device, groups, dm, receipts, typing, storage, files, blossom, nip-65, nip-77, outbox, sync
  * @related messages/legacy, messages/gift-wrap, napplet/messages
  */
 import { castUser, User } from "applesauce-common/casts";
 import { isEncryptedFile, type FileMetadataFields } from "applesauce-common/helpers";
-import { EventStore } from "applesauce-core";
-import { getDisplayName, getProfilePicture } from "applesauce-core/helpers";
+import { defined, EventStore } from "applesauce-core";
+import {
+  createOutboxMap,
+  getDisplayName,
+  getOutboxes,
+  getProfilePicture,
+  kinds,
+  selectOptimalRelays,
+  type Filter,
+  type NostrEvent,
+} from "applesauce-core/helpers";
 import {
   getNdrGroupId,
   loadAttachment,
@@ -18,21 +27,29 @@ import {
   type MessageFileUploader,
   type NdrMessage,
 } from "applesauce-extra/messages/ndr";
-import { createEventLoaderForStore } from "applesauce-loaders/loaders";
+import { createEventLoaderForStore, createSyncLoader } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
 import { multiServerUpload } from "blossom-client-sdk/actions/multi-server";
 import { createUploadAuth } from "blossom-client-sdk/auth";
 import { PanelLeft, PanelRight, Paperclip, X } from "lucide-react";
-import type { PreparedRegistration, StorageAdapter } from "nostr-double-ratchet";
+import {
+  APP_KEYS_EVENT_KIND,
+  AppKeys as NdrAppKeys,
+  isAppKeysEvent,
+  type PreparedRegistration,
+  type StorageAdapter,
+} from "nostr-double-ratchet";
 import { type ClipboardEvent, type ReactNode, useCallback, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   BehaviorSubject,
   catchError,
   combineLatest,
+  concat,
   defer,
+  distinctUntilChanged,
   EMPTY,
   finalize,
   firstValueFrom,
@@ -45,6 +62,7 @@ import {
   of,
   shareReplay,
   switchMap,
+  throttleTime,
   timeout,
 } from "rxjs";
 
@@ -59,6 +77,11 @@ import { lookupRelays$ } from "../../settings";
 const NDR_RELAYS = ["wss://relay.damus.io/", "wss://nos.lol/", "wss://relay.primal.net/"];
 // Used when the user has not published a Blossom server list
 const FALLBACK_BLOSSOM_SERVERS = [new URL("https://blossom.band"), new URL("https://nostr.download")];
+// Contact outbox limits: how many relays the roster sync connects to and how many outboxes cover each contact
+const MAX_CONNECTIONS = 20;
+const MAX_RELAYS_PER_USER = 2;
+// How long a relay may stall before the sync gives up on it, so one slow relay does not hold up the list
+const RELAY_TIMEOUT = 10_000;
 const REACTIONS = ["👍", "❤️", "😂", "🎉"];
 const TTL_OPTIONS: { label: string; seconds: number | null }[] = [
   { label: "Keep messages", seconds: null },
@@ -89,6 +112,9 @@ const eventStore = new EventStore({ verifyEvent });
 const pool = new RelayPool();
 
 createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$ });
+
+// NIP-77 negentropy sync per relay, with a paginated REQ fallback for relays that don't support it
+const syncLoader = createSyncLoader({ eventStore, pool });
 
 /** Creates an uploader that stores encrypted blobs on the user's Blossom servers */
 /** Adapts PIN-encrypted string storage to the NDR StorageAdapter, which stores JSON values and lists keys by prefix */
@@ -168,6 +194,83 @@ const client$ = combineLatest([signer$, user$, storage$]).pipe(
   }),
   shareReplay({ bufferSize: 1, refCount: false }),
 );
+
+/** A contact with a published NDR device roster */
+type NdrContact = { pubkey: string; devices: number };
+
+/** Syncs events from relays into the store, giving up on relays that stall */
+function sync$(relays: string[], filter: Filter) {
+  return defer(() => syncLoader({ relays, filter, timeout: RELAY_TIMEOUT, waitForAuth: false }).events$);
+}
+
+/** Syncs the contacts' NDR device rosters from the NDR relays and from a few outboxes per contact */
+function syncRosters$(pubkeys: string[]): Observable<never> {
+  const rosters = { kinds: [APP_KEYS_EVENT_KIND], authors: pubkeys };
+
+  // Select outboxes from the synced relay lists, asking each relay only for the contacts it was picked for
+  const outboxRosters$ = defer(() => {
+    const contacts = pubkeys.map((pubkey) => {
+      const mailboxes = eventStore.getReplaceable(kinds.RelayList, pubkey);
+      return { pubkey, relays: mailboxes ? getOutboxes(mailboxes) : [] };
+    });
+    const selection = selectOptimalRelays(contacts, {
+      maxConnections: MAX_CONNECTIONS,
+      maxRelaysPerUser: MAX_RELAYS_PER_USER,
+    });
+
+    return merge(
+      ...Object.entries(createOutboxMap(selection)).map(([relay, users]) =>
+        sync$([relay], { ...rosters, authors: users.map((user) => user.pubkey) }),
+      ),
+    );
+  });
+
+  return merge(
+    // NDR clients publish rosters to the NDR relays, so search them while the relay lists sync
+    sync$(NDR_RELAYS, rosters),
+    concat(sync$(lookupRelays$.value, { kinds: [kinds.RelayList], authors: pubkeys }), outboxRosters$),
+  ).pipe(ignoreElements());
+}
+
+/** Counts the devices in an NDR roster, or returns undefined when the roster does not parse */
+function rosterDevices(roster: NostrEvent): number | undefined {
+  try {
+    return NdrAppKeys.fromEvent(roster as Parameters<typeof NdrAppKeys.fromEvent>[0]).getAllDevices().length;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Syncs the user's contacts' NDR rosters and emits the contacts with at least one device, most recently updated first */
+function ndrContacts$(user: User): Observable<NdrContact[]> {
+  return user.contacts$.pipe(
+    defined(),
+    map((contacts) => contacts.map((contact) => contact.pubkey).sort()),
+    distinctUntilChanged((a, b) => a.join() === b.join()),
+    switchMap((pubkeys) =>
+      pubkeys.length
+        ? merge(syncRosters$(pubkeys), eventStore.timeline({ kinds: [APP_KEYS_EVENT_KIND], authors: pubkeys }))
+        : of([]),
+    ),
+    // Rosters stream into the store during the sync, so rebuild the list at most a few times a second
+    throttleTime(250, undefined, { leading: true, trailing: true }),
+    map((rosters) => {
+      const devicesByContact = new Map<string, number>();
+
+      // The timeline is newest first, and kind 37368 is shared with other schemas, so keep each contact's first valid roster
+      for (const roster of rosters) {
+        if (devicesByContact.has(roster.pubkey) || !isAppKeysEvent(roster)) continue;
+
+        const devices = rosterDevices(roster);
+        if (devices !== undefined) devicesByContact.set(roster.pubkey, devices);
+      }
+
+      return [...devicesByContact]
+        .filter(([, devices]) => devices > 0)
+        .map(([pubkey, devices]) => ({ pubkey, devices }));
+    }),
+  );
+}
 
 /** Creates an object URL for a blob that is revoked when the subscription ends */
 function objectUrl$(blob: Blob): Observable<string> {
@@ -1271,6 +1374,20 @@ function GroupRow({
   );
 }
 
+function ContactRow({ contact, onSelect }: { contact: NdrContact; onSelect: () => void }) {
+  const user = castUser(contact.pubkey, eventStore);
+
+  return (
+    <button className="flex w-full items-center gap-3 border-b border-base-300 p-3 text-left" onClick={onSelect}>
+      <Avatar user={user} size="h-8 w-8" />
+      <Name user={user} />
+      <span className="badge badge-ghost ms-auto shrink-0">
+        {contact.devices} {contact.devices === 1 ? "device" : "devices"}
+      </span>
+    </button>
+  );
+}
+
 function Account({ user, linked }: { user: User; linked: boolean }) {
   return (
     <div className="flex items-center gap-2 border-t border-base-300 p-2">
@@ -1291,6 +1408,8 @@ function Account({ user, linked }: { user: User; linked: boolean }) {
 function Inbox({ client, user }: { client: NdrMessagesClient; user: User }) {
   const lifecycle = use$(client.lifecycle$);
   const conversations = use$(client.conversations$);
+  // Start the roster sync while the client starts, so contacts are ready when the inbox opens
+  const ndrContacts = use$(() => ndrContacts$(user), [user]);
   const [selected, setSelected] = useState<string>();
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [conversationsOpen, setConversationsOpen] = useState(true);
@@ -1301,6 +1420,9 @@ function Inbox({ client, user }: { client: NdrMessagesClient; user: User }) {
   if (lifecycle !== "ready") return <span className="loading loading-spinner m-auto" />;
 
   const selectedGroup = selected ? getNdrGroupId(selected) : undefined;
+  // Contacts with an open conversation are already listed above
+  const conversationIds = new Set(conversations?.map((summary) => summary.id));
+  const newContacts = ndrContacts?.filter((contact) => !conversationIds.has(contact.pubkey));
 
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col overflow-x-hidden">
@@ -1359,6 +1481,10 @@ function Inbox({ client, user }: { client: NdrMessagesClient; user: User }) {
                 />
               ),
             )}
+
+            {newContacts?.map((contact) => (
+              <ContactRow key={contact.pubkey} contact={contact} onSelect={() => setSelected(contact.pubkey)} />
+            ))}
           </div>
           <Account user={user} linked={!client.signer} />
         </aside>
