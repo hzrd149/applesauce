@@ -401,8 +401,8 @@ importers:
         specifier: ^0.6.4
         version: 0.6.4
       nostr-double-ratchet:
-        specifier: 0.0.183
-        version: 0.0.183(nostr-wasm@0.1.0)(typescript@7.0.2)
+        specifier: 0.0.185
+        version: 0.0.185(nostr-wasm@0.1.0)(typescript@7.0.2)
       nostr-editor:
         specifier: ^1.2.0
         version: 1.2.0(@tiptap/core@3.33.0(@tiptap/pm@3.33.0))(@tiptap/extension-image@2.27.3(@tiptap/core@3.33.0(@tiptap/pm@3.33.0)))(@tiptap/extension-link@2.27.3(@tiptap/core@3.33.0(@tiptap/pm@3.33.0))(@tiptap/pm@3.33.0))(@tiptap/pm@3.33.0)(linkifyjs@4.4.0)(prosemirror-markdown@1.13.9)(prosemirror-model@1.25.13)(prosemirror-state@1.4.4)(prosemirror-view@1.42.9)(tiptap-markdown@0.9.0(@tiptap/core@3.33.0(@tiptap/pm@3.33.0)))
@@ -741,8 +741,8 @@ importers:
         specifier: ^1.10.0
         version: 1.10.0
       nostr-double-ratchet:
-        specifier: 0.0.183
-        version: 0.0.183(nostr-wasm@0.1.0)(typescript@7.0.2)
+        specifier: 0.0.185
+        version: 0.0.185(nostr-wasm@0.1.0)(typescript@7.0.2)
       rimraf:
         specifier: ^6.1.4
         version: 6.1.4
@@ -4094,8 +4094,8 @@ packages:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
     engines: {node: ^18 || ^20 || >= 21}
 
-  nostr-double-ratchet@0.0.183:
-    resolution: {integrity: sha512-CPvJzniY+nItLVEQpH4jaRnmU7AMkD3kAN5yByXMgmm4MNChAk8X8HY8oJIw1riX/gW3/WKD8c+eUtSgu98DDA==}
+  nostr-double-ratchet@0.0.185:
+    resolution: {integrity: sha512-eHZvUbmoUTih9sXfZ18ipQ8OOuGKUD8jWN74QX/M4XWPtiRcGsrG8K8WefAkaMc/wMnw9088lp7mbxbS0ZGnOw==}
 
   nostr-editor@1.2.0:
     resolution: {integrity: sha512-npTZoSbXNVmFiw0RUoEKyFLfkS/teHg7exUS56+ZukiPb3Ofn3/4D7oE7gHEkt6gv5K1+e24A///Kmy7VMVJ9g==}
@@ -8042,7 +8042,7 @@ snapshots:
 
   node-addon-api@8.9.2: {}
 
-  nostr-double-ratchet@0.0.183(nostr-wasm@0.1.0)(typescript@7.0.2):
+  nostr-double-ratchet@0.0.185(nostr-wasm@0.1.0)(typescript@7.0.2):
     dependencies:
       '@noble/curves': 2.4.0
       nostr-tools: 2.26.0(nostr-wasm@0.1.0)(typescript@7.0.2)
