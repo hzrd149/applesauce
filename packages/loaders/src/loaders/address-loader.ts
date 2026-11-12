@@ -10,7 +10,8 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable } from "rxjs";
 
 import { createFiltersFromAddressPointers, isLoadableAddressPointer } from "../helpers/address-pointer.js";
-import { makeCacheRequest } from "../helpers/cache.js";
+import { makeCacheRequest, streamCacheRequest } from "../helpers/cache.js";
+import { cacheLoadingSequence } from "../helpers/cache-sequence.js";
 import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
 import { groupByRelay, groupByUntriedRelays, isPointerCovered } from "../helpers/pointer.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
@@ -173,7 +174,7 @@ export type AddressLoaderOptions = Partial<{
   bufferSize: number;
   /** An event store loaded events are added to and deduplicated with ( default an internal EventMemory, null disables deduplication ) */
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
-  /** A method used to load events from a local cache */
+  /** A cache request that may emit a release signal to start relays before completing */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
   followRelayHints: boolean;
@@ -195,13 +196,23 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
   const stageTimeout = opts?.stageTimeout ?? 10_000;
   const followHints = opts?.followRelayHints !== false;
 
-  return batchLoader(
-    // buffer requests by time or size
-    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
-    // Create a loader for batching
+  const matches = (pointer: LoadableAddressPointer, event: NostrEvent) =>
+    event.kind === pointer.kind &&
+    event.pubkey === pointer.pubkey &&
+    (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true);
+  const load = cacheLoadingSequence(
+    withStageTimeout(
+      opts?.cacheRequest
+        ? (pointers: LoadableAddressPointer[]) => {
+            const cached = pointers.filter((pointer) => pointer.cache !== false);
+            return cached.length
+              ? streamCacheRequest(opts.cacheRequest!, createFiltersFromAddressPointers(cached))
+              : EMPTY;
+          }
+        : undefined,
+      stageTimeout,
+    ),
     addressPointerLoadingSequence(
-      // Step 1. load from cache if available
-      withStageTimeout(opts?.cacheRequest ? cacheAddressPointersLoader(opts.cacheRequest) : undefined, stageTimeout),
       // Step 2. load from relay hints on pointers
       withStageTimeout(
         opts?.followRelayHints !== false ? relayHintsAddressPointersLoader(request) : undefined,
@@ -227,11 +238,17 @@ export function createAddressLoader(pool: UpstreamPool, opts?: AddressLoaderOpti
         stageTimeout,
       ),
     ),
+    matches,
+  );
+
+  return batchLoader(
+    // Buffer requests by time or size
+    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
+    // Apply validation and cache bypass consistently to both branches.
+    (pointers) =>
+      load(opts?.cacheRequest ? consolidateAddressPointers(pointers.filter(isLoadableAddressPointer)) : pointers),
     // Filter resutls based on requests
-    (pointer, event) =>
-      event.kind === pointer.kind &&
-      event.pubkey === pointer.pubkey &&
-      (pointer.identifier !== undefined ? getReplaceableIdentifier(event) === pointer.identifier : true),
+    matches,
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     {

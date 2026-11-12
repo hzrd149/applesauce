@@ -2,10 +2,19 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
 import { Observable } from "rxjs";
 
-/** A flexible method for requesting events from a cache */
+/** A signal that allows relay loading to start before the cache stream completes */
+export type CacheRelease = {
+  /** The optional release signal */
+  type: "release";
+};
+
+/** An event or an optional signal releasing relay loading */
+export type CacheEmission = NostrEvent | CacheRelease;
+
+/** A cache request that blocks relay loading until it completes or emits a release signal */
 export type CacheRequest = (
   filters: Filter[],
-) => Observable<NostrEvent> | Promise<NostrEvent | NostrEvent[]> | NostrEvent | NostrEvent[];
+) => Observable<CacheEmission> | Promise<NostrEvent | NostrEvent[]> | NostrEvent | NostrEvent[];
 
 /** A method for requesting events from multiple relays */
 export type NostrRequest = (relays: string[], filters: Filter[]) => Observable<NostrEvent>;

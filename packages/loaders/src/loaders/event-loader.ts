@@ -3,7 +3,8 @@ import { NostrEvent } from "applesauce-core/helpers/event";
 import { EventPointer } from "applesauce-core/helpers/pointers";
 import { filterDuplicateEvents } from "applesauce-core/observable";
 import { bufferTime, catchError, defer, EMPTY, identity, merge, Observable, tap } from "rxjs";
-import { makeCacheRequest } from "../helpers/cache.js";
+import { makeCacheRequest, streamCacheRequest } from "../helpers/cache.js";
+import { cacheLoadingSequence } from "../helpers/cache-sequence.js";
 import { consolidateEventPointers } from "../helpers/event-pointer.js";
 import { batchLoader, Loader, loadUntilSettled, unwrap, withStageTimeout } from "../helpers/loaders.js";
 import { groupByRelay, groupByUntriedRelays, isPointerCovered } from "../helpers/pointer.js";
@@ -131,7 +132,7 @@ export type EventPointerLoaderOptions = Partial<{
   bufferSize: number;
   /** An event store loaded events are added to and deduplicated with ( default an internal EventMemory, null disables deduplication ) */
   eventStore?: Parameters<typeof filterDuplicateEvents>[0] | null;
-  /** A method used to load events from a local cache */
+  /** A cache request that may emit a release signal to start relays before completing */
   cacheRequest: CacheRequest;
   /** Whether to follow relay hints ( default true ) */
   followRelayHints: boolean;
@@ -151,14 +152,18 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
   const stageTimeout = opts?.stageTimeout ?? 10_000;
   const followHints = opts?.followRelayHints !== false;
 
-  return batchLoader(
-    // Create batching sequence
-    // buffer requests by time or size
-    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
-    // Create a loader for batching
+  const matches = (pointer: LoadableEventPointer, event: NostrEvent) => event.id === pointer.id;
+  const load = cacheLoadingSequence(
+    withStageTimeout(
+      opts?.cacheRequest
+        ? (pointers: LoadableEventPointer[]) => {
+            const ids = pointers.filter((pointer) => pointer.cache !== false).map((pointer) => pointer.id);
+            return ids.length ? streamCacheRequest(opts.cacheRequest!, [{ ids }]) : EMPTY;
+          }
+        : undefined,
+      stageTimeout,
+    ),
     eventLoadingSequence(
-      // Step 1. load from cache if available
-      withStageTimeout(opts?.cacheRequest ? cacheEventsLoader(opts.cacheRequest) : undefined, stageTimeout),
       // Step 2. load from relay hints on pointers
       withStageTimeout(opts?.followRelayHints !== false ? relayHintsEventsLoader(request) : undefined, stageTimeout),
       // Step 3. load from extra relays
@@ -169,8 +174,16 @@ export function createEventLoader(pool: UpstreamPool, opts?: EventPointerLoaderO
         stageTimeout,
       ),
     ),
+    matches,
+  );
+
+  return batchLoader(
+    // Buffer requests by time or size
+    bufferTime(opts?.bufferTime ?? 200, undefined, opts?.bufferSize ?? 200),
+    // Apply validation and cache bypass consistently to both branches.
+    (pointers) => load(opts?.cacheRequest ? consolidateEventPointers(pointers) : pointers),
     // Filter resutls based on requests
-    (pointer, event) => event.id === pointer.id,
+    matches,
     // Pass all events through the store if provided, or use EventMemory for deduplication by default
     opts?.eventStore === null ? identity : filterDuplicateEvents(opts?.eventStore || new EventMemory<NostrEvent>()),
     {

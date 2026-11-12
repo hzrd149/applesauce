@@ -1,11 +1,11 @@
 import { subscribeSpyTo } from "@hirez_io/observer-spy";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { Filter } from "applesauce-core/helpers/filter";
-import { EMPTY, from, map, NEVER, Observable, of, take, throwError, timer } from "rxjs";
+import { EMPTY, from, map, NEVER, Observable, of, Subject, take, throwError, timer } from "rxjs";
 import { afterEach, describe, expect, it, Mock, vi } from "vitest";
 
 import { FakeUser } from "../../__tests__/fake-user.js";
-import { CacheRequest, NostrRequest } from "../../types.js";
+import { CacheEmission, CacheRequest, NostrRequest } from "../../types.js";
 import { createSocialGraphLoader, SocialGraphEventStore } from "../social-graph.js";
 
 afterEach(() => {
@@ -328,6 +328,47 @@ describe("createSocialGraphLoader", () => {
       [{ kinds: [kinds.Contacts], authors: [user.pubkey], since: 101 }],
     );
     expect(spy.getValues()).toEqual([contacts]);
+  });
+
+  it("releases relay refreshes while continuing to accept cache events", async () => {
+    const user = new FakeUser();
+    const older = user.event({ kind: kinds.Contacts, created_at: 100 });
+    const cached = user.event({ kind: kinds.Contacts, created_at: 200 });
+    const newer = user.event({ kind: kinds.Contacts, created_at: 300 });
+    const cache = new Subject<CacheEmission>();
+    const relay = new Subject<NostrEvent>();
+    const request: Mock<NostrRequest> = vi.fn(() => relay);
+    const loader = createSocialGraphLoader(request, { cacheRequest: () => cache });
+    const spy = subscribeSpyTo(loader({ pubkey: user.pubkey, relays: ["wss://relay.com"], distance: 0 }).events$);
+
+    await vi.waitFor(() => expect(cache.observed).toBe(true));
+    cache.next(older);
+    expect(request).not.toHaveBeenCalled();
+    cache.next({ type: "release" });
+    cache.next(cached);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    expect(request.mock.calls[0][1][0].since).toBe(101);
+    relay.next(newer);
+    relay.complete();
+    await spy.onComplete();
+
+    expect(spy.getValues()).toEqual([older, cached, newer]);
+    expect(cache.observed).toBe(false);
+  });
+
+  it("tears down a released cache when the social graph subscription ends", async () => {
+    const user = new FakeUser();
+    const cache = new Subject<CacheEmission>();
+    const relay = new Subject<NostrEvent>();
+    const loader = createSocialGraphLoader(() => relay, { cacheRequest: () => cache });
+    const spy = subscribeSpyTo(loader({ pubkey: user.pubkey, relays: ["wss://relay.com"], distance: 0 }).events$);
+    await vi.waitFor(() => expect(cache.observed).toBe(true));
+    cache.next({ type: "release" });
+    await vi.waitFor(() => expect(relay.observed).toBe(true));
+    spy.unsubscribe();
+
+    expect(cache.observed).toBe(false);
+    expect(relay.observed).toBe(false);
   });
 
   it("should still request relays after cache hits when since is set", async () => {

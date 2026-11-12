@@ -4,8 +4,23 @@ import { Filter } from "applesauce-core/helpers/filter";
 import { kinds, NostrEvent } from "applesauce-core/helpers/event";
 import { ProfilePointer } from "applesauce-core/helpers/pointers";
 import { mergeRelaySets } from "applesauce-core/helpers/relays";
-import { catchError, EMPTY, filter, firstValueFrom, isObservable, map, Observable, share, Subscription } from "rxjs";
-import { makeCacheRequest } from "../helpers/cache.js";
+import {
+  catchError,
+  defer,
+  EMPTY,
+  filter,
+  firstValueFrom,
+  from,
+  isObservable,
+  map,
+  mergeMap,
+  Observable,
+  share,
+  Subscription,
+} from "rxjs";
+import { streamCacheRequest } from "../helpers/cache.js";
+import { cacheLoadingSequence } from "../helpers/cache-sequence.js";
+import { withStageTimeout } from "../helpers/loaders.js";
 import { wrapUpstreamPool } from "../helpers/upstream.js";
 import { CacheRequest, UpstreamPool } from "../types.js";
 
@@ -70,7 +85,7 @@ export type SocialGraphEventStore = (IEventStoreActions | IAsyncEventStoreAction
 export type SocialGraphLoaderOptions = Partial<{
   /** An event store to send all the events to and fall back to when the relays return nothing */
   eventStore?: SocialGraphEventStore;
-  /** A method used to load events from a local cache, cached lists are refreshed from relays */
+  /** A cache request that may release relay refreshes before completing */
   cacheRequest: CacheRequest;
   /** The number of users to request in each batch (default 100) */
   parallel: number;
@@ -261,14 +276,9 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
       const loadBatch = async (pointers: QueuedProfilePointer[]) => {
         const batch = new Map<string, NostrEvent | undefined>(pointers.map((p) => [p.pubkey, undefined]));
 
-        // Load cached lists first, then ask relays only for lists newer than the oldest cached one
-        let toRequest = pointers;
-        if (opts?.cacheRequest) {
-          await drain(
-            makeCacheRequest(opts.cacheRequest, createContactsFilters(pointers)).pipe(catchError(() => EMPTY)),
-            (event) => handleEvent(event, batch),
-          );
-
+        const loadRelays = async () => {
+          // Snapshot cache results at release, then refresh every pointer independently of later cache hits.
+          let toRequest = pointers;
           const cached = pointers.filter((p) => batch.get(p.pubkey));
           if (cached.length > 0) {
             const oldest = Math.min(...cached.map((p) => batch.get(p.pubkey)!.created_at)) + 1;
@@ -276,33 +286,47 @@ export function createSocialGraphLoader(pool: UpstreamPool, opts?: SocialGraphLo
               batch.get(p.pubkey) ? { ...p, since: Math.max(p.since ?? 0, oldest) } : p,
             );
           }
-        }
+          // Request every relay separately so each one completes on its own
+          const routes = routeBatch(toRequest, baseRelays, opts?.hints ?? false, maxHintRelays);
+          const results = await Promise.all(
+            Array.from(routes.entries()).map(async ([relay, routed]) => ({
+              relay,
+              routed,
+              ...(await requestRelay(relay, createContactsFilters(routed), batch)),
+            })),
+          );
 
-        // Request every relay separately so each one completes on its own
-        const routes = routeBatch(toRequest, baseRelays, opts?.hints ?? false, maxHintRelays);
-        const results = await Promise.all(
-          Array.from(routes.entries()).map(async ([relay, routed]) => ({
-            relay,
-            routed,
-            ...(await requestRelay(relay, createContactsFilters(routed), batch)),
-          })),
-        );
+          // Some relays fill an implicit limit with stale copies and silently drop users from multi-author
+          // requests. Re-ask a relay that looks lossy for the users no relay returned, one filter per user
+          for (const { relay, routed, events, authors } of results) {
+            if (closed || authors.size === 0) continue;
+            const found = routed.filter((p) => batch.get(p.pubkey)).length;
+            const lossy = events > authors.size || authors.size < found * LOSSY_RATIO;
+            if (!lossy) continue;
 
-        // Some relays fill an implicit limit with stale copies and silently drop users from multi-author
-        // requests. Re-ask a relay that looks lossy for the users no relay returned, one filter per user
-        for (const { relay, routed, events, authors } of results) {
-          if (closed || authors.size === 0) continue;
-          const found = routed.filter((p) => batch.get(p.pubkey)).length;
-          const lossy = events > authors.size || authors.size < found * LOSSY_RATIO;
-          if (!lossy) continue;
-
-          const dropped = routed.filter((p) => !batch.get(p.pubkey));
-          for (let i = 0; i < dropped.length && !closed; i += RETRY_FILTERS) {
-            relayStatus(relay).retries++;
-            const filters = dropped.slice(i, i + RETRY_FILTERS).flatMap((p) => createContactsFilters([p]));
-            await requestRelay(relay, filters, batch);
+            const dropped = routed.filter((p) => !batch.get(p.pubkey));
+            for (let i = 0; i < dropped.length && !closed; i += RETRY_FILTERS) {
+              relayStatus(relay).retries++;
+              const filters = dropped.slice(i, i + RETRY_FILTERS).flatMap((p) => createContactsFilters([p]));
+              await requestRelay(relay, filters, batch);
+            }
           }
-        }
+
+          // Events were delivered as they arrived; return the final batch to resolve cache-sequence bookkeeping.
+          return Array.from(batch.values()).filter((event): event is NostrEvent => event !== undefined);
+        };
+
+        const load = cacheLoadingSequence<QueuedProfilePointer>(
+          withStageTimeout(
+            opts?.cacheRequest
+              ? (inputs) => streamCacheRequest(opts.cacheRequest!, createContactsFilters(inputs))
+              : undefined,
+            10_000,
+          ),
+          () => defer(loadRelays).pipe(mergeMap((events) => from(events))),
+          (pointer, event) => event.kind === kinds.Contacts && event.pubkey === pointer.pubkey,
+        );
+        await drain(load(pointers), (event) => handleEvent(event, batch));
 
         // Expand the queue from the newest list for each user, falling back to the event store
         for (const pointer of pointers) {

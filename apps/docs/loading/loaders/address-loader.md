@@ -39,7 +39,7 @@ The `createAddressLoader` function accepts these options:
 - `bufferTime`: Time interval to buffer requests in ms (default 200)
 - `bufferSize`: Max buffer size (default 200)
 - `eventStore`: An event store used to deduplicate events (defaults to an internal `EventMemory`, `null` disables deduplication)
-- `cacheRequest`: A method used to load events from a local cache
+- `cacheRequest`: A cache callback supporting optional [release messages](./event-loader#blocking-and-non-blocking-cache-results)
 - `followRelayHints`: Whether to follow relay hints (default true)
 - `extraRelays`: Relays to ask for pointers the cache and relay hints didn't resolve
 - `lookupRelays`: Fallback relays to ask for pointers that are still unresolved after the extra relays
@@ -100,6 +100,8 @@ const addressLoader = createAddressLoader(customRequest, options);
 ## Loading from cache
 
 For improved performance, you can configure the loader to use a local cache:
+
+The same callback can emit a release message to continue streaming cache results alongside relay requests. Post-release hits do not suppress relay stages, allowing newer replaceable events to arrive.
 
 ```ts
 import { createAddressLoader } from "applesauce-loaders/loaders";

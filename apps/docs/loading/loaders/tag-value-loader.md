@@ -42,7 +42,7 @@ The `createTagValueLoader` function accepts these options:
 - `kinds`: Restrict queries to specific kinds
 - `authors`: Restrict queries to specific authors
 - `since`: Restrict queries since timestamp
-- `cacheRequest`: A method used to load events from a local cache
+- `cacheRequest`: A cache callback run concurrently with relays; optional [release messages](./event-loader#blocking-and-non-blocking-cache-results) are ignored
 - `onError`: Receives a failed source’s error and `{ source: "cache" }`, `{ source: "relay", relay }`, or `{ source: "routing" }` while other sources continue
 - `extraRelays`: An array (or observable array) of relays to always fetch from
 - `eventStore`: An event store used to deduplicate events (defaults to an in-memory store, pass `null` to disable)

@@ -38,7 +38,7 @@ The `createEventLoader` function accepts these options:
 - `bufferTime`: Time interval to buffer requests in ms (default 200)
 - `bufferSize`: Max buffer size (default 200)
 - `eventStore`: An event store used to deduplicate events (defaults to an internal `EventMemory`, `null` disables deduplication)
-- `cacheRequest`: A method used to load events from a local cache
+- `cacheRequest`: A cache callback that may optionally release relay loading before its stream completes
 - `followRelayHints`: Whether to follow relay hints (default true)
 - `extraRelays`: Relays to ask for events the cache and relay hints didn't resolve
 - `maxConcurrentBatches`: The maximum number of batches requesting relays at once (default 4)
@@ -122,6 +122,27 @@ eventLoader(pointer).subscribe((event) => {
   }
 });
 ```
+
+### Blocking and non-blocking cache results
+
+`cacheRequest` still accepts an event, an array, a Promise of either, or an event Observable. No control message is required: completion starts relay loading for unresolved pointers, as before.
+
+An Observable can optionally emit `{ type: "release" }` to start relay loading before the cache finishes:
+
+```ts
+import { concat, of } from "rxjs";
+
+const loader = createEventLoader(pool, {
+  cacheRequest: (filters) =>
+    concat(blockingLookup$(filters), of({ type: "release" } as const), additionalResults$(filters)),
+});
+```
+
+Emit `release` first for a fully non-blocking cache request. Before release, cache hits remove pointers from the initial relay request; after release, cache results continue arriving without suppressing relay stages. Repeated release messages are ignored, and control messages never reach consumers or the event store.
+
+The loader subscribes to the cache once per batch. `cache: false` bypasses it. Errors or `stageTimeout` end the cache request and release relay loading; the timeout covers the entire cache subscription and is not reset at release. Setting `stageTimeout: 0` disables that bound. After the relay sequence finishes, a batch resolved by either source stops the remaining cache work.
+
+The same protocol works with the address loader, unified loader, and `createEventLoaderForStore`. The social graph loader also honors release, refreshes all requested users from relays, and bounds each cache subscription to 10 seconds. Tag-value and timeline loaders already run caches alongside relays and simply ignore release messages.
 
 ## Real-World Example
 

@@ -120,7 +120,7 @@ The loader deduplicates emitted events across relays after sending each arrival 
 
 ### Cache
 
-Cache coverage is independent of relay coverage. A successful cache query never suppresses a missing relay request:
+Cache coverage is independent of relay coverage. A successful cache query never suppresses a missing relay request. Optional [cache release messages](./event-loader#blocking-and-non-blocking-cache-results) are ignored because cache and relay loading already run concurrently:
 
 ```ts
 const loader = createTimelineLoader(pool, relays, filter, {

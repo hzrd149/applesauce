@@ -65,6 +65,21 @@ describe("tag value loader", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("ignores cache release messages while preserving concurrent relay loading", () => {
+    const cached = event("a");
+    const received: NostrEvent[] = [];
+    const request = vi.fn(() => EMPTY);
+    const loader = createTagValueLoader(request, "e", {
+      bufferSize: 1,
+      extraRelays: [relay],
+      cacheRequest: () => of({ type: "release" } as const, cached),
+    });
+    loader({ value: "a" }).subscribe((event) => received.push(event));
+    expect(request).toHaveBeenCalledOnce();
+    expect(received).toEqual([cached]);
+    loader.stop();
+  });
+
   it("returns previously fetched events on a later explicit request", () => {
     const a = event("a");
     const loader = createTagValueLoader(() => of(a), "e", { bufferSize: 1, extraRelays: [relay] });

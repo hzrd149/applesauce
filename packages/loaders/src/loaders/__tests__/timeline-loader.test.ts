@@ -505,6 +505,22 @@ describe("reactive timeline windows", () => {
     expect(outboxes.observed).toBe(false);
   });
 
+  it("filters cache release signals without suppressing relay requests", async () => {
+    const cached = event(150);
+    const request = relay({ a: [] });
+    const loader = createTimelineLoader(
+      request,
+      ["a"],
+      {},
+      {
+        prefetch: 0,
+        cache: () => of({ type: "release" } as const, cached),
+      },
+    );
+    expect(await lastValueFrom(loader(window(100, 200)).pipe(toArray()))).toEqual([cached]);
+    expect(request).toHaveBeenCalled();
+  });
+
   it("removes stale relay statuses when outboxes change", async () => {
     const outboxes = new BehaviorSubject({ a: [{ pubkey: "a".repeat(64) }] });
     const loader = createOutboxTimelineLoader(relay({}), outboxes, {}, { prefetch: 0 });
