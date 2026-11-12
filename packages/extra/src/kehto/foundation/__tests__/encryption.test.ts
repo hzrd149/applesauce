@@ -37,6 +37,18 @@ beforeEach(() => {
   pool = fakePool();
 });
 describe("napplet decryption", () => {
+  // Fail-closed default: without an explicit opt-in, ciphertext is passed through untouched
+  it("does not decrypt unless the context opts in with decrypt: true", async () => {
+    const decrypt = vi.fn(() => new Promise<string>((done) => done("plaintext")));
+    const signer = { ...bob, getPublicKey: () => bob.getPublicKey(), nip04: { ...bob.nip04, decrypt } };
+    const state = create({ signer });
+    const event = finalizeEvent({ kind: 4, content: "ciphertext", tags: [["p", pk(bob)]], created_at: 1 }, alice.key);
+
+    const content = await decryptForNapplet(state, event);
+    expect(decrypt).not.toHaveBeenCalled();
+    expect(content.content).toBe("ciphertext");
+  });
+
   it("starts on subscription, shares concurrent work and suppresses delivery after unsubscribe", async () => {
     let resolve!: (content: string) => void;
     const decrypt = vi.fn(
@@ -46,7 +58,7 @@ describe("napplet decryption", () => {
         }),
     );
     const signer = { ...bob, getPublicKey: () => bob.getPublicKey(), nip04: { ...bob.nip04, decrypt } };
-    const state = create({ signer });
+    const state = create({ signer, decrypt: true });
     const event = finalizeEvent({ kind: 4, content: "ciphertext", tags: [["p", pk(bob)]], created_at: 1 }, alice.key);
     const read$ = decryptForNapplet$(state, event);
     expect(decrypt).not.toHaveBeenCalled();
@@ -78,7 +90,7 @@ describe("napplet decryption", () => {
       nip04: { ...bob.nip04, decrypt },
     };
     const signer$ = new BehaviorSubject<import("applesauce-signers").ISigner | undefined>(owner);
-    const context = create({ signer: signer$ });
+    const context = create({ signer: signer$, decrypt: true });
     const event = finalizeEvent({ kind: 4, content: "ciphertext", tags: [["p", pk(bob)]], created_at: 1 }, alice.key);
     const received = vi.fn();
     const subscription = decryptForNapplet$(context, event).subscribe(received);
@@ -110,7 +122,7 @@ describe("napplet decryption", () => {
           values.set(key, value);
         }),
       };
-      const state = create({ signer: bob, decryptionCache: cache });
+      const state = create({ signer: bob, decryptionCache: cache, decrypt: true });
       expect((await decryptForNapplet(state, event)).content).toBe("secret");
       expect((await decryptForNapplet(state, event)).content).toBe("secret");
       expect(cache.setItem).toHaveBeenCalledExactlyOnceWith(`${pk(bob)}:${event.id}`, "secret");
@@ -132,7 +144,7 @@ describe("napplet decryption", () => {
     const firstCache = { getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) };
     const secondCache = { getItem: vi.fn(async () => "second cached"), setItem: vi.fn(async () => {}) };
     const cache$ = new BehaviorSubject<import("applesauce-common/helpers").EncryptedContentCache>(firstCache);
-    const context = create({ signer, decryptionCache: cache$ });
+    const context = create({ signer, decryptionCache: cache$, decrypt: true });
     const event = finalizeEvent({ kind: 4, content: "ciphertext", tags: [["p", pk(bob)]], created_at: 1 }, alice.key);
     const pending = decryptForNapplet(context, event);
     await vi.waitFor(() => expect(decrypt).toHaveBeenCalledOnce());
@@ -152,7 +164,7 @@ describe("napplet decryption", () => {
     const bobCache = { getItem: vi.fn(async () => "bob cached"), setItem: vi.fn(async () => {}) };
     const cache$ = new BehaviorSubject<typeof aliceCache | undefined>(bobCache);
     const signer$ = new BehaviorSubject(bob);
-    const context = create({ signer: signer$, decryptionCache: cache$ });
+    const context = create({ signer: signer$, decryptionCache: cache$, decrypt: true });
 
     expect((await decryptForNapplet(context, event)).content).toBe("bob cached");
     expect(bobCache.getItem).toHaveBeenCalledExactlyOnceWith(`${pk(bob)}:${event.id}`);
@@ -172,8 +184,8 @@ describe("napplet decryption", () => {
   it("decrypts outgoing messages with the recipient key and leaves failures unchanged", async () => {
     const content = await alice.nip04.encrypt(pk(bob), "outgoing");
     const event = finalizeEvent({ kind: 4, content, tags: [["p", pk(bob)]], created_at: 1 }, alice.key);
-    expect((await decryptForNapplet(create({ signer: alice }), event)).content).toBe("outgoing");
+    expect((await decryptForNapplet(create({ signer: alice, decrypt: true }), event)).content).toBe("outgoing");
     const broken = { ...event, content: "invalid" };
-    expect(await decryptForNapplet(create({ signer: bob }), broken)).toBe(broken);
+    expect(await decryptForNapplet(create({ signer: bob, decrypt: true }), broken)).toBe(broken);
   });
 });

@@ -6,12 +6,13 @@ description: Configure messaging protocols and send routing for napplets hosted 
 
 Add messaging explicitly with `createKehtoDmService`. It defaults to NIP-17 wrapped messages and legacy NIP-04 messages. Kehto's [`createDmService`](https://kehto.github.io/web/docs/api/modules/_kehto_services.html#dm-nap) handles request correlation, per-window subscriptions, and response envelopes; Applesauce supplies the message adapters. Your application chooses the transports, send policy, and signer.
 
-Pass the service in the [host's registry](./hosting.md#choosing-services). To support only NIP-17:
+Set `decrypt: true` on the shared context before creating the DM service; creation throws without this explicit opt-in, including with custom protocols. Pass the service in the [host's registry](./hosting.md#choosing-services). To support only NIP-17:
 
 ```ts
 import { createKehtoHost } from "applesauce-extra/kehto/host";
 import { createKehtoDmService, createWrappedMessageProtocol } from "applesauce-extra/kehto";
 
+const context = { eventStore, pool, signer, decrypt: true };
 const host = createKehtoHost(context, {
   services: {
     dm: createKehtoDmService(context, {
@@ -233,6 +234,7 @@ Cordn integration is shelved and its controls are not shown in the messages exam
 ```ts
 import { createKehtoDmService } from "applesauce-extra/kehto";
 
+const context = { eventStore, pool, signer, decrypt: true };
 const services = {
   dm: createKehtoDmService(context, {
     protocols: [customProtocol],

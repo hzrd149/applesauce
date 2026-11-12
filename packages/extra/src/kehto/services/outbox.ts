@@ -59,8 +59,10 @@ export interface KehtoOutboxOptions {
   relaySelection?: KehtoRelaySelectionOptions;
   /** The host callback approving a napplet signing request */
   approve?: (request: KehtoSignRequest) => boolean | Promise<boolean>;
-  /** Whether reads decrypt encrypted event content (default true) */
+  /** Whether reads decrypt encrypted event content (opt-in; default false) */
   decrypt?: boolean;
+  /** Whether napplets may direct reads and publishes to relays of their choice (default false) */
+  allowRelayHints?: boolean;
   /** The host plaintext cache keyed by account public key and event id */
   decryptionCache?: EncryptedContentCache;
   /** The napplet window making the current request */
@@ -118,7 +120,7 @@ export async function planOutboxRelays(
 
 /** Observes author outboxes, fallback settings, and selection limits for the lifetime of a read */
 function readRelays$(config: KehtoOutboxOptions, filters: Filter[], options?: OutboxQueryOptions) {
-  if (options?.relays?.length) return of(options.relays);
+  if (config.allowRelayHints && options?.relays?.length) return of(options.relays);
 
   const authors = [...new Set(options?.authors ?? filters.flatMap((filter) => filter.authors ?? []))];
   const users$ = of(authors.map((pubkey) => ({ pubkey }))).pipe(includeMailboxes(config.eventStore));
@@ -160,7 +162,7 @@ export function createOutboxRouter(config: KehtoOutboxOptions): OutboxRouter {
       planOutboxRelays(config, pubkey ? [pubkey] : authors, direction),
     getEvent: async (id, options) => {
       // The store's event loader batches lookups from every napplet into shared requests
-      const pointer = { id, author: options?.author, relays: options?.relays };
+      const pointer = { id, author: options?.author, relays: config.allowRelayHints ? options?.relays : undefined };
       const event = await settle(eventStore.event(pointer), undefined, options?.timeoutMs ?? config.timeout ?? 4000);
       if (!event) return { error: "not found" };
 
@@ -171,8 +173,9 @@ export function createOutboxRouter(config: KehtoOutboxOptions): OutboxRouter {
     query: async (nostrFilters, options) => {
       const filters = nostrFilters as Filter[];
       const authors = options?.authors ?? filters.flatMap((filter) => filter.authors ?? []);
-      const relays = options?.relays?.length
-        ? options.relays
+      const hinted = config.allowRelayHints ? options?.relays : undefined;
+      const relays = hinted?.length
+        ? hinted
         : (await planOutboxRelays(config, [...new Set(authors)])).relays;
       const events = await queryThroughStore(config, relays, filters, options?.limit);
 
@@ -222,7 +225,7 @@ export function createOutboxRouter(config: KehtoOutboxOptions): OutboxRouter {
             : storedOutboxes.length
               ? storedOutboxes
               : await firstValueFrom(configured$(config.fallbackRelays, []));
-        const relays = mergeRelaySets(options.relays, outboxes, inboxes);
+        const relays = mergeRelaySets(config.allowRelayHints ? options.relays : undefined, outboxes, inboxes);
         const results = await publishThroughStore(config, relays, event);
 
         return {
