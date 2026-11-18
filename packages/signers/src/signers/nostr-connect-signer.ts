@@ -63,6 +63,8 @@ function redactAuthUrl(raw: string): string {
 }
 
 export type NostrConnectSignerOptions = NostrConnectionMethodsOptions & {
+  /** A synchronous method that verifies event hashes and signatures */
+  verifyEvent?: typeof verifyEvent;
   /** The relays to communicate over */
   relays: string[];
   /** A {@link PrivateKeySigner} for this client */
@@ -94,6 +96,8 @@ export type NostrConnectLogoutOptions = {
 };
 
 export class NostrConnectSigner implements ISigner {
+  /** The default event verifier for new instances */
+  static verifyEvent: typeof verifyEvent = verifyEvent;
   /** A fallback method to use for subscriptionMethod if none is pass in when creating the signer */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is pass in when creating the signer */
@@ -140,7 +144,8 @@ export class NostrConnectSigner implements ISigner {
   /** Client metadata sent with `connect` requests */
   public metadata?: NostrConnectAppMetadata;
 
-  verifyEvent: typeof verifyEvent = verifyEvent;
+  /** A synchronous method that verifies response events and returned signed events */
+  verifyEvent: typeof verifyEvent;
 
   /** A secret used when initiating a connection from the client side (the `secret` in a nostrconnect:// URI) */
   public connectSecret: string;
@@ -170,6 +175,7 @@ export class NostrConnectSigner implements ISigner {
     | undefined;
 
   constructor(options: NostrConnectSignerOptions) {
+    this.verifyEvent = options.verifyEvent ?? NostrConnectSigner.verifyEvent;
     this.relays = options.relays;
     this.pubkey = options.pubkey;
     this.remote = options.remote;
@@ -387,10 +393,7 @@ export class NostrConnectSigner implements ISigner {
     const request: NostrConnectRequest<T> = { id, method, params };
     const encrypted = await this.signer.nip44.encrypt(this.remote, JSON.stringify(request));
     const event = await this.createRequestEvent(encrypted, this.remote, kind);
-    this.log(
-      `Sending ${id} (${method})`,
-      SAFE_LOG_METHODS.has(method) ? JSON.stringify(params) : "[redacted]",
-    );
+    this.log(`Sending ${id} (${method})`, SAFE_LOG_METHODS.has(method) ? JSON.stringify(params) : "[redacted]");
 
     const p = createDefer<ConnectResponseResults[T]>();
     this.requests.set(id, p);

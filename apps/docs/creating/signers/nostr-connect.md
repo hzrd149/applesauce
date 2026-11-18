@@ -65,6 +65,17 @@ const signer = new NostrConnectSigner({
 });
 ```
 
+## Custom event verification
+
+Both classes accept a synchronous `verifyEvent` constructor option or static default for a WASM-backed verifier. Initialize WASM first; the verifier must check both the event hash and signature.
+
+```ts
+NostrConnectSigner.verifyEvent = wasmVerifyEvent;
+NostrConnectProvider.verifyEvent = wasmVerifyEvent;
+```
+
+Constructor options override static defaults, which apply to new instances only. Existing instances can be updated through `signer.verifyEvent`.
+
 ## Connection secrets
 
 NIP-46 has two distinct secrets that are both serialized as the `secret=` parameter of their respective URIs, so the signer exposes them under separate names:

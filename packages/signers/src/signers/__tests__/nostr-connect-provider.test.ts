@@ -1,4 +1,4 @@
-import { bytesToHex, kinds } from "applesauce-core/helpers/event";
+import { bytesToHex, kinds, verifyEvent } from "applesauce-core/helpers/event";
 import { nanoid } from "nanoid";
 import { NEVER } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,10 +27,49 @@ beforeEach(async () => {
   NostrConnectProvider.pool = pool;
 });
 afterEach(async () => {
+  NostrConnectProvider.verifyEvent = verifyEvent;
+  vi.restoreAllMocks();
   await WS.clean();
 });
 
 const user = new FakeUser();
+
+describe("custom verification", () => {
+  it("uses the default verifier unless a static or constructor override is provided", () => {
+    const options = { upstream: user, relays: ["wss://test"] };
+    const original = new NostrConnectProvider(options);
+    const defaultVerify = vi.fn(verifyEvent);
+    const customVerify = vi.fn(verifyEvent);
+    NostrConnectProvider.verifyEvent = defaultVerify;
+
+    expect(original.verifyEvent).toBe(verifyEvent);
+    expect(new NostrConnectProvider(options).verifyEvent).toBe(defaultVerify);
+    expect(new NostrConnectProvider({ ...options, verifyEvent: customVerify }).verifyEvent).toBe(customVerify);
+  });
+
+  it("rejects requests before decryption using constructor and runtime overrides", async () => {
+    const identity = new PrivateKeySigner();
+    const customVerify = vi.fn(verifyEvent).mockReturnValue(false);
+    const provider = new NostrConnectProvider({
+      upstream: user,
+      signer: identity,
+      relays: ["wss://test"],
+      verifyEvent: customVerify,
+    });
+    const decrypt = vi.spyOn(identity.nip44, "decrypt");
+    const event = await user.signEvent({ kind: kinds.NostrConnect, content: "invalid", tags: [], created_at: 1 });
+
+    await provider.handleEvent(event);
+    expect(customVerify).toHaveBeenCalledWith(event);
+    expect(decrypt).not.toHaveBeenCalled();
+
+    const replacement = vi.fn(verifyEvent).mockReturnValue(false);
+    provider.verifyEvent = replacement;
+    await provider.handleEvent(event);
+    expect(replacement).toHaveBeenCalledWith(event);
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+});
 
 describe("getBunkerURI", () => {
   it("should create a bunker uri", async () => {

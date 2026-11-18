@@ -54,6 +54,8 @@ export interface ProviderAuthorization {
 
 export type NostrConnectProviderOptions = ProviderAuthorization &
   NostrConnectionMethodsOptions & {
+    /** A synchronous method that verifies event hashes and signatures */
+    verifyEvent?: typeof verifyEvent;
     /** The relays to communicate over */
     relays: string[];
     /** The signer to use for signing events and encryption */
@@ -71,6 +73,12 @@ export type NostrConnectProviderOptions = ProviderAuthorization &
   };
 
 export class NostrConnectProvider implements ProviderAuthorization {
+  /** The default event verifier for new instances */
+  static verifyEvent: typeof verifyEvent = verifyEvent;
+
+  /** A synchronous method that verifies incoming request events */
+  verifyEvent: typeof verifyEvent;
+
   /** A fallback method to use for subscriptionMethod if none is passed in when creating the provider */
   static subscriptionMethod: NostrSubscriptionMethod | undefined = undefined;
   /** A fallback method to use for publishMethod if none is passed in when creating the provider */
@@ -146,6 +154,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
   public onLogout?: (client: string) => void | Promise<void>;
 
   constructor(options: NostrConnectProviderOptions) {
+    this.verifyEvent = options.verifyEvent ?? NostrConnectProvider.verifyEvent;
     this.relays = options.relays;
     this.upstream = options.upstream;
     this.signer = options.signer ?? new PrivateKeySigner();
@@ -280,7 +289,7 @@ export class NostrConnectProvider implements ProviderAuthorization {
 
   /** Call this method with incoming events */
   public async handleEvent(event: NostrEvent) {
-    if (!verifyEvent(event)) return;
+    if (!this.verifyEvent(event)) return;
 
     // Do nothing if this request has already been seen
     if (this.seen.has(event.id) || event.created_at <= this.seenUntil) return;

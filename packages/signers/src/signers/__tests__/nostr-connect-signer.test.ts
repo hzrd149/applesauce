@@ -1,5 +1,5 @@
 import { unixNow } from "applesauce-core/helpers";
-import { bytesToHex, kinds, NostrEvent } from "applesauce-core/helpers/event";
+import { bytesToHex, kinds, NostrEvent, verifyEvent } from "applesauce-core/helpers/event";
 import { NEVER, throwError } from "rxjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NostrConnectSigner } from "../nostr-connect-signer.js";
@@ -28,7 +28,53 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  NostrConnectSigner.verifyEvent = verifyEvent;
   vi.restoreAllMocks();
+});
+
+describe("custom verification", () => {
+  it("uses static defaults for new instances and lets constructor options override them", () => {
+    const defaultVerify = vi.fn(verifyEvent);
+    const customVerify = vi.fn(verifyEvent);
+    NostrConnectSigner.verifyEvent = defaultVerify;
+
+    const inherited = new NostrConnectSigner({ relays, subscriptionMethod, publishMethod });
+    const custom = new NostrConnectSigner({ relays, subscriptionMethod, publishMethod, verifyEvent: customVerify });
+
+    expect(signer.verifyEvent).toBe(verifyEvent);
+    expect(inherited.verifyEvent).toBe(defaultVerify);
+    expect(custom.verifyEvent).toBe(customVerify);
+  });
+
+  it("configures verification before URI helpers start connecting", async () => {
+    const customVerify = vi.fn(verifyEvent);
+    vi.spyOn(NostrConnectSigner.prototype, "connect").mockImplementation(async function () {
+      expect(this.verifyEvent).toBe(customVerify);
+    });
+    const imported = await NostrConnectSigner.fromBunkerURI(
+      `bunker://${await remote.getPublicKey()}?relay=${encodeURIComponent(relays[0])}`,
+      { subscriptionMethod, publishMethod, verifyEvent: customVerify },
+    );
+    expect(imported.verifyEvent).toBe(customVerify);
+  });
+
+  it("uses the configured verifier for responses and rejects invalid returned signed events", async () => {
+    signer.isConnected = true;
+    const signed = await remote.signEvent({ kind: 1, content: "test", tags: [], created_at: unixNow() });
+    const customVerify = vi.fn(verifyEvent).mockImplementation((event): event is typeof signed => {
+      return event.kind === kinds.NostrConnect && verifyEvent(event);
+    });
+    signer.verifyEvent = customVerify;
+
+    const result = signer.signEvent(signed);
+    const rejected = expect(result).rejects.toThrow("Invalid event");
+    await respond(JSON.stringify(signed));
+    await rejected;
+
+    expect(customVerify).toHaveBeenCalledWith(expect.objectContaining({ kind: kinds.NostrConnect }));
+    expect(customVerify).toHaveBeenCalledWith(expect.objectContaining({ id: signed.id }));
+    await signer.close();
+  });
 });
 
 describe("connection", () => {
@@ -122,8 +168,11 @@ describe("nbunksec", () => {
     });
     const connect = vi.spyOn(NostrConnectSigner.prototype, "connect");
 
+    const customVerify = vi.fn(verifyEvent);
+    NostrConnectSigner.verifyEvent = customVerify;
     const imported = await NostrConnectSigner.fromNbunksec(encoded, { subscriptionMethod, publishMethod });
 
+    expect(imported.verifyEvent).toBe(customVerify);
     expect(imported.remote).toBe(await remote.getPublicKey());
     expect(imported.relays).toEqual(relays);
     expect(imported.signer.key).toEqual(client.key);
