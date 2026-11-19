@@ -99,6 +99,10 @@ const defaultRetry: Record<GiftWrapFailure["code"], GiftWrapFailure["retry"]> = 
   "persistence-failed": "automatic",
 };
 
+/** The most envelopes with tracked failures. Any relay can deliver envelopes that fail to
+ *  process, so the failure set is bounded instead of growing with hostile traffic. */
+const MAX_TRACKED_FAILURES = 1000;
+
 // Bound a caller's wait without cancelling the underlying storage or signer operation.
 function waitForOperation<T>(operation: Promise<T>, milliseconds: number, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -941,6 +945,26 @@ export class GiftWrapReceiver {
     if (retry === "automatic" && attempts >= (this.options.retryPolicy?.maxAttempts ?? 1)) retry = "manual";
 
     const failure: GiftWrapFailure = { eventId, stage, code, cause, attempts, retry };
+
+    // Any relay can deliver envelopes addressed to the user that fail processing, so the failure
+    // set is bounded. Hostile floods only produce never-retry failures (an attacker cannot build
+    // an envelope that decrypts, so its failures are structural), and those are never retried —
+    // so they are evicted first. Retryable failures (the ones a user may be waiting on) are only
+    // evicted once the entire set is retryable.
+    while (this.failures.size >= MAX_TRACKED_FAILURES && !this.failures.has(eventId)) {
+      let victim: string | undefined;
+      for (const [id, tracked] of this.failures) {
+        if (tracked.retry === "never") {
+          victim = id;
+          break;
+        }
+      }
+      victim ??= this.failures.keys().next().value;
+      if (victim === undefined) break;
+      this.failures.delete(victim);
+      this.attempts.delete(victim);
+      this.retryDue.delete(victim);
+    }
     this.failures.set(eventId, failure);
 
     const retryAt = retry === "automatic" ? Date.now() + this.retryDelay(attempts) : undefined;
