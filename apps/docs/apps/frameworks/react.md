@@ -1,16 +1,93 @@
 ---
-description: Powerful React hook combining useObservableState and useMemo for seamless RxJS observable integration with automatic subscription management
+description: React hooks for integrating Applesauce, centered on the use$ hook for subscribing to RxJS observables with automatic subscription management
 ---
 
-# use$ Hook
+# React
 
-The `use$` hook is a powerful utility that combines `useObservableState` and `useMemo` to make working with RxJS observables in React components seamless. It automatically subscribes to observables and updates your component when values change, making it perfect for integrating with the EventStore, RelayPool, and other reactive data sources.
+The `applesauce-react` package connects Applesauce to React. Its `use$` hook subscribes to observables and rerenders components when data changes.
 
-## Overview
+Apps using other frameworks don't need this package: see [Solid](./solid.md), or subscribe to the core observables directly with `.subscribe()`.
 
-The `use$` hook provides a simple way to subscribe to observables in React components. It handles subscription management, cleanup, and state updates automatically, so you can focus on building your UI.
+## Features
 
-## API
+- **`use$`** hook — subscribe to any observable or chainable observable with automatic cleanup
+- Hooks for rendering parsed NAST content and markdown
+- Legacy context providers and hooks for the event store, models, accounts, and action runner
+
+## Installation
+
+:::code-group
+
+```sh [npm]
+npm install applesauce-react
+```
+
+```sh [yarn]
+yarn install applesauce-react
+```
+
+```sh [pnpm]
+pnpm install applesauce-react
+```
+
+:::
+
+## Setup
+
+Create the Applesauce instances once, import them where they are needed, and subscribe to their observables with `use$`:
+
+```ts
+// nostr.ts
+export const eventStore = new EventStore();
+export const pool = new RelayPool();
+export const accounts = new AccountManager();
+export const actions = new ActionRunner(eventStore, accounts.signer, (event, relays) =>
+  pool.publish(relays ?? defaultRelays, event),
+);
+```
+
+```tsx
+function Header() {
+  const account = use$(accounts.active$);
+  const profile = use$(() => account && eventStore.profile(account.pubkey), [account]);
+  return <div>{profile?.name ?? "Signed out"}</div>;
+}
+```
+
+Direct imports keep data flow explicit, need no provider tree, and work the same in components, hooks, and plain modules.
+
+## Context Providers
+
+::: warning
+Providers are not recommended for new apps. Import shared instances directly as shown in [Setup](#setup).
+:::
+
+The package still ships providers for apps that inject instances through React context:
+
+```tsx
+<EventStoreProvider eventStore={eventStore}>
+  <AccountsProvider manager={accounts}>
+    <ActionsProvider runner={actions}>
+      <App />
+    </ActionsProvider>
+  </AccountsProvider>
+</EventStoreProvider>
+```
+
+Components then read them with `useEventStore()`, `useAccountManager()`, `useActiveAccount()`, `useActionRunner()`, `useAction()`, and `useEventModel()`. Each of these maps to a direct call on the shared instance:
+
+| Provider hook                    | Direct equivalent                                      |
+| -------------------------------- | ------------------------------------------------------ |
+| `useEventModel(Model, args)`     | `use$(() => eventStore.model(Model, ...args), [args])` |
+| `useActiveAccount()`             | `use$(accounts.active$)`                               |
+| `useAccounts()`                  | `use$(accounts.accounts$)`                             |
+| `useAction(Action).run(...args)` | `actions.run(Action, ...args)`                         |
+
+## use$ Hook
+
+The `use$` hook combines `useObservableState` and `useMemo` to subscribe to observables in React components. It handles subscription management, cleanup, and state updates automatically, and works with the EventStore, RelayPool, and other reactive data sources.
+
+### API
 
 ```typescript
 // Direct observable (returns T for BehaviorSubject, T | undefined for Observable)

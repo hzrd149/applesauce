@@ -170,10 +170,12 @@ export default defineConfig({
             items: [{ text: "Nostr Web Tokens", link: "/apps/auth/nostr-web-tokens" }],
           },
           {
-            text: "React",
+            text: "Framework Integrations",
             collapsed: false,
-            link: "/apps/react/",
-            items: [{ text: "use$", link: "/apps/react/use-observable" }],
+            items: [
+              { text: "React", link: "/apps/frameworks/react" },
+              { text: "Solid", link: "/apps/frameworks/solid" },
+            ],
           },
           {
             text: "Casting",
