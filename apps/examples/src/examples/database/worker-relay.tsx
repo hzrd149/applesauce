@@ -4,7 +4,19 @@
  * @related cache/worker-relay
  */
 import NoteContent from "../../components/note-content";
-import { BehaviorSubject, combineLatest, debounceTime, switchMap, map, catchError, of, startWith, from } from "rxjs";
+import {
+  BehaviorSubject,
+  EMPTY,
+  combineLatest,
+  debounceTime,
+  defer,
+  switchMap,
+  map,
+  catchError,
+  merge,
+  of,
+  startWith,
+} from "rxjs";
 
 import { WorkerRelayInterface } from "@snort/worker-relay";
 import { castUser } from "applesauce-common/casts";
@@ -39,9 +51,10 @@ const workerScript = import.meta.env.DEV ? new Worker(devWorkerUrl, { type: "mod
 const workerRelay = new WorkerRelayInterface(workerScript);
 
 // Load sqlite database and run migrations without rejecting module evaluation.
-const workerRelayReady = workerRelay.init({
-  databasePath: "relay.db",
-});
+let workerRelayReady: Promise<boolean> | undefined;
+function initializeWorkerRelay() {
+  return (workerRelayReady ??= workerRelay.init({ databasePath: "relay.db" }));
+}
 
 class WorkerRelayEventDatabase implements IAsyncEventDatabase {
   constructor(private readonly relay: WorkerRelayInterface) {}
@@ -117,20 +130,37 @@ const eventDatabase = new WorkerRelayEventDatabase(workerRelay);
 const eventStore = new AsyncEventStore({ database: eventDatabase, verifyEvent });
 
 const pool = new RelayPool();
+const relayError$ = new BehaviorSubject<string | undefined>(undefined);
 
 // This module owns the shared worker database for the application lifetime.
 import.meta.hot?.dispose(() => {
+  eventStore.dispose();
   workerScript.terminate();
   pool.close();
 });
 
 // Create unified event loader for the store
 // This will be called if the event store doesn't have the requested event
-createEventLoaderForStore(eventStore, pool, {
+createEventLoaderForStore(eventStore, requestEvents$, {
   lookupRelays: lookupRelays$,
 });
 
 const viewEvent$ = new BehaviorSubject<NostrEvent | null>(null);
+
+function requestEvents$(relays: string[], filters: Filter[]) {
+  return merge(
+    ...relays.map((relay) =>
+      defer(() => pool.request([relay], filters)).pipe(
+        // A failed connection or rejected subscription must not cancel healthy relays.
+        catchError((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          relayError$.next(`${relay}: ${message}`);
+          return EMPTY;
+        }),
+      ),
+    ),
+  );
+}
 
 type OperationError = {
   message: string;
@@ -205,18 +235,31 @@ async function importEventsFromJsonl(
 
 // Profile hook for username lookup
 function useProfile(pubkey: string) {
-  return use$(() => castUser(pubkey, eventStore).profile$, [pubkey]);
+  return use$(
+    () =>
+      castUser(pubkey, eventStore).profile$.pipe(
+        map((profile) => ({ profile, error: undefined as string | undefined })),
+        catchError((error: unknown) =>
+          of({ profile: undefined, error: error instanceof Error ? error.message : String(error) }),
+        ),
+      ),
+    [pubkey],
+  );
 }
 
 // Event row component
 function EventRow({ event }: { event: NostrEvent }) {
-  const profile = useProfile(event.pubkey);
+  const profileResult = useProfile(event.pubkey);
+  const profile = profileResult?.profile;
 
   return (
     <tr>
       <td className="font-mono text-sm">{truncate(event.id, 16)}</td>
       <td>{event.kind}</td>
-      <td>{getDisplayName(profile) || truncate(event.pubkey, 16)}</td>
+      <td title={profileResult?.error}>
+        {getDisplayName(profile) || truncate(event.pubkey, 16)}
+        {profileResult?.error && <span className="badge badge-warning ms-2">Profile unavailable</span>}
+      </td>
       <td>{truncate(event.content, 80)}</td>
       <td className="text-sm">{formatDate(event.created_at)}</td>
       <td>
@@ -302,7 +345,8 @@ function NotesList({ events }: { events: NostrEvent[] }) {
 }
 
 function NoteCard({ note }: { note: NostrEvent }) {
-  const profile = useProfile(note.pubkey);
+  const profileResult = useProfile(note.pubkey);
+  const profile = profileResult?.profile;
 
   return (
     <div className="border border-base-300 bg-base-100 ">
@@ -315,7 +359,10 @@ function NoteCard({ note }: { note: NostrEvent }) {
             alt="Profile"
           />
           <div className="flex-1">
-            <div className="font-semibold">{getDisplayName(profile) || `${note.pubkey.slice(0, 8)}...`}</div>
+            <div className="font-semibold" title={profileResult?.error}>
+              {getDisplayName(profile) || `${note.pubkey.slice(0, 8)}...`}
+              {profileResult?.error && <span className="badge badge-warning ms-2">Profile unavailable</span>}
+            </div>
             <div className="text-sm text-base-content/70">{formatDate(note.created_at)}</div>
           </div>
           <button className="btn btn-sm btn-ghost" onClick={() => viewEvent$.next(note)}>
@@ -338,6 +385,7 @@ function NoteCard({ note }: { note: NostrEvent }) {
 
 // Main search component
 function WorkerRelaySearch() {
+  const relayError = use$(relayError$);
   const kind$ = useMemo(() => new BehaviorSubject<number | null>(null), []);
   const kind = use$(kind$);
 
@@ -478,6 +526,14 @@ function WorkerRelaySearch() {
       </div>
 
       {/* Error Display */}
+      {relayError && (
+        <div role="alert" className="alert alert-warning mb-6">
+          <span>Relay request failed: {relayError}</span>
+          <button className="btn btn-sm" onClick={() => relayError$.next(undefined)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {(error || query?.error) && (
         <div className="alert alert-error mb-6">
           <span>{error?.message ?? query?.error}</span>
@@ -670,11 +726,11 @@ function WorkerRelaySearch() {
           ))}
 
         {/* No Results Message */}
-        {!isLoading && !query?.loading && searchQuery && searchResults.length === 0 && !error && (
+        {!isLoading && !query?.loading && searchQuery && searchResults.length === 0 && !error && !query?.error && (
           <div className="text-center text-base-content/70 mt-8">No events found for “{searchQuery}”</div>
         )}
 
-        {!isLoading && !query?.loading && !searchQuery && searchResults.length === 0 && !error && (
+        {!isLoading && !query?.loading && !searchQuery && searchResults.length === 0 && !error && !query?.error && (
           <div className="text-center text-base-content/70 mt-8">No events in database, import some</div>
         )}
       </div>
@@ -694,8 +750,8 @@ function WorkerRelaySearch() {
 export default function WorkerRelayDatabaseRoute() {
   const startup = use$(
     () =>
-      from(workerRelayReady).pipe(
-        map(() => ({ ready: true, failed: false })),
+      defer(initializeWorkerRelay).pipe(
+        map((ready) => ({ ready, failed: !ready })),
         catchError(() => of({ ready: false, failed: true })),
         startWith({ ready: false, failed: false }),
       ),

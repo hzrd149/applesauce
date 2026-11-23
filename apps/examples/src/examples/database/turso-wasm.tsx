@@ -139,7 +139,17 @@ function describeEvent(event: NostrEvent) {
 // Event row component
 function EventRow({ event }: { event: NostrEvent }) {
   const user = useMemo(() => castUser(event.pubkey, eventStore!), [event.pubkey]);
-  const profile = use$(() => user.profile$, [user]);
+  const profileResult = use$(
+    () =>
+      user.profile$.pipe(
+        map((profile) => ({ profile, error: undefined as string | undefined })),
+        catchError((error: unknown) =>
+          of({ profile: undefined, error: error instanceof Error ? error.message : String(error) }),
+        ),
+      ),
+    [user],
+  );
+  const profile = profileResult?.profile;
 
   const fallbackName = user.npub.slice(0, 12) + "…";
   const authorName = getDisplayName(profile, fallbackName);
@@ -147,7 +157,10 @@ function EventRow({ event }: { event: NostrEvent }) {
   return (
     <div className="py-3 border-b border-base-300">
       <div className="flex items-center gap-2">
-        <span className="font-semibold truncate">{authorName}</span>
+        <span className="font-semibold truncate" title={profileResult?.error}>
+          {authorName}
+        </span>
+        {profileResult?.error && <span className="badge badge-warning">Profile unavailable</span>}
         <span className="badge badge-ghost">{getKindName(event.kind)}</span>
         <span className="ms-auto text-sm text-base-content/60 shrink-0">
           {new Date(event.created_at * 1000).toLocaleString()}
