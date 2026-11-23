@@ -1,5 +1,5 @@
 /**
- * Edit profile badge pins: reorder, add from awards, and remove
+ * Manage profile badge pins with reactive casts and typed factories
  * @tags nip-58, profile, badges, editing
  * @related badges/profile
  */
@@ -9,468 +9,468 @@ import {
   LEGACY_PROFILE_BADGES_IDENTIFIER,
   LEGACY_PROFILE_BADGES_KIND,
   PROFILE_BADGES_KIND,
-  ProfileBadgeSlot,
 } from "applesauce-common/helpers";
+import { defined } from "applesauce-core";
 import { EventStore } from "applesauce-core/event-store";
-import { getReplaceableAddressFromPointer, kinds, relaySet } from "applesauce-core/helpers";
+import { getDisplayName, getReplaceableAddressFromPointer, kinds, mergeRelaySets } from "applesauce-core/helpers";
 import { NostrEvent } from "applesauce-core/helpers/event";
 import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import type { ISigner } from "applesauce-signers";
-import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { BehaviorSubject, map } from "rxjs";
-import LoginView from "../../components/login-view";
-import { lookupRelays$ } from "../../settings";
+import { buildBlossomURI, handleMediaFallbacks, parseBlossomURI } from "blossom-client-sdk";
+import { ArrowDown, ArrowUp, Award, GripVertical, X } from "lucide-react";
+import { useCallback, useState } from "react";
+import {
+  BehaviorSubject,
+  catchError,
+  concat,
+  distinctUntilChanged,
+  endWith,
+  firstValueFrom,
+  ignoreElements,
+  map,
+  of,
+  startWith,
+  switchMap,
+  timeout,
+} from "rxjs";
+
+import LoginView, { forgetActiveAccount } from "../../components/login-view";
 import { verifyEvent } from "../../extra/verifier";
+import { lookupRelays$ } from "../../settings";
 
-const RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
-
-const eventStore = new EventStore({ verifyEvent });
-const pool = new RelayPool();
-
-createEventLoaderForStore(eventStore, pool, {
-  lookupRelays: lookupRelays$,
-  extraRelays: RELAYS,
-});
+const FALLBACK_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 
 const signer$ = new BehaviorSubject<ISigner | undefined>(undefined);
 const user$ = new BehaviorSubject<User | undefined>(undefined);
 
-function formatPubkey(pk: string) {
-  try {
-    return npubEncode(pk).slice(0, 12) + "…";
-  } catch {
-    return pk.slice(0, 8) + "…";
-  }
+const eventStore = new EventStore({ verifyEvent });
+const pool = new RelayPool();
+createEventLoaderForStore(eventStore, pool, { lookupRelays: lookupRelays$, extraRelays: FALLBACK_RELAYS });
+
+type LoadState = { loading: boolean; error?: string };
+type DragState = { dragging: number; over: number | null };
+
+function logout() {
+  forgetActiveAccount();
+  signer$.next(undefined);
+  user$.next(undefined);
 }
-
-// ---- Drag-and-drop reorder helpers ----
-
-type DragState = { dragging: number | null; over: number | null };
-
-function reorder<T>(arr: T[], from: number, to: number): T[] {
-  const copy = [...arr];
-  const [item] = copy.splice(from, 1);
-  copy.splice(to, 0, item);
-  return copy;
-}
-
-// ---- Badge slot row for the pinned list ----
-
-function PinnedBadgeCard({
-  badge,
-  award,
-  index,
-  dragState,
-  onDragStart,
-  onDragOver,
-  onDragEnd,
-  onRemove,
-}: {
-  badge: Badge | undefined;
-  award: BadgeAward | undefined;
-  index: number;
-  dragState: DragState;
-  onDragStart: (i: number) => void;
-  onDragOver: (i: number) => void;
-  onDragEnd: () => void;
-  onRemove: (i: number) => void;
-}) {
-  const name = badge?.name || badge?.identifier || "Loading…";
-  const image = badge?.image?.url;
-  const isDragging = dragState.dragging === index;
-  const isOver = dragState.over === index && dragState.dragging !== index;
-
-  return (
-    <div
-      draggable
-      onDragStart={() => onDragStart(index)}
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver(index);
-      }}
-      onDragEnd={onDragEnd}
-      className={`flex items-center gap-3 p-3 border rounded-lg cursor-grab transition-all ${
-        isDragging ? "opacity-40" : ""
-      } ${isOver ? "border-primary bg-base-200" : "border-base-300"}`}
-    >
-      <span className="text-base-content/40 font-mono text-sm w-6 text-center select-none">{index + 1}</span>
-      <div className="avatar">
-        <div className="w-10 rounded-lg bg-base-200">
-          {image ? (
-            <img src={image} alt={name} />
-          ) : (
-            <span className="flex items-center justify-center h-full text-lg">🏅</span>
-          )}
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{name}</div>
-        {badge?.description && <div className="text-sm text-base-content/60 truncate">{badge.description}</div>}
-      </div>
-      {award && (
-        <div className="text-sm text-base-content/50 hidden sm:block">{award.createdAt.toLocaleDateString()}</div>
-      )}
-      <button className="btn btn-ghost btn-sm btn-square" onClick={() => onRemove(index)} title="Remove">
-        ✕
-      </button>
-    </div>
-  );
-}
-
-// ---- Resolved pinned badge row (subscribes to badge$/award) ----
-
-function ResolvedPinnedSlot(props: {
-  slot: ProfileBadgeSlot;
-  index: number;
-  dragState: DragState;
-  onDragStart: (i: number) => void;
-  onDragOver: (i: number) => void;
-  onDragEnd: () => void;
-  onRemove: (i: number) => void;
-  profileBadges: ProfileBadges;
-}) {
-  const resolved = use$(() => props.profileBadges.slot$(props.index), [props.profileBadges, props.index]);
-  return (
-    <PinnedBadgeCard
-      badge={resolved?.badge}
-      award={resolved?.award}
-      index={props.index}
-      dragState={props.dragState}
-      onDragStart={props.onDragStart}
-      onDragOver={props.onDragOver}
-      onDragEnd={props.onDragEnd}
-      onRemove={props.onRemove}
-    />
-  );
-}
-
-// ---- Award picker modal ----
-
-function AwardPickerRow({
-  award,
-  pinnedAddresses,
-  onAdd,
-}: {
-  award: BadgeAward;
-  pinnedAddresses: Set<string>;
-  onAdd: (award: BadgeAward) => void;
-}) {
-  const badge = use$(() => award.badge$, [award.id]);
-  const name = badge?.name || badge?.identifier || "Badge";
-  const image = badge?.image?.url;
-  const address = getReplaceableAddressFromPointer(award.pointer);
-  const alreadyPinned = pinnedAddresses.has(address);
-
-  return (
-    <div className="flex items-center gap-3 p-3 border-b border-base-200 last:border-b-0">
-      <div className="avatar">
-        <div className="w-10 rounded-lg bg-base-200">
-          {image ? (
-            <img src={image} alt={name} />
-          ) : (
-            <span className="flex items-center justify-center h-full text-lg">🏅</span>
-          )}
-        </div>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{name}</div>
-        {badge?.description && <div className="text-sm text-base-content/60 truncate">{badge.description}</div>}
-        <div className="text-sm text-base-content/40">
-          Issued by {formatPubkey(award.issuer.pubkey)} · {award.createdAt.toLocaleDateString()}
-        </div>
-      </div>
-      <button className="btn btn-sm btn-primary" disabled={alreadyPinned} onClick={() => onAdd(award)}>
-        {alreadyPinned ? "Pinned" : "Add"}
-      </button>
-    </div>
-  );
-}
-
-function AwardPickerModal({
-  awards,
-  pinnedAddresses,
-  onAdd,
-  onClose,
-}: {
-  awards: BadgeAward[];
-  pinnedAddresses: Set<string>;
-  onAdd: (award: BadgeAward) => void;
-  onClose: () => void;
-}) {
-  return (
-    <dialog className="modal modal-open">
-      <div className="modal-box max-w-lg">
-        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={onClose}>
-          ✕
-        </button>
-        <h3 className="text-lg font-bold mb-4">Add Badge from Awards</h3>
-        {awards.length === 0 ? (
-          <div className="text-center text-base-content/50 py-8">No badge awards found for your account.</div>
-        ) : (
-          <div className="max-h-96 overflow-y-auto -mx-2 px-2">
-            {awards.map((award) => (
-              <AwardPickerRow key={award.id} award={award} pinnedAddresses={pinnedAddresses} onAdd={onAdd} />
-            ))}
-          </div>
-        )}
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button onClick={onClose}>close</button>
-      </form>
-    </dialog>
-  );
-}
-
-// ---- Publish log types ----
-
-type RelayResult = { relay: string; ok: boolean; message?: string };
-type PublishLogEntry = { id: string; action: string; timestamp: Date; results: RelayResult[] };
 
 function getFactory(event: NostrEvent | undefined) {
   return event ? ProfileBadgesFactory.modify(event) : ProfileBadgesFactory.create();
 }
 
-// ---- Main editor view ----
+function reorder<T>(items: T[], from: number, to: number): T[] {
+  const reordered = [...items];
+  const [item] = reordered.splice(from, 1);
+  reordered.splice(to, 0, item);
+  return reordered;
+}
 
-function EditorView({ user }: { user: User }) {
-  const profileBadges = use$(() => user.profileBadges$, [user.pubkey]);
-  const mailboxes = use$(() => user.mailboxes$, [user.pubkey]);
+/** Loads the initial badge collection, then keeps it up to date */
+function badgeSync$(user: User) {
+  const filters = [
+    { kinds: [PROFILE_BADGES_KIND], authors: [user.pubkey] },
+    { kinds: [LEGACY_PROFILE_BADGES_KIND], authors: [user.pubkey], "#d": [LEGACY_PROFILE_BADGES_IDENTIFIER] },
+    { kinds: [kinds.BadgeAward], "#p": [user.pubkey] },
+  ];
 
-  const [showPicker, setShowPicker] = useState(false);
-
-  const [busy, setBusy] = useState(false);
-
-  const [dragState, setDragState] = useState<DragState>({ dragging: null, over: null });
-
-  const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([]);
-
-  const badgesRef = useRef(profileBadges);
-  badgesRef.current = profileBadges;
-  const mailboxesRef = useRef(mailboxes);
-  mailboxesRef.current = mailboxes;
-
-  const [error, setError] = useState<string | undefined>(undefined);
-  const slots = profileBadges?.slots ?? [];
-
-  const publishRelays = useMemo(() => (mailboxes ? relaySet(RELAYS, mailboxes.outboxes) : RELAYS), [mailboxes]);
-
-  const runAction = useCallback(async (action: string, factory: ProfileBadgesFactory) => {
-    const signer = signer$.value;
-    if (!signer) return;
-
-    setBusy(true);
-    setError(undefined);
-    try {
-      const signed = await factory.sign(signer);
-      const relays = mailboxesRef.current ? relaySet(RELAYS, mailboxesRef.current.outboxes) : RELAYS;
-      const responses = await pool.publish(relays, signed);
-      if (!responses.some((r) => r.ok)) throw new Error("No relay accepted the event");
-      eventStore.add(signed);
-
-      setPublishLog((log) => [
-        {
-          id: signed.id,
-          action,
-          timestamp: new Date(),
-          results: responses.map((r) => ({ relay: r.from, ok: r.ok, message: r.message })),
-        },
-        ...log,
-      ]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to ${action}`);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  // Subscribe to relay data for this user's badge events and awards
-  use$(() => {
-    if (!user) return undefined;
-    return pool.subscription(
-      user.mailboxes$.pipe(map((all) => relaySet(RELAYS, all?.inboxes, all?.outboxes))),
-      [
-        { kinds: [kinds.Metadata, PROFILE_BADGES_KIND], authors: [user.pubkey] },
-        { kinds: [LEGACY_PROFILE_BADGES_KIND], authors: [user.pubkey], "#d": [LEGACY_PROFILE_BADGES_IDENTIFIER] },
-        { kinds: [kinds.BadgeAward], "#p": [user.pubkey] },
-      ],
-      { eventStore },
-    );
-  }, [user]);
-
-  const awards = use$(() => user.badgeAwards$, [user.pubkey]);
-
-  const pinnedAddresses = useMemo(() => {
-    return new Set(slots.map((s) => getReplaceableAddressFromPointer(s.badge)));
-  }, [slots]);
-
-  // ---- drag handlers ----
-  const onDragStart = useCallback((i: number) => setDragState({ dragging: i, over: null }), []);
-  const onDragOver = useCallback((i: number) => setDragState((state) => ({ ...state, over: i })), []);
-  const onDragEnd = useCallback(() => {
-    const { dragging, over } = dragState;
-    if (dragging !== null && over !== null && dragging !== over) {
-      const current = badgesRef.current?.slots ?? [];
-      const reordered = reorder(current, dragging, over);
-      void runAction("reorder", getFactory(badgesRef.current?.event).slots(reordered));
-    }
-    setDragState({ dragging: null, over: null });
-  }, [dragState, runAction]);
-
-  const handleRemove = useCallback(
-    (index: number) => {
-      const current = badgesRef.current?.slots ?? [];
-      const slot = current[index];
-      if (!slot) return;
-      runAction("remove", getFactory(badgesRef.current?.event).removeByBadge(slot.badge));
-    },
-    [runAction],
+  return user.mailboxes$.pipe(
+    map((mailboxes) => mergeRelaySets(mailboxes?.inboxes, mailboxes?.outboxes)),
+    map((relays) => (relays.length ? relays : FALLBACK_RELAYS)),
+    distinctUntilChanged((previous, current) => previous.join() === current.join()),
+    switchMap((relays) =>
+      concat(
+        // A finite request distinguishes a loaded empty collection from initial loading.
+        pool.request(relays, filters, { eventStore }).pipe(ignoreElements(), endWith<LoadState>({ loading: false })),
+        pool.subscription(relays, filters, { eventStore }).pipe(ignoreElements()),
+      ).pipe(
+        startWith<LoadState>({ loading: true }),
+        catchError((error) => of<LoadState>({ loading: false, error: String(error?.message ?? error) })),
+      ),
+    ),
   );
+}
 
-  const handleAdd = useCallback(
-    (award: BadgeAward) => {
-      setShowPicker(false);
-      runAction(
-        "add",
-        getFactory(badgesRef.current?.event).addSlot({
-          badge: award.pointer,
-          award: { id: award.event.id, relays: [] },
-        }),
-      );
+/** Looks up an author's Blossom servers without blocking media fallback indefinitely */
+async function getBlossomServers(pubkey?: string) {
+  if (!pubkey) return [];
+
+  try {
+    return await firstValueFrom(
+      castUser(pubkey, eventStore).blossomServers$.pipe(defined(), timeout({ first: 10_000 })),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function BadgeImage({ badge }: { badge: Badge | undefined }) {
+  const author = badge?.author.pubkey;
+  let image = badge?.image?.url;
+
+  try {
+    if (image?.startsWith("blossom:")) {
+      const uri = parseBlossomURI(image);
+      // Preserve URI hints and use the issuer's servers as an additional fallback.
+      if (author && !uri.authors.includes(author)) uri.authors.push(author);
+      image = buildBlossomURI(uri);
+    }
+  } catch {
+    image = undefined;
+  }
+
+  const attachFallbacks = useCallback(
+    (element: HTMLImageElement | null) => {
+      if (!element) return;
+      return handleMediaFallbacks(element, getBlossomServers, author);
     },
-    [runAction],
+    [image, author],
   );
 
   return (
-    <div className="container mx-auto px-4 py-8 space-y-6 max-w-2xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Badge Editor</h1>
-          <p className="text-sm text-base-content/60">Drag to reorder, add from awards, or remove pinned badges.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {busy && <span className="loading loading-spinner loading-sm" />}
-          <span className="badge badge-ghost font-mono text-sm">{formatPubkey(user.pubkey)}</span>
-        </div>
-      </div>
-
-      {error && (
-        <p role="alert" className="text-error">
-          {error}
-        </p>
-      )}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Pinned Badges ({slots.length})</h2>
-          <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => setShowPicker(true)}>
-            + Add Badge
-          </button>
-        </div>
-
-        {slots.length === 0 && (
-          <div className="text-center text-base-content/50 py-8 border border-dashed border-base-300 rounded-lg">
-            No badges pinned yet. Add badges from your awards.
-          </div>
-        )}
-
-        <div className="space-y-1">
-          {slots.map((slot, i) =>
-            profileBadges ? (
-              <ResolvedPinnedSlot
-                key={getReplaceableAddressFromPointer(slot.badge) + ":" + slot.award.id}
-                slot={slot}
-                index={i}
-                dragState={dragState}
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDragEnd={onDragEnd}
-                onRemove={handleRemove}
-                profileBadges={profileBadges}
-              />
-            ) : (
-              <div key={i} className="flex items-center gap-3 p-3 border border-base-300 rounded-lg animate-pulse">
-                <div className="w-10 h-10 bg-base-200 rounded-lg" />
-                <div className="flex-1 h-4 bg-base-200 rounded" />
-              </div>
-            ),
-          )}
-        </div>
-      </section>
-
-      {/* Outbox relays */}
-      <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Publish Relays</h2>
-        <div className="flex flex-wrap gap-1">
-          {publishRelays.map((relay) => (
-            <span key={relay} className="badge badge-outline  font-mono">
-              {relay.replace("wss://", "")}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* Publish log */}
-      {publishLog.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Publish Log</h2>
-            <button className="btn btn-ghost btn-sm" onClick={() => setPublishLog([])}>
-              Clear
-            </button>
-          </div>
-          <div className="space-y-2">
-            {publishLog.map((entry) => (
-              <div key={entry.id} className="border border-base-300 rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm capitalize">{entry.action}</span>
-                  <span className="text-sm text-base-content/50">{entry.timestamp.toLocaleTimeString()}</span>
-                </div>
-                <div className="space-y-1">
-                  {entry.results.map((r) => (
-                    <div key={r.relay} className="flex items-center gap-2 text-sm font-mono">
-                      <span className={`badge  ${r.ok ? "badge-success" : "badge-error"}`}>{r.ok ? "OK" : "FAIL"}</span>
-                      <span className="text-base-content/70">{r.relay.replace("wss://", "")}</span>
-                      {r.message && <span className="text-base-content/40 truncate">{r.message}</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {showPicker && awards && (
-        <AwardPickerModal
-          awards={awards}
-          pinnedAddresses={pinnedAddresses}
-          onAdd={handleAdd}
-          onClose={() => setShowPicker(false)}
+    <div className="relative flex size-14 shrink-0 items-center justify-center rounded-lg bg-base-200">
+      <Award className="size-6 text-base-content/40" aria-hidden="true" />
+      {image && (
+        <img
+          key={`${author}:${image}`}
+          ref={attachFallbacks}
+          src={image}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          className="absolute inset-0 size-full rounded-lg bg-base-200 object-contain opacity-0"
+          onLoad={(event) => {
+            event.currentTarget.style.opacity = "1";
+          }}
+          onError={(event) => {
+            event.currentTarget.style.opacity = "0";
+          }}
         />
-      )}
-
-      {!awards && (
-        <div className="flex justify-center py-4">
-          <span className="loading loading-spinner loading-md" />
-        </div>
       )}
     </div>
   );
 }
 
-// ---- App shell with login ----
+function Account({ user, busy }: { user: User; busy: boolean }) {
+  const profile = use$(user.profile$);
+
+  return (
+    <div className="flex items-center gap-2 border-t border-base-300 p-3">
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium">{getDisplayName(profile, "Your account")}</div>
+      </div>
+      <button className="btn btn-sm btn-ghost" disabled={busy} onClick={logout}>
+        Logout
+      </button>
+    </div>
+  );
+}
+
+function PinnedBadgeRow({
+  profileBadges,
+  index,
+  busy,
+  dragState,
+  onDrag,
+  onMove,
+  onRemove,
+}: {
+  profileBadges: ProfileBadges;
+  index: number;
+  busy: boolean;
+  dragState: DragState | null;
+  onDrag: (state: DragState | null) => void;
+  onMove: (from: number, to: number) => void;
+  onRemove: (index: number) => void;
+}) {
+  const resolved = use$(() => profileBadges.slot$(index), [profileBadges, index]);
+  const badge = resolved?.badge;
+  const name = badge?.name || badge?.identifier || profileBadges.slots[index].badge.identifier || "Unnamed badge";
+  const isDragging = dragState?.dragging === index;
+  const isOver = dragState?.over === index && !isDragging;
+
+  return (
+    <div
+      draggable={!busy}
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", String(index));
+        onDrag({ dragging: index, over: null });
+      }}
+      onDragOver={(event) => {
+        if (busy || !dragState) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDrag({ ...dragState, over: index });
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        if (!busy && dragState) onMove(dragState.dragging, index);
+        onDrag(null);
+      }}
+      onDragEnd={() => onDrag(null)}
+      className={`border-b border-base-300 p-3 ${isDragging ? "opacity-40" : ""} ${isOver ? "bg-primary/10" : ""}`}
+    >
+      <div className="flex items-center gap-3">
+        <BadgeImage badge={badge} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium" title={name}>
+            {name}
+          </div>
+          <div className="text-sm text-base-content/50">Position {index + 1}</div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1">
+        <GripVertical className="me-auto size-4 cursor-grab text-base-content/40" aria-label="Drag to reorder" />
+        <button
+          className="btn btn-sm btn-ghost btn-square"
+          disabled={busy || index === 0}
+          onClick={() => onMove(index, index - 1)}
+          aria-label={`Move ${name} up`}
+          title="Move up"
+        >
+          <ArrowUp className="size-4" />
+        </button>
+        <button
+          className="btn btn-sm btn-ghost btn-square"
+          disabled={busy || index === profileBadges.count - 1}
+          onClick={() => onMove(index, index + 1)}
+          aria-label={`Move ${name} down`}
+          title="Move down"
+        >
+          <ArrowDown className="size-4" />
+        </button>
+        <button
+          className="btn btn-sm btn-ghost btn-square text-error"
+          disabled={busy}
+          onClick={() => onRemove(index)}
+          aria-label={`Unpin ${name}`}
+          title="Unpin badge"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AwardRow({
+  award,
+  pinned,
+  busy,
+  onAdd,
+}: {
+  award: BadgeAward;
+  pinned: boolean;
+  busy: boolean;
+  onAdd: (award: BadgeAward) => void;
+}) {
+  const badge = use$(award.badge$);
+  const issuer = use$(award.issuer.profile$);
+  const name = badge?.name || badge?.identifier || award.pointer.identifier || "Unnamed badge";
+
+  return (
+    <div className="flex items-center gap-4 border-b border-base-300 p-4">
+      <BadgeImage badge={badge} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium" title={name}>
+          {name}
+        </div>
+        {badge?.description && <div className="line-clamp-2 text-sm text-base-content/70">{badge.description}</div>}
+        <div className="mt-1 flex flex-wrap gap-x-3 text-sm text-base-content/50">
+          <span>{getDisplayName(issuer, "Unknown issuer")}</span>
+          <time dateTime={award.createdAt.toISOString()}>{award.createdAt.toLocaleDateString()}</time>
+        </div>
+      </div>
+      <button
+        className={`btn btn-sm shrink-0 ${pinned ? "btn-ghost" : "btn-primary"}`}
+        disabled={busy || pinned}
+        onClick={() => onAdd(award)}
+      >
+        {pinned ? "Pinned" : "Pin badge"}
+      </button>
+    </div>
+  );
+}
+
+function EditorView({ user }: { user: User }) {
+  const profileBadges = use$(user.profileBadges$);
+  const awards = use$(user.badgeAwards$);
+  const outboxes = use$(user.outboxes$);
+  const [retry, setRetry] = useState(0);
+  const sync = use$(() => badgeSync$(user), [user, retry]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [notice, setNotice] = useState<string>();
+  const [filter, setFilter] = useState<"all" | "available">("all");
+
+  const slots = profileBadges?.slots ?? [];
+  const publishRelays = outboxes?.length ? outboxes : FALLBACK_RELAYS;
+  const pinnedAddresses = new Set(slots.map((slot) => getReplaceableAddressFromPointer(slot.badge)));
+  const availableAwards = awards?.filter(
+    (award) => !pinnedAddresses.has(getReplaceableAddressFromPointer(award.pointer)),
+  );
+  const visibleAwards = filter === "available" ? availableAwards : awards;
+  const loading = !sync || sync.loading;
+  const editingDisabled = busy || loading || !!sync?.error;
+
+  async function runAction(action: string, factory: ProfileBadgesFactory) {
+    const signer = signer$.value;
+    if (!signer || editingDisabled) return;
+
+    setBusy(true);
+    setError(undefined);
+    setNotice(undefined);
+
+    try {
+      const signed = await factory.sign(signer);
+      const responses = await pool.publish(publishRelays, signed);
+
+      if (!responses.some((response) => response.ok)) throw new Error("Couldn't save your badges. Please try again.");
+      eventStore.add(signed);
+      setNotice(action);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function moveBadge(from: number, to: number) {
+    if (from === to || !slots[from] || !slots[to]) return;
+    void runAction("Reordered badges", getFactory(profileBadges?.event).slots(reorder(slots, from, to)));
+  }
+
+  function removeBadge(index: number) {
+    const slot = slots[index];
+    if (slot) void runAction("Unpinned badge", getFactory(profileBadges?.event).removeByBadge(slot.badge));
+  }
+
+  function addBadge(award: BadgeAward) {
+    void runAction(
+      "Pinned badge",
+      getFactory(profileBadges?.event).addSlot({
+        badge: award.pointer,
+        award: { id: award.id, relays: publishRelays },
+      }),
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 grow flex-col md:flex-row">
+      <aside className="flex min-h-0 shrink-0 flex-col border-b border-base-300 md:w-72 md:border-e md:border-b-0">
+        <div className="flex items-center justify-between border-b border-base-300 p-4">
+          <h2 className="font-semibold">Pinned badges</h2>
+          <span className="badge badge-ghost">{slots.length}</span>
+        </div>
+        <div className="max-h-72 min-h-0 flex-1 overflow-y-auto md:max-h-none">
+          {profileBadges &&
+            slots.map((slot, index) => (
+              <PinnedBadgeRow
+                key={`${getReplaceableAddressFromPointer(slot.badge)}:${slot.award.id}`}
+                profileBadges={profileBadges}
+                index={index}
+                busy={editingDisabled}
+                dragState={dragState}
+                onDrag={setDragState}
+                onMove={moveBadge}
+                onRemove={removeBadge}
+              />
+            ))}
+          {!loading && !sync?.error && slots.length === 0 && (
+            <div className="p-6 text-center text-sm text-base-content/50">No pinned badges</div>
+          )}
+        </div>
+        <Account user={user} busy={busy} />
+      </aside>
+
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-base-300 bg-base-100 p-4">
+          <h2 className="font-semibold">Your awards</h2>
+          <div className="join" role="group" aria-label="Filter awards">
+            <button
+              className={`btn btn-sm join-item ${filter === "all" ? "btn-active" : ""}`}
+              aria-pressed={filter === "all"}
+              onClick={() => setFilter("all")}
+            >
+              All {awards?.length ?? 0}
+            </button>
+            <button
+              className={`btn btn-sm join-item ${filter === "available" ? "btn-active" : ""}`}
+              aria-pressed={filter === "available"}
+              onClick={() => setFilter("available")}
+            >
+              Unpinned {availableAwards?.length ?? 0}
+            </button>
+          </div>
+          <div className="ms-auto flex items-center gap-2">
+            {busy && (
+              <span role="status" className="flex items-center gap-2 text-sm">
+                <span className="loading loading-spinner loading-sm" />
+                Publishing
+              </span>
+            )}
+            {!busy && notice && (
+              <span role="status" className="text-sm text-success">
+                {notice}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {(error || sync?.error) && (
+          <div role="alert" className="flex items-center gap-3 border-b border-base-300 p-4 text-error">
+            <span className="min-w-0 flex-1 break-words">{error || sync?.error}</span>
+            {sync?.error && (
+              <button className="btn btn-sm btn-ghost" onClick={() => setRetry((value) => value + 1)}>
+                Retry loading
+              </button>
+            )}
+            {error && (
+              <button className="btn btn-sm btn-ghost" onClick={() => setError(undefined)} aria-label="Dismiss error">
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+        )}
+        {loading && (
+          <div role="status" className="flex items-center justify-center gap-2 p-6 text-sm text-base-content/60">
+            <span className="loading loading-spinner loading-sm" />
+            Loading badges
+          </div>
+        )}
+        {visibleAwards?.map((award) => (
+          <AwardRow
+            key={award.id}
+            award={award}
+            pinned={pinnedAddresses.has(getReplaceableAddressFromPointer(award.pointer))}
+            busy={editingDisabled}
+            onAdd={addBadge}
+          />
+        ))}
+        {!loading && !sync?.error && !visibleAwards?.length && (
+          <div className="p-12 text-center text-base-content/50">
+            {awards?.length ? "All your awards are pinned" : "No badge awards found"}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
 
 export default function BadgeEditorExample() {
   const signer = use$(signer$);
   const user = use$(user$);
 
-  const handleLogin = useCallback(async (s: ISigner, pubkey: string) => {
-    signer$.next(s);
+  const handleLogin = async (signer: ISigner, pubkey: string) => {
+    signer$.next(signer);
     user$.next(castUser(pubkey, eventStore));
-  }, []);
+  };
 
   if (!signer || !user) return <LoginView onLogin={handleLogin} />;
-  return <EditorView user={user} />;
+  return <EditorView key={user.pubkey} user={user} />;
 }

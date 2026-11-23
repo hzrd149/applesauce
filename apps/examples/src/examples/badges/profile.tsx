@@ -10,6 +10,7 @@ import {
   PROFILE_BADGES_KIND,
 } from "applesauce-common/helpers";
 import { castTimelineStream, castEventStream } from "applesauce-common/observable";
+import { defined } from "applesauce-core";
 import { EventStore } from "applesauce-core/event-store";
 import {
   getAddressPointerForEvent,
@@ -23,8 +24,10 @@ import { createEventLoaderForStore } from "applesauce-loaders/loaders";
 import { use$ } from "applesauce-react/hooks";
 import { RelayPool } from "applesauce-relay";
 import { npubEncode } from "applesauce-core/helpers/pointers";
-import { useMemo, createContext, useContext } from "react";
-import { BehaviorSubject, map } from "rxjs";
+import { buildBlossomURI, handleMediaFallbacks, parseBlossomURI } from "blossom-client-sdk";
+import { Award } from "lucide-react";
+import { useCallback, useMemo, createContext, useContext } from "react";
+import { BehaviorSubject, firstValueFrom, map, timeout } from "rxjs";
 import PubkeyPicker from "../../components/pubkey-picker";
 import { lookupRelays$ } from "../../settings";
 import { verifyEvent } from "../../extra/verifier";
@@ -55,6 +58,66 @@ function formatPubkey(pk: string) {
   } catch {
     return pk.slice(0, 8) + "…";
   }
+}
+
+/** Looks up an author's Blossom servers without blocking media fallback indefinitely */
+async function getBlossomServers(pubkey?: string) {
+  if (!pubkey) return [];
+
+  try {
+    return await firstValueFrom(
+      castUser(pubkey, eventStore).blossomServers$.pipe(defined(), timeout({ first: 10_000 })),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function BadgeImage({ badge, className = "size-14" }: { badge: Badge | undefined; className?: string }) {
+  const author = badge?.author.pubkey;
+  let image = badge?.image?.url;
+
+  try {
+    if (image?.startsWith("blossom:")) {
+      const uri = parseBlossomURI(image);
+      // Preserve URI hints and use the issuer's servers as an additional fallback.
+      if (author && !uri.authors.includes(author)) uri.authors.push(author);
+      image = buildBlossomURI(uri);
+    }
+  } catch {
+    image = undefined;
+  }
+
+  const attachFallbacks = useCallback(
+    (element: HTMLImageElement | null) => {
+      if (!element) return;
+      return handleMediaFallbacks(element, getBlossomServers, author);
+    },
+    [image, author],
+  );
+
+  return (
+    <div className={`relative flex shrink-0 items-center justify-center rounded-xl bg-base-200 ${className}`}>
+      <Award className="size-6 text-base-content/40" aria-hidden="true" />
+      {image && (
+        <img
+          key={`${author}:${image}`}
+          ref={attachFallbacks}
+          src={image}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          className="absolute inset-0 size-full rounded-xl bg-base-200 object-contain opacity-0"
+          onLoad={(event) => {
+            event.currentTarget.style.opacity = "1";
+          }}
+          onError={(event) => {
+            event.currentTarget.style.opacity = "0";
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 function RecipientAvatar({ user }: { user: User }) {
@@ -144,7 +207,6 @@ function BadgeDetailsModal() {
   if (!badge) return null;
 
   const name = badge.name || badge.identifier || "Badge";
-  const image = badge.image?.url;
 
   return (
     <dialog className="modal modal-open">
@@ -154,15 +216,7 @@ function BadgeDetailsModal() {
         </button>
 
         <div className="flex items-start gap-4 mb-6">
-          <div className="avatar">
-            <div className="w-20 rounded-xl bg-base-200 border border-base-300">
-              {image ? (
-                <img src={image} alt={name} />
-              ) : (
-                <span className="flex items-center justify-center h-full text-4xl">🏅</span>
-              )}
-            </div>
-          </div>
+          <BadgeImage badge={badge} className="size-20" />
           <div className="flex-1 min-w-0">
             <h3 className="text-2xl font-bold">{name}</h3>
             <div className="text-sm text-base-content/60 font-mono">{badge.identifier}</div>
@@ -209,7 +263,6 @@ function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAwar
 
   const title = badge.name || badge.identifier || "Badge";
   const description = badge.description;
-  const image = badge.image?.url;
   const isRecipient = award?.recipients.some((p) => p.pubkey === user.pubkey) ?? false;
 
   return (
@@ -219,15 +272,7 @@ function BadgeSlotCard({ badge, award, user }: { badge: Badge; award?: BadgeAwar
     >
       <div className="p-4 space-y-3 p-4 gap-3">
         <div className="flex items-center gap-3">
-          <div className="avatar">
-            <div className="w-14 rounded-xl bg-base-200">
-              {image ? (
-                <img src={image} alt={title} />
-              ) : (
-                <span className="flex items-center justify-center h-full text-2xl">🏅</span>
-              )}
-            </div>
-          </div>
+          <BadgeImage badge={badge} />
           <div className="flex-1 min-w-0">
             <div className="mb-1">
               <span className="badge badge-ghost ">{isRecipient ? "Pinned" : "Award"}</span>
@@ -265,7 +310,6 @@ function AwardRow({ award, index, total }: { award: BadgeAward; index: number; t
   const isLast = index === total - 1;
 
   const name = badge?.name || badge?.identifier || `${badge?.event.kind}:${badge?.identifier}`;
-  const image = badge?.image?.url;
 
   const content = (
     <>
@@ -292,15 +336,7 @@ function AwardRow({ award, index, total }: { award: BadgeAward; index: number; t
     <li className="cursor-pointer" onClick={handleClick}>
       {!isFirst && <hr />}
       <div className="timeline-middle">
-        <div className="avatar">
-          <div className="w-12 h-12 rounded-xl border border-base-300 bg-base-200 hover:border-primary/40 transition-colors">
-            {image ? (
-              <img src={image} alt={name} />
-            ) : (
-              <span className="flex items-center justify-center h-full text-2xl">🏅</span>
-            )}
-          </div>
-        </div>
+        <BadgeImage badge={badge} className="size-12" />
       </div>
       {isEven ? (
         <div className="timeline-start mb-10 md:text-end">{content}</div>
