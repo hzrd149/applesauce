@@ -1,5 +1,11 @@
 # applesauce-signer
 
+## 7.2.0
+
+### Minor Changes
+
+- e7ab168: Add configurable event verification to NostrConnectSigner and NostrConnectProvider through constructor options, static defaults, and writable instance hooks.
+
 ## 7.1.0
 
 ### Patch Changes

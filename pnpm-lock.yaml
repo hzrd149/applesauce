@@ -335,7 +335,7 @@ importers:
         specifier: ^7.3.0
         version: link:../../packages/extra
       applesauce-loaders:
-        specifier: ^7.2.0
+        specifier: ^7.3.0
         version: link:../../packages/loaders
       applesauce-react:
         specifier: ^7.1.0
@@ -344,7 +344,7 @@ importers:
         specifier: ^7.1.0
         version: link:../../packages/relay
       applesauce-signers:
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: link:../../packages/signers
       applesauce-sqlite:
         specifier: ^7.1.0
@@ -794,7 +794,7 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(rxjs@7.8.2)(typescript@7.0.2)
       applesauce-signers:
-        specifier: ^7.1.0
+        specifier: ^7.2.0
         version: link:../signers
       keyv:
         specifier: ^6.1.0

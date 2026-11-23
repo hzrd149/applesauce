@@ -1,5 +1,11 @@
 # applesauce-loaders
 
+## 7.3.0
+
+### Minor Changes
+
+- 6d35c95: Retry inclusive sync request boundaries and report unexhausted seconds with an `incomplete` relay state.
+
 ## 7.2.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # applesauce-react
 
+## 7.1.1
+
+### Patch Changes
+
+- b046c27: Preserve render-time subscriptions in `use$` with a shared cleanup timer for abandoned renders.
+
 ## 7.1.0
 
 ### Patch Changes
