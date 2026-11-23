@@ -24,16 +24,17 @@ export function parseMetadata(source: string): {
   metadata: ExampleMetadata | null;
   code: string;
 } {
-  // Match the first JSDoc comment: /** ... */
-  const jsdocRegex = /^\/\*\*\s*\n([\s\S]*?)\*\//;
+  // Match the first JSDoc comment: /** ... */, Svelte examples open it inside their <script module> tag
+  const jsdocRegex = /^(<script[^>]*>)?\s*\/\*\*\s*\n([\s\S]*?)\*\//;
   const match = source.match(jsdocRegex);
 
   if (!match) {
     return { metadata: null, code: source };
   }
 
-  const jsdocContent = match[1];
-  const code = source.replace(jsdocRegex, "").trimStart();
+  const jsdocContent = match[2];
+  // Keep the script tag and drop only the comment
+  const code = source.replace(jsdocRegex, (_comment, scriptTag?: string) => scriptTag ?? "").trimStart();
 
   try {
     const metadata: ExampleMetadata = {};

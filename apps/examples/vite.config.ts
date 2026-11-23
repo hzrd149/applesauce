@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { build, defineConfig, type Plugin, type Rolldown } from "vite";
 import react from "@vitejs/plugin-react";
+import { svelte, vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
 
 import { parseMetadata } from "./src/metadata.ts";
@@ -90,5 +91,15 @@ export default defineConfig({
       "Cross-Origin-Embedder-Policy": "credentialless",
     },
   },
-  plugins: [exampleMetadata(), builtInNapplets(), react(), tailwindcss()],
+  plugins: [
+    exampleMetadata(),
+    builtInNapplets(),
+    react(),
+    svelte({
+      preprocess: vitePreprocess(),
+      // `?meta` loads an example's parsed JSDoc header, not a component
+      exclude: [/\?meta$/],
+    }),
+    tailwindcss(),
+  ],
 });

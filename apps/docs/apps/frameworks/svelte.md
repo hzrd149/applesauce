@@ -121,6 +121,20 @@ const user = $derived(castUser(pubkey, eventStore));
 const displayName$ = $derived(user.profile$.displayName);
 ```
 
+Pass casts to child components as props. A cast carries its store, so a child reads relationships without importing the `EventStore`, and can cast related events with `note.store`:
+
+```svelte
+<script lang="ts">
+  let { note }: { note: Note } = $props();
+
+  const profile$ = $derived(note.author.profile$);
+  const replies$ = $derived(note.replies$);
+  const parent$ = $derived(note.replyingTo$.pipe(castEventStream(Note, note.store)));
+</script>
+
+<b>{$profile$?.displayName}</b> · {$replies$.length} replies
+```
+
 ### Accounts
 
 ```svelte

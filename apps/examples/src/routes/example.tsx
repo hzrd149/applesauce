@@ -1,4 +1,5 @@
-import { ReactElement, useEffect, useState } from "react";
+import { ReactElement, useCallback, useEffect, useState } from "react";
+import { mount, unmount, type Component as SvelteComponent } from "svelte";
 import { ErrorBoundary } from "react-error-boundary";
 import { Link, useParams } from "react-router";
 import SideNav from "../components/nav";
@@ -6,8 +7,33 @@ import SideNav from "../components/nav";
 import { Check, Copy, ExternalLink, Menu } from "lucide-react";
 import examples from "../examples";
 
-function ExampleMount({ Component, error }: { Component?: (() => ReactElement) | null; error: unknown }) {
+/** Mounts a Svelte example into a div that fills the example area, and unmounts it when React removes the div */
+function SvelteMount({ component }: { component: SvelteComponent }) {
+  const attach = useCallback(
+    (target: HTMLDivElement | null) => {
+      if (!target) return;
+      const app = mount(component, { target });
+      return () => {
+        unmount(app);
+      };
+    },
+    [component],
+  );
+
+  return <div ref={attach} className="flex min-h-0 grow" />;
+}
+
+function ExampleMount({
+  Component,
+  svelte,
+  error,
+}: {
+  Component?: (() => ReactElement) | null;
+  svelte: boolean;
+  error: unknown;
+}) {
   if (error !== null) throw error;
+  if (Component && svelte) return <SvelteMount component={Component as unknown as SvelteComponent} />;
   if (Component) return <Component />;
   return (
     <div className="flex flex-1 justify-center items-center" role="status" aria-label="Loading example">
@@ -214,6 +240,7 @@ export default function ExamplePage() {
         >
           <ExampleMount
             Component={loadedId === example.id ? Component : null}
+            svelte={example.path.endsWith(".svelte")}
             error={loadedId === example.id ? loadError : null}
           />
         </ErrorBoundary>

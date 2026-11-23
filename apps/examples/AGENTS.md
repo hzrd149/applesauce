@@ -21,6 +21,7 @@ These examples are reference implementations for developers and other agents. Wo
 - Order the module as imports, constants, module-level subjects, store/pool/loaders/actions, stream and helper functions, components, and the default export.
 - Keep each example self-contained. Inline its constants, helpers, and components instead of creating `src/helpers`, `src/components`, or `src/lib` modules. Shared imports are limited to basics such as `LoginView`, `PubkeyPicker`, `NoteContent`, `lookupRelays$`, and `extra/verifier`. If inlining makes a multi-mode example too large, split it into separate examples instead of lazy-loading local modules.
 - Built-in napplets for the `napplet/*` examples are the one exception: their sources live in `src/napplets/<name>/` and are imported as `index.html?napplet`.
+- Svelte examples are `<category>/<name>.svelte` files whose JSDoc header opens inside `<script module>`. Svelte allows one component per file, so their child components live in a sibling `<category>/<name>/` folder and take casts as props. Follow `apps/docs/apps/frameworks/svelte.md` for their data flow instead of the React rules below.
 - Write reusable data flow as module-level stream functions named with a `$` suffix that take casts or plain inputs, such as `bookmarks$(user, list)`, and subscribe to them with `use$(() => bookmarks$(user, list), [user, list])`. Keep wiring that only one component needs, such as local paging state or DOM observers, in that component instead of moving it into a stream function.
 
 ## React and RxJS

@@ -1,17 +1,29 @@
 import Fuse from "fuse.js";
 import { parseMetadata, type ExampleMetadata } from "./metadata";
 
-const modules = import.meta.glob(["./examples/**/*.tsx", "./examples/**/*.ts"]);
-const sources = import.meta.glob<string>(["./examples/**/*.tsx", "./examples/**/*.ts"], {
-  query: "?raw",
-  import: "default",
-});
+// Svelte examples are top level files, their child components live in a sibling folder
+const modules = import.meta.glob([
+  "./examples/**/*.tsx",
+  "./examples/**/*.ts",
+  "./examples/*/*.svelte",
+  "!./examples/**/*.svelte.ts",
+]);
+const sources = import.meta.glob<string>(
+  ["./examples/**/*.tsx", "./examples/**/*.ts", "./examples/*/*.svelte", "!./examples/**/*.svelte.ts"],
+  {
+    query: "?raw",
+    import: "default",
+  },
+);
 // Parsed at build time by the example-metadata plugin in vite.config.ts
-const metadata = import.meta.glob<ExampleMetadata>(["./examples/**/*.tsx", "./examples/**/*.ts"], {
-  query: "?meta",
-  import: "default",
-  eager: true,
-});
+const metadata = import.meta.glob<ExampleMetadata>(
+  ["./examples/**/*.tsx", "./examples/**/*.ts", "./examples/*/*.svelte", "!./examples/**/*.svelte.ts"],
+  {
+    query: "?meta",
+    import: "default",
+    eager: true,
+  },
+);
 
 export type Example = {
   id: string;
@@ -49,7 +61,7 @@ function formatCategory(id: string) {
 const examples: Example[] = [];
 
 for (const [path, load] of Object.entries(modules)) {
-  const id = path.replace(/^.*\/examples\/|\.(tsx|ts)$/g, "");
+  const id = path.replace(/^.*\/examples\/|\.(tsx|ts|svelte)$/g, "");
   const category = id.includes("/") ? id.split("/")[0] : "general";
 
   let cleanedSourceCache: string | undefined;
