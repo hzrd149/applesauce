@@ -71,8 +71,8 @@ describe("paginated request", () => {
 
     expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
     expect(request).toHaveBeenCalledTimes(3);
-    // The second call moves past the oldest event of the first block (90 - 1)
-    expect((request as any).mock.calls[1][1]).toEqual([{ kinds: [1], authors: [user.pubkey], until: 89, limit: 2 }]);
+    // The second call includes the oldest second so other events at that boundary can be recovered.
+    expect((request as any).mock.calls[1][1]).toEqual([{ kinds: [1], authors: [user.pubkey], until: 90, limit: 2 }]);
   });
 
   it("keeps paging past a short page from a relay that silently caps results", async () => {
@@ -107,9 +107,9 @@ describe("paginated request", () => {
 
     const events = await collect(requestLoader(request, 1).events$);
 
-    // The out-of-window duplicate in the second block is dropped and pagination stops
+    // Retry the inclusive boundary once, then drop the out-of-window event in the older block.
     expect(events.map((e) => e.content)).toEqual(["a"]);
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it("preserves since while paging backward from until", async () => {
@@ -118,13 +118,17 @@ describe("paginated request", () => {
     const c = user.note("c", { created_at: 80 });
     const filter: Filter = { kinds: [1], authors: [user.pubkey], since: 75, until: 105 };
 
-    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(c));
+    const request: SyncRequestMethod = vi
+      .fn()
+      .mockReturnValueOnce(asyncOf(a, b))
+      .mockReturnValueOnce(asyncOf(c))
+      .mockReturnValueOnce(asyncOf());
 
     const events = await collect(requestLoader(request, 2, filter).events$);
 
     expect(events.map((e) => e.content)).toEqual(["a", "b", "c"]);
     expect((request as any).mock.calls[0][1]).toEqual([{ ...filter, limit: 2 }]);
-    expect((request as any).mock.calls[1][1]).toEqual([{ ...filter, until: 89, limit: 2 }]);
+    expect((request as any).mock.calls[1][1]).toEqual([{ ...filter, until: 90, limit: 2 }]);
   });
 
   it("stops when the next page would move before since", async () => {
@@ -132,12 +136,13 @@ describe("paginated request", () => {
     const b = user.note("b", { created_at: 90 });
     const filter: Filter = { kinds: [1], authors: [user.pubkey], since: 90, until: 105 };
 
-    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b));
+    const request: SyncRequestMethod = vi.fn().mockReturnValueOnce(asyncOf(a, b)).mockReturnValueOnce(asyncOf(b));
 
     const events = await collect(requestLoader(request, 2, filter).events$);
 
     expect(events.map((e) => e.content)).toEqual(["a", "b"]);
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect((request as any).mock.calls[1][1]).toEqual([{ ...filter, until: 90, limit: 2 }]);
   });
 
   it("drops events outside the requested window", async () => {
@@ -153,6 +158,173 @@ describe("paginated request", () => {
 
     expect(events.map((e) => e.content)).toEqual(["in range"]);
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts repeated wire events toward the cap without inflating progress", async () => {
+    const a = user.note("a", { created_at: 100 });
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(asyncOf(a, a))
+      .mockReturnValueOnce(asyncOf(a, a))
+      .mockReturnValueOnce(asyncOf());
+    const result = requestLoader(request, 2, undefined, 2);
+    const [events, statuses] = await Promise.all([collect(result.events$), collect(result.status$)]);
+
+    expect(events).toEqual([a]);
+    expect(statuses.at(-1)?.relays["wss://relay/"]).toMatchObject({ state: "incomplete", count: 1 });
+  });
+
+  it("remembers all boundary ids when a relay returns different subsets", async () => {
+    const [a, b, c] = ["a", "b", "c"].map((content) => user.note(content, { created_at: 100 }));
+    const older = user.note("older", { created_at: 90 });
+    const request = vi
+      .fn()
+      .mockReturnValueOnce(asyncOf(a, b))
+      .mockReturnValueOnce(asyncOf(b, c))
+      .mockReturnValueOnce(asyncOf(c, a))
+      .mockReturnValueOnce(asyncOf(older));
+    const result = requestLoader(request, 2, undefined, 2);
+    const [events, statuses] = await Promise.all([collect(result.events$), collect(result.status$)]);
+
+    expect(events).toEqual([a, b, c, older]);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(statuses.at(-1)?.relays["wss://relay/"]).toMatchObject({
+      state: "incomplete",
+      count: 4,
+      incomplete: { reason: "boundary", timestamp: 100 },
+    });
+  });
+});
+
+describe.each([false, true])("request boundary coverage (negentropy fallback: %s)", (fallback) => {
+  const relay = "wss://relay/";
+
+  async function load(
+    timestamps: number[],
+    { cap = 3, knownCap = true, since }: { cap?: number; knownCap?: boolean; since?: number } = {},
+  ) {
+    const notes = timestamps.map((created_at, index) => user.note(String(index), { created_at }));
+    const eventStore = new EventStore();
+    const request = vi.fn((_relay: string, [block]: Filter[]) =>
+      asyncOf(
+        ...notes
+          .filter((event) => block.until === undefined || event.created_at <= block.until)
+          .filter((event) => block.since === undefined || event.created_at >= block.since)
+          .slice(0, Math.min(block.limit!, cap)),
+      ),
+    );
+    const fallbackReason = new Error("negentropy failed");
+    const liveness = { recordSuccess: vi.fn(), recordFailure: vi.fn() };
+    const loader = createSyncLoader({
+      eventStore,
+      request,
+      getSupported: async () => (fallback ? [77] : []),
+      getMaxLimit: async () => (knownCap ? cap : undefined),
+      sync: () => throwError(fallbackReason),
+      liveness,
+    });
+    const result = loader({ relays: [relay], filter: { kinds: [1], since }, limit: 3 });
+    const [events, statuses] = await Promise.all([collect(result.events$), collect(result.status$)]);
+    const final = statuses.at(-1)!;
+
+    expect(final.done).toBe(true);
+    expect(final.relays[relay].method).toBe("request");
+    expect(final.relays[relay].count).toBe(events.length);
+    for (const event of events) expect(eventStore.hasEvent(event.id)).toBe(true);
+    expect(liveness.recordFailure).not.toHaveBeenCalled();
+    if (fallback) expect(final.relays[relay].fallbackReason).toBe(fallbackReason);
+
+    return { events, final: final.relays[relay], request, notes, liveness };
+  }
+
+  it("recovers a split boundary second and deduplicates overlap", async () => {
+    const { events, final, notes, request } = await load([110, 110, 100, 100, 90]);
+
+    expect(events).toEqual(notes);
+    expect(final.state).toBe("complete");
+    expect(final.incomplete).toBeUndefined();
+    expect(request.mock.calls[1][1][0].until).toBe(100);
+  });
+
+  it.each([2, 3])("preserves events and reports saturation while continuing older history (cap: %s)", async (cap) => {
+    const timestamps = [...Array<number>(cap + 1).fill(100), 90];
+    const { events, final, notes, request, liveness } = await load(timestamps, { cap });
+
+    expect(events).toEqual([...notes.slice(0, cap), notes.at(-1)]);
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 100 });
+    expect(request.mock.calls.length).toBeLessThan(6);
+    // Saturation is not a connectivity failure: the relay still served its requests.
+    expect(liveness.recordSuccess).toHaveBeenCalledWith(relay);
+  });
+
+  it("does not claim completeness for an exactly full boundary second", async () => {
+    const { final } = await load([100, 100, 100]);
+
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 100 });
+  });
+
+  it("completes normal multi-page history with exhaustible boundaries", async () => {
+    const { events, final, notes } = await load([110, 100, 90, 80, 70, 60, 50]);
+
+    expect(events).toEqual(notes);
+    expect(final.state).toBe("complete");
+  });
+
+  it("does not trust short boundary pages when the relay cap is unknown", async () => {
+    const { events, final, notes } = await load([110, 100, 100, 100, 90], { cap: 2, knownCap: false });
+
+    expect(events).toEqual([notes[0], notes[1], notes[2], notes[4]]);
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 100 });
+  });
+
+  it("conservatively reports the final boundary when its cap is unknown", async () => {
+    const { events, final, notes } = await load([110, 100, 90, 80, 70], { cap: 2, knownCap: false });
+
+    expect(events).toEqual(notes);
+    // The last nonempty page only repeats the final second; its unknown cap prevents proving exhaustion.
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 70 });
+  });
+
+  it("checks the inclusive since second before stopping", async () => {
+    const { events, final, notes } = await load([110, 100, 100, 100], { since: 100 });
+
+    expect(events).toEqual(notes);
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 100 });
+  });
+
+  it("can exhaust a short boundary page at since", async () => {
+    const { events, final, notes } = await load([110, 100, 100], { since: 100 });
+
+    expect(events).toEqual(notes);
+    expect(final.state).toBe("complete");
+  });
+
+  it("retains the first blocked boundary if multiple seconds are saturated", async () => {
+    const { final } = await load([110, 110, 110, 100, 100, 100, 90]);
+
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 110 });
+  });
+
+  it.each([true, false])("completes an empty range (known cap: %s)", async (knownCap) => {
+    const { final, events } = await load([], { knownCap });
+
+    expect(events).toEqual([]);
+    expect(final.state).toBe("complete");
+    expect(final.incomplete).toBeUndefined();
+  });
+
+  it("does not request negative timestamps after a saturated Unix epoch second", async () => {
+    const { final, request } = await load([0, 0, 0, 0]);
+
+    expect(final.state).toBe("incomplete");
+    expect(final.incomplete).toEqual({ reason: "boundary", timestamp: 0 });
+    expect(request).toHaveBeenCalledTimes(2);
   });
 });
 

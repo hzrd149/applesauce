@@ -394,13 +394,21 @@ const STATE_ICONS: Record<SyncRelayStatus["state"], string> = {
   checking: "?",
   loading: "↓",
   complete: "✓",
+  incomplete: "partial",
   error: "✕",
   skipped: "–",
 };
 
 function RelayBadge({ relay, status, onRemove }: { relay: string; status?: SyncRelayStatus; onRemove: () => void }) {
   const state = status?.state ?? "pending";
-  const color = state === "error" ? "badge-error" : state === "complete" ? "badge-success" : "badge-ghost";
+  const color =
+    state === "error"
+      ? "badge-error"
+      : state === "incomplete"
+        ? "badge-warning"
+        : state === "complete"
+          ? "badge-success"
+          : "badge-ghost";
   const title = [relay, status?.method && `via ${status.method}`, status?.error?.message].filter(Boolean).join("\n");
 
   return (

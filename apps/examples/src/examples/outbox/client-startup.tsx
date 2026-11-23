@@ -265,6 +265,7 @@ const stateColors = {
   checking: "#38bdf8",
   loading: "#a78bfa",
   complete: "#34d399",
+  incomplete: "#fbbf24",
   error: "#fb7185",
   skipped: "#94a3b8",
 };

@@ -400,7 +400,7 @@ function SyncSection({ label, progress }: Run) {
     );
 
   const relays = Object.values(progress.relays);
-  const finished = relays.filter((r) => r.state === "complete" || r.state === "error").length;
+  const finished = relays.filter((r) => ["complete", "incomplete", "error", "skipped"].includes(r.state)).length;
   const negentropy = relays.filter((r) => r.method === "negentropy").length;
 
   return (

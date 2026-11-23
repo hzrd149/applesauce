@@ -659,7 +659,7 @@ function Lightbox({
 
 function SyncStatus({ status }: { status?: SyncLoaderStatus }) {
   const relays = Object.values(status?.relays ?? {});
-  const finished = relays.filter((r) => r.state === "complete" || r.state === "error").length;
+  const finished = relays.filter((r) => ["complete", "incomplete", "error", "skipped"].includes(r.state)).length;
   return (
     <span className="flex items-center gap-2 text-base-content/60" title={relays.map((r) => r.relay).join("\n")}>
       {status?.done ? <span className="text-success">✓</span> : <span className="loading loading-spinner loading-sm" />}

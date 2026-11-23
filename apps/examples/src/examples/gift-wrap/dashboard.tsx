@@ -315,7 +315,7 @@ export default function GiftWrapDashboard() {
 
   const mine = user ? recipients.find((r) => r.pubkey === user.pubkey) : undefined;
   const statuses = Object.values(status?.relays ?? {});
-  const finished = statuses.filter((s) => s.state === "complete" || s.state === "error").length;
+  const finished = statuses.filter((s) => ["complete", "incomplete", "error", "skipped"].includes(s.state)).length;
   const syncing = !status?.done;
 
   const list = relaySet(PRESET_RELAYS, relays ?? []);

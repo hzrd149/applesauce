@@ -203,7 +203,11 @@ function summarize(messages$: Observable<LoadMessage>): Observable<SyncSummary> 
             if (r.state === "error") {
               row.state = "error";
               row.error = r.error?.message;
-            } else if (row.state !== "error" && r.state !== "complete") row.state = r.state;
+            } else if (
+              row.state !== "error" &&
+              (r.state === "incomplete" || (row.state !== "incomplete" && r.state !== "complete"))
+            )
+              row.state = r.state;
             rows.set(r.relay, row);
           }
         const relays = [...rows.values()];
@@ -788,6 +792,7 @@ const STATE_CLASS: Record<SyncRelayState, string> = {
   checking: "text-info",
   loading: "text-info",
   complete: "text-success",
+  incomplete: "text-warning",
   error: "text-error",
   skipped: "text-base-content/50",
 };

@@ -106,11 +106,13 @@ const RELAY_AUTH_ERROR_NAMES = new Set([
 export type SyncRelayMethod = "negentropy" | "request";
 
 /** The lifecycle state of a single relay during a sync load */
-export type SyncRelayState = "pending" | "checking" | "loading" | "complete" | "error" | "skipped";
+export type SyncRelayState = "pending" | "checking" | "loading" | "complete" | "incomplete" | "error" | "skipped";
 
 /** The status of a single relay during a sync load */
 export type SyncRelayStatus = {
+  /** The relay's URL */
   relay: string;
+  /** The relay's lifecycle state; incomplete means a timestamp boundary could not be exhausted */
   state: SyncRelayState;
   /** Whether the relay supports NIP-77 negentropy sync (undefined until checked) */
   negentropy?: boolean;
@@ -118,6 +120,13 @@ export type SyncRelayStatus = {
   method?: SyncRelayMethod;
   /** The number of events received from this relay */
   count: number;
+  /** The first boundary that could not be exhausted, retained while older history continues loading */
+  incomplete?: {
+    /** The reason exhaustive retrieval could not be established */
+    reason: "boundary";
+    /** The Unix second that may contain additional matching events */
+    timestamp: number;
+  };
   /** The negentropy failure that triggered a request fallback, retained after completion */
   fallbackReason?: Error;
   /** The error that occurred while loading from this relay */
@@ -130,7 +139,7 @@ export type SyncLoaderStatus = {
   relays: Record<string, SyncRelayStatus>;
   /** The number of unique events loaded so far across all relays (after store deduplication) */
   loaded: number;
-  /** Whether every relay has finished (completed or errored), returns to false when a dynamic relay list adds relays */
+  /** Whether every relay has finished, including incomplete, errored and skipped relays; not a completeness guarantee */
   done: boolean;
 };
 
@@ -277,18 +286,8 @@ export type SyncLoader = (request: SyncLoadRequest) => SyncLoaderResult;
 /**
  * Part 1: Paginated REQ loading.
  *
- * Loads every event matching `filter` from a single relay by requesting blocks backward in time. The first
- * block honors the filter's `until`, and every block preserves the filter's `since`. After each block it moves
- * the `until` cursor just past the oldest event seen and requests again, stopping when a block comes back empty,
- * comes back short of a page size known to fit under the relay's `maxLimit`, or the next cursor would move before
- * `since`. Events outside the requested window are dropped,
- * so a relay that ignores `since` or `until` cannot produce duplicates. Use this for relays that do not support
- * NIP-77, where a single REQ would be capped by the relay's `limit`.
- *
- * NOTE: like other timeline pagination, if more than `limit` events share the same `created_at`, the events
- * past the page boundary at that exact second may be skipped.
- *
- * @internal exported for the sync loader only
+ * Loads matching events backward with inclusive boundary retries and reports seconds that cannot be exhausted.
+ * Continues older history after a blocked second without treating that gap as complete.
  */
 function paginatedRequest(
   request: SyncRequestMethod,
@@ -302,6 +301,7 @@ function paginatedRequest(
   // would repeat the exact defect the requestLog hoist (14-02) fixed.
   log?: Debugger,
   opts?: SyncMethodOptions,
+  onIncomplete?: (timestamp: number) => void,
 ): Observable<NostrEvent> {
   const since = filter.since;
   const initialUntil = filter.until;
@@ -309,45 +309,63 @@ function paginatedRequest(
   const pageSize = maxLimit !== undefined ? Math.min(limit, maxLimit) : limit;
   const trustShortPage = maxLimit !== undefined;
 
-  // Loads blocks ending at `until`, streaming each block before deciding whether to request the next one
-  const loadBlocks = (until = initialUntil): Observable<NostrEvent> => {
-    const block: Filter = until !== undefined ? { ...filter, until, limit: pageSize } : { ...filter, limit: pageSize };
-    let count = 0;
-    let oldest: number | undefined;
+  // Only retain ids at the inclusive boundary; older pages cannot repeat newer events.
+  const loadBlocks = (until = initialUntil, boundary = new Set<string>()): Observable<NostrEvent> =>
+    defer(() => {
+      const block: Filter =
+        until !== undefined ? { ...filter, until, limit: pageSize } : { ...filter, limit: pageSize };
+      const pageIds = new Set<string>();
+      const oldestIds = new Set<string>();
+      let count = 0;
+      let oldest: number | undefined;
+      let fresh = false;
 
-    log?.(`Loading block until:${until}`);
+      log?.(`Loading block until:${until}`);
 
-    const events$ = request(relay, [block], opts).pipe(
-      mergeMap((event) => {
-        if (until !== undefined && event.created_at > until) return EMPTY;
-        if (since !== undefined && event.created_at < since) return EMPTY;
-        return of(event);
-      }),
-      tap((event) => {
-        count++;
-        oldest = oldest === undefined ? event.created_at : Math.min(oldest, event.created_at);
-      }),
-    );
+      const events$ = request(relay, [block], opts).pipe(
+        mergeMap((event) => {
+          if (until !== undefined && event.created_at > until) return EMPTY;
+          if (since !== undefined && event.created_at < since) return EMPTY;
+          count++;
+          if (pageIds.has(event.id)) return EMPTY;
+          pageIds.add(event.id);
 
-    return concat(
-      events$,
-      defer(() => {
-        log?.(`Found ${count} events`);
-        if (count === 0 || oldest === undefined || (trustShortPage && count < pageSize)) {
-          log?.("Complete");
-          return EMPTY;
-        }
+          if (oldest === undefined || event.created_at < oldest) {
+            oldest = event.created_at;
+            oldestIds.clear();
+          }
+          if (event.created_at === oldest) oldestIds.add(event.id);
 
-        const next = oldest - 1;
-        if (since !== undefined && next < since) {
-          log?.("Complete");
-          return EMPTY;
-        }
+          // Count overlap toward the relay's result cap, but do not emit or store it again.
+          if (boundary.has(event.id)) return EMPTY;
+          fresh = true;
+          return of(event);
+        }),
+      );
 
-        return loadBlocks(next);
-      }),
-    );
-  };
+      return concat(
+        events$,
+        defer(() => {
+          log?.(`Found ${count} events`);
+          if (oldest === undefined || (trustShortPage && count < pageSize)) {
+            log?.("Exhausted");
+            return EMPTY;
+          }
+
+          if (oldest === until && !fresh) {
+            // Timestamp-only filters cannot exclude known ids within a saturated second.
+            log?.(`Incomplete boundary at:${oldest}`);
+            onIncomplete?.(oldest);
+            const next = oldest - 1;
+            if (next < (since ?? 0)) return EMPTY;
+            return loadBlocks(next);
+          }
+
+          if (oldest === until) for (const id of boundary) oldestIds.add(id);
+          return loadBlocks(oldest, oldestIds);
+        }),
+      );
+    });
 
   return loadBlocks();
 }
@@ -377,12 +395,12 @@ function resolveMethods(options: SyncLoaderOptions): SyncLoaderMethods {
 }
 
 /**
- * Creates a {@link SyncLoader} that confidently loads a set of events from multiple relays, some of which may
+ * Creates a {@link SyncLoader} that loads a set of events from multiple relays, some of which may
  * support NIP-77 negentropy sync and some of which may not.
  *
  * For each relay it probes for NIP-77 support and then either:
  * - runs an efficient negentropy sync (Part 2), falling back to a paginated request if the sync fails, or
- * - runs a paginated REQ that pages backward in time until the relay is exhausted (Part 1).
+ * - runs a paginated REQ with inclusive boundary retries, reporting incomplete coverage for blocked seconds (Part 1).
  *
  * Calling the loader returns a `status$` observable (immediate lifecycle snapshots and progress updates throttled to 250 ms) and an `events$`
  * observable (the deduplicated events). Both complete when every relay has finished and an observable relay list has
@@ -476,7 +494,7 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
       const snapshot = (): SyncLoaderStatus => ({
         relays: Object.fromEntries(urls.map((url) => [url, { ...state[url] }])),
         loaded: seen.size,
-        done: listed && urls.every((url) => ["complete", "error", "skipped"].includes(state[url].state)),
+        done: listed && urls.every((url) => ["complete", "incomplete", "error", "skipped"].includes(state[url].state)),
       });
 
       // Mutates the state then emits a full status snapshot
@@ -749,7 +767,18 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             const request$ = (budget?: number) =>
               toMessages(
                 withTimeout(
-                  paginatedRequest(request, url, filter, limit, maxLimit, backwardLog, relayMethodOptions),
+                  paginatedRequest(
+                    request,
+                    url,
+                    filter,
+                    limit,
+                    maxLimit,
+                    backwardLog,
+                    relayMethodOptions,
+                    (timestamp) => {
+                      state[url].incomplete ??= { reason: "boundary", timestamp };
+                    },
+                  ),
                   budget,
                 ),
               );
@@ -810,9 +839,9 @@ export function createSyncLoader(options: SyncLoaderOptions): SyncLoader {
             startedAt = Date.now();
           }),
           load$,
-          // Mark the relay as complete once its events have finished
+          // Finishing the stream does not prove completeness when a boundary was blocked.
           status(() => {
-            if (state[url].state !== "error") state[url].state = "complete";
+            state[url].state = state[url].incomplete ? "incomplete" : "complete";
             liveness?.recordSuccess(url);
           }),
         ).pipe(

@@ -375,6 +375,7 @@ const STATE_ICONS: Record<SyncRelayStatus["state"], string> = {
   checking: "?",
   loading: "↓",
   complete: "✓",
+  incomplete: "partial",
   error: "✕",
   skipped: "–",
 };
@@ -395,7 +396,7 @@ function RelayStatus({ statuses, syncing }: { statuses: Record<string, SyncRelay
         {relays.map((status) => (
           <span
             key={status.relay}
-            className={`badge badge-outline gap-1 ${status.state === "error" ? "badge-error" : status.state === "complete" ? "badge-success" : "badge-ghost"}`}
+            className={`badge badge-outline gap-1 ${status.state === "error" ? "badge-error" : status.state === "incomplete" ? "badge-warning" : status.state === "complete" ? "badge-success" : "badge-ghost"}`}
             title={[status.relay, status.method && `via ${status.method}`, status.error?.message]
               .filter(Boolean)
               .join("\n")}

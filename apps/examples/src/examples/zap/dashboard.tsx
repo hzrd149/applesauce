@@ -254,7 +254,7 @@ function Amount({ sats, count }: Total) {
 function SyncStatus({ status }: { status?: SyncLoaderStatus }) {
   if (!status) return <div className="text-sm text-base-content/60">Looking up relays…</div>;
   const relays = Object.values(status.relays);
-  const finished = relays.filter((r) => r.state === "complete" || r.state === "error").length;
+  const finished = relays.filter((r) => ["complete", "incomplete", "error", "skipped"].includes(r.state)).length;
   const negentropy = relays.filter((r) => r.method === "negentropy").length;
   const failed = relays.filter((r) => r.state === "error").length;
 

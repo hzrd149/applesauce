@@ -77,7 +77,10 @@ function StatusPanel({ status }: { status: SyncLoaderStatus }) {
           {relays.map((relay) => (
             <tr key={relay.relay}>
               <td className="font-mono text-sm">{hostname(relay.relay)}</td>
-              <td>
+              <td
+                className={relay.state === "incomplete" ? "text-warning" : ""}
+                title={relay.incomplete && `Unexhausted boundary at Unix second ${relay.incomplete.timestamp}`}
+              >
                 {relay.state}
                 {relay.error && <span className="text-error text-sm ml-2">{relay.error.message}</span>}
               </td>

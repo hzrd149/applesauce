@@ -175,7 +175,7 @@ function createTask(relay: string, authors: string[], range: DateRange): RelayTa
         error: status.error,
         received,
         started,
-        ended: status.state === "complete" || status.state === "error" ? Date.now() : undefined,
+        ended: ["complete", "incomplete", "error", "skipped"].includes(status.state) ? Date.now() : undefined,
       })),
     );
   });
@@ -423,6 +423,7 @@ const STATE_ORDER: Record<TaskState, number> = {
   pending: 2,
   queued: 3,
   complete: 4,
+  incomplete: 4.5,
   canceled: 5,
   error: 6,
   skipped: 7,
@@ -434,6 +435,7 @@ const STATE_BADGE: Record<TaskState, string> = {
   checking: "badge-info",
   loading: "badge-primary",
   complete: "badge-success",
+  incomplete: "badge-warning",
   canceled: "badge-warning",
   error: "badge-error",
   skipped: "badge-ghost",
@@ -704,7 +706,7 @@ function StatsBar({ progress }: { progress: TaskProgress[] }) {
   const now = use$(now$) ?? Date.now();
 
   const count = (state: TaskState) => progress.filter((p) => p.status.state === state).length;
-  const finished = count("complete") + count("error");
+  const finished = count("complete") + count("incomplete") + count("error") + count("skipped");
   const negentropy = progress.filter((p) => p.status.method === "negentropy").length;
   const request = progress.filter((p) => p.status.method === "request").length;
   const received = progress.reduce((sum, p) => sum + p.status.received, 0);
@@ -745,7 +747,7 @@ function StatsBar({ progress }: { progress: TaskProgress[] }) {
 function MethodComparison({ progress }: { progress: TaskProgress[] }) {
   const rows = (["negentropy", "request"] as const).map((method) => {
     const relays = progress.filter(
-      (p) => p.status.method === method && (p.status.state === "complete" || p.status.state === "error"),
+      (p) => p.status.method === method && ["complete", "incomplete", "error", "skipped"].includes(p.status.state),
     );
     const events = relays.reduce((sum, p) => sum + p.status.received, 0);
     const authors = relays.reduce((sum, p) => sum + p.task.authors.length, 0);

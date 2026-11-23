@@ -673,7 +673,7 @@ function RelayRow({
 /** Totals for the current sync */
 function Stats({ state, relays, running }: { state: RunState; relays: number; running: boolean }) {
   const statuses = Object.values(state.monitors).flatMap((m) => Object.values(m.relays));
-  const finished = statuses.filter((r) => r.state === "complete" || r.state === "error").length;
+  const finished = statuses.filter((r) => ["complete", "incomplete", "error", "skipped"].includes(r.state)).length;
   const negentropy = statuses.filter((r) => r.method === "negentropy").length;
   const errors = statuses.filter((r) => r.state === "error").length;
 

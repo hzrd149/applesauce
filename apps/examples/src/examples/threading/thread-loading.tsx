@@ -406,7 +406,7 @@ function sync$(config: RunConfig): Observable<RunState | Error> {
   });
 }
 
-const TERMINAL = ["complete", "error", "skipped"];
+const TERMINAL = ["complete", "incomplete", "error", "skipped"];
 const EMPTY_STAGE: StageState = { relays: {}, loaded: 0 };
 
 /** Folds the latest load statuses into the run state */
@@ -475,6 +475,7 @@ function mergeBatches({ batches, done }: ReactionProgress): SyncLoaderStatus {
     let state: SyncRelayStatus["state"] = "error";
     if (states.some((s) => !TERMINAL.includes(s))) state = "loading";
     else if (states.every((s) => s === "skipped")) state = "skipped";
+    else if (states.includes("incomplete")) state = "incomplete";
     else if (states.includes("complete")) state = "complete";
 
     relays[relay] = {
@@ -483,6 +484,7 @@ function mergeBatches({ batches, done }: ReactionProgress): SyncLoaderStatus {
       method: list.find((s) => s.method)?.method,
       count: list.reduce((sum, s) => sum + s.count, 0),
       error: list.find((s) => s.error)?.error,
+      incomplete: list.find((s) => s.incomplete)?.incomplete,
     };
   }
 
@@ -845,6 +847,7 @@ function StageTable({ state }: { state: RunState }) {
               <td className="text-end">{s.loaded.toLocaleString()}</td>
               <td>
                 {count("complete")} ok
+                {count("incomplete") > 0 && <span className="text-warning"> · {count("incomplete")} incomplete</span>}
                 {count("skipped") > 0 && <span className="opacity-60"> · {count("skipped")} skipped</span>}
                 {count("error") > 0 && <span className="text-error"> · {count("error")} failed</span>}
               </td>
@@ -929,6 +932,12 @@ function LocalCell({ relay }: { relay: string }) {
 function StageCell({ timing }: { timing?: RelayTiming }) {
   if (!timing) return <td className="opacity-60">—</td>;
   if (timing.state === "skipped") return <td className="opacity-60">skipped</td>;
+  if (timing.state === "incomplete")
+    return (
+      <td className="text-warning" title={`Unexhausted boundary: ${timing.incomplete?.timestamp}`}>
+        incomplete {timing.count} · {seconds(timing.finished)}
+      </td>
+    );
   if (timing.state === "error")
     return (
       <td className="text-error" title={timing.error?.message}>
