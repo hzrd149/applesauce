@@ -217,14 +217,16 @@ export class NdrGroupConversation {
 
   /**
    * Removes a member, sends the new roster to everyone including them, and rotates this device's sender key
-   * @throws if the account is not an admin or sending fails
+   * @throws if the account is not an admin, the group manager can't be initialized, or sending fails
    */
   async removeMember(member: string): Promise<void> {
+    // Wait for the manager before changing the roster, so a member is never removed without the
+    // fresh sender key that keeps them from reading later messages.
+    const manager = await this.client.runtime.waitForGroupManager();
+
     await this.updateRoster((data) => removeGroupMember(data, member, this.client.pubkey));
 
-    // A fresh sender key keeps the removed member from reading later messages.
-    const manager = this.client.runtime.getGroupManager();
-    await manager?.rotateSenderKey(this.groupId, {
+    await manager.rotateSenderKey(this.groupId, {
       sendPairwise: async (recipient, rumor) => {
         await this.client.runtime.sendEvent(recipient, rumor, undefined, { includeLocalSiblings: false });
       },
