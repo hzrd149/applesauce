@@ -176,6 +176,7 @@ export default defineConfig({
               { text: "React", link: "/apps/frameworks/react" },
               { text: "Solid", link: "/apps/frameworks/solid" },
               { text: "Svelte", link: "/apps/frameworks/svelte" },
+              { text: "Vue", link: "/apps/frameworks/vue" },
             ],
           },
           {
