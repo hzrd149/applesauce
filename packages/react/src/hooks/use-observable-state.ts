@@ -1,168 +1,107 @@
-import { useDebugValue, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDebugValue, useMemo, useSyncExternalStore } from "react";
 import { BehaviorSubject, Observable, Subscription } from "rxjs";
-import { useForceUpdate } from "observable-hooks";
 
-// Prevent React warning when using useLayoutEffect on server
-const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+const SWEEP_INTERVAL = 1000;
 
-// Symbol to indicate no value was emitted
-const NO_VALUE = Symbol("NO_VALUE");
+// Two generations give every abandoned render at least one full interval before cleanup.
+let pendingReleases = new Set<() => void>();
+let expiringReleases = new Set<() => void>();
+let sweepTimer: ReturnType<typeof setTimeout> | undefined;
 
-interface SubscriptionState<T> {
-  /** The observable this state is for */
-  observable: Observable<T>;
-  /** The active subscription */
-  subscription: Subscription;
-  /** Latest value received */
-  latestValue: T | typeof NO_VALUE;
-  /** Latest error received */
-  latestError: unknown;
-  /** Callback to update React state - set by the retained subscription effect */
-  onValue: ((value: T) => void) | null;
-  /** Callback to handle errors - set by the retained subscription effect */
-  onError: (() => void) | null;
+function sweep() {
+  for (const release of expiringReleases) release();
+
+  expiringReleases = pendingReleases;
+  pendingReleases = new Set();
+  sweepTimer = expiringReleases.size > 0 ? setTimeout(sweep, SWEEP_INTERVAL) : undefined;
 }
 
-function createSubscription<T>(observable: Observable<T>): SubscriptionState<T> {
-  const subState: SubscriptionState<T> = {
-    observable,
-    subscription: null as unknown as Subscription,
-    latestValue: NO_VALUE,
-    latestError: null,
-    onValue: null,
-    onError: null,
+function trackUncommitted(release: () => void) {
+  pendingReleases.add(release);
+  sweepTimer ??= setTimeout(sweep, SWEEP_INTERVAL);
+}
+
+function markCommitted(release: () => void) {
+  pendingReleases.delete(release);
+  expiringReleases.delete(release);
+  // Keep the scheduled sweep so sequential commits don't cancel and recreate timers.
+}
+
+type Snapshot<T> = { value?: T; error?: unknown };
+
+/** Wraps an observable in a single subscription that is shared between render and React's subscribe */
+function createObservableStore<T>(observable: Observable<T>) {
+  let snapshot: Snapshot<T> = {};
+  let subscription: Subscription | undefined;
+  let listener: (() => void) | undefined;
+
+  const connect = () => {
+    if (subscription) return;
+
+    subscription = observable.subscribe({
+      next: (value) => {
+        if ("value" in snapshot && Object.is(snapshot.value, value)) return;
+
+        snapshot = { value };
+        listener?.();
+      },
+      error: (error) => {
+        snapshot = { error };
+        listener?.();
+      },
+    });
   };
 
-  subState.subscription = observable.subscribe({
-    next: (value) => {
-      subState.latestValue = value;
-      subState.onValue?.(value);
-    },
-    error: (error) => {
-      subState.latestError = error;
-      subState.onError?.();
-    },
-  });
+  const releaseIfIdle = () => {
+    if (listener) return;
 
-  return subState;
+    subscription?.unsubscribe();
+    subscription = undefined;
+  };
+
+  const getSnapshot = () => {
+    if (!subscription && !listener) {
+      // Keep the render subscription for React's subscribe, and close it if the render never commits
+      connect();
+      trackUncommitted(releaseIfIdle);
+    }
+
+    return snapshot;
+  };
+
+  const getServerSnapshot = () => {
+    connect();
+    releaseIfIdle();
+
+    return snapshot;
+  };
+
+  const subscribe = (onChange: () => void) => {
+    listener = onChange;
+    markCommitted(releaseIfIdle);
+    connect();
+
+    return () => {
+      listener = undefined;
+      releaseIfIdle();
+    };
+  };
+
+  return { subscribe, getSnapshot, getServerSnapshot };
 }
 
 /**
- * A hook that subscribes to an Observable and returns its current value.
- *
- * Unlike the standard `useObservableState` from observable-hooks, this hook
- * will synchronously get the initial value if the Observable emits synchronously.
- * This prevents an extra render when the Observable has an immediate value.
- *
- * If the Observable does not emit synchronously, the hook returns `undefined`
- * for the initial render (unlike `useObservableEagerState` which throws).
- *
- * The synchronous render probe is closed immediately. The retained subscription
- * is created by the effect so React Strict Mode cannot orphan render-phase work.
- *
- * @template TState State type.
- * @param state$ An Observable of state values.
- * @returns The current state value, or `undefined` if no value has been emitted yet.
+ * Subscribes to an Observable and returns its current value, or `undefined` until it emits
+ * @throws the error emitted by the Observable, to be caught by an error boundary
  */
 export function useObservableState<TState>(state$: BehaviorSubject<TState>): TState;
 export function useObservableState<TState>(state$: Observable<TState>): TState | undefined;
 export function useObservableState<TState>(state$: Observable<TState>): TState | undefined {
-  const forceUpdate = useForceUpdate();
+  const store = useMemo(() => createObservableStore(state$), [state$]);
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
 
-  // Ref to hold the subscription state - persists across renders
-  const subStateRef = useRef<SubscriptionState<TState> | null>(null);
+  if ("error" in snapshot) throw snapshot.error;
 
-  // Initialize state - this only runs once per component instance
-  const [state, setState] = useState<TState | undefined>(() => {
-    // Clean up any existing subscription (shouldn't happen in useState init, but be safe)
-    if (subStateRef.current) {
-      subStateRef.current.subscription.unsubscribe();
-    }
-
-    // Create subscription and probe for sync value
-    const subState = createSubscription(state$);
-    subState.subscription.unsubscribe();
-    subStateRef.current = subState;
-
-    // Return sync value if available
-    return subState.latestValue !== NO_VALUE ? subState.latestValue : undefined;
-  });
-
-  // Track current observable for staleness checks
-  const state$Ref = useRef(state$);
-  useIsomorphicLayoutEffect(() => {
-    state$Ref.current = state$;
-  });
-
-  // Handle observable changes and register callbacks before later layout effects emit
-  useIsomorphicLayoutEffect(() => {
-    let subState = subStateRef.current;
-
-    // If observable changed, create new subscription
-    if (!subState || subState.observable !== state$ || subState.subscription.closed) {
-      // Clean up old subscription
-      subState?.subscription.unsubscribe();
-
-      // Create new subscription
-      subState = createSubscription(state$);
-      subStateRef.current = subState;
-
-      // Update state if we got a sync value from new observable
-      const latest = subState.latestValue;
-      if (latest !== NO_VALUE) {
-        setState(() => latest);
-      } else {
-        setState(undefined);
-      }
-    } else {
-      // Same observable - check if we missed any values between useState and this effect
-      const latest = subState.latestValue;
-      if (latest !== NO_VALUE && latest !== state) {
-        setState(() => latest);
-      }
-    }
-
-    // Check for errors that occurred before this effect
-    if (subState.latestError !== null) {
-      forceUpdate();
-    }
-
-    // Register callbacks for future emissions
-    subState.onValue = (value) => {
-      if (state$Ref.current === state$) {
-        // Updater form is required because emitted values may be functions (e.g. timeline loaders) that React would call
-        setState(() => value);
-      }
-    };
-
-    subState.onError = () => {
-      if (state$Ref.current === state$) {
-        forceUpdate();
-      }
-    };
-
-    return () => {
-      // Unregister callbacks
-      subState.onValue = null;
-      subState.onError = null;
-
-      // Unsubscribe
-      subState.subscription.unsubscribe();
-
-      // Clear the ref if this is still the current subscription
-      if (subStateRef.current === subState) {
-        subStateRef.current = null;
-      }
-    };
-  }, [state$]);
-
-  // Throw errors to be caught by error boundary
-  const subState = subStateRef.current;
-  if (subState?.latestError !== null && subState?.observable === state$) {
-    throw subState.latestError;
-  }
-
-  useDebugValue(state);
-
-  return state;
+  useDebugValue(snapshot.value);
+  return snapshot.value;
 }

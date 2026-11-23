@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { StrictMode, useEffect, useLayoutEffect } from "react";
 import { BehaviorSubject, Observable } from "rxjs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createControlledObservable,
   createTrackedObservable,
@@ -12,6 +12,16 @@ import {
 import { useObservableState } from "../use-observable-state.js";
 
 describe("useObservableState", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.runAllTimers();
+    vi.useRealTimers();
+  });
+
   it("renders a synchronous first value immediately", () => {
     const source = new BehaviorSubject("ready");
     const { result } = renderHook(() => useObservableState(source));
@@ -133,6 +143,9 @@ describe("useObservableState", () => {
 
     rerender({ source: second.observable });
     unmount();
+
+    // React 18 Strict Mode discards the first render, so its subscription waits for the sweep
+    vi.advanceTimersByTime(3000);
     expect(first.active + second.active).toBe(0);
     expect([...first.subscriptions, ...second.subscriptions].every(({ teardowns }) => teardowns === 1)).toBe(true);
   });
