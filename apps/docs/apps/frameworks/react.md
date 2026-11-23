@@ -6,7 +6,7 @@ description: React hooks for integrating Applesauce, centered on the use$ hook f
 
 The `applesauce-react` package connects Applesauce to React. Its `use$` hook subscribes to observables and rerenders components when data changes.
 
-Apps using other frameworks don't need this package: see [Solid](./solid.md), or subscribe to the core observables directly with `.subscribe()`.
+Apps that only need `use$` can copy a [standalone version](#standalone-use-hook) instead of installing the package. Apps using other frameworks don't need it either: see [Solid](./solid.md), [Svelte](./svelte.md) and [Vue](./vue.md), or subscribe to the core observables directly with `.subscribe()`.
 
 ## Features
 
@@ -56,36 +56,9 @@ function Header() {
 
 Direct imports keep data flow explicit, need no provider tree, and work the same in components, hooks, and plain modules.
 
-## Context Providers
-
-::: warning
-Providers are not recommended for new apps. Import shared instances directly as shown in [Setup](#setup).
-:::
-
-The package still ships providers for apps that inject instances through React context:
-
-```tsx
-<EventStoreProvider eventStore={eventStore}>
-  <AccountsProvider manager={accounts}>
-    <ActionsProvider runner={actions}>
-      <App />
-    </ActionsProvider>
-  </AccountsProvider>
-</EventStoreProvider>
-```
-
-Components then read them with `useEventStore()`, `useAccountManager()`, `useActiveAccount()`, `useActionRunner()`, `useAction()`, and `useEventModel()`. Each of these maps to a direct call on the shared instance:
-
-| Provider hook                    | Direct equivalent                                      |
-| -------------------------------- | ------------------------------------------------------ |
-| `useEventModel(Model, args)`     | `use$(() => eventStore.model(Model, ...args), [args])` |
-| `useActiveAccount()`             | `use$(accounts.active$)`                               |
-| `useAccounts()`                  | `use$(accounts.accounts$)`                             |
-| `useAction(Action).run(...args)` | `actions.run(Action, ...args)`                         |
-
 ## use$ Hook
 
-The `use$` hook combines `useObservableState` and `useMemo` to subscribe to observables in React components. It handles subscription management, cleanup, and state updates automatically, and works with the EventStore, RelayPool, and other reactive data sources.
+The `use$` hook subscribes to an observable and rerenders the component when it emits. A value emitted synchronously is returned on the first render, subscriptions close on unmount or when dependencies change, and errors are thrown to the nearest error boundary.
 
 ### API
 
@@ -96,6 +69,85 @@ use$<T>(observable?: Observable<T>): T | undefined;
 
 // Factory function with dependencies (returns T | undefined)
 use$<T>(factory: () => Observable<T> | undefined, deps: any[]): T | undefined;
+```
+
+### Standalone use$ Hook
+
+To use `use$` without installing `applesauce-react`, copy this version built on React's `useSyncExternalStore`. It needs only `react@^18` and `rxjs`.
+
+The store opens one subscription when the component first renders and hands it to React when the component mounts, so reading the synchronous value never costs an extra subscribe and teardown:
+
+```ts
+type Snapshot<T> = { value?: T; error?: unknown };
+
+function createObservableStore<T>(observable: Observable<T> | undefined) {
+  let snapshot: Snapshot<T> = {};
+  let subscription: Subscription | undefined;
+  let listener: (() => void) | undefined;
+
+  const connect = () => {
+    if (subscription || !observable) return;
+
+    subscription = observable.subscribe({
+      next: (value) => {
+        if ("value" in snapshot && snapshot.value === value) return;
+        snapshot = { value };
+        listener?.();
+      },
+      error: (error) => {
+        snapshot = { error };
+        listener?.();
+      },
+    });
+  };
+
+  const releaseIfIdle = () => {
+    if (listener) return;
+    subscription?.unsubscribe();
+    subscription = undefined;
+  };
+
+  const getSnapshot = () => {
+    if (!subscription && !listener) {
+      // Open the subscription during render and hand it to React's subscribe, or close it if the render never commits
+      connect();
+      setTimeout(releaseIfIdle, 1000);
+    }
+    return snapshot;
+  };
+
+  const getServerSnapshot = () => {
+    connect();
+    releaseIfIdle();
+    return snapshot;
+  };
+
+  const subscribe = (onChange: () => void) => {
+    listener = onChange;
+    connect();
+
+    return () => {
+      listener = undefined;
+      releaseIfIdle();
+    };
+  };
+
+  return { subscribe, getSnapshot, getServerSnapshot };
+}
+```
+
+```ts
+export function use$<T>(observable?: BehaviorSubject<T>): T;
+export function use$<T>(observable?: Observable<T>): T | undefined;
+export function use$<T>(factory: () => Observable<T> | undefined, deps: unknown[]): T | undefined;
+export function use$<T>(input?: Observable<T> | (() => Observable<T> | undefined), deps?: unknown[]) {
+  const observable = useMemo(() => (typeof input === "function" ? input() : input), deps ?? [input]);
+  const store = useMemo(() => createObservableStore(observable), [observable]);
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
+
+  if ("error" in snapshot) throw snapshot.error;
+  return snapshot.value;
+}
 ```
 
 ## Usage Patterns
@@ -462,18 +514,6 @@ function Timeline({ windows$ }) {
 
 Each window supplies finite `since` and `until` bounds. See [Timeline Loader](/loading/loaders/timeline-loader) for buffering and coverage status.
 
-## How It Works
-
-The `use$` hook:
-
-1. **Memoizes the observable** using `useMemo` to prevent unnecessary re-subscriptions
-2. **Subscribes synchronously** during the initial render to get immediate values when available
-3. **Updates React state** when the observable emits new values
-4. **Cleans up subscriptions** automatically when the component unmounts or dependencies change
-5. **Handles errors** by throwing them to React error boundaries
-
-This makes it safe to use with both hot and cold observables, and ensures your components always reflect the latest values from your reactive data sources.
-
 ## Type Safety
 
 `use$` provides full TypeScript support:
@@ -489,3 +529,30 @@ const profile = use$(() => eventStore.profile(pubkey), [pubkey]);
 // TypeScript knows user is User | null (from BehaviorSubject)
 const user = use$(user$);
 ```
+
+## Context Providers
+
+::: warning
+Providers are not recommended for new apps. Import shared instances directly as shown in [Setup](#setup).
+:::
+
+The package still ships providers for apps that inject instances through React context:
+
+```tsx
+<EventStoreProvider eventStore={eventStore}>
+  <AccountsProvider manager={accounts}>
+    <ActionsProvider runner={actions}>
+      <App />
+    </ActionsProvider>
+  </AccountsProvider>
+</EventStoreProvider>
+```
+
+Components then read them with `useEventStore()`, `useAccountManager()`, `useActiveAccount()`, `useActionRunner()`, `useAction()`, and `useEventModel()`. Each of these maps to a direct call on the shared instance:
+
+| Provider hook                    | Direct equivalent                                      |
+| -------------------------------- | ------------------------------------------------------ |
+| `useEventModel(Model, args)`     | `use$(() => eventStore.model(Model, ...args), [args])` |
+| `useActiveAccount()`             | `use$(accounts.active$)`                               |
+| `useAccounts()`                  | `use$(accounts.accounts$)`                             |
+| `useAction(Action).run(...args)` | `actions.run(Action, ...args)`                         |
